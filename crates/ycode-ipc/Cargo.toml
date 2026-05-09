@@ -1,0 +1,25 @@
+[package]
+name = "ycode-ipc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Typed Tauri command/event surface — protocol between ycode core and the webview."
+
+[dependencies]
+ycode-adapter.workspace = true
+ycode-config.workspace = true
+ycode-core.workspace = true
+ycode-persist.workspace = true
+ycode-worktree.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs.workspace = true
+camino.workspace = true
+
+[dev-dependencies]
+ycode-echo-adapter.workspace = true
+tempfile = "3.10"

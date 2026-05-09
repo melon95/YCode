@@ -1,0 +1,17 @@
+[package]
+name = "ycode-worktree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Git worktree manager — one isolated worktree per session."
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+camino.workspace = true
+gix.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

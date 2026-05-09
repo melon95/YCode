@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:agentclientprotocol.com)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebSearch",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo check *)",
+      "Bash(cargo test *)"
+    ]
+  }
+}
