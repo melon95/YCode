@@ -10,29 +10,24 @@
 //! ```toml
 //! [[agents]]
 //! id = "claude-code"
-//! kind = "acp"
-//! command = "claude-code-acp"
+//! name = "Claude Code"
+//! command = "claude"
 //! args = []
-//! env = { ANTHROPIC_API_KEY = "$ANTHROPIC_API_KEY" }
-//!
-//! [[agents]]
-//! id = "gemini-cli"
-//! kind = "acp"
-//! command = "gemini"
-//! args = ["--experimental-acp"]
 //!
 //! [[agents]]
 //! id = "codex"
-//! kind = "pty"
+//! name = "Codex"
 //! command = "codex"
-//! args = []
-//! heuristic_profile = "codex"   # optional; PTY-only
 //! ```
+//!
+//! Under the terminal-first architecture every agent is just a process to
+//! launch under a PTY — there is no notion of an "adapter kind". Whatever
+//! the user puts in `command` runs as-is; we forward bytes both ways.
 //!
 //! Values inside `env` of the form `$VAR_NAME` (and only that exact form, no
 //! shell escapes) are expanded from the host environment at load time.
 //! Missing variables are kept as the literal `$VAR_NAME` string and a warning
-//! is logged — adapters can choose to fail loudly when they spawn.
+//! is logged.
 
 use camino::Utf8PathBuf;
 use directories::ProjectDirs;
@@ -48,32 +43,17 @@ pub struct Config {
 }
 
 impl Default for Config {
-    /// Ship-with-the-app defaults so a user with no config file still sees the
-    /// two flagship ACP agents.
+    /// Ship-with-the-app defaults so a user with no config file still sees
+    /// the common CLIs. Agent discovery (which of these are actually on
+    /// PATH) happens at startup.
     fn default() -> Self {
         Self {
             agents: vec![
-                AgentLaunchProfile {
-                    id: "claude-code".into(),
-                    display_name: Some("Claude Code".into()),
-                    kind: AdapterKind::Acp,
-                    command: "claude-code-acp".into(),
-                    args: vec![],
-                    env: BTreeMap::from([(
-                        "ANTHROPIC_API_KEY".into(),
-                        "$ANTHROPIC_API_KEY".into(),
-                    )]),
-                    heuristic_profile: None,
-                },
-                AgentLaunchProfile {
-                    id: "gemini-cli".into(),
-                    display_name: Some("Gemini CLI".into()),
-                    kind: AdapterKind::Acp,
-                    command: "gemini".into(),
-                    args: vec!["--experimental-acp".into()],
-                    env: BTreeMap::new(),
-                    heuristic_profile: None,
-                },
+                AgentLaunchProfile::simple("claude-code", "Claude Code", "claude"),
+                AgentLaunchProfile::simple("codex", "Codex", "codex"),
+                AgentLaunchProfile::simple("gemini-cli", "Gemini CLI", "gemini"),
+                AgentLaunchProfile::simple("aider", "Aider", "aider"),
+                AgentLaunchProfile::simple("bash", "Bash", "bash"),
             ],
         }
     }
@@ -85,11 +65,9 @@ pub struct AgentLaunchProfile {
     /// kebab-case by convention.
     pub id: String,
 
-    /// Optional pretty name shown in the UI. Falls back to `id`.
+    /// Pretty name shown in the UI. Falls back to `id` when absent.
     #[serde(default)]
     pub display_name: Option<String>,
-
-    pub kind: AdapterKind,
 
     pub command: String,
 
@@ -100,28 +78,22 @@ pub struct AgentLaunchProfile {
     /// are expanded against the host environment by [`Config::load`].
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-
-    /// Identifier of a heuristic profile registered in `ycode-pty-adapter`.
-    /// Required for `kind = "pty"`, ignored otherwise.
-    #[serde(default)]
-    pub heuristic_profile: Option<String>,
 }
 
 impl AgentLaunchProfile {
     pub fn display_name(&self) -> &str {
         self.display_name.as_deref().unwrap_or(&self.id)
     }
-}
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum AdapterKind {
-    Acp,
-    Pty,
-    /// In-process test adapter. Not for end-user configs — exists so the
-    /// SessionManager's factory registry has something deterministic to
-    /// drive in smoke tests and CI.
-    Echo,
+    fn simple(id: &str, name: &str, command: &str) -> Self {
+        Self {
+            id: id.into(),
+            display_name: Some(name.into()),
+            command: command.into(),
+            args: vec![],
+            env: BTreeMap::new(),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -137,9 +109,6 @@ pub enum ConfigError {
 
     #[error("duplicate agent id `{0}`")]
     DuplicateAgentId(String),
-
-    #[error("agent `{0}` has kind=pty but no heuristic_profile set")]
-    PtyMissingHeuristic(String),
 }
 
 impl Config {
@@ -149,7 +118,7 @@ impl Config {
         let path = default_path()?;
         if !path.as_std_path().exists() {
             tracing::info!(
-                "no config at {path}; using defaults (Claude Code + Gemini CLI)",
+                "no config at {path}; using defaults",
                 path = path
             );
             return Ok(Self::default());
@@ -157,7 +126,7 @@ impl Config {
         Self::load_from(&path)
     }
 
-    /// Load from an explicit path. Used by tests and the CLI's `--config` flag.
+    /// Load from an explicit path.
     pub fn load_from(path: &Utf8PathBuf) -> Result<Self, ConfigError> {
         let raw = std::fs::read_to_string(path)?;
         let mut cfg: Self = toml::from_str(&raw)?;
@@ -178,7 +147,7 @@ impl Config {
                             tracing::warn!(
                                 agent = %agent.id,
                                 var = %name,
-                                "env var not set; leaving placeholder for adapter to handle",
+                                "env var not set; leaving placeholder",
                             );
                         }
                     }
@@ -192,9 +161,6 @@ impl Config {
         for agent in &self.agents {
             if !seen.insert(agent.id.as_str()) {
                 return Err(ConfigError::DuplicateAgentId(agent.id.clone()));
-            }
-            if agent.kind == AdapterKind::Pty && agent.heuristic_profile.is_none() {
-                return Err(ConfigError::PtyMissingHeuristic(agent.id.clone()));
             }
         }
         Ok(())
@@ -222,11 +188,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_includes_acp_agents() {
+    fn default_includes_common_agents() {
         let cfg = Config::default();
         assert!(cfg.find("claude-code").is_some());
+        assert!(cfg.find("codex").is_some());
         assert!(cfg.find("gemini-cli").is_some());
-        assert_eq!(cfg.find("claude-code").unwrap().kind, AdapterKind::Acp);
     }
 
     #[test]
@@ -234,7 +200,6 @@ mod tests {
         let toml_src = r#"
             [[agents]]
             id = "test"
-            kind = "acp"
             command = "echo"
         "#;
         let cfg: Config = toml::from_str(toml_src).unwrap();
@@ -244,28 +209,13 @@ mod tests {
     }
 
     #[test]
-    fn pty_without_heuristic_fails_validation() {
-        let toml_src = r#"
-            [[agents]]
-            id = "bad-pty"
-            kind = "pty"
-            command = "codex"
-        "#;
-        let cfg: Config = toml::from_str(toml_src).unwrap();
-        let err = cfg.validate().unwrap_err();
-        assert!(matches!(err, ConfigError::PtyMissingHeuristic(_)));
-    }
-
-    #[test]
     fn duplicate_id_fails_validation() {
         let toml_src = r#"
             [[agents]]
             id = "dup"
-            kind = "acp"
             command = "a"
             [[agents]]
             id = "dup"
-            kind = "acp"
             command = "b"
         "#;
         let cfg: Config = toml::from_str(toml_src).unwrap();
@@ -275,12 +225,10 @@ mod tests {
 
     #[test]
     fn env_var_expansion() {
-        // Use a name unlikely to collide with anything in the test env.
         std::env::set_var("YCODE_TEST_VAR_42", "hello");
         let toml_src = r#"
             [[agents]]
             id = "x"
-            kind = "acp"
             command = "c"
             env = { FOO = "$YCODE_TEST_VAR_42", LITERAL = "plain" }
         "#;

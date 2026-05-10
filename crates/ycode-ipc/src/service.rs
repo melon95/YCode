@@ -1,188 +1,238 @@
 //! `Service` — concrete IPC command handler.
 //!
-//! Holds the [`SessionManager`] and the loaded [`Config`]; each method
-//! corresponds to one IPC command. The Tauri shell wraps each method as
-//! `#[tauri::command]` and emits `UiEvent`s by subscribing to runner
-//! event buses.
+//! Owns the `TerminalManager` (the live PTY registry), the `Db` (project +
+//! session rows), and the loaded `Config`. Each method corresponds to one
+//! IPC command exposed by the Tauri shell.
 //!
 //! Methods deliberately avoid Tauri-specific types so this crate stays
 //! transport-agnostic.
 
 use std::sync::Arc;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
-use tracing::warn;
+use tracing::{info, warn};
 
-use ycode_adapter::AgentEvent;
 use ycode_config::{AgentLaunchProfile, Config};
-use ycode_core::{ManagerError, OrchestratorError, SessionManager};
-use ycode_persist::PersistError;
-use ycode_worktree::{CleanupMode, WorktreeError};
+use ycode_persist::{Db, NewProject, NewSession, PersistError};
+use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    AgentProfileView, AnswerPermissionRequest, CreateSessionRequest, ReplayEntry,
-    ReplayRequest, SendPromptRequest, SessionView, UiEvent,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, ProjectView, ResizePtyRequest,
+    SessionView, UiEvent, UiEventKind, WritePtyRequest,
 };
 
+/// Default PTY geometry. The frontend resizes after attaching to match the
+/// actual xterm.js viewport.
+const INITIAL_ROWS: u16 = 40;
+const INITIAL_COLS: u16 = 120;
+
+/// Size of the per-session output broadcast buffer at the IPC layer.
+const UI_BUS_CAPACITY: usize = 4096;
+
 pub struct Service {
-    manager: Arc<SessionManager>,
+    db: Db,
+    terminals: Arc<TerminalManager>,
     config: RwLock<Config>,
-    /// Fan-in of all per-session event streams. Subscribers are typically the
-    /// Tauri shell's event-emit task, but tests can subscribe directly.
+    /// Set of agent ids whose `command` was found on PATH at startup. Other
+    /// agents are surfaced to the UI as `available: false`.
+    available_agents: RwLock<std::collections::HashSet<String>>,
+    /// Fan-in of all per-session terminal streams + membership events.
+    /// Subscribers are typically the Tauri shell's emit task.
     ui_bus: broadcast::Sender<UiEvent>,
 }
 
-const UI_BUS_CAPACITY: usize = 4096;
-
 impl Service {
-    pub fn new(manager: Arc<SessionManager>, config: Config) -> Self {
+    pub fn new(db: Db, config: Config) -> Self {
+        let available = compute_available_agents(&config);
         let (tx, _) = broadcast::channel(UI_BUS_CAPACITY);
         Self {
-            manager,
+            db,
+            terminals: Arc::new(TerminalManager::new()),
             config: RwLock::new(config),
+            available_agents: RwLock::new(available),
             ui_bus: tx,
         }
     }
 
-    pub fn manager(&self) -> &Arc<SessionManager> {
-        &self.manager
-    }
-
     /// Subscribe to the merged UI event stream. The Tauri shell wires this
-    /// receiver to `app_handle.emit_all("ycode://session", event)`.
+    /// receiver to `app_handle.emit("ycode://session", event)`.
     pub fn subscribe(&self) -> broadcast::Receiver<UiEvent> {
         self.ui_bus.subscribe()
     }
 
-    /// Pump a session's `AgentEvent` broadcast into the merged UI bus.
-    /// Spawns a background task that forwards every event tagged with the
-    /// session id. Call this once per session — typically inside
-    /// `create_session`/`restart_session`.
-    pub fn pipe_session_events(&self, session_id: String, mut rx: broadcast::Receiver<AgentEvent>) {
-        let bus = self.ui_bus.clone();
-        tokio::spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(event) => {
-                        let _ = bus.send(UiEvent::agent(session_id.clone(), event));
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(session_id = %session_id, lagged = n, "UI bus pipe lagged");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-    }
-
     pub async fn list_agents(&self) -> Vec<AgentProfileView> {
-        self.config
-            .read()
-            .await
-            .agents
+        let cfg = self.config.read().await;
+        let avail = self.available_agents.read().await;
+        cfg.agents
             .iter()
-            .map(AgentProfileView::from_profile)
+            .map(|p| AgentProfileView::from_profile(p, avail.contains(&p.id)))
             .collect()
     }
 
+    pub async fn list_projects(&self) -> Result<Vec<ProjectView>, IpcError> {
+        let rows = self.db.projects().list().await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let count = self.db.projects().live_session_count(&row.id).await?;
+            out.push(ProjectView::from_row(row, count));
+        }
+        Ok(out)
+    }
+
+    pub async fn create_project(
+        &self,
+        req: CreateProjectRequest,
+    ) -> Result<ProjectView, IpcError> {
+        let repo = Utf8Path::new(&req.repo_path);
+        if !repo.as_std_path().is_dir() {
+            return Err(IpcError::InvalidRepoPath(req.repo_path));
+        }
+        let id = ulid::Ulid::new().to_string();
+        let row = self
+            .db
+            .projects()
+            .insert(NewProject {
+                id,
+                name: req.name,
+                repo_path: repo.to_string(),
+            })
+            .await?;
+        let view = ProjectView::from_row(row, 0);
+        let _ = self.ui_bus.send(UiEvent {
+            session_id: view.id.clone(),
+            kind: UiEventKind::ProjectAppeared,
+        });
+        Ok(view)
+    }
+
+    pub async fn delete_project(&self, project_id: String) -> Result<(), IpcError> {
+        self.db.projects().delete(&project_id).await?;
+        let _ = self.ui_bus.send(UiEvent {
+            session_id: project_id,
+            kind: UiEventKind::ProjectRemoved,
+        });
+        Ok(())
+    }
+
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
-        let records = self.manager.list_records().await?;
-        Ok(records
-            .into_iter()
-            .map(|r| SessionView::from_row(r.row, r.is_live))
-            .collect())
+        let rows = self.db.sessions().list_live().await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for row in rows {
+            let is_live = self.terminals.get(&row.id).await.is_some();
+            out.push(SessionView::from_row(row, is_live));
+        }
+        Ok(out)
     }
 
     pub async fn create_session(
         &self,
         req: CreateSessionRequest,
     ) -> Result<SessionView, IpcError> {
-        let profile = self
+        let profile: AgentLaunchProfile = self
             .config
             .read()
             .await
             .find(&req.agent_profile_id)
             .cloned()
             .ok_or_else(|| IpcError::UnknownAgentProfile(req.agent_profile_id.clone()))?;
-        let repo = Utf8Path::new(&req.repo_path);
-        let runner = self.manager.create_session(&profile, repo, req.title).await?;
-        let id = runner.id().to_string();
-        self.pipe_session_events(id.clone(), runner.subscribe());
-        // Refresh: pick up the inserted row.
+
+        let project = self.db.projects().get(&req.project_id).await?;
+        let cwd = Utf8PathBuf::from(project.repo_path);
+
+        let id = ulid::Ulid::new().to_string();
         let row = self
-            .manager
-            .db()
+            .db
             .sessions()
-            .get(&id)
-            .await
-            .map_err(IpcError::Persist)?;
+            .insert(NewSession {
+                id: id.clone(),
+                title: req.title,
+                agent_profile: profile.id.clone(),
+                project_id: project.id,
+            })
+            .await?;
+
+        let session = self.spawn_pty(&id, &profile, cwd).await.map_err(|e| {
+            // Roll back the row so a failed spawn doesn't leave a phantom session.
+            let db = self.db.clone();
+            let id_clone = id.clone();
+            tokio::spawn(async move {
+                if let Err(e) = db.sessions().archive(&id_clone).await {
+                    warn!(session_id = %id_clone, error = %e, "rollback archive failed");
+                }
+            });
+            e
+        })?;
+
+        self.pipe_terminal_events(session);
+
         let view = SessionView::from_row(row, true);
         let _ = self.ui_bus.send(UiEvent {
             session_id: id,
-            kind: crate::UiEventKind::SessionAppeared,
+            kind: UiEventKind::SessionAppeared,
         });
         Ok(view)
     }
 
-    pub async fn send_prompt(&self, req: SendPromptRequest) -> Result<(), IpcError> {
-        let runner = self
-            .manager
+    pub async fn write_pty(&self, req: WritePtyRequest) -> Result<(), IpcError> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&req.data)
+            .map_err(|e| IpcError::BadInput(format!("base64: {e}")))?;
+        let session = self
+            .terminals
             .get(&req.session_id)
             .await
-            .ok_or_else(|| IpcError::UnknownSession(req.session_id.clone()))?;
-        runner.prompt(req.text).await?;
+            .ok_or_else(|| IpcError::SessionNotLive(req.session_id.clone()))?;
+        session.write(&bytes).await?;
         Ok(())
     }
 
-    pub async fn answer_permission(&self, req: AnswerPermissionRequest) -> Result<(), IpcError> {
-        let runner = self
-            .manager
+    pub async fn resize_pty(&self, req: ResizePtyRequest) -> Result<(), IpcError> {
+        let session = self
+            .terminals
             .get(&req.session_id)
             .await
-            .ok_or_else(|| IpcError::UnknownSession(req.session_id.clone()))?;
-        runner.answer_permission(req.request_id, req.option_id).await?;
+            .ok_or_else(|| IpcError::SessionNotLive(req.session_id.clone()))?;
+        session.resize(req.cols, req.rows).await?;
         Ok(())
     }
 
-    pub async fn cancel_session(&self, session_id: String) -> Result<(), IpcError> {
-        let runner = self
-            .manager
+    pub async fn kill_session(&self, session_id: String) -> Result<(), IpcError> {
+        let session = self
+            .terminals
             .get(&session_id)
             .await
-            .ok_or_else(|| IpcError::UnknownSession(session_id))?;
-        runner.cancel().await?;
+            .ok_or_else(|| IpcError::SessionNotLive(session_id))?;
+        session.kill().await?;
         Ok(())
     }
 
-    pub async fn archive_session(
-        &self,
-        session_id: String,
-        delete_branch: bool,
-    ) -> Result<(), IpcError> {
-        let mode = if delete_branch {
-            CleanupMode::DeleteBranch
-        } else {
-            CleanupMode::KeepBranch
-        };
-        self.manager.archive(&session_id, mode).await?;
+    pub async fn archive_session(&self, session_id: String) -> Result<(), IpcError> {
+        // Kill the live PTY first so the waiter doesn't race the archive
+        // update. If there's no live session, that's fine — the row exists
+        // and we just flip the archive flag.
+        if let Some(s) = self.terminals.remove(&session_id).await {
+            let _ = s.kill().await;
+        }
+        let row = self.db.sessions().get(&session_id).await?;
+        if row.archived_at.is_none() {
+            self.db.sessions().archive(&session_id).await?;
+        }
         let _ = self.ui_bus.send(UiEvent {
             session_id,
-            kind: crate::UiEventKind::SessionRemoved,
+            kind: UiEventKind::SessionRemoved,
         });
         Ok(())
     }
 
     pub async fn restart_session(&self, session_id: String) -> Result<SessionView, IpcError> {
-        // Reuse the existing row's agent_profile to look up the launch profile.
-        let row = self
-            .manager
-            .db()
-            .sessions()
-            .get(&session_id)
-            .await
-            .map_err(IpcError::Persist)?;
+        let row = self.db.sessions().get(&session_id).await?;
+        if row.archived_at.is_some() {
+            return Err(IpcError::Archived(session_id));
+        }
+
         let profile: AgentLaunchProfile = self
             .config
             .read()
@@ -190,43 +240,123 @@ impl Service {
             .find(&row.agent_profile)
             .cloned()
             .ok_or_else(|| IpcError::UnknownAgentProfile(row.agent_profile.clone()))?;
-        let runner = self.manager.restart(&session_id, &profile).await?;
-        self.pipe_session_events(session_id.clone(), runner.subscribe());
-        let row = self
-            .manager
-            .db()
-            .sessions()
-            .get(&session_id)
-            .await
-            .map_err(IpcError::Persist)?;
+        let project = self.db.projects().get(&row.project_id).await?;
+        let cwd = Utf8PathBuf::from(project.repo_path);
+
+        // Drop the old PTY if any.
+        if let Some(s) = self.terminals.remove(&session_id).await {
+            let _ = s.kill().await;
+        }
+
+        // Clear the recorded exit code — we're alive again.
+        self.db.sessions().set_exit_code(&session_id, None).await?;
+
+        let session = self.spawn_pty(&session_id, &profile, cwd).await?;
+        self.pipe_terminal_events(session);
+
+        let row = self.db.sessions().get(&session_id).await?;
         let view = SessionView::from_row(row, true);
         let _ = self.ui_bus.send(UiEvent {
             session_id,
-            kind: crate::UiEventKind::SessionTouched,
+            kind: UiEventKind::SessionTouched,
         });
         Ok(view)
     }
 
-    pub async fn replay_events(&self, req: ReplayRequest) -> Result<Vec<ReplayEntry>, IpcError> {
-        let rows = self
-            .manager
-            .db()
-            .events()
-            .replay(&req.session_id, req.from_seq)
-            .await?;
-        let mut out = Vec::with_capacity(rows.len());
-        for r in rows {
-            let event: AgentEvent = serde_json::from_str(&r.payload).map_err(|e| {
-                IpcError::CorruptEvent(format!("session {}: seq {}: {}", r.session_id, r.seq, e))
-            })?;
-            out.push(ReplayEntry {
-                seq: r.seq,
-                ts_ms: r.ts,
-                event,
-            });
-        }
-        Ok(out)
+    async fn spawn_pty(
+        &self,
+        id: &str,
+        profile: &AgentLaunchProfile,
+        cwd: Utf8PathBuf,
+    ) -> Result<Arc<TerminalSession>, IpcError> {
+        let spec = SpawnSpec {
+            command: profile.command.clone(),
+            args: profile.args.clone(),
+            env: profile
+                .env
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            cwd,
+            rows: INITIAL_ROWS,
+            cols: INITIAL_COLS,
+        };
+        let session = self.terminals.spawn(id.to_string(), spec).await?;
+        info!(session_id = %id, profile = %profile.id, "PTY spawned");
+        Ok(session)
     }
+
+    /// Subscribe to a terminal session's event stream and forward each
+    /// event into the merged UI bus. Spawned once per session — typically
+    /// inside `create_session` / `restart_session`.
+    fn pipe_terminal_events(&self, session: Arc<TerminalSession>) {
+        let bus = self.ui_bus.clone();
+        let db = self.db.clone();
+        let terminals = self.terminals.clone();
+        let id = session.id().to_string();
+        let mut rx = session.subscribe();
+        // Hold the session strongly for the lifetime of the pipe so the
+        // PTY isn't dropped just because the manager evicted it.
+        let _session_keepalive = session;
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(TerminalEvent::Output(bytes)) => {
+                        let _ = bus.send(UiEvent::pty_output(&id, &bytes));
+                    }
+                    Ok(TerminalEvent::Exited { code }) => {
+                        if let Err(e) = db.sessions().set_exit_code(&id, code).await {
+                            warn!(session_id = %id, error = %e, "set_exit_code failed");
+                        }
+                        // Drop the entry from the live registry now that the
+                        // child is gone. If `archive_session` already removed
+                        // it, this is a no-op.
+                        let _ = terminals.remove(&id).await;
+                        let _ = bus.send(UiEvent::pty_exit(&id, code));
+                        let _ = bus.send(UiEvent {
+                            session_id: id.clone(),
+                            kind: UiEventKind::SessionTouched,
+                        });
+                        break;
+                    }
+                    Ok(TerminalEvent::Error(msg)) => {
+                        warn!(session_id = %id, error = %msg, "terminal error");
+                        let _ = bus.send(UiEvent::pty_exit(&id, None));
+                        let _ = terminals.remove(&id).await;
+                        let _ = bus.send(UiEvent {
+                            session_id: id.clone(),
+                            kind: UiEventKind::SessionTouched,
+                        });
+                        break;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(session_id = %id, lagged = n, "terminal subscriber lagged");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            drop(_session_keepalive);
+        });
+    }
+}
+
+fn compute_available_agents(config: &Config) -> std::collections::HashSet<String> {
+    use std::path::PathBuf;
+    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let mut out = std::collections::HashSet::new();
+    for agent in &config.agents {
+        let resolved = if PathBuf::from(&agent.command).is_absolute() {
+            PathBuf::from(&agent.command).is_file()
+        } else {
+            path_dirs.iter().any(|d| d.join(&agent.command).is_file())
+        };
+        if resolved {
+            out.insert(agent.id.clone());
+        }
+    }
+    out
 }
 
 #[derive(Error, Debug)]
@@ -234,21 +364,21 @@ pub enum IpcError {
     #[error("unknown agent profile `{0}`")]
     UnknownAgentProfile(String),
 
-    #[error("unknown session `{0}`")]
-    UnknownSession(String),
+    #[error("session `{0}` is archived")]
+    Archived(String),
 
-    #[error("manager: {0}")]
-    Manager(#[from] ManagerError),
+    #[error("session `{0}` is not live")]
+    SessionNotLive(String),
 
-    #[error("orchestrator: {0}")]
-    Orchestrator(#[from] OrchestratorError),
+    #[error("invalid repo path `{0}`")]
+    InvalidRepoPath(String),
+
+    #[error("bad input: {0}")]
+    BadInput(String),
+
+    #[error("terminal: {0}")]
+    Terminal(#[from] TerminalError),
 
     #[error("persist: {0}")]
     Persist(#[from] PersistError),
-
-    #[error("worktree: {0}")]
-    Worktree(#[from] WorktreeError),
-
-    #[error("corrupt event row: {0}")]
-    CorruptEvent(String),
 }

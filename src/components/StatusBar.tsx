@@ -1,17 +1,15 @@
 import { useStore } from "../lib/store";
-import { stateLabel } from "../lib/types";
+import { statusLabel } from "../lib/types";
 
 export function StatusBar() {
   const sessions = useStore((s) => s.sessions);
-  const active = useStore((s) =>
-    s.activeId ? s.sessions[s.activeId] : null,
-  );
+  const active = useStore((s) => (s.activeId ? s.sessions[s.activeId] : null));
 
   const total = Object.values(sessions);
-  const live = total.filter((s) => s.is_live).length;
-  const counts = total.length === 0 ? "" : `${live} live / ${total.length} total`;
+  const live = total.filter((s) => s.status.type === "Running").length;
+  const counts = total.length === 0 ? "" : `${live} running / ${total.length} total`;
   const right = active
-    ? `${active.agent_profile} · ${stateLabel(active.state)}`
+    ? `${active.agent_profile} · ${statusLabel(active.status)}`
     : "";
 
   return (

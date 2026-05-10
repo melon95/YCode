@@ -4,16 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "SQLite persistence layer — sessions, events, permissions."
+description = "SQLite persistence layer — projects and session metadata."
 
 [dependencies]
-ycode-adapter.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 sqlx.workspace = true
-ulid.workspace = true
 camino.workspace = true
 time.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

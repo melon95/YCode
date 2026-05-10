@@ -1,5 +1,4 @@
-//! Tauri shell library — `run()` is invoked from `main.rs` and (in the
-//! future) from a mobile entrypoint.
+//! Tauri shell library — `run()` is invoked from `main.rs`.
 
 mod commands;
 mod state;
@@ -18,17 +17,11 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Initialize backend synchronously inside the Tauri runtime.
-            // `block_on` is fine here — setup runs on the main thread before
-            // any commands are dispatched, so we're not blocking concurrent
-            // work.
             let state = tauri::async_runtime::block_on(AppState::initialize())
                 .expect("failed to initialize ycode backend");
 
-            // Spawn the event-pump task BEFORE `manage` so we can keep the
-            // service handle. The task runs forever; abort happens implicitly
-            // when the Tauri runtime shuts down.
             let service = state.service.clone();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -54,13 +47,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_agents,
             commands::list_sessions,
+            commands::list_projects,
+            commands::create_project,
+            commands::delete_project,
             commands::create_session,
-            commands::send_prompt,
-            commands::answer_permission,
-            commands::cancel_session,
+            commands::write_pty,
+            commands::resize_pty,
+            commands::kill_session,
             commands::archive_session,
             commands::restart_session,
-            commands::replay_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

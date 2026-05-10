@@ -1,25 +1,19 @@
 [package]
-name = "ycode-ipc"
+name = "ycode-terminal"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Typed Tauri command/event surface — protocol between ycode core and the webview."
+description = "Universal PTY terminal proxy — spawns child processes, forwards I/O byte-for-byte. No protocol parsing."
 
 [dependencies]
-ycode-config.workspace = true
-ycode-persist.workspace = true
-ycode-terminal.workspace = true
-base64 = "0.22"
 camino.workspace = true
+portable-pty.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-ts-rs.workspace = true
-ulid.workspace = true
 
 [dev-dependencies]
-tempfile = "3.10"
+tempfile = "3"
 tokio = { workspace = true, features = ["full", "test-util"] }

@@ -1,42 +1,69 @@
 // Single Zustand store backing the whole app. Components subscribe via
 // selectors so they only re-render when the slice they care about moves.
-//
-// Data model is plain `Record<string, T>` rather than `Map`, because (a)
-// Zustand's reference-equality change detection works naturally with
-// spread/delete, and (b) selectors that derive arrays via `Object.values`
-// stay one-liners.
 
 import { create } from "zustand";
-import type { AgentEvent, PermissionOption, SessionView } from "./types";
+import type { ProjectView, SessionView } from "./types";
 
-export type PermissionRequest = {
-  sessionId: string;
-  requestId: string;
-  toolName: string;
-  summary: string;
-  options: PermissionOption[];
-};
+export type SidebarTab = "sessions" | "files" | "diff";
 
 interface AppState {
+  projects: Record<string, ProjectView>;
   sessions: Record<string, SessionView>;
-  events: Record<string, AgentEvent[]>;
   activeId: string | null;
-  permissions: Record<string, PermissionRequest>;
+  /// The project currently scoped for new-session creation. Top-bar project
+  /// tabs select this.
+  activeProjectId: string | null;
+  /// Which panel the left sidebar is showing under the active project.
+  sidebarTab: SidebarTab;
 
+  setProjects: (list: ProjectView[]) => void;
+  upsertProject: (p: ProjectView) => void;
+  removeProject: (id: string) => void;
+  setActiveProjectId: (id: string | null) => void;
+  setSidebarTab: (tab: SidebarTab) => void;
   setSessions: (list: SessionView[]) => void;
   upsertSession: (s: SessionView) => void;
   removeSession: (id: string) => void;
   setActiveId: (id: string | null) => void;
-  setEvents: (id: string, events: AgentEvent[]) => void;
-  clearPermission: (id: string) => void;
-  applyAgentEvent: (id: string, event: AgentEvent) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
+  projects: {},
   sessions: {},
-  events: {},
   activeId: null,
-  permissions: {},
+  activeProjectId: null,
+  sidebarTab: "sessions",
+
+  setProjects: (list) =>
+    set((state) => {
+      const projects = Object.fromEntries(list.map((p) => [p.id, p]));
+      const activeProjectId =
+        state.activeProjectId && projects[state.activeProjectId]
+          ? state.activeProjectId
+          : (list[0]?.id ?? null);
+      return { projects, activeProjectId };
+    }),
+
+  upsertProject: (p) =>
+    set((state) => ({
+      projects: { ...state.projects, [p.id]: p },
+      activeProjectId: state.activeProjectId ?? p.id,
+    })),
+
+  removeProject: (id) =>
+    set((state) => {
+      const projects = { ...state.projects };
+      delete projects[id];
+      return {
+        projects,
+        activeProjectId:
+          state.activeProjectId === id ? null : state.activeProjectId,
+      };
+    }),
+
+  setActiveProjectId: (id) => set({ activeProjectId: id }),
+
+  setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
   setSessions: (list) =>
     set(() => ({
@@ -50,59 +77,11 @@ export const useStore = create<AppState>((set) => ({
     set((state) => {
       const sessions = { ...state.sessions };
       delete sessions[id];
-      const events = { ...state.events };
-      delete events[id];
-      const permissions = { ...state.permissions };
-      delete permissions[id];
       return {
         sessions,
-        events,
-        permissions,
         activeId: state.activeId === id ? null : state.activeId,
       };
     }),
 
   setActiveId: (id) => set({ activeId: id }),
-
-  setEvents: (id, events) =>
-    set((state) => ({ events: { ...state.events, [id]: events } })),
-
-  clearPermission: (id) =>
-    set((state) => {
-      const permissions = { ...state.permissions };
-      delete permissions[id];
-      return { permissions };
-    }),
-
-  applyAgentEvent: (id, event) =>
-    set((state) => {
-      const newEvents = {
-        ...state.events,
-        [id]: [...(state.events[id] ?? []), event],
-      };
-      let newSessions = state.sessions;
-      let newPermissions = state.permissions;
-      if (event.kind === "StateChanged" && state.sessions[id]) {
-        newSessions = {
-          ...state.sessions,
-          [id]: { ...state.sessions[id], state: event.state },
-        };
-      } else if (event.kind === "RequestPermission") {
-        newPermissions = {
-          ...state.permissions,
-          [id]: {
-            sessionId: id,
-            requestId: event.request_id,
-            toolName: event.tool_name,
-            summary: event.summary,
-            options: event.options,
-          },
-        };
-      }
-      return {
-        events: newEvents,
-        sessions: newSessions,
-        permissions: newPermissions,
-      };
-    }),
 }));

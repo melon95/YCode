@@ -1,6 +1,6 @@
 // Re-export the ts-rs–generated bindings under stable names, with one
 // pragmatic patch: `*_at_ms` fields are typed `bigint` because their Rust
-// originals are u64/i64, but Tauri's JSON wire format delivers them as JS
+// originals are i64, but Tauri's JSON wire format delivers them as JS
 // numbers. We retype them to `number` so consumers (sort, compare, format)
 // don't need `Number(...)` casts everywhere.
 
@@ -15,40 +15,33 @@ export type SessionView = Omit<
   archived_at_ms: number | null;
 };
 
-import type { ReplayRequest as RawReplayRequest } from "@bindings/ReplayRequest";
-import type { ReplayEntry as RawReplayEntry } from "@bindings/ReplayEntry";
+import type { ProjectView as RawProjectView } from "@bindings/ProjectView";
 
-export type ReplayRequest = Omit<RawReplayRequest, "from_seq"> & {
-  from_seq: number;
-};
-export type ReplayEntry = Omit<RawReplayEntry, "seq" | "ts_ms"> & {
-  seq: number;
-  ts_ms: number;
+export type ProjectView = Omit<
+  RawProjectView,
+  "created_at_ms" | "session_count"
+> & {
+  created_at_ms: number;
+  session_count: number;
 };
 
-export type { SessionState } from "@bindings/SessionState";
-export type { AgentEvent } from "@bindings/AgentEvent";
+export type { SessionStatus } from "@bindings/SessionStatus";
 export type { AgentProfileView } from "@bindings/AgentProfileView";
 export type { UiEvent } from "@bindings/UiEvent";
 export type { UiEventKind } from "@bindings/UiEventKind";
 export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";
-export type { SendPromptRequest } from "@bindings/SendPromptRequest";
-export type { AnswerPermissionRequest } from "@bindings/AnswerPermissionRequest";
-export type { PermissionOption } from "@bindings/PermissionOption";
-export type { PermissionKind } from "@bindings/PermissionKind";
-export type { ToolStatus } from "@bindings/ToolStatus";
-export type { PlanItem } from "@bindings/PlanItem";
-export type { AgentCommand } from "@bindings/AgentCommand";
+export type { CreateProjectRequest } from "@bindings/CreateProjectRequest";
+export type { WritePtyRequest } from "@bindings/WritePtyRequest";
+export type { ResizePtyRequest } from "@bindings/ResizePtyRequest";
 
-export type StateLabel =
-  | "idle"
-  | "initializing"
-  | "running"
-  | "awaitingpermission"
-  | "cancelling"
-  | "done"
-  | "error";
+/// Lowercased status label used as a CSS modifier (`.dot.running` etc.).
+export type StatusLabel = "running" | "exited" | "error";
 
-export function stateLabel(s: { type: string }): StateLabel {
-  return s.type.toLowerCase() as StateLabel;
+export function statusLabel(s: { type: string }): StatusLabel {
+  return s.type.toLowerCase() as StatusLabel;
+}
+
+/// Convenience: `true` iff this session can accept a restart click.
+export function isRestartable(status: { type: string }): boolean {
+  return status.type === "Exited" || status.type === "Error";
 }

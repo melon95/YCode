@@ -1,16 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/ycode-adapter",
-    "crates/ycode-acp-adapter",
-    "crates/ycode-pty-adapter",
-    "crates/ycode-echo-adapter",
-    "crates/ycode-core",
-    "crates/ycode-worktree",
+    "crates/ycode-terminal",
     "crates/ycode-persist",
     "crates/ycode-config",
     "crates/ycode-ipc",
-    "crates/ycode-cli",
     "src-tauri",
 ]
 
@@ -24,8 +18,6 @@ publish = false
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
-async-trait = "0.1"
-futures = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -50,24 +42,11 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 directories = "5"
 camino = { version = "1.1", features = ["serde1"] }
 
-# Git
-gix = { version = "0.66", default-features = false, features = ["max-performance-safe"] }
-
 # Process / PTY
 portable-pty = "0.8"
-vt100 = "0.15"
-regex = "1.10"
-
-# CLI
-clap = { version = "4.5", features = ["derive"] }
 
 # Internal crates
-ycode-adapter = { path = "crates/ycode-adapter" }
-ycode-acp-adapter = { path = "crates/ycode-acp-adapter" }
-ycode-pty-adapter = { path = "crates/ycode-pty-adapter" }
-ycode-echo-adapter = { path = "crates/ycode-echo-adapter" }
-ycode-core = { path = "crates/ycode-core" }
-ycode-worktree = { path = "crates/ycode-worktree" }
+ycode-terminal = { path = "crates/ycode-terminal" }
 ycode-persist = { path = "crates/ycode-persist" }
 ycode-config = { path = "crates/ycode-config" }
 ycode-ipc = { path = "crates/ycode-ipc" }

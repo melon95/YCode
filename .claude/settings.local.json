@@ -9,7 +9,22 @@
       "Bash(cargo --version)",
       "Bash(rustc --version)",
       "Bash(cargo check *)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(cargo build *)",
+      "Bash(cargo run *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(rm -f /tmp/ycode-dev.log)",
+      "Bash(cargo tauri *)",
+      "Bash(echo \"started $!\")",
+      "Bash(npx tsc *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(timeout 8 npx vite build)",
+      "Bash(npx vite *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(git -C /Users/melon/learning/ycode status --short)",
+      "Bash(git *)"
     ]
-  }
+  },
+  "defaultMode": "bypassPermissions"
 }

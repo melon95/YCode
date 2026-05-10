@@ -1,12 +1,11 @@
-//! `#[tauri::command]` wrappers around `Service`. Every command is a one-line
-//! delegation — if anything heavier than `state.service.<method>(req).await`
-//! creeps in here, that's a sign the IPC contract has drifted from
-//! `ycode-ipc` and should be moved back.
+//! `#[tauri::command]` wrappers around `Service`. Each command is a one-line
+//! delegation — if anything heavier creeps in here, that's a sign the IPC
+//! contract has drifted and should be moved back into `ycode-ipc`.
 
 use tauri::State;
 use ycode_ipc::{
-    AgentProfileView, AnswerPermissionRequest, CreateSessionRequest, ReplayEntry, ReplayRequest,
-    SendPromptRequest, SessionView,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, ProjectView, ResizePtyRequest,
+    SessionView, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -38,37 +37,70 @@ pub async fn create_session(
 }
 
 #[tauri::command]
-pub async fn send_prompt(
-    state: State<'_, AppState>,
-    request: SendPromptRequest,
-) -> Result<(), String> {
+pub async fn list_projects(state: State<'_, AppState>) -> Result<Vec<ProjectView>, String> {
     state
         .service
-        .send_prompt(request)
+        .list_projects()
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn answer_permission(
+pub async fn create_project(
     state: State<'_, AppState>,
-    request: AnswerPermissionRequest,
-) -> Result<(), String> {
+    request: CreateProjectRequest,
+) -> Result<ProjectView, String> {
     state
         .service
-        .answer_permission(request)
+        .create_project(request)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn cancel_session(
+pub async fn delete_project(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    state
+        .service
+        .delete_project(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn write_pty(
+    state: State<'_, AppState>,
+    request: WritePtyRequest,
+) -> Result<(), String> {
+    state
+        .service
+        .write_pty(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn resize_pty(
+    state: State<'_, AppState>,
+    request: ResizePtyRequest,
+) -> Result<(), String> {
+    state
+        .service
+        .resize_pty(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn kill_session(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<(), String> {
     state
         .service
-        .cancel_session(session_id)
+        .kill_session(session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -77,11 +109,10 @@ pub async fn cancel_session(
 pub async fn archive_session(
     state: State<'_, AppState>,
     session_id: String,
-    delete_branch: bool,
 ) -> Result<(), String> {
     state
         .service
-        .archive_session(session_id, delete_branch)
+        .archive_session(session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -94,18 +125,6 @@ pub async fn restart_session(
     state
         .service
         .restart_session(session_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn replay_events(
-    state: State<'_, AppState>,
-    request: ReplayRequest,
-) -> Result<Vec<ReplayEntry>, String> {
-    state
-        .service
-        .replay_events(request)
         .await
         .map_err(|e| e.to_string())
 }

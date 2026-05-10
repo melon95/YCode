@@ -19,15 +19,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-ycode-adapter.workspace = true
-ycode-acp-adapter.workspace = true
-ycode-pty-adapter.workspace = true
-ycode-echo-adapter.workspace = true
+tauri-plugin-dialog = "2"
 ycode-config.workspace = true
-ycode-core.workspace = true
 ycode-ipc.workspace = true
 ycode-persist.workspace = true
-ycode-worktree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

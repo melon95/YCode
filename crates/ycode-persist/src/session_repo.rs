@@ -1,8 +1,8 @@
-//! Session CRUD.
+//! Session CRUD. Under terminal-first the row is just identity + bookkeeping
+//! — runtime status lives in the in-memory TerminalManager.
 
 use crate::{models::SessionRow, now_ms, PersistError};
 use sqlx::SqlitePool;
-use ycode_adapter::SessionState;
 
 pub struct SessionRepo<'a> {
     pool: &'a SqlitePool,
@@ -13,11 +13,7 @@ pub struct NewSession {
     pub id: String,
     pub title: String,
     pub agent_profile: String,
-    pub repo_root: String,
-    pub worktree_path: String,
-    pub branch: String,
-    pub base_ref: String,
-    pub initial_state: SessionState,
+    pub project_id: String,
 }
 
 impl<'a> SessionRepo<'a> {
@@ -27,33 +23,25 @@ impl<'a> SessionRepo<'a> {
 
     pub async fn insert(&self, new: NewSession) -> Result<SessionRow, PersistError> {
         let now = now_ms();
-        let state_json = serde_json::to_string(&new.initial_state)?;
         let row = SessionRow {
             id: new.id,
             title: new.title,
             agent_profile: new.agent_profile,
-            repo_root: new.repo_root,
-            worktree_path: new.worktree_path,
-            branch: new.branch,
-            base_ref: new.base_ref,
-            state: state_json,
+            project_id: new.project_id,
+            last_exit_code: None,
             created_at: now,
             updated_at: now,
             archived_at: None,
         };
         sqlx::query(
             "INSERT INTO sessions \
-             (id, title, agent_profile, repo_root, worktree_path, branch, base_ref, state, created_at, updated_at, archived_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+             (id, title, agent_profile, project_id, last_exit_code, created_at, updated_at, archived_at) \
+             VALUES (?, ?, ?, ?, NULL, ?, ?, NULL)",
         )
         .bind(&row.id)
         .bind(&row.title)
         .bind(&row.agent_profile)
-        .bind(&row.repo_root)
-        .bind(&row.worktree_path)
-        .bind(&row.branch)
-        .bind(&row.base_ref)
-        .bind(&row.state)
+        .bind(&row.project_id)
         .bind(row.created_at)
         .bind(row.updated_at)
         .execute(self.pool)
@@ -69,7 +57,20 @@ impl<'a> SessionRepo<'a> {
             .ok_or_else(|| PersistError::SessionNotFound(id.to_string()))
     }
 
-    /// Live (non-archived) sessions, most-recently-updated first.
+    /// All non-archived sessions belonging to a given project, newest first.
+    pub async fn list_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<SessionRow>, PersistError> {
+        Ok(sqlx::query_as::<_, SessionRow>(
+            "SELECT * FROM sessions WHERE project_id = ? AND archived_at IS NULL ORDER BY updated_at DESC",
+        )
+        .bind(project_id)
+        .fetch_all(self.pool)
+        .await?)
+    }
+
+    /// All live (non-archived) sessions across every project.
     pub async fn list_live(&self) -> Result<Vec<SessionRow>, PersistError> {
         Ok(sqlx::query_as::<_, SessionRow>(
             "SELECT * FROM sessions WHERE archived_at IS NULL ORDER BY updated_at DESC",
@@ -78,24 +79,33 @@ impl<'a> SessionRepo<'a> {
         .await?)
     }
 
-    pub async fn list_all(&self) -> Result<Vec<SessionRow>, PersistError> {
-        Ok(
-            sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions ORDER BY updated_at DESC")
-                .fetch_all(self.pool)
-                .await?,
-        )
-    }
-
-    pub async fn update_state(
+    /// Record the child's exit code. Bumps `updated_at` so the row sorts to
+    /// the top of recency lists when a session just died.
+    pub async fn set_exit_code(
         &self,
         id: &str,
-        state: &SessionState,
+        code: Option<i32>,
     ) -> Result<(), PersistError> {
-        let state_json = serde_json::to_string(state)?;
         let now = now_ms();
-        let res = sqlx::query("UPDATE sessions SET state = ?, updated_at = ? WHERE id = ?")
-            .bind(&state_json)
-            .bind(now)
+        let res = sqlx::query(
+            "UPDATE sessions SET last_exit_code = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(code.map(|c| c as i64))
+        .bind(now)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(PersistError::SessionNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Bump `updated_at` without changing other fields. Used when title or
+    /// runtime status changes in a way callers want surfaced to the UI.
+    pub async fn touch(&self, id: &str) -> Result<(), PersistError> {
+        let res = sqlx::query("UPDATE sessions SET updated_at = ? WHERE id = ?")
+            .bind(now_ms())
             .bind(id)
             .execute(self.pool)
             .await?;
@@ -127,25 +137,34 @@ mod tests {
     use super::*;
     use crate::Db;
 
-    fn fixture(id: &str) -> NewSession {
+    fn fixture(id: &str, project_id: &str) -> NewSession {
         NewSession {
             id: id.into(),
             title: "test".into(),
             agent_profile: "claude-code".into(),
-            repo_root: "/tmp/repo".into(),
-            worktree_path: "/tmp/wt".into(),
-            branch: "ycode/abc".into(),
-            base_ref: "deadbeef".into(),
-            initial_state: SessionState::Initializing,
+            project_id: project_id.into(),
         }
+    }
+
+    async fn seed_project(db: &Db) {
+        db.projects()
+            .insert(crate::NewProject {
+                id: "p-test".into(),
+                name: "test".into(),
+                repo_path: "/tmp/repo".into(),
+            })
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
     async fn insert_get_list_archive() {
         let db = Db::open_in_memory().await.unwrap();
+        seed_project(&db).await;
 
-        let inserted = db.sessions().insert(fixture("01")).await.unwrap();
+        let inserted = db.sessions().insert(fixture("01", "p-test")).await.unwrap();
         assert_eq!(inserted.id, "01");
+        assert!(inserted.last_exit_code.is_none());
 
         let fetched = db.sessions().get("01").await.unwrap();
         assert_eq!(fetched.title, "test");
@@ -155,20 +174,22 @@ mod tests {
 
         db.sessions().archive("01").await.unwrap();
         assert!(db.sessions().list_live().await.unwrap().is_empty());
-        assert_eq!(db.sessions().list_all().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
-    async fn update_state_persists_json() {
+    async fn set_exit_code_round_trip() {
         let db = Db::open_in_memory().await.unwrap();
-        db.sessions().insert(fixture("02")).await.unwrap();
+        seed_project(&db).await;
+        db.sessions().insert(fixture("02", "p-test")).await.unwrap();
 
-        let new_state = SessionState::Running { turn_id: "t-1".into() };
-        db.sessions().update_state("02", &new_state).await.unwrap();
-
+        db.sessions().set_exit_code("02", Some(1)).await.unwrap();
         let row = db.sessions().get("02").await.unwrap();
-        let parsed: SessionState = serde_json::from_str(&row.state).unwrap();
-        assert!(matches!(parsed, SessionState::Running { .. }));
+        assert_eq!(row.last_exit_code, Some(1));
+
+        // None (signal-killed) is also representable.
+        db.sessions().set_exit_code("02", None).await.unwrap();
+        let row = db.sessions().get("02").await.unwrap();
+        assert!(row.last_exit_code.is_none());
     }
 
     #[tokio::test]
