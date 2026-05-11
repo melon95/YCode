@@ -4,8 +4,8 @@
 
 use tauri::State;
 use ycode_ipc::{
-    AgentProfileView, CreateProjectRequest, CreateSessionRequest, ProjectView, ResizePtyRequest,
-    SessionView, WritePtyRequest,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileDiff, FileEntry,
+    ProjectView, ResizePtyRequest, SessionView, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -125,6 +125,31 @@ pub async fn restart_session(
     state
         .service
         .restart_session(session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_files(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<FileEntry>, String> {
+    state
+        .service
+        .list_files(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_file_diff(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<FileDiff, String> {
+    state
+        .service
+        .get_file_diff(project_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }

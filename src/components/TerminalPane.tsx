@@ -8,6 +8,11 @@
 //
 // Membership-changing UiEventKind variants (SessionAppeared, etc.) are
 // handled in App.tsx; here we only listen for the per-session payload.
+//
+// Output buffering: PtyOutput/PtyExit can arrive between `create_session`
+// returning and React mounting the Terminal for the new id. We buffer
+// those bytes in `pendingRef` and drain them when the Terminal is created
+// — otherwise the agent's startup banner would be lost.
 
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
@@ -56,27 +61,40 @@ const TERMINAL_OPTIONS = {
 } as const;
 
 export function TerminalPane() {
+  const sessions = useStore((s) => s.sessions);
   const activeId = useStore((s) => s.activeId);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef<Map<string, TermInstance>>(new Map());
+  // Per-session byte buffer for output that arrives before its Terminal
+  // exists. Drained by `ensureTerminal`.
+  const pendingRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
-  // Single global subscriber; routes per-session PTY events to the matching
-  // Terminal instance by id. Mounted once for the pane's lifetime.
+  // Single global subscriber. Routes per-session PTY events to the matching
+  // Terminal, or buffers them if the Terminal hasn't been created yet.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     listenSessionEvents((event) => {
-      const inst = terminalsRef.current.get(event.session_id);
-      if (!inst) return;
       const k = event.kind;
+      let bytes: Uint8Array | null = null;
       if (k.type === "PtyOutput") {
-        inst.term.write(base64ToBytes(k.data));
+        bytes = base64ToBytes(k.data);
       } else if (k.type === "PtyExit") {
         const tag =
           k.code === null
             ? "[process killed]"
             : `[process exited with code ${k.code}]`;
-        inst.term.write(`\r\n\x1b[33m${tag}\x1b[0m\r\n`);
+        bytes = new TextEncoder().encode(`\r\n\x1b[33m${tag}\x1b[0m\r\n`);
+      }
+      if (!bytes) return;
+
+      const inst = terminalsRef.current.get(event.session_id);
+      if (inst) {
+        inst.term.write(bytes);
+      } else {
+        const buf = pendingRef.current.get(event.session_id) ?? [];
+        buf.push(bytes);
+        pendingRef.current.set(event.session_id, buf);
       }
     }).then((u) => {
       if (cancelled) u();
@@ -88,41 +106,56 @@ export function TerminalPane() {
     };
   }, []);
 
-  // Lazy-create the terminal for `activeId`, then show only that container
-  // inside the pane root. All others are detached/hidden but kept alive.
+  // Mirror the store's sessions map into Terminal instances. Eager creation
+  // closes the race window where output arrives before activation.
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || !activeId) return;
+    if (!root) return;
+    const known = terminalsRef.current;
 
-    let inst = terminalsRef.current.get(activeId);
-    if (!inst) {
-      inst = createTerminal(activeId);
-      terminalsRef.current.set(activeId, inst);
-    }
-
-    for (const [id, entry] of terminalsRef.current) {
-      if (id === activeId) {
-        if (entry.container.parentElement !== root) {
-          root.appendChild(entry.container);
+    for (const id of Object.keys(sessions)) {
+      if (!known.has(id)) {
+        const inst = createTerminal(id, root);
+        known.set(id, inst);
+        // Drain any output that arrived before this Terminal existed.
+        const buf = pendingRef.current.get(id);
+        if (buf) {
+          for (const chunk of buf) inst.term.write(chunk);
+          pendingRef.current.delete(id);
         }
-        entry.container.style.display = "block";
-      } else {
-        entry.container.style.display = "none";
       }
     }
+    for (const id of Array.from(known.keys())) {
+      if (!sessions[id]) {
+        known.get(id)!.cleanup();
+        known.delete(id);
+        pendingRef.current.delete(id);
+      }
+    }
+  }, [sessions]);
 
-    // Defer fit until the container has dimensions. rAF is enough on first
-    // mount; subsequent activations are no-ops if size hasn't changed.
+  // Show only the active Terminal; fit + focus it.
+  useEffect(() => {
+    const known = terminalsRef.current;
+    for (const [id, entry] of known) {
+      entry.container.style.display = id === activeId ? "block" : "none";
+    }
+    if (!activeId) return;
+    const inst = known.get(activeId);
+    if (!inst) return;
+    // Defer fit until the container has layout dimensions. rAF is enough on
+    // first activation; later activations of an already-laid-out container
+    // are effectively no-ops.
     const raf = requestAnimationFrame(() => {
       try {
-        inst!.fit.fit();
+        inst.fit.fit();
       } catch {
-        // FitAddon throws if the container is hidden / has zero size.
-        // Resize will be retried on the next window/layout change.
+        // FitAddon throws if the container has zero size. Window resize will
+        // retry once the layout settles.
       }
-      const { cols, rows } = inst!.term;
+      const { cols, rows } = inst.term;
       void resizePty({ session_id: activeId, cols, rows }).catch(() => {});
-      inst!.term.focus();
+      inst.term.focus();
     });
     return () => cancelAnimationFrame(raf);
   }, [activeId]);
@@ -148,14 +181,20 @@ export function TerminalPane() {
   // Dispose all terminals on unmount.
   useEffect(() => {
     const terminals = terminalsRef.current;
+    const pending = pendingRef.current;
     return () => {
       for (const inst of terminals.values()) inst.cleanup();
       terminals.clear();
+      pending.clear();
     };
   }, []);
 
   return (
-    <div className="terminal-pane" ref={rootRef}>
+    <div className="terminal-pane">
+      {/* Pool: holds all Terminal containers, managed imperatively. React
+          must not render children into this div — they'd fight the
+          appendChild/removeChild we do in effects. */}
+      <div className="terminal-pool" ref={rootRef} />
       {!activeId && (
         <div className="terminal-empty">
           Select a session from the sidebar, or create a new one.
@@ -165,13 +204,16 @@ export function TerminalPane() {
   );
 }
 
-function createTerminal(sessionId: string): TermInstance {
+function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   const term = new Terminal(TERMINAL_OPTIONS);
   const fit = new FitAddon();
   term.loadAddon(fit);
 
   const container = document.createElement("div");
   container.className = "terminal-container";
+  // Hidden by default; the activeId effect flips display on activation.
+  container.style.display = "none";
+  parent.appendChild(container);
   term.open(container);
 
   const dataDisposable = term.onData((data) => {
@@ -179,8 +221,7 @@ function createTerminal(sessionId: string): TermInstance {
       session_id: sessionId,
       data: utf8ToBase64(data),
     }).catch(() => {
-      // PTY is gone (process exited). Drop the keystroke silently — the
-      // exit marker already tells the user.
+      // PTY is gone (process exited). Drop keystroke silently.
     });
   });
 

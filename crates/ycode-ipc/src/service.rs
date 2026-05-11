@@ -19,8 +19,8 @@ use ycode_persist::{Db, NewProject, NewSession, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    AgentProfileView, CreateProjectRequest, CreateSessionRequest, ProjectView, ResizePtyRequest,
-    SessionView, UiEvent, UiEventKind, WritePtyRequest,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileDiff, FileEntry,
+    ProjectView, ResizePtyRequest, SessionView, UiEvent, UiEventKind, WritePtyRequest,
 };
 
 /// Default PTY geometry. The frontend resizes after attaching to match the
@@ -114,6 +114,33 @@ impl Service {
             kind: UiEventKind::ProjectRemoved,
         });
         Ok(())
+    }
+
+    /// Walk a project's repo, honouring `.gitignore` and friends. Returns
+    /// every directory and file entry (relative to repo root) so the frontend
+    /// can render an expandable tree. The walk runs on a blocking thread to
+    /// keep large repos from stalling the async runtime.
+    pub async fn list_files(&self, project_id: String) -> Result<Vec<FileEntry>, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let root = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || walk_repo(&root))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("walk task: {e}")))?
+    }
+
+    /// Unified diff of `file_path` (relative to the project repo) against
+    /// HEAD. Untracked files get a synthesized "all-add" diff so the
+    /// frontend renders them uniformly. Runs git CLI on a blocking thread.
+    pub async fn get_file_diff(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<FileDiff, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || compute_diff(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("diff task: {e}")))?
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
@@ -338,6 +365,107 @@ impl Service {
             drop(_session_keepalive);
         });
     }
+}
+
+/// Walk `root` honouring `.gitignore` / `.git/info/exclude` / global gitignore
+/// and the `.git` directory exclusion. Returns entries sorted by path so the
+/// frontend's tree-build can rely on parents arriving before children.
+fn walk_repo(root: &Utf8Path) -> Result<Vec<FileEntry>, IpcError> {
+    use ignore::WalkBuilder;
+    let mut out = Vec::new();
+    let walker = WalkBuilder::new(root.as_std_path())
+        .hidden(false) // dotfiles can be useful (e.g. `.github/`); .git is excluded by `git_ignore`.
+        .build();
+    for result in walker {
+        let entry = match result {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(error = %e, "walk entry error; skipping");
+                continue;
+            }
+        };
+        let p = entry.path();
+        if p == root.as_std_path() {
+            continue;
+        }
+        let rel = match p.strip_prefix(root.as_std_path()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        out.push(FileEntry {
+            path: rel_str,
+            is_dir,
+        });
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
+}
+
+/// Run `git diff HEAD -- <file>` for tracked files, or synthesize a
+/// full-add diff for untracked files. We shell out to `git` rather than
+/// using `gix` to stay compatible with whatever git version the user has
+/// (and to get rename/binary detection for free).
+fn compute_diff(repo: &Utf8Path, file_path: String) -> Result<FileDiff, IpcError> {
+    use std::process::Command;
+
+    let status = Command::new("git")
+        .args(["status", "--porcelain", "--", &file_path])
+        .current_dir(repo.as_std_path())
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("git status: {e}")))?;
+    if !status.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git status failed: {}",
+            String::from_utf8_lossy(&status.stderr).trim()
+        )));
+    }
+    let porcelain = String::from_utf8_lossy(&status.stdout);
+    let untracked = porcelain.lines().any(|l| l.starts_with("??"));
+
+    if untracked {
+        let abs = repo.join(&file_path);
+        let content = std::fs::read_to_string(abs.as_std_path()).map_err(|e| {
+            IpcError::BadInput(format!("read {}: {}", file_path, e))
+        })?;
+        let line_count = content.lines().count().max(1);
+        let mut patch = String::new();
+        patch.push_str(&format!("diff --git a/{file_path} b/{file_path}\n"));
+        patch.push_str("new file mode 100644\n");
+        patch.push_str("--- /dev/null\n");
+        patch.push_str(&format!("+++ b/{file_path}\n"));
+        patch.push_str(&format!("@@ -0,0 +1,{line_count} @@\n"));
+        for line in content.lines() {
+            patch.push('+');
+            patch.push_str(line);
+            patch.push('\n');
+        }
+        return Ok(FileDiff {
+            path: file_path,
+            patch,
+            is_untracked: true,
+        });
+    }
+
+    let diff = Command::new("git")
+        .args(["diff", "--no-color", "HEAD", "--", &file_path])
+        .current_dir(repo.as_std_path())
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("git diff: {e}")))?;
+    if !diff.status.success() {
+        // `git diff` returns non-zero on legitimate errors (e.g. ambiguous
+        // arg). Surface stderr so the user knows what went wrong.
+        return Err(IpcError::BadInput(format!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&diff.stderr).trim()
+        )));
+    }
+    Ok(FileDiff {
+        path: file_path,
+        patch: String::from_utf8_lossy(&diff.stdout).into_owned(),
+        is_untracked: false,
+    })
 }
 
 fn compute_available_agents(config: &Config) -> std::collections::HashSet<String> {

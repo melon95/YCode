@@ -45,6 +45,9 @@ camino = { version = "1.1", features = ["serde1"] }
 # Process / PTY
 portable-pty = "0.8"
 
+# Filesystem walking
+ignore = "0.4"
+
 # Internal crates
 ycode-terminal = { path = "crates/ycode-terminal" }
 ycode-persist = { path = "crates/ycode-persist" }

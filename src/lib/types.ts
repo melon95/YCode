@@ -33,6 +33,8 @@ export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";
 export type { CreateProjectRequest } from "@bindings/CreateProjectRequest";
 export type { WritePtyRequest } from "@bindings/WritePtyRequest";
 export type { ResizePtyRequest } from "@bindings/ResizePtyRequest";
+export type { FileEntry } from "@bindings/FileEntry";
+export type { FileDiff } from "@bindings/FileDiff";
 
 /// Lowercased status label used as a CSS modifier (`.dot.running` etc.).
 export type StatusLabel = "running" | "exited" | "error";

@@ -56,6 +56,8 @@ pub fn run() {
             commands::kill_session,
             commands::archive_session,
             commands::restart_session,
+            commands::list_files,
+            commands::get_file_diff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -15,6 +15,9 @@ interface AppState {
   activeProjectId: string | null;
   /// Which panel the left sidebar is showing under the active project.
   sidebarTab: SidebarTab;
+  /// File picked from the Files tab — drives the Diff tab's content.
+  /// Path is forward-slash, relative to the active project's repo root.
+  selectedFilePath: string | null;
 
   setProjects: (list: ProjectView[]) => void;
   upsertProject: (p: ProjectView) => void;
@@ -25,6 +28,7 @@ interface AppState {
   upsertSession: (s: SessionView) => void;
   removeSession: (id: string) => void;
   setActiveId: (id: string | null) => void;
+  setSelectedFilePath: (path: string | null) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -33,6 +37,7 @@ export const useStore = create<AppState>((set) => ({
   activeId: null,
   activeProjectId: null,
   sidebarTab: "sessions",
+  selectedFilePath: null,
 
   setProjects: (list) =>
     set((state) => {
@@ -61,7 +66,13 @@ export const useStore = create<AppState>((set) => ({
       };
     }),
 
-  setActiveProjectId: (id) => set({ activeProjectId: id }),
+  setActiveProjectId: (id) =>
+    set((state) => ({
+      activeProjectId: id,
+      // File selection is project-scoped — paths from project A don't make
+      // sense in project B.
+      selectedFilePath: state.activeProjectId === id ? state.selectedFilePath : null,
+    })),
 
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
 
@@ -84,4 +95,6 @@ export const useStore = create<AppState>((set) => ({
     }),
 
   setActiveId: (id) => set({ activeId: id }),
+
+  setSelectedFilePath: (path) => set({ selectedFilePath: path }),
 }));

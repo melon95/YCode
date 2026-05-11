@@ -1,11 +1,13 @@
 import { useStore } from "../lib/store";
 import type { SidebarTab } from "../lib/store";
 import { SessionRow } from "./SessionRow";
+import { FileTreePanel } from "./FileTreePanel";
+import { DiffPanel } from "./DiffPanel";
 
 const TABS: { id: SidebarTab; label: string }[] = [
   { id: "sessions", label: "Sessions" },
   { id: "files", label: "Files" },
-  { id: "diff", label: "Changes" },
+  { id: "diff", label: "Diff" },
 ];
 
 export function Sidebar() {
@@ -38,15 +40,9 @@ export function Sidebar() {
         ) : sidebarTab === "sessions" ? (
           <SessionsPanel projectId={activeProject.id} />
         ) : sidebarTab === "files" ? (
-          <PlaceholderPanel
-            title="File tree"
-            note={`Will list files under ${activeProject.repo_path}`}
-          />
+          <FileTreePanel projectId={activeProject.id} />
         ) : (
-          <PlaceholderPanel
-            title="Changed files"
-            note="Will list git-modified files (staged + unstaged)"
-          />
+          <DiffPanel />
         )}
       </div>
     </aside>
@@ -71,12 +67,3 @@ function SessionsPanel({ projectId }: { projectId: string }) {
   );
 }
 
-function PlaceholderPanel({ title, note }: { title: string; note: string }) {
-  return (
-    <div className="empty">
-      <strong>{title}</strong>
-      <br />
-      {note}
-    </div>
-  );
-}

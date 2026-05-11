@@ -171,3 +171,24 @@ pub struct ResizePtyRequest {
     pub cols: u16,
     pub rows: u16,
 }
+
+/// One entry in the project file tree. `path` is forward-slash, relative to
+/// the project repo root. Directories also appear as their own entry so the
+/// frontend can build an expandable tree.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FileEntry {
+    pub path: String,
+    pub is_dir: bool,
+}
+
+/// Unified-diff snapshot for a single file. `patch` is the raw `git diff`
+/// output (or, for untracked files, a synthesized full-add diff). Empty
+/// patch + `is_untracked = false` means the file is tracked and unchanged.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FileDiff {
+    pub path: String,
+    pub patch: String,
+    pub is_untracked: bool,
+}

@@ -12,6 +12,8 @@ import type {
   CreateSessionRequest,
   WritePtyRequest,
   ResizePtyRequest,
+  FileEntry,
+  FileDiff,
   UiEvent,
 } from "./types";
 
@@ -44,6 +46,15 @@ export const archiveSession = (sessionId: string): Promise<void> =>
 
 export const restartSession = (sessionId: string): Promise<SessionView> =>
   invoke("restart_session", { sessionId });
+
+export const listFiles = (projectId: string): Promise<FileEntry[]> =>
+  invoke("list_files", { projectId });
+
+export const getFileDiff = (
+  projectId: string,
+  filePath: string,
+): Promise<FileDiff> =>
+  invoke("get_file_diff", { projectId, filePath });
 
 export const listenSessionEvents = (
   handler: (event: UiEvent) => void,

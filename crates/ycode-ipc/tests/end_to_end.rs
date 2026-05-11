@@ -143,6 +143,110 @@ async fn resize_works_on_live_session() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn list_files_respects_gitignore() {
+    let (svc, _w, repo) = fixture().await;
+
+    // `ignore` only honours .gitignore inside a real git repo by default;
+    // mirror that so the test reflects real ycode usage.
+    let init = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo.as_std_path())
+        .output()
+        .unwrap();
+    assert!(init.status.success(), "git init failed");
+
+    // Seed: one tracked file, one git-ignored file, one git-ignored dir.
+    std::fs::write(repo.join("README.md").as_std_path(), "hi").unwrap();
+    std::fs::write(repo.join(".gitignore").as_std_path(), "target/\nsecret.txt\n").unwrap();
+    std::fs::create_dir_all(repo.join("target").as_std_path()).unwrap();
+    std::fs::write(repo.join("target/build.log").as_std_path(), "noise").unwrap();
+    std::fs::write(repo.join("secret.txt").as_std_path(), "shh").unwrap();
+    std::fs::create_dir_all(repo.join("src").as_std_path()).unwrap();
+    std::fs::write(repo.join("src/lib.rs").as_std_path(), "//").unwrap();
+
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "files".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+
+    let entries = svc.list_files(project.id).await.unwrap();
+    let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+    assert!(paths.contains(&"README.md"));
+    assert!(paths.contains(&".gitignore"));
+    assert!(paths.contains(&"src"));
+    assert!(paths.contains(&"src/lib.rs"));
+    assert!(!paths.iter().any(|p| p.starts_with("target")));
+    assert!(!paths.contains(&"secret.txt"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn get_file_diff_modified_and_untracked() {
+    let (svc, _w, repo) = fixture().await;
+
+    let init = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo.as_std_path())
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+    for args in [
+        ["config", "user.email", "t@example.com"],
+        ["config", "user.name", "t"],
+        ["config", "commit.gpgsign", "false"],
+    ] {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo.as_std_path())
+            .output()
+            .unwrap();
+    }
+
+    // Commit a tracked file.
+    std::fs::write(repo.join("README.md").as_std_path(), "hello\n").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo.as_std_path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(repo.as_std_path())
+        .output()
+        .unwrap();
+
+    // Modify the tracked file + create an untracked one.
+    std::fs::write(repo.join("README.md").as_std_path(), "hello\nworld\n").unwrap();
+    std::fs::write(repo.join("new.txt").as_std_path(), "fresh\n").unwrap();
+
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "diff-test".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+
+    let modified = svc
+        .get_file_diff(project.id.clone(), "README.md".into())
+        .await
+        .unwrap();
+    assert!(!modified.is_untracked);
+    assert!(modified.patch.contains("+world"));
+    assert!(modified.patch.contains("--- a/README.md"));
+
+    let untracked = svc
+        .get_file_diff(project.id, "new.txt".into())
+        .await
+        .unwrap();
+    assert!(untracked.is_untracked);
+    assert!(untracked.patch.contains("+fresh"));
+    assert!(untracked.patch.contains("new file mode"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn create_session_with_bad_project_errors() {
     let (svc, _w, _r) = fixture().await;
     let err = svc
