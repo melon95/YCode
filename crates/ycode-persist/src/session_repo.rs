@@ -101,6 +101,24 @@ impl<'a> SessionRepo<'a> {
         Ok(())
     }
 
+    /// Persist a user-chosen title. Bumps `updated_at` so the row floats to
+    /// the top of recency lists immediately after the rename.
+    pub async fn update_title(&self, id: &str, title: &str) -> Result<(), PersistError> {
+        let now = now_ms();
+        let res = sqlx::query(
+            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(title)
+        .bind(now)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(PersistError::SessionNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
     /// Bump `updated_at` without changing other fields. Used when title or
     /// runtime status changes in a way callers want surfaced to the UI.
     pub async fn touch(&self, id: &str) -> Result<(), PersistError> {

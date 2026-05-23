@@ -18,6 +18,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             let state = tauri::async_runtime::block_on(AppState::initialize())
                 .expect("failed to initialize ycode backend");
@@ -56,8 +58,12 @@ pub fn run() {
             commands::kill_session,
             commands::archive_session,
             commands::restart_session,
+            commands::rename_session,
             commands::list_files,
-            commands::get_file_diff,
+            commands::read_file,
+            commands::write_file,
+            commands::spawn_pty_raw,
+            commands::kill_pty_raw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

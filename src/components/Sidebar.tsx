@@ -1,34 +1,32 @@
+import { useState } from "react";
+import { Button } from "@heroui/react";
 import { useStore } from "../lib/store";
-import type { SidebarTab } from "../lib/store";
 import { SessionRow } from "./SessionRow";
-import { FileTreePanel } from "./FileTreePanel";
-import { DiffPanel } from "./DiffPanel";
-
-const TABS: { id: SidebarTab; label: string }[] = [
-  { id: "sessions", label: "Sessions" },
-  { id: "files", label: "Files" },
-  { id: "diff", label: "Diff" },
-];
+import { NewSessionDialog } from "./TopBar";
 
 export function Sidebar() {
+  const [sessionOpen, setSessionOpen] = useState(false);
+  const upsertSession = useStore((s) => s.upsertSession);
+  const setActiveId = useStore((s) => s.setActiveId);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
-  const sidebarTab = useStore((s) => s.sidebarTab);
-  const setSidebarTab = useStore((s) => s.setSidebarTab);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-tabs">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={"sidebar-tab" + (sidebarTab === t.id ? " active" : "")}
-            onClick={() => setSidebarTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="sidebar-header">
+        <span>Sessions</span>
+        <Button
+          size="sm"
+          variant="primary"
+          onPress={() => setSessionOpen(true)}
+          isDisabled={!activeProject}
+          className="sidebar-new-session"
+          isIconOnly
+          aria-label="New session"
+        >
+          +
+        </Button>
       </div>
       <div className="sidebar-content">
         {!activeProject ? (
@@ -37,14 +35,21 @@ export function Sidebar() {
             <br />
             Create one with <em>+</em> in the top bar.
           </div>
-        ) : sidebarTab === "sessions" ? (
-          <SessionsPanel projectId={activeProject.id} />
-        ) : sidebarTab === "files" ? (
-          <FileTreePanel projectId={activeProject.id} />
         ) : (
-          <DiffPanel />
+          <SessionsPanel projectId={activeProject.id} />
         )}
       </div>
+      {sessionOpen && activeProject && (
+        <NewSessionDialog
+          project={activeProject}
+          onClose={() => setSessionOpen(false)}
+          onCreated={(view) => {
+            upsertSession(view);
+            setActiveId(view.id);
+            setSessionOpen(false);
+          }}
+        />
+      )}
     </aside>
   );
 }
@@ -66,4 +71,3 @@ function SessionsPanel({ projectId }: { projectId: string }) {
     </>
   );
 }
-

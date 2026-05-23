@@ -7,7 +7,7 @@
 //! Methods deliberately avoid Tauri-specific types so this crate stays
 //! transport-agnostic.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
@@ -19,8 +19,9 @@ use ycode_persist::{Db, NewProject, NewSession, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileDiff, FileEntry,
-    ProjectView, ResizePtyRequest, SessionView, UiEvent, UiEventKind, WritePtyRequest,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileContents, FileEntry,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, SessionView, SpawnPtyRequest, UiEvent,
+    UiEventKind, WriteFileRequest, WritePtyRequest,
 };
 
 /// Default PTY geometry. The frontend resizes after attaching to match the
@@ -128,19 +129,30 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("walk task: {e}")))?
     }
 
-    /// Unified diff of `file_path` (relative to the project repo) against
-    /// HEAD. Untracked files get a synthesized "all-add" diff so the
-    /// frontend renders them uniformly. Runs git CLI on a blocking thread.
-    pub async fn get_file_diff(
+    /// Read a file's UTF-8 contents. `file_path` is relative to the project
+    /// repo root; path traversal escaping the repo is rejected. Binary files
+    /// (NUL byte in the first 8 KiB) return `is_binary = true` and an empty
+    /// `contents` string so the editor can refuse to render them.
+    pub async fn read_file(
         &self,
         project_id: String,
         file_path: String,
-    ) -> Result<FileDiff, IpcError> {
+    ) -> Result<FileContents, IpcError> {
         let project = self.db.projects().get(&project_id).await?;
         let repo = Utf8PathBuf::from(project.repo_path);
-        tokio::task::spawn_blocking(move || compute_diff(&repo, file_path))
+        tokio::task::spawn_blocking(move || read_repo_file(&repo, file_path))
             .await
-            .map_err(|e| IpcError::BadInput(format!("diff task: {e}")))?
+            .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
+    }
+
+    /// Overwrite a file's contents. Path-traversal-protected like `read_file`.
+    /// Parent directories must already exist.
+    pub async fn write_file(&self, req: WriteFileRequest) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&req.project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || write_repo_file(&repo, req.file_path, req.contents))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("write task: {e}")))?
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
@@ -202,6 +214,47 @@ impl Service {
         Ok(view)
     }
 
+    /// Spawn a raw PTY (no project/session row). The returned id can be used
+    /// with `write_pty` / `resize_pty` / `kill_pty_raw`. PTY output and exit
+    /// events arrive on the same UI bus channel as session events; routing
+    /// is by id on the frontend.
+    pub async fn spawn_pty_raw(&self, req: SpawnPtyRequest) -> Result<String, IpcError> {
+        let cwd = Utf8PathBuf::from(&req.cwd);
+        if !cwd.as_std_path().is_dir() {
+            return Err(IpcError::BadInput(format!("cwd not a directory: {}", req.cwd)));
+        }
+        let id = format!("manual-{}", ulid::Ulid::new());
+        // Empty `command` ⇒ user's login shell. Frontend uses this for the
+        // second-terminal panel which doesn't know the host's $SHELL.
+        let command = if req.command.is_empty() {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+        } else {
+            req.command
+        };
+        let spec = SpawnSpec {
+            command,
+            args: req.args,
+            // Inherit the host environment so the shell gets PATH/HOME/etc.
+            env: terminal_env(std::env::vars()),
+            cwd,
+            rows: INITIAL_ROWS,
+            cols: INITIAL_COLS,
+        };
+        let session = self.terminals.spawn(id.clone(), spec).await?;
+        self.pipe_raw_terminal_events(session);
+        info!(pty_id = %id, "raw PTY spawned");
+        Ok(id)
+    }
+
+    /// Kill a raw PTY spawned via `spawn_pty_raw`. Unlike `kill_session` this
+    /// doesn't try to touch the DB — raw PTYs have no row.
+    pub async fn kill_pty_raw(&self, pty_id: String) -> Result<(), IpcError> {
+        if let Some(s) = self.terminals.remove(&pty_id).await {
+            let _ = s.kill().await;
+        }
+        Ok(())
+    }
+
     pub async fn write_pty(&self, req: WritePtyRequest) -> Result<(), IpcError> {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD
@@ -254,6 +307,26 @@ impl Service {
         Ok(())
     }
 
+    /// Persist a new title for a session. Empty titles are allowed — the UI
+    /// falls back to the live CLI title (or "New session") for display.
+    pub async fn rename_session(
+        &self,
+        req: RenameSessionRequest,
+    ) -> Result<SessionView, IpcError> {
+        self.db
+            .sessions()
+            .update_title(&req.session_id, &req.title)
+            .await?;
+        let row = self.db.sessions().get(&req.session_id).await?;
+        let is_live = self.terminals.get(&req.session_id).await.is_some();
+        let view = SessionView::from_row(row, is_live);
+        let _ = self.ui_bus.send(UiEvent {
+            session_id: req.session_id,
+            kind: UiEventKind::SessionTouched,
+        });
+        Ok(view)
+    }
+
     pub async fn restart_session(&self, session_id: String) -> Result<SessionView, IpcError> {
         let row = self.db.sessions().get(&session_id).await?;
         if row.archived_at.is_some() {
@@ -296,14 +369,13 @@ impl Service {
         profile: &AgentLaunchProfile,
         cwd: Utf8PathBuf,
     ) -> Result<Arc<TerminalSession>, IpcError> {
+        let env = terminal_env(std::env::vars().chain(profile.env.iter().map(|(k, v)| {
+            (k.clone(), v.clone())
+        })));
         let spec = SpawnSpec {
             command: profile.command.clone(),
             args: profile.args.clone(),
-            env: profile
-                .env
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect(),
+            env,
             cwd,
             rows: INITIAL_ROWS,
             cols: INITIAL_COLS,
@@ -311,6 +383,45 @@ impl Service {
         let session = self.terminals.spawn(id.to_string(), spec).await?;
         info!(session_id = %id, profile = %profile.id, "PTY spawned");
         Ok(session)
+    }
+
+    /// Like `pipe_terminal_events` but for raw PTYs that have no DB row.
+    /// Emits PtyOutput/PtyExit only — no SessionTouched, no exit-code persist.
+    fn pipe_raw_terminal_events(&self, session: Arc<TerminalSession>) {
+        let bus = self.ui_bus.clone();
+        let terminals = self.terminals.clone();
+        let id = session.id().to_string();
+        let mut rx = session.subscribe();
+        let _session_keepalive = session;
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(TerminalEvent::Output(bytes)) => {
+                        let _ = bus.send(UiEvent::pty_output(&id, &bytes));
+                    }
+                    Ok(TerminalEvent::TitleChanged(_)) => {
+                        // Raw PTYs aren't backed by a session row; the UI has
+                        // no surface for a title here, so drop it.
+                    }
+                    Ok(TerminalEvent::Exited { code }) => {
+                        let _ = terminals.remove(&id).await;
+                        let _ = bus.send(UiEvent::pty_exit(&id, code));
+                        break;
+                    }
+                    Ok(TerminalEvent::Error(msg)) => {
+                        warn!(pty_id = %id, error = %msg, "raw terminal error");
+                        let _ = terminals.remove(&id).await;
+                        let _ = bus.send(UiEvent::pty_exit(&id, None));
+                        break;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(pty_id = %id, lagged = n, "raw terminal subscriber lagged");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            drop(_session_keepalive);
+        });
     }
 
     /// Subscribe to a terminal session's event stream and forward each
@@ -330,6 +441,9 @@ impl Service {
                 match rx.recv().await {
                     Ok(TerminalEvent::Output(bytes)) => {
                         let _ = bus.send(UiEvent::pty_output(&id, &bytes));
+                    }
+                    Ok(TerminalEvent::TitleChanged(title)) => {
+                        let _ = bus.send(UiEvent::title_changed(&id, title));
                     }
                     Ok(TerminalEvent::Exited { code }) => {
                         if let Err(e) = db.sessions().set_exit_code(&id, code).await {
@@ -365,6 +479,20 @@ impl Service {
             drop(_session_keepalive);
         });
     }
+}
+
+fn terminal_env<I>(vars: I) -> Vec<(String, String)>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
+    let mut env: BTreeMap<String, String> = vars.into_iter().collect();
+    env.insert("TERM".into(), "xterm-256color".into());
+    env.insert("COLORTERM".into(), "truecolor".into());
+    env.entry("FORCE_COLOR".into()).or_insert_with(|| "1".into());
+    env.insert("CLICOLOR".into(), "1".into());
+    env.insert("CLICOLOR_FORCE".into(), "1".into());
+    env.remove("NO_COLOR");
+    env.into_iter().collect()
 }
 
 /// Walk `root` honouring `.gitignore` / `.git/info/exclude` / global gitignore
@@ -403,69 +531,61 @@ fn walk_repo(root: &Utf8Path) -> Result<Vec<FileEntry>, IpcError> {
     Ok(out)
 }
 
-/// Run `git diff HEAD -- <file>` for tracked files, or synthesize a
-/// full-add diff for untracked files. We shell out to `git` rather than
-/// using `gix` to stay compatible with whatever git version the user has
-/// (and to get rename/binary detection for free).
-fn compute_diff(repo: &Utf8Path, file_path: String) -> Result<FileDiff, IpcError> {
-    use std::process::Command;
-
-    let status = Command::new("git")
-        .args(["status", "--porcelain", "--", &file_path])
-        .current_dir(repo.as_std_path())
-        .output()
-        .map_err(|e| IpcError::BadInput(format!("git status: {e}")))?;
-    if !status.status.success() {
-        return Err(IpcError::BadInput(format!(
-            "git status failed: {}",
-            String::from_utf8_lossy(&status.stderr).trim()
-        )));
+/// Resolve a project-relative path to an absolute path under `repo`, rejecting
+/// any input that escapes the repo (via `..` segments, absolute paths, or
+/// symlinks pointing outside). Returns the canonicalized absolute path.
+fn resolve_under_repo(repo: &Utf8Path, rel: &str) -> Result<std::path::PathBuf, IpcError> {
+    let rel_path = std::path::Path::new(rel);
+    if rel_path.is_absolute() {
+        return Err(IpcError::BadInput(format!("path must be relative: {rel}")));
     }
-    let porcelain = String::from_utf8_lossy(&status.stdout);
-    let untracked = porcelain.lines().any(|l| l.starts_with("??"));
-
-    if untracked {
-        let abs = repo.join(&file_path);
-        let content = std::fs::read_to_string(abs.as_std_path()).map_err(|e| {
-            IpcError::BadInput(format!("read {}: {}", file_path, e))
-        })?;
-        let line_count = content.lines().count().max(1);
-        let mut patch = String::new();
-        patch.push_str(&format!("diff --git a/{file_path} b/{file_path}\n"));
-        patch.push_str("new file mode 100644\n");
-        patch.push_str("--- /dev/null\n");
-        patch.push_str(&format!("+++ b/{file_path}\n"));
-        patch.push_str(&format!("@@ -0,0 +1,{line_count} @@\n"));
-        for line in content.lines() {
-            patch.push('+');
-            patch.push_str(line);
-            patch.push('\n');
+    for comp in rel_path.components() {
+        use std::path::Component;
+        match comp {
+            Component::Normal(_) => {}
+            _ => return Err(IpcError::BadInput(format!("invalid path: {rel}"))),
         }
-        return Ok(FileDiff {
-            path: file_path,
-            patch,
-            is_untracked: true,
-        });
     }
+    let abs = repo.as_std_path().join(rel_path);
+    // For reads / writes through symlinks we don't canonicalize the leaf (it
+    // may not exist yet for writes). Verify the parent is inside the repo.
+    let repo_canon = repo
+        .as_std_path()
+        .canonicalize()
+        .map_err(|e| IpcError::BadInput(format!("repo canonicalize: {e}")))?;
+    let parent = abs.parent().unwrap_or(&abs);
+    let parent_canon = parent
+        .canonicalize()
+        .map_err(|e| IpcError::BadInput(format!("parent canonicalize: {e}")))?;
+    if !parent_canon.starts_with(&repo_canon) {
+        return Err(IpcError::BadInput(format!("path escapes repo: {rel}")));
+    }
+    Ok(abs)
+}
 
-    let diff = Command::new("git")
-        .args(["diff", "--no-color", "HEAD", "--", &file_path])
-        .current_dir(repo.as_std_path())
-        .output()
-        .map_err(|e| IpcError::BadInput(format!("git diff: {e}")))?;
-    if !diff.status.success() {
-        // `git diff` returns non-zero on legitimate errors (e.g. ambiguous
-        // arg). Surface stderr so the user knows what went wrong.
-        return Err(IpcError::BadInput(format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&diff.stderr).trim()
-        )));
-    }
-    Ok(FileDiff {
+fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {
+    let abs = resolve_under_repo(repo, &file_path)?;
+    let bytes =
+        std::fs::read(&abs).map_err(|e| IpcError::BadInput(format!("read {}: {e}", file_path)))?;
+    let head = &bytes[..bytes.len().min(8192)];
+    let is_binary = head.contains(&0u8);
+    let contents = if is_binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(&bytes).into_owned()
+    };
+    Ok(FileContents {
         path: file_path,
-        patch: String::from_utf8_lossy(&diff.stdout).into_owned(),
-        is_untracked: false,
+        contents,
+        is_binary,
     })
+}
+
+fn write_repo_file(repo: &Utf8Path, file_path: String, contents: String) -> Result<(), IpcError> {
+    let abs = resolve_under_repo(repo, &file_path)?;
+    std::fs::write(&abs, contents.as_bytes())
+        .map_err(|e| IpcError::BadInput(format!("write {}: {e}", file_path)))?;
+    Ok(())
 }
 
 fn compute_available_agents(config: &Config) -> std::collections::HashSet<String> {

@@ -35,6 +35,10 @@ pub enum UiEventKind {
     PtyOutput { data: String },
     /// Child process exited. `code` is `None` for signal-terminated.
     PtyExit { code: Option<i32> },
+    /// The CLI emitted an `OSC 0/1/2;<title>` window-title sequence. The UI
+    /// uses this as the live session label, falling back to the persisted
+    /// `title` when absent.
+    TitleChanged { title: String },
 }
 
 impl UiEvent {
@@ -52,6 +56,13 @@ impl UiEvent {
         Self {
             session_id: session_id.into(),
             kind: UiEventKind::PtyExit { code },
+        }
+    }
+
+    pub fn title_changed(session_id: impl Into<String>, title: String) -> Self {
+        Self {
+            session_id: session_id.into(),
+            kind: UiEventKind::TitleChanged { title },
         }
     }
 }

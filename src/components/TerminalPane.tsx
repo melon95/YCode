@@ -20,6 +20,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { listenSessionEvents, resizePty, writePty } from "../lib/ipc";
 import { useStore } from "../lib/store";
+import { NewSessionPicker } from "./NewSessionPicker";
 
 type TermInstance = {
   term: Terminal;
@@ -36,33 +37,36 @@ const TERMINAL_OPTIONS = {
   cursorBlink: true,
   scrollback: 5000,
   theme: {
-    background: "#14161c",
-    foreground: "#d8dae5",
-    cursor: "#6aa9ff",
-    cursorAccent: "#14161c",
-    selectionBackground: "rgba(106, 169, 255, 0.3)",
-    black: "#14161c",
-    red: "#d8554b",
+    background: "#13120f",
+    foreground: "#f0eee6",
+    cursor: "#d97757",
+    cursorAccent: "#13120f",
+    selectionBackground: "rgba(217, 119, 87, 0.28)",
+    black: "#13120f",
+    red: "#d46a5f",
     green: "#4caf81",
-    yellow: "#d8a14a",
-    blue: "#6aa9ff",
-    magenta: "#b48be8",
-    cyan: "#4ec9b0",
-    white: "#d8dae5",
-    brightBlack: "#5d6478",
+    yellow: "#d6a95c",
+    blue: "#8aa4c8",
+    magenta: "#c58fbd",
+    cyan: "#7bb8a6",
+    white: "#f0eee6",
+    brightBlack: "#736b5f",
     brightRed: "#f47670",
     brightGreen: "#6ed09f",
-    brightYellow: "#f0c067",
-    brightBlue: "#92c0ff",
-    brightMagenta: "#d0a8ff",
-    brightCyan: "#6cd9c4",
-    brightWhite: "#ffffff",
+    brightYellow: "#efc06f",
+    brightBlue: "#a8bddb",
+    brightMagenta: "#d8a8cf",
+    brightCyan: "#98d0bf",
+    brightWhite: "#fff9ef",
   },
 } as const;
 
 export function TerminalPane() {
   const sessions = useStore((s) => s.sessions);
   const activeId = useStore((s) => s.activeId);
+  const projects = useStore((s) => s.projects);
+  const activeProjectId = useStore((s) => s.activeProjectId);
+  const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef<Map<string, TermInstance>>(new Map());
   // Per-session byte buffer for output that arrives before its Terminal
@@ -197,7 +201,11 @@ export function TerminalPane() {
       <div className="terminal-pool" ref={rootRef} />
       {!activeId && (
         <div className="terminal-empty">
-          Select a session from the sidebar, or create a new one.
+          {!activeProject ? (
+            <span>Select a project from the top bar.</span>
+          ) : (
+            <NewSessionPicker project={activeProject} />
+          )}
         </div>
       )}
     </div>

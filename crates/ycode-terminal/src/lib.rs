@@ -94,6 +94,11 @@ pub enum TerminalEvent {
     Exited { code: Option<i32> },
     /// Fatal error from the reader or waiter. Followed by channel close.
     Error(String),
+    /// The child set the terminal window title via `OSC 0;…` / `OSC 1;…` /
+    /// `OSC 2;…`. The byte stream still includes the escape sequence — this
+    /// is an observation, not a filter, so xterm.js continues to handle the
+    /// OSC for its own window-title state.
+    TitleChanged(String),
 }
 
 #[derive(Error, Debug)]
@@ -157,6 +162,15 @@ impl TerminalSession {
         for (k, v) in &spec.env {
             cmd.env(k, v);
         }
+        // Keep terminal capability variables authoritative at the PTY layer.
+        // Some GUI launch environments and portable-pty base envs can surface
+        // TERM=dumb, which disables color in prompts such as starship.
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        cmd.env("FORCE_COLOR", "1");
+        cmd.env("CLICOLOR", "1");
+        cmd.env("CLICOLOR_FORCE", "1");
+        cmd.env_remove("NO_COLOR");
 
         let child = pair
             .slave
@@ -330,6 +344,7 @@ fn reader_loop(
     tx: broadcast::Sender<TerminalEvent>,
 ) {
     let mut buf = [0u8; READ_BUF_SIZE];
+    let mut osc = OscParser::default();
     loop {
         match reader.read(&mut buf) {
             Ok(0) => {
@@ -337,10 +352,17 @@ fn reader_loop(
                 break;
             }
             Ok(n) => {
+                let chunk = &buf[..n];
+                // Observe (don't filter) OSC 0/1/2 sequences to surface the
+                // CLI's window title. Multiple titles per chunk are possible;
+                // we emit each one — consumers keep the latest.
+                for title in osc.feed(chunk) {
+                    let _ = tx.send(TerminalEvent::TitleChanged(title));
+                }
                 // `send` errors only if there are zero subscribers — that's
                 // fine, the bytes are dropped and the reader keeps draining
                 // so the child doesn't backpressure on a full PTY buffer.
-                let _ = tx.send(TerminalEvent::Output(buf[..n].to_vec()));
+                let _ = tx.send(TerminalEvent::Output(chunk.to_vec()));
             }
             Err(e) => {
                 warn!(session_id = %session_id, error = %e, "PTY read error");
@@ -348,6 +370,137 @@ fn reader_loop(
                 break;
             }
         }
+    }
+}
+
+/// Incremental scanner for `OSC Ps ; Pt (BEL | ST)` sequences crossing PTY
+/// read boundaries. Only Ps ∈ {0, 1, 2} (window/icon title) is surfaced;
+/// everything else (color queries, hyperlinks, etc.) is silently consumed.
+///
+/// `BEL = 0x07`, `ST = ESC \` (`0x1B 0x5C`), `OSC = ESC ]` (`0x1B 0x5D`).
+/// The accumulator is capped at 4 KiB to avoid unbounded growth on malformed
+/// or maliciously crafted streams.
+#[derive(Default)]
+struct OscParser {
+    in_osc: bool,
+    saw_esc_in_osc: bool,
+    pending_esc: bool,
+    buf: Vec<u8>,
+}
+
+impl OscParser {
+    fn feed(&mut self, chunk: &[u8]) -> Vec<String> {
+        let mut titles = Vec::new();
+        for &b in chunk {
+            if !self.in_osc {
+                if self.pending_esc {
+                    self.pending_esc = false;
+                    if b == 0x5D {
+                        // ESC ]
+                        self.in_osc = true;
+                        self.buf.clear();
+                        continue;
+                    }
+                    // ESC + something else — ignore, not our concern.
+                }
+                if b == 0x1B {
+                    self.pending_esc = true;
+                }
+                continue;
+            }
+            // Inside an OSC payload.
+            if self.saw_esc_in_osc {
+                self.saw_esc_in_osc = false;
+                if b == 0x5C {
+                    // ESC \  = ST terminator
+                    if let Some(title) = parse_osc_title(&self.buf) {
+                        titles.push(title);
+                    }
+                    self.in_osc = false;
+                    self.buf.clear();
+                    continue;
+                }
+                // The ESC was just part of the payload; push it and the
+                // current byte through the normal path below.
+                self.buf.push(0x1B);
+            }
+            if b == 0x07 {
+                // BEL terminator
+                if let Some(title) = parse_osc_title(&self.buf) {
+                    titles.push(title);
+                }
+                self.in_osc = false;
+                self.buf.clear();
+                continue;
+            }
+            if b == 0x1B {
+                self.saw_esc_in_osc = true;
+                continue;
+            }
+            self.buf.push(b);
+            if self.buf.len() > 4096 {
+                self.in_osc = false;
+                self.buf.clear();
+            }
+        }
+        titles
+    }
+}
+
+fn parse_osc_title(buf: &[u8]) -> Option<String> {
+    // Format: <Ps> ; <Pt>  where Ps is the OSC command id and Pt is the
+    // (UTF-8) string payload.
+    let s = std::str::from_utf8(buf).ok()?;
+    let (ps, pt) = s.split_once(';')?;
+    let ps: u32 = ps.trim().parse().ok()?;
+    if matches!(ps, 0 | 1 | 2) {
+        let trimmed = pt.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod osc_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_bel_terminated_title() {
+        let mut p = OscParser::default();
+        let bytes = b"hello\x1b]0;my title\x07world";
+        let titles = p.feed(bytes);
+        assert_eq!(titles, vec!["my title".to_string()]);
+    }
+
+    #[test]
+    fn extracts_st_terminated_title() {
+        let mut p = OscParser::default();
+        let bytes = b"\x1b]2;another\x1b\\";
+        let titles = p.feed(bytes);
+        assert_eq!(titles, vec!["another".to_string()]);
+    }
+
+    #[test]
+    fn handles_split_across_chunks() {
+        let mut p = OscParser::default();
+        let a = b"prefix\x1b]0;split ";
+        let b = b"title\x07suffix";
+        let mut titles = p.feed(a);
+        titles.extend(p.feed(b));
+        assert_eq!(titles, vec!["split title".to_string()]);
+    }
+
+    #[test]
+    fn ignores_non_title_osc() {
+        let mut p = OscParser::default();
+        let bytes = b"\x1b]4;1;rgb:ff/00/00\x07";
+        let titles = p.feed(bytes);
+        assert!(titles.is_empty());
     }
 }
 
@@ -438,6 +591,7 @@ mod tests {
                     saw_exit = true;
                 }
                 Ok(Ok(TerminalEvent::Error(msg))) => panic!("error: {msg}"),
+                Ok(Ok(TerminalEvent::TitleChanged(_))) => {}
                 Ok(Err(_)) => break,
                 Err(_) => continue,
             }

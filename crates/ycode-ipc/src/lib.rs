@@ -132,6 +132,13 @@ pub struct CreateProjectRequest {
     pub repo_path: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RenameSessionRequest {
+    pub session_id: String,
+    pub title: String,
+}
+
 /// Frontend-facing snapshot of a project plus the count of its live sessions.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -172,6 +179,17 @@ pub struct ResizePtyRequest {
     pub rows: u16,
 }
 
+/// Spawn a raw PTY not associated with any project session — used by the
+/// second-terminal panel for ad-hoc shell commands. The returned id can be
+/// used with `write_pty` / `resize_pty` / `kill_pty_raw`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SpawnPtyRequest {
+    pub cwd: String,
+    pub command: String,
+    pub args: Vec<String>,
+}
+
 /// One entry in the project file tree. `path` is forward-slash, relative to
 /// the project repo root. Directories also appear as their own entry so the
 /// frontend can build an expandable tree.
@@ -182,13 +200,20 @@ pub struct FileEntry {
     pub is_dir: bool,
 }
 
-/// Unified-diff snapshot for a single file. `patch` is the raw `git diff`
-/// output (or, for untracked files, a synthesized full-add diff). Empty
-/// patch + `is_untracked = false` means the file is tracked and unchanged.
+/// Contents of a single file as UTF-8. Binary files surface a `is_binary` flag
+/// so the editor can refuse to open them instead of rendering garbage.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct FileDiff {
+pub struct FileContents {
     pub path: String,
-    pub patch: String,
-    pub is_untracked: bool,
+    pub contents: String,
+    pub is_binary: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WriteFileRequest {
+    pub project_id: String,
+    pub file_path: String,
+    pub contents: String,
 }

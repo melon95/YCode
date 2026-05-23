@@ -31,10 +31,13 @@ export type { UiEvent } from "@bindings/UiEvent";
 export type { UiEventKind } from "@bindings/UiEventKind";
 export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";
 export type { CreateProjectRequest } from "@bindings/CreateProjectRequest";
+export type { RenameSessionRequest } from "@bindings/RenameSessionRequest";
 export type { WritePtyRequest } from "@bindings/WritePtyRequest";
 export type { ResizePtyRequest } from "@bindings/ResizePtyRequest";
+export type { SpawnPtyRequest } from "@bindings/SpawnPtyRequest";
 export type { FileEntry } from "@bindings/FileEntry";
-export type { FileDiff } from "@bindings/FileDiff";
+export type { FileContents } from "@bindings/FileContents";
+export type { WriteFileRequest } from "@bindings/WriteFileRequest";
 
 /// Lowercased status label used as a CSS modifier (`.dot.running` etc.).
 export type StatusLabel = "running" | "exited" | "error";

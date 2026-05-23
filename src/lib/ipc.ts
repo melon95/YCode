@@ -10,10 +10,13 @@ import type {
   ProjectView,
   CreateProjectRequest,
   CreateSessionRequest,
+  RenameSessionRequest,
   WritePtyRequest,
   ResizePtyRequest,
+  SpawnPtyRequest,
   FileEntry,
-  FileDiff,
+  FileContents,
+  WriteFileRequest,
   UiEvent,
 } from "./types";
 
@@ -47,14 +50,26 @@ export const archiveSession = (sessionId: string): Promise<void> =>
 export const restartSession = (sessionId: string): Promise<SessionView> =>
   invoke("restart_session", { sessionId });
 
+export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
+  invoke("rename_session", { request });
+
 export const listFiles = (projectId: string): Promise<FileEntry[]> =>
   invoke("list_files", { projectId });
 
-export const getFileDiff = (
+export const readFile = (
   projectId: string,
   filePath: string,
-): Promise<FileDiff> =>
-  invoke("get_file_diff", { projectId, filePath });
+): Promise<FileContents> =>
+  invoke("read_file", { projectId, filePath });
+
+export const writeFile = (request: WriteFileRequest): Promise<void> =>
+  invoke("write_file", { request });
+
+export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
+  invoke("spawn_pty_raw", { request });
+
+export const killPtyRaw = (ptyId: string): Promise<void> =>
+  invoke("kill_pty_raw", { ptyId });
 
 export const listenSessionEvents = (
   handler: (event: UiEvent) => void,

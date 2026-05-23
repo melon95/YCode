@@ -2,7 +2,8 @@
 // (see ycode-ipc::Service::list_files); the frontend just builds the nested
 // view from the flat sorted entries and tracks per-dir expand state.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { watch } from "@tauri-apps/plugin-fs";
 import { listFiles } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { FileEntry } from "../lib/types";
@@ -29,8 +30,11 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const selectedFilePath = useStore((s) => s.selectedFilePath);
-  const setSelectedFilePath = useStore((s) => s.setSelectedFilePath);
-  const setSidebarTab = useStore((s) => s.setSidebarTab);
+  const openFile = useStore((s) => s.openFile);
+  const setRightTab = useStore((s) => s.setRightTab);
+  const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
+  const reloadKeyRef = useRef(reloadKey);
+  reloadKeyRef.current = reloadKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +61,34 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     setExpanded(new Set());
   }, [projectId]);
 
+  // Watch the repo directory; any fs event triggers a debounced re-list.
+  // The plugin already debounces (delayMs default ~2s); we just bump the
+  // reloadKey to reuse the effect above.
+  useEffect(() => {
+    if (!repoPath) return;
+    let cancelled = false;
+    let unwatch: (() => void) | undefined;
+    watch(
+      repoPath,
+      () => {
+        if (cancelled) return;
+        setReloadKey(reloadKeyRef.current + 1);
+      },
+      { recursive: true, delayMs: 400 },
+    )
+      .then((fn) => {
+        if (cancelled) fn();
+        else unwatch = fn;
+      })
+      .catch((err) => {
+        console.warn("watch failed", err);
+      });
+    return () => {
+      cancelled = true;
+      unwatch?.();
+    };
+  }, [repoPath]);
+
   const tree = useMemo(() => buildTree(entries), [entries]);
 
   function toggle(path: string) {
@@ -69,22 +101,12 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
   }
 
   function selectFile(path: string) {
-    setSelectedFilePath(path);
-    setSidebarTab("diff");
+    openFile(path);
+    setRightTab("editor");
   }
 
   return (
     <div className="file-tree">
-      <div className="file-tree-toolbar">
-        <button
-          className="file-tree-refresh"
-          onClick={() => setReloadKey((k) => k + 1)}
-          disabled={loading}
-          title="Re-scan the project directory"
-        >
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
       {error ? (
         <div className="form-error">{error}</div>
       ) : entries.length === 0 && !loading ? (
@@ -135,6 +157,7 @@ function TreeRow({
           onClick={() => onToggle(node.path)}
         >
           <span className="file-row-chevron">{open ? "▾" : "▸"}</span>
+          <FolderIcon open={open} />
           <span className="file-row-name">{node.name}</span>
         </div>
         {open &&
@@ -161,9 +184,130 @@ function TreeRow({
       onClick={() => onSelect(node.path)}
       title={node.path}
     >
+      <FileIcon name={node.name} />
       <span className="file-row-name">{node.name}</span>
     </div>
   );
+}
+
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="file-row-icon folder"
+      aria-hidden
+    >
+      {open ? (
+        <>
+          <path d="M1.5 5.5h13l-1.2 7H2.7z" />
+          <path d="M2.2 3.5h4l1.1 1.4h6.5v2" />
+        </>
+      ) : (
+        <path d="M1.8 4h4.2l1.1 1.4h7.1v7.1H1.8z" />
+      )}
+    </svg>
+  );
+}
+
+function FileIcon({ name }: { name: string }) {
+  const meta = fileIconFor(name);
+  return (
+    <span className={"file-row-icon file " + meta.kind} aria-hidden>
+      {meta.label}
+    </span>
+  );
+}
+
+type FileIconMeta = {
+  kind: string;
+  label: string;
+};
+
+function fileIconFor(name: string): FileIconMeta {
+  const lower = name.toLowerCase();
+  const exact: Record<string, FileIconMeta> = {
+    "package.json": { kind: "npm", label: "N" },
+    "package-lock.json": { kind: "npm", label: "N" },
+    "pnpm-lock.yaml": { kind: "npm", label: "N" },
+    "yarn.lock": { kind: "npm", label: "N" },
+    "bun.lock": { kind: "npm", label: "B" },
+    "cargo.toml": { kind: "rust", label: "R" },
+    "cargo.lock": { kind: "rust", label: "R" },
+    "readme.md": { kind: "markdown", label: "M" },
+    "license": { kind: "plain", label: "L" },
+    ".gitignore": { kind: "git", label: "G" },
+    ".gitattributes": { kind: "git", label: "G" },
+    ".env": { kind: "env", label: "E" },
+    ".env.local": { kind: "env", label: "E" },
+    "dockerfile": { kind: "docker", label: "D" },
+    "tsconfig.json": { kind: "typescript", label: "TS" },
+    "vite.config.ts": { kind: "vite", label: "V" },
+    "vite.config.js": { kind: "vite", label: "V" },
+  };
+  const byName = exact[lower];
+  if (byName) return byName;
+
+  const ext = lower.includes(".") ? lower.split(".").pop() ?? "" : "";
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return { kind: "typescript", label: "TS" };
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+      return { kind: "javascript", label: "JS" };
+    case "json":
+      return { kind: "json", label: "{}" };
+    case "md":
+    case "mdx":
+    case "markdown":
+      return { kind: "markdown", label: "M" };
+    case "rs":
+      return { kind: "rust", label: "R" };
+    case "py":
+      return { kind: "python", label: "PY" };
+    case "css":
+    case "scss":
+    case "sass":
+    case "less":
+      return { kind: "css", label: "#" };
+    case "html":
+    case "htm":
+      return { kind: "html", label: "<>" };
+    case "svg":
+      return { kind: "image", label: "S" };
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "webp":
+    case "ico":
+      return { kind: "image", label: "I" };
+    case "toml":
+    case "yaml":
+    case "yml":
+      return { kind: "config", label: "Y" };
+    case "sh":
+    case "bash":
+    case "zsh":
+      return { kind: "shell", label: "$" };
+    case "swift":
+      return { kind: "swift", label: "S" };
+    case "sql":
+      return { kind: "sql", label: "Q" };
+    case "lock":
+      return { kind: "lock", label: "L" };
+    default:
+      return { kind: "plain", label: "·" };
+  }
 }
 
 function buildTree(entries: FileEntry[]): TreeNode {

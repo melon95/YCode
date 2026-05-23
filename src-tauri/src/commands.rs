@@ -4,8 +4,9 @@
 
 use tauri::State;
 use ycode_ipc::{
-    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileDiff, FileEntry,
-    ProjectView, ResizePtyRequest, SessionView, WritePtyRequest,
+    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileContents, FileEntry,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, SessionView, SpawnPtyRequest,
+    WriteFileRequest, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -70,6 +71,30 @@ pub async fn delete_project(
 }
 
 #[tauri::command]
+pub async fn spawn_pty_raw(
+    state: State<'_, AppState>,
+    request: SpawnPtyRequest,
+) -> Result<String, String> {
+    state
+        .service
+        .spawn_pty_raw(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn kill_pty_raw(
+    state: State<'_, AppState>,
+    pty_id: String,
+) -> Result<(), String> {
+    state
+        .service
+        .kill_pty_raw(pty_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn write_pty(
     state: State<'_, AppState>,
     request: WritePtyRequest,
@@ -118,6 +143,18 @@ pub async fn archive_session(
 }
 
 #[tauri::command]
+pub async fn rename_session(
+    state: State<'_, AppState>,
+    request: RenameSessionRequest,
+) -> Result<SessionView, String> {
+    state
+        .service
+        .rename_session(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn restart_session(
     state: State<'_, AppState>,
     session_id: String,
@@ -142,14 +179,27 @@ pub async fn list_files(
 }
 
 #[tauri::command]
-pub async fn get_file_diff(
+pub async fn read_file(
     state: State<'_, AppState>,
     project_id: String,
     file_path: String,
-) -> Result<FileDiff, String> {
+) -> Result<FileContents, String> {
     state
         .service
-        .get_file_diff(project_id, file_path)
+        .read_file(project_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn write_file(
+    state: State<'_, AppState>,
+    request: WriteFileRequest,
+) -> Result<(), String> {
+    state
+        .service
+        .write_file(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+

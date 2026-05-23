@@ -1,14 +1,36 @@
 import { useEffect } from "react";
+import {
+  Group,
+  Panel,
+  Separator,
+  useDefaultLayout,
+  usePanelRef,
+} from "react-resizable-panels";
 import { listProjects, listSessions, listenSessionEvents } from "./lib/ipc";
 import { useStore } from "./lib/store";
+import { useHotkeys } from "./lib/hotkeys";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { TerminalPane } from "./components/TerminalPane";
+import { RightPane } from "./components/RightPane";
 import { StatusBar } from "./components/StatusBar";
+
+const COLUMN_PANEL_IDS = ["sidebar", "middle", "right"];
 
 export function App() {
   const setSessions = useStore((s) => s.setSessions);
   const setProjects = useStore((s) => s.setProjects);
+  const setLiveTitle = useStore((s) => s.setLiveTitle);
+  // Persist column widths across reloads. Panel ids must match the literal
+  // ids passed to <Panel> below or the restored layout won't apply.
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({
+    id: "ycode-columns",
+    panelIds: COLUMN_PANEL_IDS,
+    storage: typeof window !== "undefined" ? window.localStorage : undefined,
+  });
+  // Imperative handle for ⌘B (toggle sidebar collapse).
+  const sidebarRef = usePanelRef();
+  useHotkeys({ sidebarRef });
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -27,12 +49,12 @@ export function App() {
 
     listenSessionEvents((event) => {
       const kind = event.kind;
-      // PtyOutput/PtyExit are handled inside TerminalPane; here we react
-      // only to membership-changing events by re-fetching the full lists.
       if (kind.type === "PtyOutput" || kind.type === "PtyExit") {
-        // PtyExit also implies an exit-code mutation persisted server-side;
-        // re-fetch sessions so the SessionRow status badge updates.
         if (kind.type === "PtyExit") refresh();
+        return;
+      }
+      if (kind.type === "TitleChanged") {
+        setLiveTitle(event.session_id, kind.title);
         return;
       }
       refresh();
@@ -45,15 +67,36 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setSessions, setProjects]);
+  }, [setSessions, setProjects, setLiveTitle]);
 
   return (
     <>
       <TopBar />
-      <Sidebar />
-      <div className="main">
-        <TerminalPane />
-      </div>
+      <Group
+        orientation="horizontal"
+        className="columns"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+      >
+        <Panel
+          id="sidebar"
+          defaultSize="20%"
+          minSize="12%"
+          collapsible
+          collapsedSize="0"
+          panelRef={sidebarRef}
+        >
+          <Sidebar />
+        </Panel>
+        <Separator className="col-handle" />
+        <Panel id="middle" defaultSize="40%" minSize="20%">
+          <TerminalPane />
+        </Panel>
+        <Separator className="col-handle" />
+        <Panel id="right" defaultSize="40%" minSize="20%">
+          <RightPane />
+        </Panel>
+      </Group>
       <StatusBar />
     </>
   );
