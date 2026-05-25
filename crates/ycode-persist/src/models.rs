@@ -7,6 +7,8 @@ pub struct SessionRow {
     pub id: String,
     pub title: String,
     pub agent_profile: String,
+    pub agent_session_id: Option<String>,
+    pub agent_thread_name: Option<String>,
     pub project_id: String,
     /// Last observed exit code. `None` while the session has never exited
     /// (either still alive, or the row was just inserted). `Some(code)` is
@@ -24,3 +26,4 @@ pub struct ProjectRow {
     pub repo_path: String,
     pub created_at: i64,
 }
+

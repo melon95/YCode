@@ -24,6 +24,13 @@ pub mod service;
 pub use events::{UiEvent, UiEventKind};
 pub use service::{IpcError, Service};
 
+// Re-export the unified history types so the Tauri shell can wire them
+// through `#[tauri::command]` without an extra crate dependency, and the
+// ts-rs binding directory has them in one place.
+pub use ycode_introspect::{
+    DiffSummary, PlanStep, ToolStatus, UnifiedEvent, UnifiedEventKind, UnifiedRole,
+};
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use ycode_config::AgentLaunchProfile;
@@ -59,6 +66,10 @@ pub struct SessionView {
     pub id: String,
     pub title: String,
     pub agent_profile: String,
+    /// Agent-native conversation id when known or generated for resume.
+    pub agent_session_id: Option<String>,
+    /// Agent-native title/thread label emitted by the CLI, when observed.
+    pub agent_thread_name: Option<String>,
     pub project_id: String,
     /// Runtime status. `Running` iff a live `TerminalSession` is currently
     /// driving this id; otherwise `Exited { code: last_exit_code }`.
@@ -86,6 +97,8 @@ impl SessionView {
             id: row.id,
             title: row.title,
             agent_profile: row.agent_profile,
+            agent_session_id: row.agent_session_id,
+            agent_thread_name: row.agent_thread_name,
             project_id: row.project_id,
             status,
             created_at_ms: row.created_at,
@@ -104,6 +117,15 @@ pub struct AgentProfileView {
     /// True iff `command` resolves on `PATH`. The picker hides unavailable
     /// agents (or shows them disabled).
     pub available: bool,
+    /// Frontend `AgentIcon` whitelist key. Unknown / missing → placeholder.
+    pub icon: Option<String>,
+    /// "color" | "mono". Other values fall back to "color".
+    pub icon_variant: Option<String>,
+    /// Optional brand color hint (currently advisory).
+    pub color: Option<String>,
+    /// Introspect parser id ("claude" / "codex" today). `None` means PTY-only;
+    /// such profiles are hidden from the sidebar's history filter tabs.
+    pub introspect: Option<String>,
 }
 
 impl AgentProfileView {
@@ -113,6 +135,82 @@ impl AgentProfileView {
             display_name: profile.display_name().to_string(),
             command: profile.command.clone(),
             available,
+            icon: profile.icon.clone(),
+            icon_variant: profile.icon_variant.clone(),
+            color: profile.color.clone(),
+            introspect: profile.introspect.clone(),
+        }
+    }
+}
+
+/// Editable mirror of [`AgentLaunchProfile`]. Carries every field the user
+/// can change in the Settings UI (`args` / `env` included, unlike the
+/// runtime [`AgentProfileView`] which only exposes display data).
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AgentLaunchProfileView {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: std::collections::BTreeMap<String, String>,
+    pub icon: Option<String>,
+    pub icon_variant: Option<String>,
+    pub color: Option<String>,
+    pub introspect: Option<String>,
+}
+
+impl From<AgentLaunchProfile> for AgentLaunchProfileView {
+    fn from(p: AgentLaunchProfile) -> Self {
+        Self {
+            id: p.id,
+            display_name: p.display_name,
+            command: p.command,
+            args: p.args,
+            env: p.env,
+            icon: p.icon,
+            icon_variant: p.icon_variant,
+            color: p.color,
+            introspect: p.introspect,
+        }
+    }
+}
+
+impl From<AgentLaunchProfileView> for AgentLaunchProfile {
+    fn from(v: AgentLaunchProfileView) -> Self {
+        Self {
+            id: v.id,
+            display_name: v.display_name,
+            command: v.command,
+            args: v.args,
+            env: v.env,
+            icon: v.icon,
+            icon_variant: v.icon_variant,
+            color: v.color,
+            introspect: v.introspect,
+        }
+    }
+}
+
+/// Editable mirror of [`ycode_config::Config`].
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ConfigView {
+    pub agents: Vec<AgentLaunchProfileView>,
+}
+
+impl From<ycode_config::Config> for ConfigView {
+    fn from(c: ycode_config::Config) -> Self {
+        Self {
+            agents: c.agents.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<ConfigView> for ycode_config::Config {
+    fn from(v: ConfigView) -> Self {
+        Self {
+            agents: v.agents.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -123,6 +221,12 @@ pub struct CreateSessionRequest {
     pub agent_profile_id: String,
     pub project_id: String,
     pub title: String,
+    /// When set, the freshly-spawned CLI is launched with `--resume <id>`
+    /// (claude) / `resume <id>` (codex) so it loads the existing on-disk
+    /// session jsonl as context. Used when the user clicks a row in the
+    /// sidebar's "History" panel.
+    #[serde(default)]
+    pub resume: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -210,10 +314,56 @@ pub struct FileContents {
     pub is_binary: bool,
 }
 
+/// Request payload for `fs_open_in_external_editor`. `editor` is optional;
+/// when absent we fall back to `$VISUAL`, then `$EDITOR`, then a sensible
+/// platform default. Per plan §8.15.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OpenInExternalEditorRequest {
+    pub path: String,
+    pub editor: Option<String>,
+}
+
+/// Overwrite a project file with new UTF-8 contents. Path traversal escaping
+/// the repo is rejected — same enforcement as `read_file`.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct WriteFileRequest {
     pub project_id: String,
     pub file_path: String,
     pub contents: String,
+}
+
+/// One row in the "Sessions" sidebar — describes a session jsonl that the
+/// introspect scanner found on disk. Per plan §9.1.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DiscoveredSessionView {
+    /// "claude" / "codex".
+    pub agent: String,
+    /// Native session UUID. `None` when the file is malformed.
+    pub session_id: Option<String>,
+    /// Absolute path to the jsonl file.
+    pub jsonl_path: String,
+    /// Bytes — useful to flag huge sessions to the UI.
+    pub size_bytes: u64,
+    /// Unix milliseconds — file mtime, used to sort the sidebar.
+    pub modified_at_ms: i64,
+    /// Human-readable title derived from the session's first user message
+    /// (or claude `summary` event). `None` when the file is too new / has
+    /// no user message yet. The sidebar shows this when present, falling
+    /// back to a short session id.
+    pub title: Option<String>,
+}
+
+/// Search hit returned from the cross-session query. Per plan §8.13.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SearchHit {
+    pub agent: String,
+    pub session_id: String,
+    pub jsonl_path: String,
+    pub seq: u64,
+    pub ts_ms: i64,
+    pub preview: String,
 }

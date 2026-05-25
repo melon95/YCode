@@ -1,11 +1,7 @@
-// CodeMirror 6 editor. Each open file keeps its in-memory edit buffer in
-// `filesRef` so switching tabs preserves unsaved edits. Cmd/Ctrl+S saves the
-// active file.
-//
-// External fs.watch is attached only to the currently selected file (a single
-// open watcher is enough — background tabs reload from disk the next time
-// they're focused). When the user's own save writes a file we skip exactly
-// one watcher event so we don't bounce into the conflict banner.
+// CodeMirror 6 editor. Each open file keeps its in-memory buffer in
+// `filesRef` so switching tabs preserves unsaved edits. ⌘S saves the active
+// file. An fs.watch on the focused file detects external edits and shows
+// either an auto-reload (clean buffer) or a conflict banner (dirty buffer).
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { watch } from "@tauri-apps/plugin-fs";
@@ -20,12 +16,19 @@ import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
-import { readFile, writeFile } from "../lib/ipc";
+import {
+  openInExternalEditor,
+  readFile,
+  revealInFinder,
+  writeFile,
+} from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 
 interface FileState {
+  /// Last known disk contents — what a save will be compared against.
   original: string;
+  /// In-memory buffer (== editor view's current value).
   value: string;
   isBinary: boolean;
   loaded: boolean;
@@ -39,15 +42,14 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
 
   const filesRef = useRef<Map<string, FileState>>(new Map());
-  // We mutate filesRef in-place for performance (CM emits onChange every
+  // We mutate filesRef in place for performance (CM emits onChange every
   // keystroke). Use a tiny render-tick to surface those mutations to React.
   const [, tick] = useReducer((x: number) => x + 1, 0);
   const [externalChange, setExternalChange] = useState(false);
   const skipNextWatchRef = useRef(false);
   const cmRef = useRef<ReactCodeMirrorRef>(null);
 
-  // Drop file state for tabs that have been closed so they re-read from disk
-  // if reopened later.
+  // Drop cache entries for closed tabs so reopens re-read from disk.
   useEffect(() => {
     const open = new Set(openFiles);
     for (const path of Array.from(filesRef.current.keys())) {
@@ -55,8 +57,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     }
   }, [openFiles]);
 
-  // Load the focused file if we don't have it cached yet. Switching to an
-  // already-loaded tab is instant (no IPC).
+  // Lazy-load the focused file (no IPC if already cached).
   useEffect(() => {
     if (!selectedFilePath) return;
     setExternalChange(false);
@@ -85,7 +86,6 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       .catch((err) => {
         if (cancelled) return;
         toast.danger(`Open ${selectedFilePath}: ${err}`);
-        // Drop the placeholder so retry can happen on next focus.
         filesRef.current.delete(selectedFilePath);
         setFileDirty(selectedFilePath, false);
         tick();
@@ -93,10 +93,10 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, selectedFilePath]);
+  }, [projectId, selectedFilePath, setFileDirty]);
 
-  // Watch only the currently focused file. Inactive tabs catch up on next
-  // focus via the load effect above.
+  // Watch only the focused file. Inactive tabs catch up on next focus via
+  // the load effect above.
   useEffect(() => {
     if (!selectedFilePath || !repoPath) return;
     const abs = `${repoPath}/${selectedFilePath}`;
@@ -141,14 +141,12 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         if (cancelled) fn();
         else unwatch = fn;
       })
-      .catch((err) => {
-        console.warn("editor watch failed", err);
-      });
+      .catch((err) => console.warn("editor watch failed", err));
     return () => {
       cancelled = true;
       unwatch?.();
     };
-  }, [projectId, repoPath, selectedFilePath]);
+  }, [projectId, repoPath, selectedFilePath, setFileDirty]);
 
   const save = useCallback(async () => {
     if (!selectedFilePath) return;
@@ -172,8 +170,8 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     }
   }, [projectId, selectedFilePath, setFileDirty]);
 
-  // Stash `save` in a ref so the CM keymap extension doesn't need to be
-  // recreated on every value/dirty change (would discard editor history).
+  // Stash `save` in a ref so the CM keymap extension doesn't rebuild on every
+  // value/dirty change (which would discard editor history).
   const saveRef = useRef(save);
   saveRef.current = save;
 
@@ -255,9 +253,39 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const loaded = fileState?.loaded ?? false;
   const value = fileState?.value ?? "";
   const isBinary = fileState?.isBinary ?? false;
+  const absPath = selectedFilePath && repoPath ? `${repoPath}/${selectedFilePath}` : null;
+
+  async function onOpenInEditor() {
+    if (!absPath) return;
+    try {
+      await openInExternalEditor({ path: absPath, editor: null });
+    } catch (err) {
+      toast.danger(`Open in editor failed: ${err}`);
+    }
+  }
+
+  async function onRevealInFinder() {
+    if (!absPath) return;
+    try {
+      await revealInFinder(absPath);
+    } catch (err) {
+      toast.danger(`Reveal in Finder failed: ${err}`);
+    }
+  }
 
   return (
     <div className="editor-panel">
+      {selectedFilePath && (
+        <div className="editor-viewer-header">
+          <span className="editor-viewer-path">{selectedFilePath}</span>
+          <button type="button" onClick={onOpenInEditor} className="editor-viewer-action">
+            Open in editor
+          </button>
+          <button type="button" onClick={onRevealInFinder} className="editor-viewer-action">
+            Reveal in Finder
+          </button>
+        </div>
+      )}
       {externalChange && (
         <div className="editor-warning">
           File changed on disk while you were editing.

@@ -48,6 +48,11 @@ pub struct SpawnSpec {
     pub command: String,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// Environment variables to *remove* from the child's environment before
+    /// spawning. Applied after `env`, so a remove always wins over a set —
+    /// used to strip provider API_KEY vars that would otherwise hijack a
+    /// CLI's OAuth subscription path (plan §8.2 / R4).
+    pub env_remove: Vec<String>,
     pub cwd: Utf8PathBuf,
     pub rows: u16,
     pub cols: u16,
@@ -61,6 +66,7 @@ impl SpawnSpec {
             command: command.into(),
             args: vec![],
             env: vec![],
+            env_remove: vec![],
             cwd,
             rows: DEFAULT_ROWS,
             cols: DEFAULT_COLS,
@@ -161,6 +167,9 @@ impl TerminalSession {
         cmd.cwd(spec.cwd.as_str());
         for (k, v) in &spec.env {
             cmd.env(k, v);
+        }
+        for k in &spec.env_remove {
+            cmd.env_remove(k);
         }
         // Keep terminal capability variables authoritative at the PTY layer.
         // Some GUI launch environments and portable-pty base envs can surface
@@ -567,6 +576,7 @@ mod tests {
                 command: "/bin/sh".into(),
                 args: vec!["-c".into(), "printf 'hello\\n'".into()],
                 env: vec![],
+                env_remove: vec![],
                 cwd: tmpdir(),
                 rows: 24,
                 cols: 80,
@@ -614,6 +624,7 @@ mod tests {
                 // a deterministic stop condition.
                 args: vec!["-c".into(), "head -n 1".into()],
                 env: vec![],
+                env_remove: vec![],
                 cwd: tmpdir(),
                 rows: 24,
                 cols: 80,
@@ -652,6 +663,7 @@ mod tests {
                 command: "/bin/sh".into(),
                 args: vec!["-c".into(), "sleep 30".into()],
                 env: vec![],
+                env_remove: vec![],
                 cwd: tmpdir(),
                 rows: 24,
                 cols: 80,
@@ -685,6 +697,7 @@ mod tests {
                     command: "/bin/sh".into(),
                     args: vec!["-c".into(), "sleep 1".into()],
                     env: vec![],
+                    env_remove: vec![],
                     cwd: tmpdir(),
                     rows: 24,
                     cols: 80,
@@ -703,6 +716,7 @@ mod tests {
                     command: "/bin/true".into(),
                     args: vec![],
                     env: vec![],
+                    env_remove: vec![],
                     cwd: tmpdir(),
                     rows: 24,
                     cols: 80,

@@ -157,7 +157,11 @@ async fn list_files_respects_gitignore() {
 
     // Seed: one tracked file, one git-ignored file, one git-ignored dir.
     std::fs::write(repo.join("README.md").as_std_path(), "hi").unwrap();
-    std::fs::write(repo.join(".gitignore").as_std_path(), "target/\nsecret.txt\n").unwrap();
+    std::fs::write(
+        repo.join(".gitignore").as_std_path(),
+        "target/\nsecret.txt\n",
+    )
+    .unwrap();
     std::fs::create_dir_all(repo.join("target").as_std_path()).unwrap();
     std::fs::write(repo.join("target/build.log").as_std_path(), "noise").unwrap();
     std::fs::write(repo.join("secret.txt").as_std_path(), "shh").unwrap();

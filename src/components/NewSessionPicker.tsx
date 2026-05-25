@@ -1,37 +1,38 @@
 // "New task" picker shown in the middle pane when the active project has no
 // sessions. Clicking an agent immediately creates a session (no extra dialog
 // or title prompt — the agent's display name becomes the session title).
+//
+// The agent list comes straight from the store (populated at startup from
+// the backend's TOML config). No hardcoded filtering — every configured
+// profile is shown, with `available: false` ones disabled so the user can
+// see at a glance which CLIs they still need to install.
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Card } from "@heroui/react";
-import { createSession, listAgents } from "../lib/ipc";
+import { createSession } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
+import ycodeLogoUrl from "../assets/ycode-logo.svg";
+import { AgentIcon } from "./AgentIcon";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
-  const [agents, setAgents] = useState<AgentProfileView[]>([]);
+  const agents = useStore((s) => s.agents);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const upsertSession = useStore((s) => s.upsertSession);
-  const setActiveId = useStore((s) => s.setActiveId);
+  const openSessionInLayout = useStore((s) => s.openSessionInLayout);
 
-  useEffect(() => {
-    let cancelled = false;
-    listAgents()
-      .then((list) => {
-        // The default config registers a `bash` profile so users have a
-        // fallback shell, but it's not an "AI agent" — hide it from the picker.
-        // Users who really want a shell session can use the second-terminal
-        // panel in the right column.
-        if (!cancelled) setAgents(list.filter((a) => a.id !== "bash"));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(String(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Show only agents whose command resolved on PATH (per user request —
+  // unavailable agents are noise in the picker; Settings is where they
+  // surface). Within the available set, introspect-bound profiles go first
+  // (they integrate with the history sidebar), then PTY-only ones; config
+  // order preserved within each group.
+  const sorted = useMemo(() => {
+    const available = agents.filter((a) => a.available);
+    const introspectable = available.filter((a) => !!a.introspect);
+    const ptyOnly = available.filter((a) => !a.introspect);
+    return [...introspectable, ...ptyOnly];
+  }, [agents]);
 
   async function pick(agent: AgentProfileView) {
     if (!agent.available || creatingId) return;
@@ -46,7 +47,7 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
         title: "",
       });
       upsertSession(view);
-      setActiveId(view.id);
+      openSessionInLayout(view.id);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -58,20 +59,21 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
     <div className="new-session-picker-host">
       <Card variant="default" className="new-session-picker">
         <div className="picker-icon" aria-hidden>
-          <BotIcon />
+          <img src={ycodeLogoUrl} alt="" className="picker-logo" />
         </div>
-        <h2 className="picker-title">New task</h2>
+        <h2 className="picker-title">New Session</h2>
         <p className="picker-subtitle">
           Pick an agent to start a new session in {project.name}
         </p>
         {error && <div className="form-error">{error}</div>}
         <div className="picker-agents">
-          {agents.length === 0 && !error && (
+          {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
-              Loading agents…
+              No agents configured. Edit
+              <code> ~/.config/ycode/config.toml</code> to add one.
             </div>
           )}
-          {agents.map((agent) => (
+          {sorted.map((agent) => (
             <button
               key={agent.id}
               type="button"
@@ -89,7 +91,12 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
               }
             >
               <div className="picker-agent-avatar">
-                {agent.display_name.charAt(0).toUpperCase()}
+                <AgentIcon
+                  icon={agent.icon}
+                  variant={agent.icon_variant}
+                  fallbackChar={agent.display_name}
+                  size={28}
+                />
               </div>
               <div className="picker-agent-name">{agent.display_name}</div>
               {!agent.available && (
@@ -107,27 +114,5 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
         </div>
       </Card>
     </div>
-  );
-}
-
-function BotIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      width="48"
-      height="48"
-    >
-      <rect x="4" y="8" width="16" height="12" rx="3" />
-      <path d="M12 3v5" />
-      <circle cx="12" cy="3" r="0.8" fill="currentColor" />
-      <circle cx="9" cy="13" r="1" fill="currentColor" />
-      <circle cx="15" cy="13" r="1" fill="currentColor" />
-      <path d="M9 17h6" />
-    </svg>
   );
 }

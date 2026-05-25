@@ -1,40 +1,54 @@
 // Repo file tree for the active project. Honours .gitignore on the backend
-// (see ycode-ipc::Service::list_files); the frontend just builds the nested
-// view from the flat sorted entries and tracks per-dir expand state.
+// (see ycode-ipc::Service::list_files); the frontend builds the nested view
+// from the flat sorted entries, then hands it to react-arborist for
+// virtualized rendering + keyboard navigation. File-type / folder-type icons
+// come from `material-icon-theme` via `iconForFile` / `iconForFolder`.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { watch } from "@tauri-apps/plugin-fs";
+import { Tree, type NodeRendererProps } from "react-arborist";
 import { listFiles } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { FileEntry } from "../lib/types";
+import { iconForFile, iconForFolder } from "../lib/fileIcons";
 
-type TreeNode = {
+interface TreeNode {
+  id: string;
   name: string;
-  path: string;
   is_dir: boolean;
-  children: TreeNode[];
-};
+  /** Present iff `is_dir`. `react-arborist` treats undefined as "leaf". */
+  children?: TreeNode[];
+}
 
-const ROOT_NODE: TreeNode = {
-  name: "",
-  path: "",
-  is_dir: true,
-  children: [],
-};
+const ROW_HEIGHT = 24;
 
 export function FileTreePanel({ projectId }: { projectId: string }) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Re-mount key forces a fresh load when the user clicks Refresh.
+  // Re-mount key forces a fresh load when the watcher fires.
   const [reloadKey, setReloadKey] = useState(0);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const selectedFilePath = useStore((s) => s.selectedFilePath);
   const openFile = useStore((s) => s.openFile);
   const setRightTab = useStore((s) => s.setRightTab);
   const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
   const reloadKeyRef = useRef(reloadKey);
   reloadKeyRef.current = reloadKey;
+
+  // Measure container so react-arborist knows its viewport size.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 240, h: 400 });
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+    const update = () => {
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,14 +70,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     };
   }, [projectId, reloadKey]);
 
-  // Reset expand state when switching projects so we don't show stale dirs.
-  useEffect(() => {
-    setExpanded(new Set());
-  }, [projectId]);
-
   // Watch the repo directory; any fs event triggers a debounced re-list.
-  // The plugin already debounces (delayMs default ~2s); we just bump the
-  // reloadKey to reuse the effect above.
   useEffect(() => {
     if (!repoPath) return;
     let cancelled = false;
@@ -80,9 +87,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
         if (cancelled) fn();
         else unwatch = fn;
       })
-      .catch((err) => {
-        console.warn("watch failed", err);
-      });
+      .catch((err) => console.warn("watch failed", err));
     return () => {
       cancelled = true;
       unwatch?.();
@@ -91,256 +96,135 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
 
   const tree = useMemo(() => buildTree(entries), [entries]);
 
-  function toggle(path: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }
+  // Single-click → open as a preview tab (reuses the existing preview slot
+  // so casually browsing the tree doesn't pile up tabs). Double-click → pin
+  // the tab so it survives the next single-click on another file.
+  const openPreview = useCallback(
+    (path: string) => {
+      openFile(path, { preview: true });
+      setRightTab("editor");
+    },
+    [openFile, setRightTab],
+  );
+  const openPinned = useCallback(
+    (path: string) => {
+      openFile(path, { preview: false });
+      setRightTab("editor");
+    },
+    [openFile, setRightTab],
+  );
 
-  function selectFile(path: string) {
-    openFile(path);
-    setRightTab("editor");
-  }
+  // Row is defined inside the component so it captures the open handlers via
+  // closure. react-arborist v3 doesn't pass arbitrary props to the renderer,
+  // so this is the cleanest way to thread project-scoped callbacks down.
+  const Row = useCallback(
+    ({ node, style, dragHandle }: NodeRendererProps<TreeNode>) => {
+      const isDir = node.data.is_dir;
+      const iconUrl = isDir
+        ? iconForFolder(node.data.name, node.isOpen)
+        : iconForFile(node.data.name);
+      return (
+        <div
+          ref={dragHandle}
+          style={style}
+          className={
+            "file-row" +
+            (isDir ? " dir" : " file") +
+            (node.isSelected ? " selected" : "")
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isDir) {
+              node.toggle();
+              return;
+            }
+            node.select();
+            openPreview(node.data.id);
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            if (isDir) return;
+            openPinned(node.data.id);
+          }}
+          title={node.data.id}
+        >
+          {/* VS Code / Cursor convention: only directories show a chevron,
+              files render `[icon][name]` flush-left so a depth's icons /
+              names line up at the leftmost visible glyph. */}
+          {isDir && (
+            <span className="file-row-chevron">{node.isOpen ? "▾" : "▸"}</span>
+          )}
+          {iconUrl ? (
+            <img src={iconUrl} alt="" className="file-row-icon" />
+          ) : (
+            <span className="file-row-icon placeholder" aria-hidden />
+          )}
+          <span className="file-row-name">{node.data.name}</span>
+        </div>
+      );
+    },
+    [openPreview, openPinned],
+  );
 
   return (
-    <div className="file-tree">
+    <div className="file-tree" ref={containerRef}>
       {error ? (
         <div className="form-error">{error}</div>
       ) : entries.length === 0 && !loading ? (
         <div className="project-empty">No files.</div>
       ) : (
-        <div className="file-tree-rows">
-          {tree.children.map((node) => (
-            <TreeRow
-              key={node.path}
-              node={node}
-              depth={0}
-              expanded={expanded}
-              selectedPath={selectedFilePath}
-              onToggle={toggle}
-              onSelect={selectFile}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TreeRow({
-  node,
-  depth,
-  expanded,
-  selectedPath,
-  onToggle,
-  onSelect,
-}: {
-  node: TreeNode;
-  depth: number;
-  expanded: Set<string>;
-  selectedPath: string | null;
-  onToggle: (path: string) => void;
-  onSelect: (path: string) => void;
-}) {
-  const indent = depth * 12;
-
-  if (node.is_dir) {
-    const open = expanded.has(node.path);
-    return (
-      <>
-        <div
-          className="file-row dir"
-          style={{ paddingLeft: indent + 6 }}
-          onClick={() => onToggle(node.path)}
+        <Tree<TreeNode>
+          data={tree}
+          openByDefault={false}
+          width={size.w}
+          height={size.h}
+          rowHeight={ROW_HEIGHT}
+          indent={14}
+          padding={4}
+          selection={selectedFilePath ?? undefined}
         >
-          <span className="file-row-chevron">{open ? "▾" : "▸"}</span>
-          <FolderIcon open={open} />
-          <span className="file-row-name">{node.name}</span>
-        </div>
-        {open &&
-          node.children.map((c) => (
-            <TreeRow
-              key={c.path}
-              node={c}
-              depth={depth + 1}
-              expanded={expanded}
-              selectedPath={selectedPath}
-              onToggle={onToggle}
-              onSelect={onSelect}
-            />
-          ))}
-      </>
-    );
-  }
-
-  const selected = node.path === selectedPath;
-  return (
-    <div
-      className={"file-row file" + (selected ? " selected" : "")}
-      style={{ paddingLeft: indent + 22 }}
-      onClick={() => onSelect(node.path)}
-      title={node.path}
-    >
-      <FileIcon name={node.name} />
-      <span className="file-row-name">{node.name}</span>
+          {Row}
+        </Tree>
+      )}
     </div>
   );
 }
 
-function FolderIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="15"
-      height="15"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="file-row-icon folder"
-      aria-hidden
-    >
-      {open ? (
-        <>
-          <path d="M1.5 5.5h13l-1.2 7H2.7z" />
-          <path d="M2.2 3.5h4l1.1 1.4h6.5v2" />
-        </>
-      ) : (
-        <path d="M1.8 4h4.2l1.1 1.4h7.1v7.1H1.8z" />
-      )}
-    </svg>
-  );
-}
-
-function FileIcon({ name }: { name: string }) {
-  const meta = fileIconFor(name);
-  return (
-    <span className={"file-row-icon file " + meta.kind} aria-hidden>
-      {meta.label}
-    </span>
-  );
-}
-
-type FileIconMeta = {
-  kind: string;
-  label: string;
-};
-
-function fileIconFor(name: string): FileIconMeta {
-  const lower = name.toLowerCase();
-  const exact: Record<string, FileIconMeta> = {
-    "package.json": { kind: "npm", label: "N" },
-    "package-lock.json": { kind: "npm", label: "N" },
-    "pnpm-lock.yaml": { kind: "npm", label: "N" },
-    "yarn.lock": { kind: "npm", label: "N" },
-    "bun.lock": { kind: "npm", label: "B" },
-    "cargo.toml": { kind: "rust", label: "R" },
-    "cargo.lock": { kind: "rust", label: "R" },
-    "readme.md": { kind: "markdown", label: "M" },
-    "license": { kind: "plain", label: "L" },
-    ".gitignore": { kind: "git", label: "G" },
-    ".gitattributes": { kind: "git", label: "G" },
-    ".env": { kind: "env", label: "E" },
-    ".env.local": { kind: "env", label: "E" },
-    "dockerfile": { kind: "docker", label: "D" },
-    "tsconfig.json": { kind: "typescript", label: "TS" },
-    "vite.config.ts": { kind: "vite", label: "V" },
-    "vite.config.js": { kind: "vite", label: "V" },
-  };
-  const byName = exact[lower];
-  if (byName) return byName;
-
-  const ext = lower.includes(".") ? lower.split(".").pop() ?? "" : "";
-  switch (ext) {
-    case "ts":
-    case "tsx":
-      return { kind: "typescript", label: "TS" };
-    case "js":
-    case "jsx":
-    case "mjs":
-    case "cjs":
-      return { kind: "javascript", label: "JS" };
-    case "json":
-      return { kind: "json", label: "{}" };
-    case "md":
-    case "mdx":
-    case "markdown":
-      return { kind: "markdown", label: "M" };
-    case "rs":
-      return { kind: "rust", label: "R" };
-    case "py":
-      return { kind: "python", label: "PY" };
-    case "css":
-    case "scss":
-    case "sass":
-    case "less":
-      return { kind: "css", label: "#" };
-    case "html":
-    case "htm":
-      return { kind: "html", label: "<>" };
-    case "svg":
-      return { kind: "image", label: "S" };
-    case "png":
-    case "jpg":
-    case "jpeg":
-    case "gif":
-    case "webp":
-    case "ico":
-      return { kind: "image", label: "I" };
-    case "toml":
-    case "yaml":
-    case "yml":
-      return { kind: "config", label: "Y" };
-    case "sh":
-    case "bash":
-    case "zsh":
-      return { kind: "shell", label: "$" };
-    case "swift":
-      return { kind: "swift", label: "S" };
-    case "sql":
-      return { kind: "sql", label: "Q" };
-    case "lock":
-      return { kind: "lock", label: "L" };
-    default:
-      return { kind: "plain", label: "·" };
-  }
-}
-
-function buildTree(entries: FileEntry[]): TreeNode {
-  const root: TreeNode = { ...ROOT_NODE, children: [] };
+function buildTree(entries: FileEntry[]): TreeNode[] {
+  // Map path → node so children find their parents. Top-level array is the
+  // value `react-arborist` actually wants.
   const byPath = new Map<string, TreeNode>();
-  byPath.set("", root);
+  const roots: TreeNode[] = [];
 
   for (const e of entries) {
     const parts = e.path.split("/");
     const name = parts[parts.length - 1];
     const parentPath = parts.slice(0, -1).join("/");
-    const parent = byPath.get(parentPath) ?? root;
     const node: TreeNode = {
+      id: e.path,
       name,
-      path: e.path,
       is_dir: e.is_dir,
-      children: [],
+      children: e.is_dir ? [] : undefined,
     };
-    parent.children.push(node);
-    if (e.is_dir) byPath.set(e.path, node);
+    byPath.set(e.path, node);
+
+    if (parentPath === "") {
+      roots.push(node);
+    } else {
+      const parent = byPath.get(parentPath);
+      if (parent && parent.children) parent.children.push(node);
+      else roots.push(node); // orphan — backend shouldn't emit these, but be defensive
+    }
   }
 
   // Per-directory: dirs first, then files; alphabetical within each group.
-  // The backend sort gave us global path order; this re-sort restores the
-  // conventional file-tree presentation.
-  const sortNode = (n: TreeNode) => {
-    n.children.sort((a, b) => {
+  const sortNode = (children: TreeNode[]) => {
+    children.sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    for (const c of n.children) if (c.is_dir) sortNode(c);
+    for (const c of children) if (c.children) sortNode(c.children);
   };
-  sortNode(root);
-
-  return root;
+  sortNode(roots);
+  return roots;
 }

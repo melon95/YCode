@@ -12,6 +12,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
 use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use ycode_config::{AgentLaunchProfile, Config};
@@ -19,10 +20,12 @@ use ycode_persist::{Db, NewProject, NewSession, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    AgentProfileView, CreateProjectRequest, CreateSessionRequest, FileContents, FileEntry,
-    ProjectView, RenameSessionRequest, ResizePtyRequest, SessionView, SpawnPtyRequest, UiEvent,
-    UiEventKind, WriteFileRequest, WritePtyRequest,
+    AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
+    DiscoveredSessionView, FileContents, FileEntry, OpenInExternalEditorRequest, ProjectView,
+    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest, UiEvent,
+    UiEventKind, UnifiedEvent, WriteFileRequest, WritePtyRequest,
 };
+use ycode_introspect::scanner;
 
 /// Default PTY geometry. The frontend resizes after attaching to match the
 /// actual xterm.js viewport.
@@ -42,6 +45,14 @@ pub struct Service {
     /// Fan-in of all per-session terminal streams + membership events.
     /// Subscribers are typically the Tauri shell's emit task.
     ui_bus: broadcast::Sender<UiEvent>,
+    /// Lifetime token for every background task this service owns (PTY
+    /// event pipes, codex session-id watchers, jsonl watchers).
+    /// Cancelled by [`Service::shutdown`]; spawned tasks select on
+    /// `cancelled()` so they exit promptly. Per plan §8.21 / R18.
+    shutdown: CancellationToken,
+    /// Per-project jsonl watcher tokens. Replacing an entry cancels the
+    /// previous watcher. Per plan §8.12 / §8.21.
+    workspace_watchers: RwLock<std::collections::HashMap<String, CancellationToken>>,
 }
 
 impl Service {
@@ -54,6 +65,8 @@ impl Service {
             config: RwLock::new(config),
             available_agents: RwLock::new(available),
             ui_bus: tx,
+            shutdown: CancellationToken::new(),
+            workspace_watchers: RwLock::new(std::collections::HashMap::new()),
         }
     }
 
@@ -63,6 +76,19 @@ impl Service {
         self.ui_bus.subscribe()
     }
 
+    /// Snapshot the cancellation token shared by every spawned background
+    /// task. Child tasks call `child_token()` to scope themselves further.
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown.clone()
+    }
+
+    /// Trigger shutdown: cancel the shared token. Background tasks (PTY
+    /// event pipes, codex session-id watchers, jsonl watchers) exit on the
+    /// next `select!` poll. Idempotent.
+    pub fn shutdown(&self) {
+        self.shutdown.cancel();
+    }
+
     pub async fn list_agents(&self) -> Vec<AgentProfileView> {
         let cfg = self.config.read().await;
         let avail = self.available_agents.read().await;
@@ -70,6 +96,198 @@ impl Service {
             .iter()
             .map(|p| AgentProfileView::from_profile(p, avail.contains(&p.id)))
             .collect()
+    }
+
+    /// Return the current full config so the Settings UI can edit it.
+    pub async fn get_config(&self) -> ConfigView {
+        let cfg = self.config.read().await;
+        cfg.clone().into()
+    }
+
+    /// Persist `incoming` to `~/.config/ycode/config.toml`, swap the live
+    /// in-memory copy, recompute PATH availability, and return the refreshed
+    /// agent list so the frontend can drop its old snapshot in one round-trip.
+    /// Existing TOML comments in the file are **not** preserved — the UI
+    /// regenerates from scratch.
+    pub async fn save_config(
+        &self,
+        incoming: ConfigView,
+    ) -> Result<Vec<AgentProfileView>, IpcError> {
+        let new_cfg: Config = incoming.into();
+        new_cfg.save()?;
+        let new_avail = compute_available_agents(&new_cfg);
+        {
+            let mut cfg = self.config.write().await;
+            *cfg = new_cfg;
+        }
+        {
+            let mut avail = self.available_agents.write().await;
+            *avail = new_avail;
+        }
+        Ok(self.list_agents().await)
+    }
+
+    /// Overwrite the on-disk config with `Config::default()` and return the
+    /// refreshed agent list. Used by the "Reset to defaults" button.
+    pub async fn reset_config(&self) -> Result<Vec<AgentProfileView>, IpcError> {
+        self.save_config(Config::default().into()).await
+    }
+
+    /// True iff `command` resolves on `PATH` (or is an absolute file path
+    /// that exists). Powers the Settings "Test command" button.
+    pub fn probe_command(&self, command: &str) -> bool {
+        use std::path::PathBuf;
+        if command.is_empty() {
+            return false;
+        }
+        let p = PathBuf::from(command);
+        if p.is_absolute() {
+            return p.is_file();
+        }
+        std::env::var_os("PATH")
+            .map(|paths| {
+                std::env::split_paths(&paths).any(|d| d.join(command).is_file())
+            })
+            .unwrap_or(false)
+    }
+
+    /// Start watching the on-disk jsonl directories for this project so the
+    /// UI gets `JsonlChanged` events when claude/codex writes new lines. Idempotent —
+    /// calling twice for the same project replaces the previous watcher.
+    /// Per plan §6.2.5 / §8.12.
+    pub async fn start_workspace_watch(&self, project_id: String) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let cwd = std::path::PathBuf::from(project.repo_path);
+        let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
+
+        // Cancel any prior watcher for this project.
+        {
+            let mut map = self.workspace_watchers.write().await;
+            if let Some(prev) = map.remove(&project_id) {
+                prev.cancel();
+            }
+        }
+        let cancel = self.shutdown.child_token();
+        {
+            let mut map = self.workspace_watchers.write().await;
+            map.insert(project_id.clone(), cancel.clone());
+        }
+
+        let bus = self.ui_bus.clone();
+        let project_id_for_task = project_id.clone();
+        tokio::spawn(async move {
+            run_jsonl_watcher(home, cwd, project_id_for_task, bus, cancel).await;
+        });
+        Ok(())
+    }
+
+    /// Cancel an active workspace jsonl watcher. No-op if none registered.
+    pub async fn stop_workspace_watch(&self, project_id: String) -> Result<(), IpcError> {
+        let mut map = self.workspace_watchers.write().await;
+        if let Some(prev) = map.remove(&project_id) {
+            prev.cancel();
+        }
+        Ok(())
+    }
+
+    /// List every session jsonl on disk (claude + codex) for a project's
+    /// cwd. Sorted by mtime descending. Per plan §6.3 (`workspace.scan_known`).
+    pub async fn scan_workspace_sessions(
+        &self,
+        project_id: String,
+    ) -> Result<Vec<DiscoveredSessionView>, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let cwd = std::path::PathBuf::from(project.repo_path);
+        let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
+        let found = tokio::task::spawn_blocking(move || scanner::scan_workspace(&home, &cwd))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("scan task: {e}")))?;
+        let mut out = Vec::with_capacity(found.len());
+        for s in found {
+            let (size_bytes, modified_at_ms) = stat_session(&s.jsonl_path);
+            out.push(DiscoveredSessionView {
+                agent: s.agent.to_string(),
+                session_id: s.session_id,
+                jsonl_path: s.jsonl_path.to_string_lossy().into_owned(),
+                size_bytes,
+                modified_at_ms,
+                title: s.title,
+            });
+        }
+        out.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+        Ok(out)
+    }
+
+    /// Read + parse + normalise an entire jsonl into a UnifiedEvent stream.
+    /// `max_events` caps memory use for huge sessions (codex rollouts can
+    /// be 20+ MB per plan R6).
+    pub async fn load_session_history(
+        &self,
+        agent: String,
+        session_id: String,
+        jsonl_path: String,
+        max_events: usize,
+    ) -> Result<Vec<UnifiedEvent>, IpcError> {
+        let path = std::path::PathBuf::from(jsonl_path);
+        let events = tokio::task::spawn_blocking(move || {
+            scanner::read_all_events_vec(&agent, &session_id, &path, max_events.max(1))
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("history task: {e}")))?
+        .map_err(|e| IpcError::BadInput(format!("history: {e}")))?;
+        Ok(events)
+    }
+
+    /// Substring search across every discovered jsonl for a project. v1 is a
+    /// streaming substring match — Phase B4 upgrades the claude side to FTS5
+    /// and the codex side to `history.jsonl` grep per plan §8.13. The IPC
+    /// shape is the same so the upgrade is transparent to the UI.
+    pub async fn search_sessions(
+        &self,
+        project_id: String,
+        query: String,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>, IpcError> {
+        if query.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let project = self.db.projects().get(&project_id).await?;
+        let cwd = std::path::PathBuf::from(project.repo_path);
+        let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
+        let q = query.to_lowercase();
+        let limit = limit.max(1);
+        let hits = tokio::task::spawn_blocking(move || {
+            let mut hits: Vec<SearchHit> = Vec::new();
+            for s in scanner::scan_workspace(&home, &cwd) {
+                let sid = s.session_id.clone().unwrap_or_default();
+                let agent = s.agent.to_string();
+                let path_str = s.jsonl_path.to_string_lossy().into_owned();
+                let _ = scanner::read_all_events(&agent, &sid, &s.jsonl_path, |ev| {
+                    if hits.len() >= limit {
+                        return;
+                    }
+                    let preview = ev.preview();
+                    if preview.to_lowercase().contains(&q) {
+                        hits.push(SearchHit {
+                            agent: agent.clone(),
+                            session_id: sid.clone(),
+                            jsonl_path: path_str.clone(),
+                            seq: ev.seq,
+                            ts_ms: ev.ts_ms,
+                            preview: truncate_preview(&preview),
+                        });
+                    }
+                });
+                if hits.len() >= limit {
+                    break;
+                }
+            }
+            hits.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms));
+            hits
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("search task: {e}")))?;
+        Ok(hits)
     }
 
     pub async fn list_projects(&self) -> Result<Vec<ProjectView>, IpcError> {
@@ -82,10 +300,7 @@ impl Service {
         Ok(out)
     }
 
-    pub async fn create_project(
-        &self,
-        req: CreateProjectRequest,
-    ) -> Result<ProjectView, IpcError> {
+    pub async fn create_project(&self, req: CreateProjectRequest) -> Result<ProjectView, IpcError> {
         let repo = Utf8Path::new(&req.repo_path);
         if !repo.as_std_path().is_dir() {
             return Err(IpcError::InvalidRepoPath(req.repo_path));
@@ -109,6 +324,34 @@ impl Service {
     }
 
     pub async fn delete_project(&self, project_id: String) -> Result<(), IpcError> {
+        // Auto-archive any live sessions in this project so the persist-layer
+        // guard passes and orphan PTY children don't keep running after the
+        // project row is gone. Mirrors what the user would do by clicking
+        // "archive" on each session manually.
+        let live = self.db.sessions().list_for_project(&project_id).await?;
+        for row in live {
+            // list_for_project already filters out archived rows.
+            if let Some(s) = self.terminals.remove(&row.id).await {
+                let _ = s.kill().await;
+            }
+            if let Err(e) = self.db.sessions().archive(&row.id).await {
+                warn!(session_id = %row.id, error = %e, "auto-archive on project delete failed");
+            }
+            let _ = self.ui_bus.send(UiEvent {
+                session_id: row.id,
+                kind: UiEventKind::SessionRemoved,
+            });
+        }
+
+        // Stop the per-project jsonl watcher so the cancelled token frees
+        // its notify handle promptly.
+        {
+            let mut map = self.workspace_watchers.write().await;
+            if let Some(token) = map.remove(&project_id) {
+                token.cancel();
+            }
+        }
+
         self.db.projects().delete(&project_id).await?;
         let _ = self.ui_bus.send(UiEvent {
             session_id: project_id,
@@ -145,14 +388,35 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
     }
 
-    /// Overwrite a file's contents. Path-traversal-protected like `read_file`.
-    /// Parent directories must already exist.
+    /// Overwrite a project file's contents. Path traversal escaping the repo
+    /// is rejected. Parent directories must already exist.
     pub async fn write_file(&self, req: WriteFileRequest) -> Result<(), IpcError> {
         let project = self.db.projects().get(&req.project_id).await?;
         let repo = Utf8PathBuf::from(project.repo_path);
         tokio::task::spawn_blocking(move || write_repo_file(&repo, req.file_path, req.contents))
             .await
             .map_err(|e| IpcError::BadInput(format!("write task: {e}")))?
+    }
+
+    /// Hand a file off to the user's preferred GUI editor. Resolution order:
+    /// explicit `editor` arg → `$VISUAL` → `$EDITOR` → platform default
+    /// (`Visual Studio Code` on macOS). On macOS we spawn `open -a <editor>
+    /// <path>`; on other platforms we exec the editor binary directly. Per
+    /// plan §8.15.
+    pub async fn open_in_external_editor(
+        &self,
+        req: OpenInExternalEditorRequest,
+    ) -> Result<(), IpcError> {
+        tokio::task::spawn_blocking(move || open_in_external_editor_blocking(req))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("open-in-editor task: {e}")))?
+    }
+
+    /// Reveal a file in the system file manager (Finder on macOS).
+    pub async fn reveal_in_finder(&self, path: String) -> Result<(), IpcError> {
+        tokio::task::spawn_blocking(move || reveal_in_finder_blocking(path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("reveal task: {e}")))?
     }
 
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
@@ -165,10 +429,7 @@ impl Service {
         Ok(out)
     }
 
-    pub async fn create_session(
-        &self,
-        req: CreateSessionRequest,
-    ) -> Result<SessionView, IpcError> {
+    pub async fn create_session(&self, req: CreateSessionRequest) -> Result<SessionView, IpcError> {
         let profile: AgentLaunchProfile = self
             .config
             .read()
@@ -181,6 +442,14 @@ impl Service {
         let cwd = Utf8PathBuf::from(project.repo_path);
 
         let id = ulid::Ulid::new().to_string();
+        // Resume mode: caller (e.g. sidebar History click) already knows the
+        // agent-native session id on disk. Persist it on the row so launch_args
+        // picks it up, and switch the CLI launch mode so claude/codex get
+        // `--resume <id>` / `resume <id>` instead of a fresh `--session-id`.
+        let (agent_session_id, launch_mode) = match req.resume.as_deref() {
+            Some(rid) if !rid.trim().is_empty() => (Some(rid.to_string()), LaunchMode::Resume),
+            _ => (initial_agent_session_id(&profile), LaunchMode::Create),
+        };
         let row = self
             .db
             .sessions()
@@ -188,23 +457,38 @@ impl Service {
                 id: id.clone(),
                 title: req.title,
                 agent_profile: profile.id.clone(),
+                agent_session_id,
+                agent_thread_name: None,
                 project_id: project.id,
             })
             .await?;
 
-        let session = self.spawn_pty(&id, &profile, cwd).await.map_err(|e| {
-            // Roll back the row so a failed spawn doesn't leave a phantom session.
-            let db = self.db.clone();
-            let id_clone = id.clone();
-            tokio::spawn(async move {
-                if let Err(e) = db.sessions().archive(&id_clone).await {
-                    warn!(session_id = %id_clone, error = %e, "rollback archive failed");
-                }
-            });
-            e
-        })?;
+        let started_at = std::time::SystemTime::now();
+        let session = self
+            .spawn_pty(&id, &profile, &row, cwd.clone(), launch_mode)
+            .await
+            .map_err(|e| {
+                // Roll back the row so a failed spawn doesn't leave a phantom session.
+                let db = self.db.clone();
+                let id_clone = id.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = db.sessions().archive(&id_clone).await {
+                        warn!(session_id = %id_clone, error = %e, "rollback archive failed");
+                    }
+                });
+                e
+            })?;
 
         self.pipe_terminal_events(session);
+        // Resume mode already knows the agent session id, so we skip the
+        // watcher that backfills it for fresh codex/gemini sessions.
+        if matches!(launch_mode, LaunchMode::Create) {
+            if is_codex_profile(&profile) {
+                watch_codex_session_id(self.db.clone(), id.clone(), cwd, started_at);
+            } else if is_gemini_profile(&profile) {
+                watch_gemini_session_id(self.db.clone(), id.clone(), cwd, started_at);
+            }
+        }
 
         let view = SessionView::from_row(row, true);
         let _ = self.ui_bus.send(UiEvent {
@@ -221,7 +505,10 @@ impl Service {
     pub async fn spawn_pty_raw(&self, req: SpawnPtyRequest) -> Result<String, IpcError> {
         let cwd = Utf8PathBuf::from(&req.cwd);
         if !cwd.as_std_path().is_dir() {
-            return Err(IpcError::BadInput(format!("cwd not a directory: {}", req.cwd)));
+            return Err(IpcError::BadInput(format!(
+                "cwd not a directory: {}",
+                req.cwd
+            )));
         }
         let id = format!("manual-{}", ulid::Ulid::new());
         // Empty `command` ⇒ user's login shell. Frontend uses this for the
@@ -236,6 +523,9 @@ impl Service {
             args: req.args,
             // Inherit the host environment so the shell gets PATH/HOME/etc.
             env: terminal_env(std::env::vars()),
+            // Raw PTYs are user-driven shells: don't strip API_KEY vars —
+            // the user may explicitly need them. Plan §8.16.
+            env_remove: vec![],
             cwd,
             rows: INITIAL_ROWS,
             cols: INITIAL_COLS,
@@ -309,10 +599,7 @@ impl Service {
 
     /// Persist a new title for a session. Empty titles are allowed — the UI
     /// falls back to the live CLI title (or "New session") for display.
-    pub async fn rename_session(
-        &self,
-        req: RenameSessionRequest,
-    ) -> Result<SessionView, IpcError> {
+    pub async fn rename_session(&self, req: RenameSessionRequest) -> Result<SessionView, IpcError> {
         self.db
             .sessions()
             .update_title(&req.session_id, &req.title)
@@ -351,7 +638,9 @@ impl Service {
         // Clear the recorded exit code — we're alive again.
         self.db.sessions().set_exit_code(&session_id, None).await?;
 
-        let session = self.spawn_pty(&session_id, &profile, cwd).await?;
+        let session = self
+            .spawn_pty(&session_id, &profile, &row, cwd, LaunchMode::Resume)
+            .await?;
         self.pipe_terminal_events(session);
 
         let row = self.db.sessions().get(&session_id).await?;
@@ -367,15 +656,22 @@ impl Service {
         &self,
         id: &str,
         profile: &AgentLaunchProfile,
+        row: &ycode_persist::SessionRow,
         cwd: Utf8PathBuf,
+        mode: LaunchMode,
     ) -> Result<Arc<TerminalSession>, IpcError> {
-        let env = terminal_env(std::env::vars().chain(profile.env.iter().map(|(k, v)| {
-            (k.clone(), v.clone())
-        })));
+        let env = terminal_env(
+            std::env::vars().chain(profile.env.iter().map(|(k, v)| (k.clone(), v.clone()))),
+        );
+        let env_remove = env_keys_to_strip(profile)
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
         let spec = SpawnSpec {
             command: profile.command.clone(),
-            args: profile.args.clone(),
+            args: launch_args(profile, row, mode),
             env,
+            env_remove,
             cwd,
             rows: INITIAL_ROWS,
             cols: INITIAL_COLS,
@@ -393,31 +689,36 @@ impl Service {
         let id = session.id().to_string();
         let mut rx = session.subscribe();
         let _session_keepalive = session;
+        let cancel = self.shutdown.clone();
         tokio::spawn(async move {
             loop {
-                match rx.recv().await {
-                    Ok(TerminalEvent::Output(bytes)) => {
-                        let _ = bus.send(UiEvent::pty_output(&id, &bytes));
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => break,
+                    ev = rx.recv() => match ev {
+                        Ok(TerminalEvent::Output(bytes)) => {
+                            let _ = bus.send(UiEvent::pty_output(&id, &bytes));
+                        }
+                        Ok(TerminalEvent::TitleChanged(_)) => {
+                            // Raw PTYs aren't backed by a session row; the UI has
+                            // no surface for a title here, so drop it.
+                        }
+                        Ok(TerminalEvent::Exited { code }) => {
+                            let _ = terminals.remove(&id).await;
+                            let _ = bus.send(UiEvent::pty_exit(&id, code));
+                            break;
+                        }
+                        Ok(TerminalEvent::Error(msg)) => {
+                            warn!(pty_id = %id, error = %msg, "raw terminal error");
+                            let _ = terminals.remove(&id).await;
+                            let _ = bus.send(UiEvent::pty_exit(&id, None));
+                            break;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(pty_id = %id, lagged = n, "raw terminal subscriber lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
                     }
-                    Ok(TerminalEvent::TitleChanged(_)) => {
-                        // Raw PTYs aren't backed by a session row; the UI has
-                        // no surface for a title here, so drop it.
-                    }
-                    Ok(TerminalEvent::Exited { code }) => {
-                        let _ = terminals.remove(&id).await;
-                        let _ = bus.send(UiEvent::pty_exit(&id, code));
-                        break;
-                    }
-                    Ok(TerminalEvent::Error(msg)) => {
-                        warn!(pty_id = %id, error = %msg, "raw terminal error");
-                        let _ = terminals.remove(&id).await;
-                        let _ = bus.send(UiEvent::pty_exit(&id, None));
-                        break;
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(pty_id = %id, lagged = n, "raw terminal subscriber lagged");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
             drop(_session_keepalive);
@@ -436,50 +737,363 @@ impl Service {
         // Hold the session strongly for the lifetime of the pipe so the
         // PTY isn't dropped just because the manager evicted it.
         let _session_keepalive = session;
+        let cancel = self.shutdown.clone();
         tokio::spawn(async move {
             loop {
-                match rx.recv().await {
-                    Ok(TerminalEvent::Output(bytes)) => {
-                        let _ = bus.send(UiEvent::pty_output(&id, &bytes));
-                    }
-                    Ok(TerminalEvent::TitleChanged(title)) => {
-                        let _ = bus.send(UiEvent::title_changed(&id, title));
-                    }
-                    Ok(TerminalEvent::Exited { code }) => {
-                        if let Err(e) = db.sessions().set_exit_code(&id, code).await {
-                            warn!(session_id = %id, error = %e, "set_exit_code failed");
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => break,
+                    ev = rx.recv() => match ev {
+                        Ok(TerminalEvent::Output(bytes)) => {
+                            let _ = bus.send(UiEvent::pty_output(&id, &bytes));
                         }
-                        // Drop the entry from the live registry now that the
-                        // child is gone. If `archive_session` already removed
-                        // it, this is a no-op.
-                        let _ = terminals.remove(&id).await;
-                        let _ = bus.send(UiEvent::pty_exit(&id, code));
-                        let _ = bus.send(UiEvent {
-                            session_id: id.clone(),
-                            kind: UiEventKind::SessionTouched,
-                        });
-                        break;
+                        Ok(TerminalEvent::TitleChanged(title)) => {
+                            if let Err(e) = db.sessions().update_agent_thread_name(&id, &title).await {
+                                warn!(session_id = %id, error = %e, "update agent thread name failed");
+                            }
+                            let _ = bus.send(UiEvent::title_changed(&id, title));
+                        }
+                        Ok(TerminalEvent::Exited { code }) => {
+                            if let Err(e) = db.sessions().set_exit_code(&id, code).await {
+                                warn!(session_id = %id, error = %e, "set_exit_code failed");
+                            }
+                            // Drop the entry from the live registry now that the
+                            // child is gone. If `archive_session` already removed
+                            // it, this is a no-op.
+                            let _ = terminals.remove(&id).await;
+                            let _ = bus.send(UiEvent::pty_exit(&id, code));
+                            let _ = bus.send(UiEvent {
+                                session_id: id.clone(),
+                                kind: UiEventKind::SessionTouched,
+                            });
+                            break;
+                        }
+                        Ok(TerminalEvent::Error(msg)) => {
+                            warn!(session_id = %id, error = %msg, "terminal error");
+                            let _ = bus.send(UiEvent::pty_exit(&id, None));
+                            let _ = terminals.remove(&id).await;
+                            let _ = bus.send(UiEvent {
+                                session_id: id.clone(),
+                                kind: UiEventKind::SessionTouched,
+                            });
+                            break;
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(session_id = %id, lagged = n, "terminal subscriber lagged");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
                     }
-                    Ok(TerminalEvent::Error(msg)) => {
-                        warn!(session_id = %id, error = %msg, "terminal error");
-                        let _ = bus.send(UiEvent::pty_exit(&id, None));
-                        let _ = terminals.remove(&id).await;
-                        let _ = bus.send(UiEvent {
-                            session_id: id.clone(),
-                            kind: UiEventKind::SessionTouched,
-                        });
-                        break;
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(session_id = %id, lagged = n, "terminal subscriber lagged");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
             drop(_session_keepalive);
         });
     }
 }
+
+#[derive(Clone, Copy)]
+enum LaunchMode {
+    Create,
+    Resume,
+}
+
+fn initial_agent_session_id(profile: &AgentLaunchProfile) -> Option<String> {
+    if is_claude_profile(profile) {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    }
+}
+
+fn launch_args(
+    profile: &AgentLaunchProfile,
+    row: &ycode_persist::SessionRow,
+    mode: LaunchMode,
+) -> Vec<String> {
+    let mut args = profile.args.clone();
+    if is_claude_profile(profile) {
+        if let Some(id) = row.agent_session_id.as_deref() {
+            match mode {
+                LaunchMode::Create => {
+                    args.push("--session-id".into());
+                    args.push(id.into());
+                }
+                LaunchMode::Resume => {
+                    args.push("--resume".into());
+                    args.push(id.into());
+                }
+            }
+        }
+    } else if is_codex_profile(profile) && matches!(mode, LaunchMode::Resume) {
+        if let Some(id) = row.agent_session_id.as_deref() {
+            args.push("resume".into());
+            args.push(id.into());
+        } else if let Some(thread) = row.agent_thread_name.as_deref() {
+            if !thread.trim().is_empty() {
+                args.push("resume".into());
+                args.push(thread.to_string());
+            }
+        }
+    } else if is_gemini_profile(profile) && matches!(mode, LaunchMode::Resume) {
+        if let Some(id) = row.agent_session_id.as_deref() {
+            args.push("--resume".into());
+            args.push(id.into());
+        }
+    }
+    args
+}
+
+fn is_claude_profile(profile: &AgentLaunchProfile) -> bool {
+    profile.id == "claude-code" || command_basename(&profile.command) == "claude"
+}
+
+/// Environment variables to remove from the child's environment when spawning
+/// an agent CLI. The defaults catch the API_KEY variables that would hijack
+/// each provider's OAuth subscription path (plan §8.2 / R4) — the highest
+/// likelihood × impact risk in the plan.
+fn env_keys_to_strip(profile: &AgentLaunchProfile) -> &'static [&'static str] {
+    if is_claude_profile(profile) {
+        &["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]
+    } else if is_codex_profile(profile) {
+        &["OPENAI_API_KEY"]
+    } else if is_gemini_profile(profile) {
+        &["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+    } else {
+        &[]
+    }
+}
+
+fn is_codex_profile(profile: &AgentLaunchProfile) -> bool {
+    profile.id == "codex" || command_basename(&profile.command) == "codex"
+}
+
+fn is_gemini_profile(profile: &AgentLaunchProfile) -> bool {
+    profile.id == "gemini-cli" || command_basename(&profile.command) == "gemini"
+}
+
+fn command_basename(command: &str) -> &str {
+    command.rsplit(['/', '\\']).next().unwrap_or(command)
+}
+
+fn watch_codex_session_id(
+    db: Db,
+    app_session_id: String,
+    cwd: Utf8PathBuf,
+    started_at: std::time::SystemTime,
+) {
+    tokio::spawn(async move {
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let cwd = cwd.clone();
+            let found =
+                tokio::task::spawn_blocking(move || find_latest_codex_session_id(&cwd, started_at))
+                    .await
+                    .ok()
+                    .flatten();
+            if let Some(agent_session_id) = found {
+                if let Err(e) = db
+                    .sessions()
+                    .update_agent_session_id(&app_session_id, &agent_session_id)
+                    .await
+                {
+                    warn!(session_id = %app_session_id, error = %e, "update Codex session id failed");
+                }
+                break;
+            }
+        }
+    });
+}
+
+fn find_latest_codex_session_id(
+    cwd: &Utf8Path,
+    started_at: std::time::SystemTime,
+) -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    let root = std::path::PathBuf::from(home)
+        .join(".codex")
+        .join("sessions");
+    find_latest_codex_session_id_in(&root, cwd, started_at)
+}
+
+fn find_latest_codex_session_id_in(
+    root: &std::path::Path,
+    cwd: &Utf8Path,
+    started_at: std::time::SystemTime,
+) -> Option<String> {
+    let mut files = Vec::new();
+    collect_jsonl_files(root, &mut files);
+    files.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
+    files.reverse();
+
+    for path in files.into_iter().take(200) {
+        let Some(modified) = std::fs::metadata(&path).and_then(|m| m.modified()).ok() else {
+            continue;
+        };
+        if modified < started_at {
+            continue;
+        }
+        let Some(first) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| s.lines().next().map(str::to_string))
+        else {
+            continue;
+        };
+        if let Some(id) = parse_codex_session_meta(&first, cwd.as_str()) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+fn collect_jsonl_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_jsonl_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+            out.push(path);
+        }
+    }
+}
+
+fn parse_codex_session_meta(line: &str, cwd: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("type")?.as_str()? != "session_meta" {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("originator").and_then(|v| v.as_str()) == Some("Codex Desktop") {
+        return None;
+    }
+    if payload.get("cwd")?.as_str()? != cwd {
+        return None;
+    }
+    payload.get("id")?.as_str().map(str::to_string)
+}
+
+fn watch_gemini_session_id(
+    db: Db,
+    app_session_id: String,
+    cwd: Utf8PathBuf,
+    started_at: std::time::SystemTime,
+) {
+    tokio::spawn(async move {
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let cwd = cwd.clone();
+            let found = tokio::task::spawn_blocking(move || {
+                find_latest_gemini_session_id(&cwd, started_at)
+            })
+            .await
+            .ok()
+            .flatten();
+            if let Some(agent_session_id) = found {
+                if let Err(e) = db
+                    .sessions()
+                    .update_agent_session_id(&app_session_id, &agent_session_id)
+                    .await
+                {
+                    warn!(session_id = %app_session_id, error = %e, "update Gemini session id failed");
+                }
+                break;
+            }
+        }
+    });
+}
+
+fn find_latest_gemini_session_id(
+    cwd: &Utf8Path,
+    started_at: std::time::SystemTime,
+) -> Option<String> {
+    let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+    let project_key = gemini_project_key(&home, cwd)?;
+    let chats_dir = home
+        .join(".gemini")
+        .join("tmp")
+        .join(project_key)
+        .join("chats");
+    find_latest_gemini_session_id_in(&chats_dir, started_at)
+}
+
+fn gemini_project_key(home: &std::path::Path, cwd: &Utf8Path) -> Option<String> {
+    let projects_path = home.join(".gemini").join("projects.json");
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(projects_path).ok()?,
+    )
+    .ok()?;
+    value
+        .get("projects")?
+        .get(cwd.as_str())?
+        .as_str()
+        .map(str::to_string)
+}
+
+fn find_latest_gemini_session_id_in(
+    chats_dir: &std::path::Path,
+    started_at: std::time::SystemTime,
+) -> Option<String> {
+    let mut files = Vec::new();
+    collect_json_files(chats_dir, &mut files);
+    files.retain(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("session-") && name.ends_with(".json"))
+    });
+    files.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
+    files.reverse();
+
+    for path in files.into_iter().take(50) {
+        let Some(modified) = std::fs::metadata(&path).and_then(|m| m.modified()).ok() else {
+            continue;
+        };
+        if modified < started_at {
+            continue;
+        }
+        let Some(id) = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| parse_gemini_session_file(&contents))
+        else {
+            continue;
+        };
+        return Some(id);
+    }
+    None
+}
+
+fn parse_gemini_session_file(contents: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(contents).ok()?;
+    if value.get("kind").and_then(|v| v.as_str()) == Some("subagent") {
+        return None;
+    }
+    value.get("sessionId")?.as_str().map(str::to_string)
+}
+
+fn collect_json_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_json_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            out.push(path);
+        }
+    }
+}
+
 
 fn terminal_env<I>(vars: I) -> Vec<(String, String)>
 where
@@ -488,7 +1102,8 @@ where
     let mut env: BTreeMap<String, String> = vars.into_iter().collect();
     env.insert("TERM".into(), "xterm-256color".into());
     env.insert("COLORTERM".into(), "truecolor".into());
-    env.entry("FORCE_COLOR".into()).or_insert_with(|| "1".into());
+    env.entry("FORCE_COLOR".into())
+        .or_insert_with(|| "1".into());
     env.insert("CLICOLOR".into(), "1".into());
     env.insert("CLICOLOR_FORCE".into(), "1".into());
     env.remove("NO_COLOR");
@@ -502,7 +1117,14 @@ fn walk_repo(root: &Utf8Path) -> Result<Vec<FileEntry>, IpcError> {
     use ignore::WalkBuilder;
     let mut out = Vec::new();
     let walker = WalkBuilder::new(root.as_std_path())
-        .hidden(false) // dotfiles can be useful (e.g. `.github/`); .git is excluded by `git_ignore`.
+        // Dotfiles can be useful (`.github/`, `.gitignore`, `.env.example`),
+        // so we keep them visible by default. `.git` is the one exception —
+        // the bare repo internals are never something the user wants to
+        // browse, and `ignore` doesn't filter it out unless `hidden(true)`.
+        // We strip it explicitly via `filter_entry` so the rest of the
+        // dotfile policy stays unchanged.
+        .hidden(false)
+        .filter_entry(|entry| entry.file_name() != ".git")
         .build();
     for result in walker {
         let entry = match result {
@@ -581,11 +1203,227 @@ fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, Ip
     })
 }
 
-fn write_repo_file(repo: &Utf8Path, file_path: String, contents: String) -> Result<(), IpcError> {
+fn write_repo_file(
+    repo: &Utf8Path,
+    file_path: String,
+    contents: String,
+) -> Result<(), IpcError> {
     let abs = resolve_under_repo(repo, &file_path)?;
     std::fs::write(&abs, contents.as_bytes())
         .map_err(|e| IpcError::BadInput(format!("write {}: {e}", file_path)))?;
     Ok(())
+}
+
+fn open_in_external_editor_blocking(req: OpenInExternalEditorRequest) -> Result<(), IpcError> {
+    let path_str = req.path;
+    if path_str.is_empty() {
+        return Err(IpcError::BadInput("path is empty".into()));
+    }
+
+    let editor = req
+        .editor
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("VISUAL").ok())
+        .or_else(|| std::env::var("EDITOR").ok())
+        .unwrap_or_else(default_editor);
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg("-a").arg(&editor).arg(&path_str);
+        c
+    };
+    #[cfg(not(target_os = "macos"))]
+    let mut cmd = {
+        let mut c = std::process::Command::new(&editor);
+        c.arg(&path_str);
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| IpcError::BadInput(format!("spawn editor {editor:?}: {e}")))
+}
+
+fn reveal_in_finder_blocking(path: String) -> Result<(), IpcError> {
+    if path.is_empty() {
+        return Err(IpcError::BadInput("path is empty".into()));
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg("-R").arg(&path);
+        c
+    };
+    #[cfg(not(target_os = "macos"))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(not(target_os = "macos"))]
+    cmd.arg(&path);
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| IpcError::BadInput(format!("reveal {path}: {e}")))
+}
+
+fn default_editor() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        "Visual Studio Code".into()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "code".into()
+    }
+}
+
+fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(std::path::PathBuf::from)
+}
+
+/// Background task driving one workspace's jsonl notify watcher. Watches the
+/// claude project directory (when present) and the codex sessions root. Per
+/// plan §8.12. Stops when `cancel` is triggered or the channel closes.
+async fn run_jsonl_watcher(
+    home: std::path::PathBuf,
+    cwd: std::path::PathBuf,
+    project_id: String,
+    bus: broadcast::Sender<UiEvent>,
+    cancel: CancellationToken,
+) {
+    use notify::{Config as NotifyConfig, EventKind, RecursiveMode, Watcher};
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<notify::Result<notify::Event>>();
+    let watcher_result = notify::RecommendedWatcher::new(
+        move |res| {
+            // ignore send errors — receiver gone means we're shutting down
+            let _ = tx.send(res);
+        },
+        NotifyConfig::default(),
+    );
+    let mut watcher = match watcher_result {
+        Ok(w) => w,
+        Err(e) => {
+            warn!(project_id = %project_id, error = %e, "notify watcher init failed");
+            return;
+        }
+    };
+
+    // Claude: per-workspace, non-recursive.
+    use ycode_introspect::{claude, codex, AgentBackend};
+    if let Some(dir) = (claude::ClaudeBackend).workspace_dir(&home, &cwd) {
+        if dir.is_dir() {
+            if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
+                warn!(path = %dir.display(), error = %e, "claude watcher failed");
+            }
+        }
+    }
+    // Codex: recursive on the sessions root (date-sharded).
+    if let Some(root) = (codex::CodexBackend).sessions_root(&home) {
+        if root.is_dir() {
+            if let Err(e) = watcher.watch(&root, RecursiveMode::Recursive) {
+                warn!(path = %root.display(), error = %e, "codex watcher failed");
+            }
+        }
+    }
+
+    let cwd_str = cwd.to_string_lossy().into_owned();
+    loop {
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => break,
+            ev = rx.recv() => match ev {
+                Some(Ok(event)) => {
+                    if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+                        continue;
+                    }
+                    for path in event.paths {
+                        if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                            continue;
+                        }
+                        let (agent, session_id) = classify_jsonl(&path, &cwd_str);
+                        let Some(agent) = agent else { continue };
+                        let sid = session_id.unwrap_or_else(|| project_id.clone());
+                        let _ = bus.send(UiEvent::jsonl_changed(sid, agent, path.to_string_lossy().into_owned()));
+                    }
+                }
+                Some(Err(e)) => warn!(error = %e, "notify recv error"),
+                None => break,
+            }
+        }
+    }
+    drop(watcher);
+}
+
+/// Best-effort routing of a touched jsonl path to (agent, session_id). Returns
+/// `(None, _)` if the path isn't recognised so the watcher can ignore it.
+fn classify_jsonl(
+    path: &std::path::Path,
+    workspace_cwd: &str,
+) -> (Option<&'static str>, Option<String>) {
+    let path_str = path.to_string_lossy();
+    if path_str.contains("/.claude/projects/") {
+        let session_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+        return (Some("claude"), session_id);
+    }
+    if path_str.contains("/.codex/sessions/") {
+        // Codex paths are date-sharded; only emit when the rollout's first
+        // line confirms it belongs to this workspace.
+        use std::io::{BufRead, BufReader};
+        let Ok(f) = std::fs::File::open(path) else {
+            return (None, None);
+        };
+        let mut reader = BufReader::new(f);
+        let mut first = String::new();
+        let _ = reader.read_line(&mut first);
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&first) else {
+            return (None, None);
+        };
+        let payload_cwd = v
+            .pointer("/payload/cwd")
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        if payload_cwd != workspace_cwd {
+            return (None, None);
+        }
+        let session_id = v
+            .pointer("/payload/id")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+        return (Some("codex"), session_id);
+    }
+    (None, None)
+}
+
+fn stat_session(path: &std::path::Path) -> (u64, i64) {
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return (0, 0),
+    };
+    let size = meta.len();
+    let modified_at_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    (size, modified_at_ms)
+}
+
+fn truncate_preview(s: &str) -> String {
+    const MAX: usize = 200;
+    if s.len() <= MAX {
+        return s.replace('\n', " ");
+    }
+    let mut idx = MAX;
+    while !s.is_char_boundary(idx) && idx > 0 {
+        idx -= 1;
+    }
+    let mut out = s[..idx].replace('\n', " ");
+    out.push('…');
+    out
 }
 
 fn compute_available_agents(config: &Config) -> std::collections::HashSet<String> {
@@ -605,6 +1443,209 @@ fn compute_available_agents(config: &Config) -> std::collections::HashSet<String
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ycode_persist::SessionRow;
+
+    fn profile(id: &str, command: &str) -> AgentLaunchProfile {
+        AgentLaunchProfile {
+            id: id.into(),
+            display_name: None,
+            command: command.into(),
+            args: vec!["--existing".into()],
+            env: Default::default(),
+            icon: None,
+            icon_variant: None,
+            color: None,
+            introspect: None,
+        }
+    }
+
+    fn row(agent_session_id: Option<&str>, agent_thread_name: Option<&str>) -> SessionRow {
+        SessionRow {
+            id: "app-session".into(),
+            title: "".into(),
+            agent_profile: "test".into(),
+            agent_session_id: agent_session_id.map(str::to_string),
+            agent_thread_name: agent_thread_name.map(str::to_string),
+            project_id: "project".into(),
+            last_exit_code: None,
+            created_at: 1,
+            updated_at: 1,
+            archived_at: None,
+        }
+    }
+
+    #[test]
+    fn claude_create_and_resume_use_native_session_id() {
+        let profile = profile("claude-code", "claude");
+        let row = row(Some("11111111-1111-4111-8111-111111111111"), None);
+
+        assert_eq!(
+            launch_args(&profile, &row, LaunchMode::Create),
+            vec![
+                "--existing",
+                "--session-id",
+                "11111111-1111-4111-8111-111111111111"
+            ]
+        );
+        assert_eq!(
+            launch_args(&profile, &row, LaunchMode::Resume),
+            vec![
+                "--existing",
+                "--resume",
+                "11111111-1111-4111-8111-111111111111"
+            ]
+        );
+    }
+
+    #[test]
+    fn codex_resume_prefers_id_then_thread_name() {
+        let profile = profile("codex", "codex");
+
+        assert_eq!(
+            launch_args(
+                &profile,
+                &row(Some("22222222-2222-4222-8222-222222222222"), Some("thread")),
+                LaunchMode::Resume,
+            ),
+            vec![
+                "--existing",
+                "resume",
+                "22222222-2222-4222-8222-222222222222"
+            ]
+        );
+        assert_eq!(
+            launch_args(
+                &profile,
+                &row(None, Some("Generated title")),
+                LaunchMode::Resume,
+            ),
+            vec!["--existing", "resume", "Generated title"]
+        );
+    }
+
+    #[test]
+    fn gemini_resume_uses_native_session_id() {
+        let profile = profile("gemini-cli", "gemini");
+
+        assert_eq!(
+            launch_args(
+                &profile,
+                &row(Some("33333333-3333-4333-8333-333333333333"), None),
+                LaunchMode::Resume,
+            ),
+            vec![
+                "--existing",
+                "--resume",
+                "33333333-3333-4333-8333-333333333333"
+            ]
+        );
+    }
+
+    #[test]
+    fn env_keys_to_strip_targets_provider_api_keys() {
+        // Per plan §8.2 / R4 the highest-likelihood × impact risk is a stray
+        // ANTHROPIC_API_KEY / OPENAI_API_KEY silently hijacking the OAuth
+        // subscription path. Lock the behaviour down here so any future
+        // refactor of the launch path has to consciously break this test.
+        assert_eq!(
+            env_keys_to_strip(&profile("claude-code", "claude")),
+            &["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]
+        );
+        assert_eq!(
+            env_keys_to_strip(&profile("codex", "codex")),
+            &["OPENAI_API_KEY"]
+        );
+        assert_eq!(
+            env_keys_to_strip(&profile("gemini-cli", "gemini")),
+            &["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+        );
+        let shell: &[&str] = &[];
+        assert_eq!(env_keys_to_strip(&profile("shell", "bash")), shell);
+    }
+
+    #[test]
+    fn parses_codex_cli_session_meta() {
+        let line = r#"{"type":"session_meta","payload":{"id":"019e5794-57d2-7493-a762-a1fc7c1a5040","cwd":"/repo","originator":"Codex CLI"}}"#;
+        assert_eq!(
+            parse_codex_session_meta(line, "/repo").as_deref(),
+            Some("019e5794-57d2-7493-a762-a1fc7c1a5040")
+        );
+        assert!(parse_codex_session_meta(line, "/other").is_none());
+    }
+
+    #[test]
+    fn ignores_codex_desktop_session_meta() {
+        let line = r#"{"type":"session_meta","payload":{"id":"019e5794-57d2-7493-a762-a1fc7c1a5040","cwd":"/repo","originator":"Codex Desktop"}}"#;
+        assert!(parse_codex_session_meta(line, "/repo").is_none());
+    }
+
+    #[test]
+    fn parses_gemini_session_file() {
+        let contents = r#"{"sessionId":"44444444-4444-4444-8444-444444444444","kind":"main","messages":[]}"#;
+        assert_eq!(
+            parse_gemini_session_file(contents).as_deref(),
+            Some("44444444-4444-4444-8444-444444444444")
+        );
+        let subagent = r#"{"sessionId":"sub","kind":"subagent","messages":[]}"#;
+        assert!(parse_gemini_session_file(subagent).is_none());
+    }
+
+    #[test]
+    fn codex_session_scan_ignores_files_older_than_launch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("old.jsonl");
+        std::fs::write(
+            &old,
+            r#"{"type":"session_meta","payload":{"id":"old","cwd":"/repo","originator":"Codex CLI"}}"#,
+        )
+        .unwrap();
+        let cutoff = std::time::SystemTime::now();
+
+        assert!(
+            find_latest_codex_session_id_in(tmp.path(), Utf8Path::new("/repo"), cutoff).is_none()
+        );
+
+        let new = tmp.path().join("new.jsonl");
+        std::fs::write(
+            &new,
+            r#"{"type":"session_meta","payload":{"id":"new","cwd":"/repo","originator":"Codex CLI"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_latest_codex_session_id_in(tmp.path(), Utf8Path::new("/repo"), cutoff).as_deref(),
+            Some("new")
+        );
+    }
+
+    #[test]
+    fn gemini_session_scan_ignores_files_older_than_launch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("session-2026-01-01T00-00-old.json");
+        std::fs::write(
+            &old,
+            r#"{"sessionId":"old","kind":"main","messages":[]}"#,
+        )
+        .unwrap();
+        let cutoff = std::time::SystemTime::now();
+
+        assert!(find_latest_gemini_session_id_in(tmp.path(), cutoff).is_none());
+
+        let new = tmp.path().join("session-2026-01-01T00-01-new.json");
+        std::fs::write(
+            &new,
+            r#"{"sessionId":"new","kind":"main","messages":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_latest_gemini_session_id_in(tmp.path(), cutoff).as_deref(),
+            Some("new")
+        );
+    }
 }
 
 #[derive(Error, Debug)]
@@ -629,4 +1670,7 @@ pub enum IpcError {
 
     #[error("persist: {0}")]
     Persist(#[from] PersistError),
+
+    #[error("config: {0}")]
+    Config(#[from] ycode_config::ConfigError),
 }

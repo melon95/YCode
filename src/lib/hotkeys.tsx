@@ -2,29 +2,39 @@
 //
 // Bindings (Cmd on macOS, Ctrl elsewhere — modifier required for every hotkey
 // so plain typing in inputs/xterm stays untouched):
-//   ⌘1 / ⌘2 / ⌘3  → switch right column to Files / Editor / Terminal
-//   ⌘[  / ⌘]       → previous / next session in the active project
+//   ⌘K              → open cross-session command palette
+//   ⌘,              → open Settings
+//   ⌘1 / ⌘2 / ⌘3   → switch right column to Files / Editor / Terminal
+//   ⌘[  / ⌘]        → previous / next session in the active project
 //   ⌘W              → archive the current session (with confirm)
 //   ⌘T              → create a session with the first available AI agent
-//   ⌘B              → collapse / expand the sidebar
+//   ⌘B              → toggle the left sidebar
+//   ⌘J              → toggle the right pane on the terminal tab
+//   ⇧⌘B             → toggle the right pane
 //
-// Numeric tab switches fire even when an input has focus (matches the VS Code
-// feel for ⌘1/2/3). Everything else is suppressed inside text inputs, the CM6
-// editor, or the xterm terminals.
+// Numeric tab switches and the toggle/palette shortcuts fire even when an
+// input has focus (matches the VS Code feel). Other commands are suppressed
+// inside text inputs, the CM6 editor, or the xterm terminals.
 
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { toast } from "@heroui/react";
-import { useStore, type RightTab } from "./store";
+import { LAYOUT_CAP, useStore, type RightTab } from "./store";
 import { archiveSession, createSession, listAgents } from "./ipc";
 import { confirmDialog } from "./confirm";
 
 interface HotkeyDeps {
   sidebarRef: RefObject<PanelImperativeHandle | null>;
+  rightPaneRef: RefObject<PanelImperativeHandle | null>;
+  openCommandPalette: () => void;
 }
 
-export function useHotkeys({ sidebarRef }: HotkeyDeps) {
+export function useHotkeys({
+  sidebarRef,
+  rightPaneRef,
+  openCommandPalette,
+}: HotkeyDeps) {
   useEffect(() => {
     function shouldSkip(e: KeyboardEvent): boolean {
       const target = e.target as HTMLElement | null;
@@ -41,6 +51,23 @@ export function useHotkeys({ sidebarRef }: HotkeyDeps) {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.altKey) return;
 
+      // ⌘K: open cross-session command palette. Fires regardless of focus
+      // so users can search even while typing in the terminal.
+      if (e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        openCommandPalette();
+        return;
+      }
+
+      // ⌘,: open Settings. Mirrors the macOS / VS Code convention. Routed
+      // through a custom event so this module doesn't need to plumb a
+      // setter from TopBar.
+      if (e.key === ",") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("ycode:open-settings"));
+        return;
+      }
+
       // ⌘1/2/3: numeric tab switch. Fire regardless of focus so the user can
       // jump back from the terminal to the editor without first clicking out.
       if (e.key === "1" || e.key === "2" || e.key === "3") {
@@ -51,9 +78,40 @@ export function useHotkeys({ sidebarRef }: HotkeyDeps) {
         return;
       }
 
-      if (shouldSkip(e)) return;
-
       const key = e.key.toLowerCase();
+
+      // ⌘B (no shift): toggle the left sidebar. Fires regardless of focus so
+      // users can hide the sidebar while typing in the terminal.
+      if (key === "b" && !e.shiftKey) {
+        e.preventDefault();
+        togglePanel(sidebarRef);
+        return;
+      }
+
+      // ⇧⌘B: toggle the right pane.
+      if (key === "b" && e.shiftKey) {
+        e.preventDefault();
+        togglePanel(rightPaneRef);
+        return;
+      }
+
+      // ⌘J: focus the right-pane terminal. If the pane is collapsed expand
+      // it + switch to the terminal tab; if already showing terminal,
+      // collapse (VS Code's `Cmd+J` toggle semantics).
+      if (key === "j" && !e.shiftKey) {
+        e.preventDefault();
+        const panel = rightPaneRef.current;
+        const onTerminal = useStore.getState().rightTab === "terminal";
+        if (panel && !panel.isCollapsed() && onTerminal) {
+          panel.collapse();
+        } else {
+          if (panel?.isCollapsed()) panel.expand();
+          useStore.getState().setRightTab("terminal");
+        }
+        return;
+      }
+
+      if (shouldSkip(e)) return;
 
       if (key === "[" || key === "]") {
         e.preventDefault();
@@ -103,6 +161,12 @@ export function useHotkeys({ sidebarRef }: HotkeyDeps) {
           toast.warning("Pick a project first");
           return;
         }
+        if (s.layout.visibleIds.length >= LAYOUT_CAP) {
+          toast.warning(
+            `Close a pane first — at the ${LAYOUT_CAP}-pane limit.`,
+          );
+          return;
+        }
         try {
           const list = await listAgents();
           const usable = list.filter((a) => a.id !== "bash" && a.available);
@@ -117,23 +181,23 @@ export function useHotkeys({ sidebarRef }: HotkeyDeps) {
             title: "",
           });
           s.upsertSession(view);
-          s.setActiveId(view.id);
+          s.openSessionInLayout(view.id);
         } catch (err) {
           toast.danger(`Create session failed: ${err}`);
         }
         return;
       }
 
-      if (key === "b") {
-        e.preventDefault();
-        const panel = sidebarRef.current;
-        if (!panel) return;
-        if (panel.isCollapsed()) panel.expand();
-        else panel.collapse();
-      }
     }
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [sidebarRef]);
+  }, [sidebarRef, rightPaneRef, openCommandPalette]);
+}
+
+function togglePanel(ref: RefObject<PanelImperativeHandle | null>) {
+  const panel = ref.current;
+  if (!panel) return;
+  if (panel.isCollapsed()) panel.expand();
+  else panel.collapse();
 }

@@ -6,8 +6,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AgentProfileView,
+  ConfigView,
+  DiscoveredSessionView,
+  SearchHit,
   SessionView,
   ProjectView,
+  UnifiedEvent,
+  WriteFileRequest,
   CreateProjectRequest,
   CreateSessionRequest,
   RenameSessionRequest,
@@ -16,11 +21,21 @@ import type {
   SpawnPtyRequest,
   FileEntry,
   FileContents,
-  WriteFileRequest,
+  OpenInExternalEditorRequest,
   UiEvent,
 } from "./types";
 
 export const listAgents = (): Promise<AgentProfileView[]> => invoke("list_agents");
+
+export const getConfig = (): Promise<ConfigView> => invoke("get_config");
+
+export const saveConfig = (config: ConfigView): Promise<AgentProfileView[]> =>
+  invoke("save_config", { config });
+
+export const resetConfig = (): Promise<AgentProfileView[]> => invoke("reset_config");
+
+export const probeCommand = (command: string): Promise<boolean> =>
+  invoke("probe_command", { command });
 
 export const listSessions = (): Promise<SessionView[]> => invoke("list_sessions");
 
@@ -32,8 +47,12 @@ export const createProject = (request: CreateProjectRequest): Promise<ProjectVie
 export const deleteProject = (projectId: string): Promise<void> =>
   invoke("delete_project", { projectId });
 
-export const createSession = (request: CreateSessionRequest): Promise<SessionView> =>
-  invoke("create_session", { request });
+export const createSession = (
+  request: Omit<CreateSessionRequest, "resume"> & { resume?: string | null },
+): Promise<SessionView> =>
+  invoke("create_session", {
+    request: { resume: null, ...request },
+  });
 
 export const writePty = (request: WritePtyRequest): Promise<void> =>
   invoke("write_pty", { request });
@@ -64,6 +83,39 @@ export const readFile = (
 
 export const writeFile = (request: WriteFileRequest): Promise<void> =>
   invoke("write_file", { request });
+
+export const scanWorkspaceSessions = (
+  projectId: string,
+): Promise<DiscoveredSessionView[]> =>
+  invoke("scan_workspace_sessions", { projectId });
+
+export const loadSessionHistory = (
+  agent: string,
+  sessionId: string,
+  jsonlPath: string,
+  maxEvents: number,
+): Promise<UnifiedEvent[]> =>
+  invoke("load_session_history", { agent, sessionId, jsonlPath, maxEvents });
+
+export const searchSessions = (
+  projectId: string,
+  query: string,
+  limit: number,
+): Promise<SearchHit[]> =>
+  invoke("search_sessions", { projectId, query, limit });
+
+export const startWorkspaceWatch = (projectId: string): Promise<void> =>
+  invoke("start_workspace_watch", { projectId });
+
+export const stopWorkspaceWatch = (projectId: string): Promise<void> =>
+  invoke("stop_workspace_watch", { projectId });
+
+export const openInExternalEditor = (
+  request: OpenInExternalEditorRequest,
+): Promise<void> => invoke("fs_open_in_external_editor", { request });
+
+export const revealInFinder = (path: string): Promise<void> =>
+  invoke("fs_reveal_in_finder", { path });
 
 export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
   invoke("spawn_pty_raw", { request });

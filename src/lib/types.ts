@@ -27,6 +27,8 @@ export type ProjectView = Omit<
 
 export type { SessionStatus } from "@bindings/SessionStatus";
 export type { AgentProfileView } from "@bindings/AgentProfileView";
+export type { AgentLaunchProfileView } from "@bindings/AgentLaunchProfileView";
+export type { ConfigView } from "@bindings/ConfigView";
 export type { UiEvent } from "@bindings/UiEvent";
 export type { UiEventKind } from "@bindings/UiEventKind";
 export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";
@@ -37,7 +39,34 @@ export type { ResizePtyRequest } from "@bindings/ResizePtyRequest";
 export type { SpawnPtyRequest } from "@bindings/SpawnPtyRequest";
 export type { FileEntry } from "@bindings/FileEntry";
 export type { FileContents } from "@bindings/FileContents";
+export type { OpenInExternalEditorRequest } from "@bindings/OpenInExternalEditorRequest";
 export type { WriteFileRequest } from "@bindings/WriteFileRequest";
+import type { DiscoveredSessionView as RawDiscoveredSessionView } from "@bindings/DiscoveredSessionView";
+export type DiscoveredSessionView = Omit<
+  RawDiscoveredSessionView,
+  "size_bytes" | "modified_at_ms"
+> & {
+  size_bytes: number;
+  modified_at_ms: number;
+};
+
+import type { SearchHit as RawSearchHit } from "@bindings/SearchHit";
+export type SearchHit = Omit<RawSearchHit, "seq" | "ts_ms"> & {
+  seq: number;
+  ts_ms: number;
+};
+
+import type { UnifiedEvent as RawUnifiedEvent } from "@bindings/UnifiedEvent";
+export type UnifiedEvent = Omit<RawUnifiedEvent, "seq" | "ts_ms"> & {
+  seq: number;
+  ts_ms: number;
+};
+
+export type { UnifiedEventKind } from "@bindings/UnifiedEventKind";
+export type { UnifiedRole } from "@bindings/UnifiedRole";
+export type { ToolStatus } from "@bindings/ToolStatus";
+export type { PlanStep } from "@bindings/PlanStep";
+export type { DiffSummary } from "@bindings/DiffSummary";
 
 /// Lowercased status label used as a CSS modifier (`.dot.running` etc.).
 export type StatusLabel = "running" | "exited" | "error";

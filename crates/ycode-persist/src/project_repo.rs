@@ -30,15 +30,13 @@ impl<'a> ProjectRepo<'a> {
             repo_path: new.repo_path,
             created_at: now_ms(),
         };
-        sqlx::query(
-            "INSERT INTO projects (id, name, repo_path, created_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(&row.id)
-        .bind(&row.name)
-        .bind(&row.repo_path)
-        .bind(row.created_at)
-        .execute(self.pool)
-        .await?;
+        sqlx::query("INSERT INTO projects (id, name, repo_path, created_at) VALUES (?, ?, ?, ?)")
+            .bind(&row.id)
+            .bind(&row.name)
+            .bind(&row.repo_path)
+            .bind(row.created_at)
+            .execute(self.pool)
+            .await?;
         Ok(row)
     }
 
@@ -107,6 +105,8 @@ mod tests {
             id: id.into(),
             title: "test".into(),
             agent_profile: "claude-code".into(),
+            agent_session_id: None,
+            agent_thread_name: None,
             project_id: project_id.into(),
         }
     }
@@ -129,7 +129,10 @@ mod tests {
     async fn delete_refuses_when_session_lives() {
         let db = Db::open_in_memory().await.unwrap();
         db.projects().insert(project_fixture("p1")).await.unwrap();
-        db.sessions().insert(session_fixture("s1", "p1")).await.unwrap();
+        db.sessions()
+            .insert(session_fixture("s1", "p1"))
+            .await
+            .unwrap();
 
         assert!(matches!(
             db.projects().delete("p1").await,

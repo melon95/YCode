@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
@@ -12,9 +12,42 @@ export function RightPane() {
   const openFiles = useStore((s) => s.openFiles);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
   const dirtyFiles = useStore((s) => s.dirtyFiles);
+  const previewFilePath = useStore((s) => s.previewFilePath);
+  const openFile = useStore((s) => s.openFile);
   const setSelectedFilePath = useStore((s) => s.setSelectedFilePath);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const hasOpenFiles = openFiles.length > 0;
+
+  // Set of project ids the user has touched this session. We mount one
+  // ManualTerminal per visited project and only flip visibility on switch,
+  // so a long-running shell (e.g. `npm run dev`) doesn't get killed just
+  // because the user briefly tabbed to another project.
+  const [visitedProjects, setVisitedProjects] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeProjectId) return;
+    setVisitedProjects((prev) => {
+      if (prev.has(activeProjectId)) return prev;
+      const next = new Set(prev);
+      next.add(activeProjectId);
+      return next;
+    });
+  }, [activeProjectId]);
+
+  // Drop a project from the visited set when it disappears from the store
+  // (user deleted it). Its ManualTerminal unmounts and the shell gets killed.
+  useEffect(() => {
+    setVisitedProjects((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of prev) {
+        if (!projects[id]) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [projects]);
 
   useEffect(() => {
     if (!hasOpenFiles && rightTab === "editor") {
@@ -62,18 +95,32 @@ export function RightPane() {
         {openFiles.length > 0 && <div className="right-pane-tab-separator" />}
         {openFiles.map((path) => {
           const active = rightTab === "editor" && path === selectedFilePath;
+          const isPreview = path === previewFilePath;
           return (
             <button
               key={path}
               type="button"
-              className={"right-file-tab" + (active ? " active" : "")}
+              className={
+                "right-file-tab" +
+                (active ? " active" : "") +
+                (isPreview ? " preview" : "")
+              }
               onClick={() => showFile(path)}
+              // Double-click pins a preview tab — same semantics as the
+              // file tree double-click.
+              onDoubleClick={() => {
+                if (isPreview) openFile(path, { preview: false });
+              }}
               role="tab"
               aria-selected={active}
-              title={path}
+              title={isPreview ? `${path} (preview — double-click to pin)` : path}
             >
               <span className="right-file-tab-name">{basename(path)}</span>
-              {dirtyFiles[path] && <span className="right-file-tab-dirty">M</span>}
+              {dirtyFiles[path] && (
+                <span className="right-file-tab-dirty" aria-label="unsaved">
+                  M
+                </span>
+              )}
               <span
                 className="right-file-tab-close"
                 onClick={(e) => closeOpenFile(path, e)}
@@ -87,46 +134,88 @@ export function RightPane() {
         })}
       </div>
       <div className="right-pane-body">
-        {rightTab === "files" && !hasOpenFiles ? (
-          activeProject ? (
-            <FileTreePanel projectId={activeProject.id} />
-          ) : (
-            <div className="empty">Select a project first.</div>
-          )
-        ) : rightTab === "editor" ? (
-          activeProject ? (
-            hasOpenFiles ? (
-              <div className="right-editor-workspace">
-                <div className="right-editor-file-tree">
-                  <FileTreePanel projectId={activeProject.id} />
-                </div>
-                <div className="right-editor-main">
+        {(() => {
+          const workspaceVisible =
+            !!activeProject &&
+            ((rightTab === "files" && !hasOpenFiles) ||
+              (rightTab === "editor" && hasOpenFiles && !!selectedFilePath));
+          const editorVisible =
+            !!activeProject &&
+            rightTab === "editor" &&
+            hasOpenFiles &&
+            !!selectedFilePath;
+          return (
+            <div
+              className={
+                "right-editor-workspace" +
+                (workspaceVisible ? "" : " hidden") +
+                (editorVisible ? " with-editor" : " tree-only")
+              }
+            >
+              {/* One FileTreePanel per visited project. Switching projects
+                  flips `.hidden`, so the new tree doesn't pay listFiles +
+                  react-arborist + SVG-icon-fetch on every switch. */}
+              <div className="right-editor-file-tree">
+                {Array.from(visitedProjects).map((pid) => {
+                  if (!projects[pid]) return null;
+                  const isActive = pid === activeProject?.id;
+                  return (
+                    <div
+                      key={pid}
+                      className={"file-tree-host" + (isActive ? "" : " hidden")}
+                    >
+                      <FileTreePanel projectId={pid} />
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Editor follows the active project's openFiles (a global
+                  store slice cleared on project switch). One instance is
+                  enough — the heavy work is the file tree, not the editor. */}
+              {hasOpenFiles && activeProject && (
+                <div
+                  className={
+                    "right-editor-main" + (editorVisible ? "" : " hidden")
+                  }
+                >
                   <EditorPanel projectId={activeProject.id} />
                 </div>
-              </div>
-            ) : (
-              <EditorPanel projectId={activeProject.id} />
-            )
-          ) : (
-            <div className="empty">Select a project first.</div>
-          )
-        ) : null}
-        {activeProject ? (
-          <div
-            className={
-              "manual-terminal-host" +
-              (rightTab === "terminal" ? "" : " hidden")
-            }
-          >
-            <ManualTerminal
-              key={activeProject.id}
-              cwd={activeProject.repo_path}
-              visible={rightTab === "terminal"}
-            />
-          </div>
-        ) : rightTab === "terminal" ? (
+              )}
+            </div>
+          );
+        })()}
+        {!activeProject && rightTab !== "terminal" && (
           <div className="empty">Select a project first.</div>
-        ) : null}
+        )}
+        {rightTab === "editor" &&
+          activeProject &&
+          hasOpenFiles &&
+          !selectedFilePath && (
+            <div className="empty">
+              Pick a file from the <strong>Files</strong> tab.
+            </div>
+          )}
+        {!activeProject && rightTab === "terminal" && (
+          <div className="empty">Select a project first.</div>
+        )}
+        {/* One ManualTerminal per visited project, stacked + hidden via
+            display:none for the inactive ones. Switching projects flips
+            visibility instead of unmounting, so each project's shell keeps
+            running in the background. */}
+        {Array.from(visitedProjects).map((pid) => {
+          const proj = projects[pid];
+          if (!proj) return null;
+          const isActiveProject = pid === activeProject?.id;
+          const visible = isActiveProject && rightTab === "terminal";
+          return (
+            <div
+              key={pid}
+              className={"manual-terminal-host" + (visible ? "" : " hidden")}
+            >
+              <ManualTerminal cwd={proj.repo_path} visible={visible} />
+            </div>
+          );
+        })}
       </div>
     </section>
   );

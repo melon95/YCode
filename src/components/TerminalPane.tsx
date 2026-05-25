@@ -1,26 +1,36 @@
-// xterm.js terminal pane. One persistent Terminal instance per session id,
-// kept alive across active-session switches so scrollback survives navigation.
+// xterm.js multi-pane host. Renders one Terminal instance per session id and
+// places visible ones into a CSS-grid layout chosen by the user (stack /
+// columns / 2×2 / main+side). Hidden terminals stay alive in an off-screen
+// pool so closing a pane keeps the agent running and scrollback intact.
 //
 // Data flow:
 //   • PtyOutput { data: base64 } → decode → terminal.write(bytes)
 //   • terminal.onData(string)    → utf-8 encode → base64 → write_pty
-//   • container resize           → FitAddon.fit() → resize_pty
+//   • cell ResizeObserver        → FitAddon.fit() → resize_pty
 //
 // Membership-changing UiEventKind variants (SessionAppeared, etc.) are
-// handled in App.tsx; here we only listen for the per-session payload.
+// handled in App.tsx; here we only listen for the per-session PTY payload.
 //
 // Output buffering: PtyOutput/PtyExit can arrive between `create_session`
-// returning and React mounting the Terminal for the new id. We buffer
-// those bytes in `pendingRef` and drain them when the Terminal is created
-// — otherwise the agent's startup banner would be lost.
+// returning and React mounting the cell for the new id. We buffer those
+// bytes in `pendingRef` and drain them when the Terminal is created —
+// otherwise the agent's startup banner would be lost.
 
-import { useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { listenSessionEvents, resizePty, writePty } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
 import { NewSessionPicker } from "./NewSessionPicker";
+import { AgentIcon } from "./AgentIcon";
 
 type TermInstance = {
   term: Terminal;
@@ -61,16 +71,226 @@ const TERMINAL_OPTIONS = {
   },
 } as const;
 
+// User-draggable split positions, stored per `${mode}-${count}` key so each
+// layout remembers its own divider drags. Switching mode reads from a fresh
+// entry (or the defaults below); switching back restores prior drags.
+//
+// Positions are cumulative percentages in (0, 100). For a 3-column grid with
+// cols=[33, 66] the cells span [0%, 33%], [33%, 66%], [66%, 100%].
+interface LayoutSplits {
+  cols: number[]; // length = grid cols - 1
+  rows: number[]; // length = grid rows - 1
+}
+type SplitsMap = Record<string, LayoutSplits>;
+
+const MIN_PANE_PCT = 12; // smallest pane width/height — keeps the TUI legible
+
+function splitsKey(mode: LayoutMode, count: number): string {
+  return `${mode}-${count}`;
+}
+
+function equalSplits(n: number): number[] {
+  if (n <= 1) return [];
+  return Array.from({ length: n - 1 }, (_, i) => ((i + 1) * 100) / n);
+}
+
+function defaultSplits(mode: LayoutMode, count: number): LayoutSplits {
+  switch (mode) {
+    case "single":
+      return { cols: [], rows: [] };
+    case "stack":
+      return { cols: [], rows: equalSplits(count) };
+    case "columns":
+      return { cols: equalSplits(count), rows: [] };
+    case "grid2x2":
+      return { cols: [50], rows: [50] };
+    case "main-side":
+      // Side column has count-1 cells stacked vertically. Main is 60% wide
+      // by default (matches the prior CSS-only 3fr:2fr ratio).
+      return { cols: [60], rows: equalSplits(count - 1) };
+  }
+}
+
+function splitsToTemplate(splits: number[], cellCount: number): string {
+  if (cellCount <= 1) return "1fr";
+  if (splits.length === 0) return new Array(cellCount).fill("1fr").join(" ");
+  const parts: string[] = [];
+  let prev = 0;
+  for (const s of splits) {
+    parts.push(`${s - prev}%`);
+    prev = s;
+  }
+  parts.push(`${100 - prev}%`);
+  return parts.join(" ");
+}
+
+interface GridDims {
+  cols: number;
+  rows: number;
+}
+
+function gridDims(mode: LayoutMode, count: number): GridDims {
+  switch (mode) {
+    case "single":
+      return { cols: 1, rows: 1 };
+    case "stack":
+      return { cols: 1, rows: count };
+    case "columns":
+      return { cols: count, rows: 1 };
+    case "grid2x2":
+      return { cols: 2, rows: 2 };
+    case "main-side":
+      return { cols: 2, rows: count - 1 };
+  }
+}
+
+interface GutterDef {
+  axis: "col" | "row";
+  splitIdx: number;
+  // For row gutters in main-side: start at the col split so the gutter
+  // only spans the side column, not across the main pane. Defaults to 0.
+  startPct?: number;
+  endPct?: number; // default 100
+}
+
+function gutterDefs(mode: LayoutMode, splits: LayoutSplits): GutterDef[] {
+  if (mode === "single") return [];
+  if (mode === "stack") {
+    return splits.rows.map((_, i) => ({ axis: "row", splitIdx: i }));
+  }
+  if (mode === "columns") {
+    return splits.cols.map((_, i) => ({ axis: "col", splitIdx: i }));
+  }
+  if (mode === "grid2x2") {
+    return [
+      { axis: "col", splitIdx: 0 },
+      { axis: "row", splitIdx: 0 },
+    ];
+  }
+  // main-side
+  const colGutter: GutterDef = { axis: "col", splitIdx: 0 };
+  const rowGutters: GutterDef[] = splits.rows.map((_, i) => ({
+    axis: "row",
+    splitIdx: i,
+    startPct: splits.cols[0],
+    endPct: 100,
+  }));
+  return [colGutter, ...rowGutters];
+}
+
 export function TerminalPane() {
   const sessions = useStore((s) => s.sessions);
-  const activeId = useStore((s) => s.activeId);
+  const liveTitles = useStore((s) => s.liveTitles);
+  const layout = useStore((s) => s.layout);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
+  const agents = useStore((s) => s.agents);
+  // Pane-header icon lookup. Sessions carry `agent_profile` (the launch
+  // profile id), so we index by id here.
+  const agentByProfileId = useMemo(() => {
+    const out: Record<string, (typeof agents)[number]> = {};
+    for (const a of agents) out[a.id] = a;
+    return out;
+  }, [agents]);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const focusLayoutSlot = useStore((s) => s.focusLayoutSlot);
+  const closeLayoutSlot = useStore((s) => s.closeLayoutSlot);
+
+  const { visibleIds, focusSlot, mode } = layout;
+
+  // Picker takes over when nothing is visible OR the user is down to a
+  // single pane whose process has exited — they probably want to start
+  // a fresh one rather than stare at the [process exited] banner.
+  const focusedId = visibleIds[focusSlot] ?? null;
+  const focusedSession = focusedId ? sessions[focusedId] : null;
+  const onlyDeadSlot =
+    visibleIds.length === 1 &&
+    !!focusedSession &&
+    focusedSession.status.type !== "Running";
+  const showPicker = visibleIds.length === 0 || onlyDeadSlot;
+
+  // Holds Terminal instances not currently mounted in a slot cell. Hidden
+  // (display:none) so cursor blinks etc. don't burn CPU off-screen.
+  const poolRef = useRef<HTMLDivElement | null>(null);
+  // Grid container — used to translate pointer px into split percentages
+  // during a drag.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  // session id → cell body element. Keyed by id (not slot) so two cells
+  // swapping slots during a layout change don't race each other's ref
+  // callbacks into deleting a still-live entry.
+  const cellBodyRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const terminalsRef = useRef<Map<string, TermInstance>>(new Map());
+
+  // User-drag split state. In-memory only — refreshing or restarting the
+  // app reverts to equal panes. Keyed by `${mode}-${count}` so each layout
+  // remembers its own drags independently.
+  const [splitsMap, setSplitsMap] = useState<SplitsMap>({});
+  const count = visibleIds.length;
+  const dims = useMemo(() => gridDims(mode, count), [mode, count]);
+  const splits = useMemo<LayoutSplits>(() => {
+    return splitsMap[splitsKey(mode, count)] ?? defaultSplits(mode, count);
+  }, [splitsMap, mode, count]);
+  const gridTemplateColumns = useMemo(
+    () => splitsToTemplate(splits.cols, dims.cols),
+    [splits.cols, dims.cols],
+  );
+  const gridTemplateRows = useMemo(
+    () => splitsToTemplate(splits.rows, dims.rows),
+    [splits.rows, dims.rows],
+  );
+  const gutters = useMemo(() => gutterDefs(mode, splits), [mode, splits]);
+
+  // Pointer-drag handler for a gutter. Captures `mode`/`count` at start so
+  // a stale move event (after layout swap) writes to the right map entry.
+  const startGutterDrag = useCallback(
+    (e: React.PointerEvent, axis: "col" | "row", splitIdx: number) => {
+      e.preventDefault();
+      const grid = gridRef.current;
+      if (!grid) return;
+      const rect = grid.getBoundingClientRect();
+      const key = splitsKey(mode, count);
+      const baseline = splitsMap[key] ?? defaultSplits(mode, count);
+      const arr = axis === "col" ? baseline.cols : baseline.rows;
+      // Clamp between neighbouring splits (or 0/100) minus the min pane size.
+      const lower = (arr[splitIdx - 1] ?? 0) + MIN_PANE_PCT;
+      const upper = (arr[splitIdx + 1] ?? 100) - MIN_PANE_PCT;
+
+      const onMove = (ev: PointerEvent) => {
+        const pos =
+          axis === "col"
+            ? ((ev.clientX - rect.left) / rect.width) * 100
+            : ((ev.clientY - rect.top) / rect.height) * 100;
+        const clamped = Math.max(lower, Math.min(upper, pos));
+        setSplitsMap((prev) => {
+          const cur = prev[key] ?? defaultSplits(mode, count);
+          const nextArr = (axis === "col" ? cur.cols : cur.rows).slice();
+          nextArr[splitIdx] = clamped;
+          return {
+            ...prev,
+            [key]:
+              axis === "col"
+                ? { ...cur, cols: nextArr }
+                : { ...cur, rows: nextArr },
+          };
+        });
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      // Lock the cursor + suppress text selection across the whole window
+      // so the drag survives the pointer briefly leaving the gutter strip.
+      document.body.style.cursor = axis === "col" ? "col-resize" : "row-resize";
+      document.body.style.userSelect = "none";
+    },
+    [mode, count, splitsMap],
+  );
   // Per-session byte buffer for output that arrives before its Terminal
-  // exists. Drained by `ensureTerminal`.
+  // exists. Drained by the create effect.
   const pendingRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
   // Single global subscriber. Routes per-session PTY events to the matching
@@ -79,6 +299,13 @@ export function TerminalPane() {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     listenSessionEvents((event) => {
+      // React 19 StrictMode runs this effect twice in dev; the async
+      // `listenSessionEvents` can leave the first mount's listener briefly
+      // registered with Tauri after the second mount adds its own. Without
+      // this guard, both listeners would write the same PtyOutput into the
+      // shared xterm → every keystroke doubles. See ManualTerminal for the
+      // same fix.
+      if (cancelled) return;
       const k = event.kind;
       let bytes: Uint8Array | null = null;
       if (k.type === "PtyOutput") {
@@ -88,7 +315,11 @@ export function TerminalPane() {
           k.code === null
             ? "[process killed]"
             : `[process exited with code ${k.code}]`;
-        bytes = new TextEncoder().encode(`\r\n\x1b[33m${tag}\x1b[0m\r\n`);
+        const restartHint =
+          "Session ended. Use Restart in the session list to launch it again.";
+        bytes = new TextEncoder().encode(
+          `\r\n\x1b[33m${tag}\x1b[0m\r\n\x1b[90m${restartHint}\x1b[0m\r\n`,
+        );
       }
       if (!bytes) return;
 
@@ -111,17 +342,17 @@ export function TerminalPane() {
   }, []);
 
   // Mirror the store's sessions map into Terminal instances. Eager creation
-  // closes the race window where output arrives before activation.
+  // (in the hidden pool) closes the race window where output arrives before
+  // a slot is ever assigned.
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
+    const pool = poolRef.current;
+    if (!pool) return;
     const known = terminalsRef.current;
 
     for (const id of Object.keys(sessions)) {
       if (!known.has(id)) {
-        const inst = createTerminal(id, root);
+        const inst = createTerminal(id, pool);
         known.set(id, inst);
-        // Drain any output that arrived before this Terminal existed.
         const buf = pendingRef.current.get(id);
         if (buf) {
           for (const chunk of buf) inst.term.write(chunk);
@@ -138,49 +369,82 @@ export function TerminalPane() {
     }
   }, [sessions]);
 
-  // Show only the active Terminal; fit + focus it.
+  // Reparent terminal containers: visible ones into their slot cell, hidden
+  // ones into the pool. useLayoutEffect to avoid a frame of mis-placed
+  // terminals when the user changes layout mode or closes a pane.
+  useLayoutEffect(() => {
+    const pool = poolRef.current;
+    if (!pool) return;
+    const known = terminalsRef.current;
+
+    visibleIds.forEach((id) => {
+      const inst = known.get(id);
+      if (!inst) return;
+      const cell = cellBodyRefs.current.get(id);
+      if (!cell) return;
+      const moved = inst.container.parentElement !== cell;
+      if (moved) cell.appendChild(inst.container);
+      inst.container.style.display = "block";
+      if (moved) {
+        // Fit immediately on (re)attach so the renderer doesn't paint one
+        // frame at the pool's stale dimensions. The cell ResizeObserver
+        // below covers subsequent size changes.
+        try {
+          inst.fit.fit();
+        } catch {
+          return;
+        }
+        const { cols, rows } = inst.term;
+        void resizePty({ session_id: id, cols, rows }).catch(() => {});
+      }
+    });
+
+    for (const [id, inst] of known) {
+      if (!visibleIds.includes(id)) {
+        if (inst.container.parentElement !== pool) {
+          pool.appendChild(inst.container);
+        }
+        inst.container.style.display = "none";
+      }
+    }
+  }, [visibleIds, mode]);
+
+  // Per-cell ResizeObserver: fit + push new geometry to the PTY whenever
+  // the cell's size changes (window resize, layout switch, column drag).
   useEffect(() => {
     const known = terminalsRef.current;
-    for (const [id, entry] of known) {
-      entry.container.style.display = id === activeId ? "block" : "none";
-    }
-    if (!activeId) return;
-    const inst = known.get(activeId);
-    if (!inst) return;
-    // Defer fit until the container has layout dimensions. rAF is enough on
-    // first activation; later activations of an already-laid-out container
-    // are effectively no-ops.
-    const raf = requestAnimationFrame(() => {
-      try {
-        inst.fit.fit();
-      } catch {
-        // FitAddon throws if the container has zero size. Window resize will
-        // retry once the layout settles.
-      }
-      const { cols, rows } = inst.term;
-      void resizePty({ session_id: activeId, cols, rows }).catch(() => {});
-      inst.term.focus();
+    const observers: ResizeObserver[] = [];
+    visibleIds.forEach((id) => {
+      const cell = cellBodyRefs.current.get(id);
+      const inst = known.get(id);
+      if (!cell || !inst) return;
+      const observer = new ResizeObserver(() => {
+        try {
+          inst.fit.fit();
+        } catch {
+          // FitAddon throws if the cell has zero size (mid-layout swap).
+          // The next observer fire will catch up once layout settles.
+          return;
+        }
+        const { cols, rows } = inst.term;
+        void resizePty({ session_id: id, cols, rows }).catch(() => {});
+      });
+      observer.observe(cell);
+      observers.push(observer);
     });
-    return () => cancelAnimationFrame(raf);
-  }, [activeId]);
-
-  // Window resize → refit + push new geometry to the PTY of the active session.
-  useEffect(() => {
-    const onResize = () => {
-      if (!activeId) return;
-      const inst = terminalsRef.current.get(activeId);
-      if (!inst) return;
-      try {
-        inst.fit.fit();
-      } catch {
-        return;
-      }
-      const { cols, rows } = inst.term;
-      void resizePty({ session_id: activeId, cols, rows }).catch(() => {});
+    return () => {
+      observers.forEach((o) => o.disconnect());
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [activeId]);
+  }, [visibleIds, mode]);
+
+  // Push keyboard focus into the focused slot's xterm whenever it changes.
+  useEffect(() => {
+    if (!focusedId) return;
+    const inst = terminalsRef.current.get(focusedId);
+    if (!inst) return;
+    const raf = requestAnimationFrame(() => inst.term.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [focusedId]);
 
   // Dispose all terminals on unmount.
   useEffect(() => {
@@ -194,12 +458,132 @@ export function TerminalPane() {
   }, []);
 
   return (
-    <div className="terminal-pane">
-      {/* Pool: holds all Terminal containers, managed imperatively. React
-          must not render children into this div — they'd fight the
-          appendChild/removeChild we do in effects. */}
-      <div className="terminal-pool" ref={rootRef} />
-      {!activeId && (
+    <div className={"terminal-pane" + (showPicker ? " picker-active" : "")}>
+      {/* Hidden pool: holds Terminal containers that aren't currently in a
+          slot. Always present (even when the picker is up) so re-entering
+          from the picker can recover any background sessions' scrollback. */}
+      <div className="terminal-pool" ref={poolRef} aria-hidden />
+
+      {!showPicker && (
+        <div
+          ref={gridRef}
+          className={
+            `terminal-grid layout-${mode} count-${visibleIds.length}`
+          }
+          // Inline columns/rows override the CSS defaults so user drags
+          // stick; grid-template-areas (from CSS) still owns slot placement.
+          style={{ gridTemplateColumns, gridTemplateRows }}
+        >
+          {visibleIds.map((id, slot) => {
+            const session = sessions[id];
+            const title = session
+              ? displaySessionTitle(session, liveTitles)
+              : "(loading…)";
+            const ended =
+              session !== undefined && session.status.type !== "Running";
+            const focused = slot === focusSlot;
+            return (
+              <div
+                key={id}
+                className={
+                  "pane-cell" + (focused ? " focused" : "")
+                }
+                style={{ gridArea: `s${slot}` }}
+                onMouseDownCapture={(e) => {
+                  // Header buttons handle their own clicks; bare-cell
+                  // mousedown promotes this slot to focus before xterm
+                  // grabs the keyboard.
+                  const target = e.target as HTMLElement;
+                  if (target.closest("button")) return;
+                  if (!focused) focusLayoutSlot(slot);
+                }}
+              >
+                <header className="pane-header">
+                  <span
+                    className={`pane-agent agent-${session?.agent_profile ?? ""}`}
+                    aria-hidden
+                  >
+                    <AgentIcon
+                      icon={
+                        session
+                          ? agentByProfileId[session.agent_profile]?.icon
+                          : undefined
+                      }
+                      variant={
+                        session
+                          ? agentByProfileId[session.agent_profile]?.icon_variant
+                          : undefined
+                      }
+                      fallbackChar={
+                        session
+                          ? agentByProfileId[session.agent_profile]
+                              ?.display_name ?? session.agent_profile
+                          : undefined
+                      }
+                      size={14}
+                    />
+                  </span>
+                  <span className="pane-title" title={title}>
+                    {title}
+                  </span>
+                  {ended && <span className="pane-status">ended</span>}
+                  <button
+                    type="button"
+                    className="pane-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeLayoutSlot(slot);
+                    }}
+                    aria-label="Close pane"
+                    title="Close pane (session keeps running)"
+                  >
+                    ×
+                  </button>
+                </header>
+                <div
+                  className="pane-body"
+                  ref={(el) => {
+                    if (el) cellBodyRefs.current.set(id, el);
+                    else cellBodyRefs.current.delete(id);
+                  }}
+                />
+              </div>
+            );
+          })}
+          {gutters.map((g, i) => {
+            const splitPct =
+              g.axis === "col"
+                ? splits.cols[g.splitIdx]
+                : splits.rows[g.splitIdx];
+            const startPct = g.startPct ?? 0;
+            const endPct = g.endPct ?? 100;
+            const style: React.CSSProperties =
+              g.axis === "col"
+                ? {
+                    left: `${splitPct}%`,
+                    top: `${startPct}%`,
+                    height: `${endPct - startPct}%`,
+                  }
+                : {
+                    top: `${splitPct}%`,
+                    left: `${startPct}%`,
+                    width: `${endPct - startPct}%`,
+                  };
+            return (
+              <div
+                key={`gutter-${g.axis}-${g.splitIdx}-${i}`}
+                className={`gutter gutter-${g.axis}`}
+                style={style}
+                onPointerDown={(e) => startGutterDrag(e, g.axis, g.splitIdx)}
+                role="separator"
+                aria-orientation={g.axis === "col" ? "vertical" : "horizontal"}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {showPicker && (
         <div className="terminal-empty">
           {!activeProject ? (
             <span>Select a project from the top bar.</span>
@@ -219,7 +603,7 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
 
   const container = document.createElement("div");
   container.className = "terminal-container";
-  // Hidden by default; the activeId effect flips display on activation.
+  // Hidden until reparented into a slot cell.
   container.style.display = "none";
   parent.appendChild(container);
   term.open(container);

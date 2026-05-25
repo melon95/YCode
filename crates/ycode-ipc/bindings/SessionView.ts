@@ -4,7 +4,15 @@ import type { SessionStatus } from "./SessionStatus";
 /**
  * Frontend-facing snapshot of one session row.
  */
-export type SessionView = { id: string, title: string, agent_profile: string, project_id: string, 
+export type SessionView = { id: string, title: string, agent_profile: string, 
+/**
+ * Agent-native conversation id when known or generated for resume.
+ */
+agent_session_id: string | null, 
+/**
+ * Agent-native title/thread label emitted by the CLI, when observed.
+ */
+agent_thread_name: string | null, project_id: string, 
 /**
  * Runtime status. `Running` iff a live `TerminalSession` is currently
  * driving this id; otherwise `Exited { code: last_exit_code }`.

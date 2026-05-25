@@ -127,10 +127,19 @@ export function ManualTerminal({
   // (rapid project switch) may still have its listener attached and would
   // otherwise siphon our events into its own buffer. Losing a few startup
   // bytes from a shell is harmless; the prompt repaints on first keystroke.
+  //
+  // The `cancelled` check inside the handler is load-bearing: React 19 +
+  // StrictMode runs this effect twice in dev (mount → unmount → mount).
+  // `listenSessionEvents` is async, so the first listener can still be
+  // registered with Tauri when the second effect kicks in — both listeners
+  // would then write the same PtyOutput into the live xterm, doubling every
+  // keystroke. Gating the handler on the captured `cancelled` makes the
+  // stale listener a no-op until its unsubscribe promise resolves.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     listenSessionEvents((event) => {
+      if (cancelled) return;
       const id = ptyIdRef.current;
       if (id == null || event.session_id !== id) return;
       const k = event.kind;

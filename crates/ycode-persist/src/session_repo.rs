@@ -13,6 +13,8 @@ pub struct NewSession {
     pub id: String,
     pub title: String,
     pub agent_profile: String,
+    pub agent_session_id: Option<String>,
+    pub agent_thread_name: Option<String>,
     pub project_id: String,
 }
 
@@ -27,6 +29,8 @@ impl<'a> SessionRepo<'a> {
             id: new.id,
             title: new.title,
             agent_profile: new.agent_profile,
+            agent_session_id: new.agent_session_id,
+            agent_thread_name: new.agent_thread_name,
             project_id: new.project_id,
             last_exit_code: None,
             created_at: now,
@@ -35,12 +39,14 @@ impl<'a> SessionRepo<'a> {
         };
         sqlx::query(
             "INSERT INTO sessions \
-             (id, title, agent_profile, project_id, last_exit_code, created_at, updated_at, archived_at) \
-             VALUES (?, ?, ?, ?, NULL, ?, ?, NULL)",
+             (id, title, agent_profile, agent_session_id, agent_thread_name, project_id, last_exit_code, created_at, updated_at, archived_at) \
+             VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)",
         )
         .bind(&row.id)
         .bind(&row.title)
         .bind(&row.agent_profile)
+        .bind(&row.agent_session_id)
+        .bind(&row.agent_thread_name)
         .bind(&row.project_id)
         .bind(row.created_at)
         .bind(row.updated_at)
@@ -81,20 +87,15 @@ impl<'a> SessionRepo<'a> {
 
     /// Record the child's exit code. Bumps `updated_at` so the row sorts to
     /// the top of recency lists when a session just died.
-    pub async fn set_exit_code(
-        &self,
-        id: &str,
-        code: Option<i32>,
-    ) -> Result<(), PersistError> {
+    pub async fn set_exit_code(&self, id: &str, code: Option<i32>) -> Result<(), PersistError> {
         let now = now_ms();
-        let res = sqlx::query(
-            "UPDATE sessions SET last_exit_code = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(code.map(|c| c as i64))
-        .bind(now)
-        .bind(id)
-        .execute(self.pool)
-        .await?;
+        let res =
+            sqlx::query("UPDATE sessions SET last_exit_code = ?, updated_at = ? WHERE id = ?")
+                .bind(code.map(|c| c as i64))
+                .bind(now)
+                .bind(id)
+                .execute(self.pool)
+                .await?;
         if res.rows_affected() == 0 {
             return Err(PersistError::SessionNotFound(id.to_string()));
         }
@@ -105,14 +106,12 @@ impl<'a> SessionRepo<'a> {
     /// the top of recency lists immediately after the rename.
     pub async fn update_title(&self, id: &str, title: &str) -> Result<(), PersistError> {
         let now = now_ms();
-        let res = sqlx::query(
-            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(title)
-        .bind(now)
-        .bind(id)
-        .execute(self.pool)
-        .await?;
+        let res = sqlx::query("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?")
+            .bind(title)
+            .bind(now)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
         if res.rows_affected() == 0 {
             return Err(PersistError::SessionNotFound(id.to_string()));
         }
@@ -124,6 +123,38 @@ impl<'a> SessionRepo<'a> {
     pub async fn touch(&self, id: &str) -> Result<(), PersistError> {
         let res = sqlx::query("UPDATE sessions SET updated_at = ? WHERE id = ?")
             .bind(now_ms())
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(PersistError::SessionNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    pub async fn update_agent_thread_name(
+        &self,
+        id: &str,
+        thread_name: &str,
+    ) -> Result<(), PersistError> {
+        let res = sqlx::query("UPDATE sessions SET agent_thread_name = ? WHERE id = ?")
+            .bind(thread_name)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Err(PersistError::SessionNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    pub async fn update_agent_session_id(
+        &self,
+        id: &str,
+        agent_session_id: &str,
+    ) -> Result<(), PersistError> {
+        let res = sqlx::query("UPDATE sessions SET agent_session_id = ? WHERE id = ?")
+            .bind(agent_session_id)
             .bind(id)
             .execute(self.pool)
             .await?;
@@ -160,6 +191,8 @@ mod tests {
             id: id.into(),
             title: "test".into(),
             agent_profile: "claude-code".into(),
+            agent_session_id: None,
+            agent_thread_name: None,
             project_id: project_id.into(),
         }
     }

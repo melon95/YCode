@@ -39,6 +39,11 @@ pub enum UiEventKind {
     /// uses this as the live session label, falling back to the persisted
     /// `title` when absent.
     TitleChanged { title: String },
+    /// One of the jsonl session files for the active workspace was written
+    /// to or appeared. Carries the absolute path so HistoryTab can invalidate
+    /// its in-memory cache and re-fetch via `load_session_history`. Per plan
+    /// §6.2.5 (real-time tail of active session).
+    JsonlChanged { agent: String, jsonl_path: String },
 }
 
 impl UiEvent {
@@ -63,6 +68,20 @@ impl UiEvent {
         Self {
             session_id: session_id.into(),
             kind: UiEventKind::TitleChanged { title },
+        }
+    }
+
+    pub fn jsonl_changed(
+        session_id: impl Into<String>,
+        agent: impl Into<String>,
+        jsonl_path: impl Into<String>,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            kind: UiEventKind::JsonlChanged {
+                agent: agent.into(),
+                jsonl_path: jsonl_path.into(),
+            },
         }
     }
 }

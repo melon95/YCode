@@ -5,4 +5,21 @@ export type AgentProfileView = { id: string, display_name: string, command: stri
  * True iff `command` resolves on `PATH`. The picker hides unavailable
  * agents (or shows them disabled).
  */
-available: boolean, };
+available: boolean, 
+/**
+ * Frontend `AgentIcon` whitelist key. Unknown / missing → placeholder.
+ */
+icon: string | null, 
+/**
+ * "color" | "mono". Other values fall back to "color".
+ */
+icon_variant: string | null, 
+/**
+ * Optional brand color hint (currently advisory).
+ */
+color: string | null, 
+/**
+ * Introspect parser id ("claude" / "codex" today). `None` means PTY-only;
+ * such profiles are hidden from the sidebar's history filter tabs.
+ */
+introspect: string | null, };

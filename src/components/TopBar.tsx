@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
@@ -17,14 +17,24 @@ import { listAgents, createSession, createProject, deleteProject } from "../lib/
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView, SessionView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
+import { LayoutSwitcher } from "./LayoutSwitcher";
+import { SettingsModal } from "./SettingsModal";
 
 export function TopBar() {
   const [creatingProject, setCreatingProject] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const upsertProject = useStore((s) => s.upsertProject);
   const setActiveProjectId = useStore((s) => s.setActiveProjectId);
   const removeProject = useStore((s) => s.removeProject);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const projects = useStore((s) => s.projects);
+
+  // Listen for the ⌘, hotkey (dispatched from `useHotkeys`).
+  useEffect(() => {
+    const onOpen = () => setSettingsOpen(true);
+    window.addEventListener("ycode:open-settings", onOpen);
+    return () => window.removeEventListener("ycode:open-settings", onOpen);
+  }, []);
 
   const projectList = Object.values(projects).sort(
     (a, b) => a.created_at_ms - b.created_at_ms,
@@ -106,7 +116,46 @@ export function TopBar() {
           +
         </Button>
       </div>
+      <LayoutSwitcher />
+      <button
+        type="button"
+        className="topbar-search"
+        onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
+        aria-label="Search across sessions (⌘K)"
+        title="Search across sessions (⌘K)"
+      >
+        🔍 Search
+      </button>
+      <button
+        type="button"
+        className="topbar-gear"
+        onClick={() => setSettingsOpen(true)}
+        aria-label="Settings"
+        title="Settings"
+      >
+        <GearIcon />
+      </button>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </header>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 
@@ -114,10 +163,15 @@ export function NewSessionDialog({
   project,
   onClose,
   onCreated,
+  preferredAgentId,
 }: {
   project: ProjectView;
   onClose: () => void;
   onCreated: (view: SessionView) => void;
+  /// When provided, pre-selects this agent profile in the picker (assuming
+  /// it's installed). Used by the Sidebar's per-agent tab so clicking "+"
+  /// after picking Codex defaults to Codex.
+  preferredAgentId?: string;
 }) {
   const [agents, setAgents] = useState<AgentProfileView[]>([]);
   const [agentId, setAgentId] = useState<string>("");
@@ -131,8 +185,12 @@ export function NewSessionDialog({
     listAgents().then((list) => {
       const filtered = list.filter((a) => a.id !== "bash");
       setAgents(filtered);
+      const preferred =
+        preferredAgentId &&
+        filtered.find((a) => a.id === preferredAgentId && a.available);
       const firstAvailable = filtered.find((a) => a.available) ?? filtered[0];
-      if (firstAvailable) setAgentId(firstAvailable.id);
+      const pick = preferred ?? firstAvailable;
+      if (pick) setAgentId(pick.id);
     });
   }
 

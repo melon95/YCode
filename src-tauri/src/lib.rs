@@ -3,7 +3,10 @@
 mod commands;
 mod state;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::state::AppState;
@@ -17,12 +20,69 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        // Per plan §8.22: single-instance must be the first plugin so a
+        // second `ycode` launch (or a `ycode://` deep-link) just refocuses
+        // the existing window instead of forking a second app process.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Per plan §8.22: register `ycode://` so the OS hands URL launches
+            // back to this binary. On macOS Info.plist controls registration;
+            // calling this is a no-op there but harmless. On Linux it writes
+            // a `.desktop` file.
+            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            {
+                let _ = app.deep_link().register_all();
+            }
+
+            // Forward incoming `ycode://...` URLs to the frontend.
+            let handle_for_links = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    let _ = handle_for_links.emit("ycode://deep-link", url.to_string());
+                    if let Some(win) = handle_for_links.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+            });
+
             let state = tauri::async_runtime::block_on(AppState::initialize())
                 .expect("failed to initialize ycode backend");
+
+            // Menu-bar tray icon. Per plan §8.22 shows a static label + a
+            // "Show / Quit" menu — the live session count is updated via
+            // `set_tray_tooltip` from the frontend (TODO once sessions
+            // multi-window lands).
+            let show_item = MenuItem::with_id(app, "tray-show", "Show YCode", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let _ = TrayIconBuilder::with_id("ycode-tray")
+                .tooltip("YCode")
+                .menu(&tray_menu)
+                .on_menu_event(|app, ev| match ev.id.as_ref() {
+                    "tray-show" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.set_focus();
+                        }
+                    }
+                    "tray-quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app);
 
             let service = state.service.clone();
             let handle = app.handle().clone();
@@ -48,6 +108,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_agents,
+            commands::get_config,
+            commands::save_config,
+            commands::reset_config,
+            commands::probe_command,
             commands::list_sessions,
             commands::list_projects,
             commands::create_project,
@@ -62,6 +126,13 @@ pub fn run() {
             commands::list_files,
             commands::read_file,
             commands::write_file,
+            commands::start_workspace_watch,
+            commands::stop_workspace_watch,
+            commands::scan_workspace_sessions,
+            commands::load_session_history,
+            commands::search_sessions,
+            commands::fs_open_in_external_editor,
+            commands::fs_reveal_in_finder,
             commands::spawn_pty_raw,
             commands::kill_pty_raw,
         ])

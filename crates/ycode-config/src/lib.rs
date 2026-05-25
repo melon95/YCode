@@ -10,14 +10,22 @@
 //! ```toml
 //! [[agents]]
 //! id = "claude-code"
-//! name = "Claude Code"
+//! display_name = "Claude Code"
 //! command = "claude"
 //! args = []
+//! # Optional UI / introspection metadata:
+//! icon = "ClaudeCode"        # @lobehub/icons component name (whitelisted)
+//! icon_variant = "color"     # "color" | "mono" — default "color"
+//! color = "#d97757"          # optional brand color hint (currently advisory)
+//! introspect = "claude"      # "claude" | "codex" — binds to a jsonl parser
+//!                            # so this agent's sessions show up in History
 //!
 //! [[agents]]
 //! id = "codex"
-//! name = "Codex"
+//! display_name = "Codex"
 //! command = "codex"
+//! icon = "Codex"
+//! introspect = "codex"
 //! ```
 //!
 //! Under the terminal-first architecture every agent is just a process to
@@ -45,15 +53,62 @@ pub struct Config {
 impl Default for Config {
     /// Ship-with-the-app defaults so a user with no config file still sees
     /// the common CLIs. Agent discovery (which of these are actually on
-    /// PATH) happens at startup.
+    /// PATH) happens at startup. `icon` values must match a key in the
+    /// frontend's `AgentIcon` whitelist registry; unknown names render
+    /// the generic placeholder.
     fn default() -> Self {
         Self {
             agents: vec![
-                AgentLaunchProfile::simple("claude-code", "Claude Code", "claude"),
-                AgentLaunchProfile::simple("codex", "Codex", "codex"),
-                AgentLaunchProfile::simple("gemini-cli", "Gemini CLI", "gemini"),
-                AgentLaunchProfile::simple("aider", "Aider", "aider"),
-                AgentLaunchProfile::simple("bash", "Bash", "bash"),
+                AgentLaunchProfile {
+                    id: "claude-code".into(),
+                    display_name: Some("Claude Code".into()),
+                    command: "claude".into(),
+                    args: vec![],
+                    env: BTreeMap::new(),
+                    icon: Some("ClaudeCode".into()),
+                    icon_variant: None,
+                    color: None,
+                    introspect: Some("claude".into()),
+                },
+                AgentLaunchProfile {
+                    id: "codex".into(),
+                    display_name: Some("Codex".into()),
+                    command: "codex".into(),
+                    args: vec![],
+                    env: BTreeMap::new(),
+                    icon: Some("Codex".into()),
+                    icon_variant: None,
+                    color: None,
+                    introspect: Some("codex".into()),
+                },
+                AgentLaunchProfile {
+                    id: "gemini-cli".into(),
+                    display_name: Some("Gemini CLI".into()),
+                    command: "gemini".into(),
+                    args: vec![],
+                    env: BTreeMap::new(),
+                    icon: Some("GeminiCLI".into()),
+                    icon_variant: None,
+                    color: None,
+                    introspect: None,
+                },
+                AgentLaunchProfile {
+                    id: "cursor".into(),
+                    display_name: Some("Cursor".into()),
+                    command: "cursor-agent".into(),
+                    args: vec![],
+                    env: BTreeMap::new(),
+                    icon: Some("Cursor".into()),
+                    icon_variant: None,
+                    color: None,
+                    introspect: None,
+                },
+                // Note: bash and aider deliberately omitted from defaults.
+                // Bash: the right-pane ManualTerminal already covers ad-hoc
+                // shell use, and shell isn't really an AI agent CLI. Aider:
+                // no lobehub brand icon yet, so it fell back to a letter
+                // placeholder that looked out of place next to the others.
+                // Users who want either can add them via Settings.
             ],
         }
     }
@@ -78,21 +133,34 @@ pub struct AgentLaunchProfile {
     /// are expanded against the host environment by [`Config::load`].
     #[serde(default)]
     pub env: BTreeMap<String, String>,
+
+    /// Frontend `AgentIcon` whitelist key (e.g. "ClaudeCode", "Codex"). The
+    /// renderer falls back to a generic placeholder when the name isn't in
+    /// the whitelist or this field is `None`.
+    #[serde(default)]
+    pub icon: Option<String>,
+
+    /// Either "color" (default — brand-tinted) or "mono" (currentColor).
+    /// Other strings are treated as "color".
+    #[serde(default)]
+    pub icon_variant: Option<String>,
+
+    /// Brand color hint, currently advisory — the icon library carries its
+    /// own color. Useful later for accenting pane borders, etc.
+    #[serde(default)]
+    pub color: Option<String>,
+
+    /// Which built-in jsonl parser scans this agent's sessions. "claude" or
+    /// "codex" today; `None` means the agent runs PTY-only and won't appear
+    /// in the sidebar's history/discovered list. Adding new parser kinds
+    /// requires Rust code in `ycode-introspect`.
+    #[serde(default)]
+    pub introspect: Option<String>,
 }
 
 impl AgentLaunchProfile {
     pub fn display_name(&self) -> &str {
         self.display_name.as_deref().unwrap_or(&self.id)
-    }
-
-    fn simple(id: &str, name: &str, command: &str) -> Self {
-        Self {
-            id: id.into(),
-            display_name: Some(name.into()),
-            command: command.into(),
-            args: vec![],
-            env: BTreeMap::new(),
-        }
     }
 }
 
@@ -103,6 +171,9 @@ pub enum ConfigError {
 
     #[error("parse: {0}")]
     Parse(#[from] toml::de::Error),
+
+    #[error("serialize: {0}")]
+    Serialize(#[from] toml::ser::Error),
 
     #[error("could not determine config directory for the current user")]
     NoConfigDir,
@@ -168,6 +239,27 @@ impl Config {
 
     pub fn find(&self, id: &str) -> Option<&AgentLaunchProfile> {
         self.agents.iter().find(|a| a.id == id)
+    }
+
+    /// Serialize to TOML and write to disk. Creates the parent directory if
+    /// needed. Re-runs validation first so a duplicate id can't reach disk.
+    /// **Does not preserve comments** in the existing file — the settings UI
+    /// regenerates from scratch.
+    pub fn save_to(&self, path: &Utf8PathBuf) -> Result<(), ConfigError> {
+        self.validate()?;
+        let body = toml::to_string_pretty(self)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, body)?;
+        Ok(())
+    }
+
+    /// Save to the platform-default path (creates `~/.config/ycode/`).
+    pub fn save(&self) -> Result<Utf8PathBuf, ConfigError> {
+        let path = default_path()?;
+        self.save_to(&path)?;
+        Ok(path)
     }
 }
 
