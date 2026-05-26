@@ -26,6 +26,8 @@ import {
 } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { listenSessionEvents, resizePty, writePty } from "../lib/ipc";
 import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
@@ -344,7 +346,7 @@ export function TerminalPane() {
   // Mirror the store's sessions map into Terminal instances. Eager creation
   // (in the hidden pool) closes the race window where output arrives before
   // a slot is ever assigned.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const pool = poolRef.current;
     if (!pool) return;
     const known = terminalsRef.current;
@@ -599,7 +601,11 @@ export function TerminalPane() {
 function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   const term = new Terminal(TERMINAL_OPTIONS);
   const fit = new FitAddon();
+  const search = new SearchAddon();
+  let lastSearch = "";
   term.loadAddon(fit);
+  term.loadAddon(search);
+  term.loadAddon(new WebLinksAddon());
 
   const container = document.createElement("div");
   container.className = "terminal-container";
@@ -607,6 +613,21 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   container.style.display = "none";
   parent.appendChild(container);
   term.open(container);
+  term.attachCustomKeyEventHandler((event) => {
+    if (handleSearchShortcut(event, term, search, lastSearch, (next) => {
+      lastSearch = next;
+    })) {
+      return false;
+    }
+    const data = macCommandShortcutData(event);
+    if (!data) return true;
+    event.preventDefault();
+    void writePty({
+      session_id: sessionId,
+      data: utf8ToBase64(data),
+    }).catch(() => {});
+    return false;
+  });
 
   const dataDisposable = term.onData((data) => {
     void writePty({
@@ -659,3 +680,72 @@ function latin1StringToBase64(s: string): string {
   for (let i = 0; i < s.length; i++) bin += String.fromCharCode(s.charCodeAt(i) & 0xff);
   return btoa(bin);
 }
+
+function macCommandShortcutData(event: KeyboardEvent): string | null {
+  if (
+    event.type !== "keydown" ||
+    !event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.shiftKey
+  ) {
+    return null;
+  }
+  if (event.key === "ArrowLeft") return "\x01";
+  if (event.key === "ArrowRight") return "\x05";
+  if (event.key === "Backspace" || event.key === "Delete") {
+    return "\x01\x0b";
+  }
+  return null;
+}
+
+function handleSearchShortcut(
+  event: KeyboardEvent,
+  term: Terminal,
+  search: SearchAddon,
+  lastSearch: string,
+  setLastSearch: (next: string) => void,
+): boolean {
+  if (
+    event.type !== "keydown" ||
+    !event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  ) {
+    return false;
+  }
+  const key = event.key.toLowerCase();
+  if (key === "f" && !event.shiftKey) {
+    event.preventDefault();
+    const selected = term.getSelection().trim().split(/\r?\n/)[0] ?? "";
+    const query = window.prompt("Search terminal", selected || lastSearch);
+    if (query == null) return true;
+    setLastSearch(query);
+    if (query) {
+      search.findNext(query, {
+        decorations: SEARCH_DECORATIONS,
+        incremental: true,
+      });
+    } else {
+      search.clearDecorations();
+    }
+    return true;
+  }
+  if (key === "g" && lastSearch) {
+    event.preventDefault();
+    const options = { decorations: SEARCH_DECORATIONS };
+    if (event.shiftKey) search.findPrevious(lastSearch, options);
+    else search.findNext(lastSearch, options);
+    return true;
+  }
+  return false;
+}
+
+const SEARCH_DECORATIONS = {
+  matchBackground: "#4b352a",
+  matchBorder: "#d6a95c",
+  matchOverviewRuler: "#d6a95c",
+  activeMatchBackground: "#d97757",
+  activeMatchBorder: "#fff9ef",
+  activeMatchColorOverviewRuler: "#d97757",
+};

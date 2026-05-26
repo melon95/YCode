@@ -107,6 +107,9 @@ export function useHotkeys({
         } else {
           if (panel?.isCollapsed()) panel.expand();
           useStore.getState().setRightTab("terminal");
+          requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent("ycode:focus-manual-terminal"));
+          });
         }
         return;
       }
