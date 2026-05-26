@@ -15,6 +15,11 @@ const INTROSPECT_OPTIONS = [
   { value: "codex", label: "Codex jsonl parser" },
 ];
 
+/// Built-in agent ids — these ship with canonical brand icons that we don't
+/// want users to second-guess. Renaming the id (i.e., diverging from the
+/// default) is the gesture that re-opens the icon controls.
+const BUILTIN_AGENT_IDS = new Set(["claude-code", "codex", "gemini-cli"]);
+
 interface Props {
   config: ConfigView;
   onChange: (next: ConfigView) => void;
@@ -320,45 +325,54 @@ function AgentEditor({ agent, idCollision, onChange, onDelete }: EditorProps) {
         </select>
       </Field>
 
-      <Field label="icon">
-        <IconPicker
-          value={agent.icon}
-          onChange={(icon) => onChange({ icon })}
-        />
-      </Field>
-
-      <Field label="icon variant">
-        <select
-          value={agent.icon_variant ?? "color"}
-          onChange={(e) =>
-            onChange({ icon_variant: e.target.value || null })
-          }
-          className="native-select"
-        >
-          <option value="color">Color (brand-tinted)</option>
-          <option value="mono">Mono (currentColor)</option>
-        </select>
-      </Field>
-
-      <Field label="color" hint="advisory; not yet rendered anywhere">
-        <div className="field-row">
-          <input
-            type="color"
-            value={agent.color ?? "#888888"}
-            onChange={(e) => onChange({ color: e.target.value })}
-            className="native-color"
-          />
-          <input
-            type="text"
-            value={agent.color ?? ""}
-            onChange={(e) =>
-              onChange({ color: e.target.value || null })
-            }
-            className="native-input mono"
-            placeholder="#rrggbb"
-          />
+      {BUILTIN_AGENT_IDS.has(agent.id) ? (
+        <div className="field-hint" style={{ paddingTop: 4 }}>
+          Icon, variant, and color are managed by the built-in profile.
+          Change <code>id</code> to customize them.
         </div>
-      </Field>
+      ) : (
+        <>
+          <Field label="icon">
+            <IconPicker
+              value={agent.icon}
+              onChange={(icon) => onChange({ icon })}
+            />
+          </Field>
+
+          <Field label="icon variant">
+            <select
+              value={agent.icon_variant ?? "color"}
+              onChange={(e) =>
+                onChange({ icon_variant: e.target.value || null })
+              }
+              className="native-select"
+            >
+              <option value="color">Color (brand-tinted)</option>
+              <option value="mono">Mono (currentColor)</option>
+            </select>
+          </Field>
+
+          <Field label="color" hint="advisory; not yet rendered anywhere">
+            <div className="field-row">
+              <input
+                type="color"
+                value={agent.color ?? "#888888"}
+                onChange={(e) => onChange({ color: e.target.value })}
+                className="native-color"
+              />
+              <input
+                type="text"
+                value={agent.color ?? ""}
+                onChange={(e) =>
+                  onChange({ color: e.target.value || null })
+                }
+                className="native-input mono"
+                placeholder="#rrggbb"
+              />
+            </div>
+          </Field>
+        </>
+      )}
 
       <div className="agent-editor-actions">
         <Button variant="ghost" onPress={onDelete} className="danger">
