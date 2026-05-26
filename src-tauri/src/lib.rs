@@ -11,7 +11,49 @@ use tracing_subscriber::EnvFilter;
 
 use crate::state::AppState;
 
+/// Bundled macOS apps inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`)
+/// when launched from Finder/Dock, so user-installed CLIs (claude, codex,
+/// gemini, cursor-agent, …) come back as "not on PATH" and the new-session
+/// picker ends up empty. Prepend the standard user/Homebrew bin dirs that
+/// exist on this machine so agent discovery and PTY spawning both see them.
+fn augment_path() {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let mut candidates: Vec<std::path::PathBuf> = vec![
+        "/opt/homebrew/bin".into(),
+        "/opt/homebrew/sbin".into(),
+        "/usr/local/bin".into(),
+        "/usr/local/sbin".into(),
+    ];
+    if let Some(h) = home {
+        for sub in [
+            ".local/bin",
+            ".cargo/bin",
+            ".bun/bin",
+            ".deno/bin",
+            ".volta/bin",
+            ".npm-global/bin",
+        ] {
+            candidates.push(h.join(sub));
+        }
+    }
+    let existing: Vec<std::path::PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let mut merged: Vec<std::path::PathBuf> = Vec::with_capacity(candidates.len() + existing.len());
+    for dir in candidates {
+        if dir.is_dir() && !merged.contains(&dir) && !existing.contains(&dir) {
+            merged.push(dir);
+        }
+    }
+    merged.extend(existing);
+    if let Ok(joined) = std::env::join_paths(merged) {
+        std::env::set_var("PATH", joined);
+    }
+}
+
 pub fn run() {
+    augment_path();
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
