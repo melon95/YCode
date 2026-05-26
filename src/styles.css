@@ -1,23 +1,83 @@
 @import "@heroui/styles";
 
+/* ============================================================
+   ycode · "Foundry" design system
+   ------------------------------------------------------------
+   Editorial / type-specimen language for a power-user CLI
+   workbench. Warm-dark ink with parchment text, single sharp
+   terracotta accent, hairline rules, tracked-out small caps,
+   and an optical-sized serif for display moments. The body
+   font is a refined geometric sans (Geist); JetBrains Mono is
+   reserved for *measurements* — counts, status glyphs, code,
+   keyboard shortcuts.
+   ============================================================ */
+
 :root {
   color-scheme: dark;
-  --bg: #13120f;
-  --surface: #181713;
-  --panel: #1f1d19;
-  --panel-raised: #27231d;
-  --border: #39342b;
-  --border-strong: #51483a;
-  --text: #f0eee6;
-  --muted: #a39a8b;
-  --subtle: #736b5f;
+
+  /* Surfaces — warm ink stack. Each step is ~3% lighter; pure
+     black is reserved for terminal content so chrome can recede. */
+  --bg: #0f0d0a;
+  --surface: #15120e;
+  --panel: #191510;
+  --panel-raised: #211c15;
+  --panel-sunken: #0b0907;
+
+  /* Hairline rule system. 0.5px renders as 1px on @1x and crisp
+     half-pixel on retina — both look intentional. */
+  --rule: #2a221a;
+  --rule-strong: #3a2f25;
+  --rule-accent: rgba(217, 119, 87, 0.32);
+
+  /* Type. Parchment over ink. */
+  --text: #ebe1cf;
+  --text-soft: #d4c8b3;
+  --muted: #9e9180;
+  --subtle: #6a5f51;
+  --whisper: #3f372d;
+
+  /* Single warm accent. Used sparingly — at most one accent surface
+     visible per pane. The glow is a halo for focus states. */
   --accent: #d97757;
-  --accent-strong: #f08f6c;
+  --accent-soft: #e08a6e;
+  --accent-strong: #ec9576;
   --accent-rgb: 217, 119, 87;
+  --accent-tint: rgba(217, 119, 87, 0.08);
+  --accent-tint-hover: rgba(217, 119, 87, 0.14);
+  --accent-glow: 0 0 0 1px rgba(217, 119, 87, 0.18),
+    0 0 24px -8px rgba(217, 119, 87, 0.55);
+
+  /* Status — desaturated against the warm base. */
   --idle: #756d61;
-  --running: #7fb069;
+  --running: #8aaa6f;
   --error: #d46a5f;
   --warning: #d6a95c;
+
+  /* Type stack. Fraunces gives optical sizing for display
+     callouts. Geist handles UI body — variable, well-drawn,
+     less ubiquitous than Inter. JetBrains Mono earns its place
+     as the *unit of measure* — paths, counts, key hints. */
+  --font-display: "Fraunces", "Iowan Old Style", "Apple Garamond",
+    Georgia, serif;
+  --font-ui: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo,
+    Consolas, monospace;
+
+  /* Editorial tracking presets. */
+  --tracking-caps: 0.16em;
+  --tracking-caps-tight: 0.08em;
+
+  /* Motion. */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 220ms;
+
+  /* Legacy aliases — components reference these widely; remapping
+     here keeps the redesign surgical instead of a global rename. */
+  --border: var(--rule);
+  --border-strong: var(--rule-strong);
+  --fg: var(--text);
 }
 
 * {
@@ -26,10 +86,82 @@
 
 body {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-ui);
   font-size: 13px;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--bg);
   color: var(--text);
+  /* Subtle radial vignette + warm wash — creates depth without
+     overwhelming. Foreground is unaffected. */
+  background-image:
+    radial-gradient(
+      ellipse 1200px 800px at 20% -10%,
+      rgba(217, 119, 87, 0.05),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 900px 600px at 100% 100%,
+      rgba(120, 80, 200, 0.025),
+      transparent 60%
+    );
+  background-attachment: fixed;
+  position: relative;
+}
+
+/* Paper grain — 0.6% opacity SVG noise, multiplied over chrome.
+   Subtle enough to feel like the screen has tooth, never as
+   pattern. Disabled by pointer-events so clicks pass through. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  z-index: 100;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.85 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* Editorial utility — tracked-out small caps. Used for section
+   labels, metadata, status pills. Pairs Geist 600 with positive
+   tracking for that type-specimen feel. */
+.eyebrow {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Display utility — Fraunces with optical sizing for headlines. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variation-settings: "opsz" 72, "SOFT" 50;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
+/* Mono utility — for any "measurement" surface. */
+.measure {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum", "zero";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Selection — terracotta wash. */
+::selection {
+  background: rgba(217, 119, 87, 0.32);
+  color: var(--text);
+}
+
+/* Focus ring — single token, applied via :focus-visible. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--accent-glow);
 }
 
 #root {
@@ -45,92 +177,203 @@ body {
 }
 
 .col-handle {
-  width: 4px;
-  background: #2b2822;
+  width: 1px;
+  background: var(--rule);
   cursor: col-resize;
-  transition: background 80ms;
+  position: relative;
+  transition: background var(--duration-base) var(--ease-out);
+}
+
+.col-handle::after {
+  /* Wider hit area without affecting visual width. */
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
 }
 
 .col-handle:hover,
 .col-handle[data-resize-handle-active] {
   background: var(--accent);
+  box-shadow: 0 0 12px -2px rgba(217, 119, 87, 0.6);
 }
 
 .topbar {
-  flex: 0 0 36px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: stretch;
-  padding: 0 12px 0 12px;
-  gap: 8px;
-}
-
-.topbar .brand {
+  flex: 0 0 44px;
+  background: linear-gradient(
+    180deg,
+    rgba(217, 119, 87, 0.02),
+    transparent
+  ),
+  var(--surface);
+  border-bottom: 1px solid var(--rule);
   display: flex;
   align-items: center;
-  padding-right: 4px;
+  padding: 0 14px;
+  gap: 14px;
+  position: relative;
+  /* Hairline accent under the topbar — barely perceptible at rest,
+     this is the "spine" of the chrome. */
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rule-accent) 30%,
+    var(--rule-accent) 70%,
+    transparent
+  );
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .project-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 2px;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+  /* Hide scrollbar — the few-projects case dominates. */
+  scrollbar-width: none;
+}
+.project-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .project-tab {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px 0 12px;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px 0 14px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   white-space: nowrap;
   position: relative;
-  margin-top: 4px;
+  border: 0;
+  border-radius: 0;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .project-tab:hover {
-  color: var(--text);
-  background: rgba(240, 238, 230, 0.05);
+  color: var(--text-soft);
 }
 
 .project-tab.active {
-  background: var(--panel);
-  border-color: var(--border);
   color: var(--text);
 }
 
-.project-tab.active::after {
-  /* Hide the bottom border so the tab visually merges with the content area. */
+/* Editorial underline for active — a 2px terracotta hairline
+   anchored to the topbar's spine. Replaces the chrome-tab look. */
+.project-tab::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 14px;
+  right: 14px;
   bottom: -1px;
-  height: 1px;
-  background: var(--panel);
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--duration-base) var(--ease-out);
+  z-index: 1;
+}
+
+.project-tab.active::after {
+  transform: scaleX(1);
 }
 
 .project-tab-name {
-  font-weight: 600;
-  font-size: 12px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variation-settings: "opsz" 14, "SOFT" 100;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  /* Inactive tabs get italic — typographic distinction between
+     selected vs not. Reads as "drafts" vs "the live one". */
+  font-style: italic;
 }
 
-.project-tab-close-btn {
-  opacity: 0;
+.project-tab.active .project-tab-name {
+  font-style: normal;
 }
 
-.project-tab:hover .project-tab-close-btn,
-.project-tab.active .project-tab-close-btn {
-  opacity: 1;
+.project-tab-close {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  flex: 0 0 16px;
+  visibility: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.project-tab:hover .project-tab-close,
+.project-tab.active .project-tab-close {
+  visibility: visible;
+}
+
+.project-tab-close:hover {
+  background: rgba(217, 119, 87, 0.16);
+  color: var(--accent);
+}
+
+.project-tab-add {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  padding: 0;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 24px;
+  margin-left: 8px;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.project-tab-add:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+  transform: rotate(90deg);
+}
+
+.project-tab-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .sidebar {
@@ -140,20 +383,42 @@ body {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  position: relative;
+}
+
+/* Vertical accent rail on the sidebar's right edge — extremely
+   subtle, just enough to read as "this column is anchored". */
+.sidebar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--rule) 12%,
+    var(--rule) 88%,
+    transparent
+  );
+  pointer-events: none;
 }
 
 .sidebar-header {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(19, 18, 15, 0.45);
-  font-size: 11px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: var(--tracking-caps);
   color: var(--muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .sidebar-new-session {
@@ -184,23 +449,21 @@ body {
   height: 28px;
   padding: 0;
   background: transparent;
-  color: var(--muted);
-  border: 1px solid transparent;
-  border-radius: 4px;
+  color: var(--subtle);
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   flex: 0 0 auto;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  position: relative;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .sidebar-agent-tab:hover {
-  color: var(--fg);
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-soft);
 }
 
 .sidebar-agent-tab.active {
-  color: var(--fg);
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--border);
+  color: var(--accent);
 }
 
 .sidebar-agent-glyph {
@@ -227,13 +490,17 @@ body {
 .right-pane-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 2px;
+  padding: 8px 14px;
   min-height: 48px;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
   overflow-x: auto;
   flex: 0 0 auto;
+  scrollbar-width: none;
+}
+.right-pane-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .right-pane-tab {
@@ -243,31 +510,29 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  color: var(--muted);
+  position: relative;
+  border-radius: 0;
+  color: var(--subtle);
   cursor: pointer;
   border: 0;
   background: transparent;
-  transition: background 80ms, color 80ms, box-shadow 80ms;
+  transition: color var(--duration-fast) var(--ease-out);
   flex: 0 0 32px;
 }
 
 .right-pane-tab:hover {
-  color: var(--text);
-  background: rgba(240, 238, 230, 0.05);
+  color: var(--text-soft);
 }
 
 .right-pane-tab.active {
-  color: var(--text);
-  background: rgba(var(--accent-rgb), 0.16);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.24);
+  color: var(--accent);
 }
 
 .right-pane-tab-separator {
   width: 1px;
-  height: 24px;
-  background: var(--border);
-  margin: 0 6px;
+  height: 16px;
+  background: var(--rule);
+  margin: 0 8px;
   flex: 0 0 1px;
 }
 
@@ -508,25 +773,39 @@ body {
 }
 .pane-cell.focused {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.25);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.25),
+    0 0 24px -8px rgba(217, 119, 87, 0.4);
 }
 
 .pane-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px 4px 10px;
-  font-size: 12px;
+  gap: 10px;
+  padding: 6px 8px 6px 14px;
+  font-family: var(--font-ui);
+  font-size: 11px;
   color: var(--muted);
   background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
   flex: 0 0 auto;
   min-width: 0;
   user-select: none;
+  position: relative;
 }
 .pane-cell.focused .pane-header {
   background: var(--panel-raised);
   color: var(--text);
+}
+/* When the cell is focused, an accent hairline appears at the top
+   of the header — claims the pane visually. */
+.pane-cell.focused .pane-header::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--accent);
 }
 .pane-agent {
   display: inline-flex;
@@ -540,16 +819,29 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 14, "SOFT" 100;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+}
+.pane-cell.focused .pane-title {
+  font-style: normal;
+  color: var(--text);
 }
 .pane-status {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #d6a95c;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(214, 169, 92, 0.14);
+  letter-spacing: var(--tracking-caps);
+  color: var(--warning);
+  padding: 2px 8px;
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid currentColor;
+  opacity: 0.7;
 }
 .pane-close {
   flex: 0 0 auto;
@@ -893,32 +1185,50 @@ body {
 }
 
 .session-row {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   position: relative;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .session-row:hover {
-  background: rgba(240, 238, 230, 0.05);
+  background: rgba(217, 119, 87, 0.04);
 }
 
 .session-row.active {
-  background: rgba(var(--accent-rgb), 0.13);
-  border-left: 3px solid var(--accent);
-  padding-left: 9px;
+  background: var(--accent-tint);
+  padding-left: 14px;
+}
+
+/* Anchor mark — terracotta hairline on the left edge of the active
+   row. Replaces the chunky 3px border with something more refined. */
+.session-row.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
 }
 
 .session-row .title {
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 18, "SOFT" 100;
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: -0.005em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   padding-right: 56px;
+  line-height: 1.2;
 }
 
 .session-row-edit {
@@ -933,11 +1243,15 @@ body {
 }
 
 .session-row .meta {
-  font-size: 11px;
-  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--subtle);
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+  letter-spacing: 0;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
 
 .session-row .row-actions {
@@ -1069,17 +1383,44 @@ body {
 .topbar-search {
   margin-left: auto;
   flex: 0 0 auto;
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
   background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12px;
+  color: var(--muted);
+  border: 0;
+  border-left: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  border-radius: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.topbar-search::after {
+  content: "⌘K";
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--subtle);
+  padding: 2px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
 }
 
 .topbar-search:hover {
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.topbar-search:hover::after {
+  color: var(--accent);
+  border-color: var(--rule-accent);
 }
 
 .topbar-gear {
@@ -1089,17 +1430,18 @@ body {
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin-left: 4px;
   padding: 0;
   background: transparent;
   color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: 50%;
   cursor: pointer;
+  transition: color var(--duration-base) var(--ease-out),
+    transform 800ms var(--ease-out);
 }
 .topbar-gear:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
+  color: var(--accent);
+  transform: rotate(60deg);
 }
 
 /* ── Settings modal ─────────────────────────────────────────────────── */
@@ -1107,9 +1449,56 @@ body {
 /* HeroUI's `size="lg"` caps the dialog around 512px, which leaves the
    right-hand editor with single-character columns. Force a roomier width
    while still leaving viewport breathing room. */
+/* ── Settings · Foundry pass ────────────────────────────────────────── */
+
 .settings-dialog {
   width: min(960px, 95vw);
   max-width: none;
+  background: var(--panel) !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 6px !important;
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(217, 119, 87, 0.04) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Accent hairline along the top edge of the dialog — like a foundry
+   specimen card's catalog stripe. */
+.settings-dialog::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 30%,
+    var(--accent) 70%,
+    transparent
+  );
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.settings-dialog [class*="ModalHeader"],
+.settings-dialog header {
+  padding: 22px 28px 16px !important;
+  border-bottom: 1px solid var(--rule) !important;
+}
+
+.settings-dialog [class*="ModalHeading"] {
+  font-family: var(--font-display) !important;
+  font-variation-settings: "opsz" 72, "SOFT" 50 !important;
+  font-weight: 500 !important;
+  font-size: 24px !important;
+  letter-spacing: -0.02em !important;
+  color: var(--text) !important;
+  font-style: italic;
 }
 
 .settings-body {
@@ -1117,52 +1506,90 @@ body {
   min-height: 480px;
   max-height: 70vh;
   overflow: hidden;
+  background: var(--panel);
 }
 .settings-loading {
-  padding: 40px;
+  padding: 60px;
   text-align: center;
-  color: var(--muted);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 36, "SOFT" 100;
+  font-size: 16px;
+  color: var(--subtle);
 }
 .settings-layout {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 180px 1fr;
   height: 100%;
   min-height: 480px;
 }
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 12px 8px;
-  border-right: 1px solid var(--border);
-  background: var(--panel);
+  gap: 0;
+  padding: 20px 0;
+  border-right: 1px solid var(--rule);
+  background: var(--panel-sunken);
+  position: relative;
 }
+
+/* Eyebrow above the nav items — section identifier. */
+.settings-nav::before {
+  content: "Sections";
+  display: block;
+  padding: 0 22px 14px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--whisper);
+}
+
 .settings-nav-item {
   text-align: left;
-  padding: 6px 10px;
+  padding: 9px 22px;
   border: 0;
   background: transparent;
-  border-radius: 4px;
+  border-radius: 0;
   color: var(--muted);
   cursor: pointer;
-  font-size: 13px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-style: italic;
+  font-variation-settings: "opsz" 18, "SOFT" 100;
+  letter-spacing: -0.005em;
+  position: relative;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 .settings-nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
+  color: var(--text-soft);
 }
 .settings-nav-item.active {
-  background: rgba(var(--accent-rgb), 0.12);
-  color: var(--text);
+  color: var(--accent);
+  font-style: normal;
+}
+.settings-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: var(--accent);
 }
 .settings-content {
   overflow: auto;
   padding: 0;
+  background: var(--panel);
 }
 .settings-footer {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 16px 24px !important;
+  border-top: 1px solid var(--rule) !important;
+  background: var(--panel-sunken) !important;
 }
 .settings-footer .flex-1 {
   flex: 1;
@@ -1172,61 +1599,82 @@ body {
 
 .agents-settings {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
   height: 100%;
   min-height: 480px;
 }
 .agents-list {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: var(--bg);
+  border-right: 1px solid var(--rule);
+  background: var(--panel);
   min-height: 0;
 }
 .agents-list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--rule);
 }
 .agents-list-count {
-  font-size: 11px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
 }
 .agents-list-rows {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  padding: 4px 0;
 }
 .agents-list-empty {
-  padding: 24px 16px;
+  padding: 32px 20px;
   text-align: center;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 24, "SOFT" 100;
+  color: var(--subtle);
+  font-size: 14px;
+  line-height: 1.5;
 }
 .agent-row {
   display: grid;
-  grid-template-columns: 20px 1fr auto;
+  grid-template-columns: 22px 1fr auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 20px;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid transparent;
   text-align: left;
   cursor: pointer;
-  color: var(--text);
+  color: var(--text-soft);
+  position: relative;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 .agent-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(217, 119, 87, 0.04);
+  color: var(--text);
 }
 .agent-row.selected {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: var(--accent-tint);
+  color: var(--text);
+}
+.agent-row.selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
 }
 .agent-row-icon {
   display: inline-flex;
@@ -1234,47 +1682,56 @@ body {
   justify-content: center;
 }
 .agent-row-name {
-  font-size: 13px;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 16, "SOFT" 100;
+  font-size: 14px;
+  letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .agent-row-cmd {
-  font-size: 11px;
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  max-width: 80px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--subtle);
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0;
 }
 
 .agent-editor {
   overflow-y: auto;
   min-height: 0;
+  background: var(--panel);
 }
 .agent-editor-empty {
-  padding: 40px;
+  padding: 60px;
   text-align: center;
-  color: var(--muted);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 24, "SOFT" 100;
+  font-size: 15px;
+  color: var(--subtle);
 }
 .agent-editor-form {
-  padding: 16px 20px;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 .agent-editor-actions {
   display: flex;
   justify-content: flex-end;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
 }
 .agent-editor-actions .danger {
-  color: #d46a5f;
+  color: var(--error);
 }
 .agent-editor-actions .danger:hover {
-  background: rgba(212, 106, 95, 0.12);
+  background: rgba(212, 106, 95, 0.1);
 }
 
 /* ── Form primitives shared by the editor ───────────────────────────── */
@@ -1282,125 +1739,151 @@ body {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .field-label {
-  font-size: 11px;
+  font-family: var(--font-ui);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-caps);
   color: var(--muted);
 }
 .field-hint {
-  font-size: 11px;
-  color: var(--muted);
-  opacity: 0.85;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 12, "SOFT" 100;
+  font-size: 12px;
+  color: var(--subtle);
   margin-bottom: 2px;
+  line-height: 1.4;
 }
 .field-error {
-  font-size: 11px;
-  color: #d46a5f;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--error);
   margin-top: 2px;
 }
 .field-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .native-input {
   flex: 1;
-  padding: 6px 8px;
-  background: var(--panel);
+  padding: 8px 12px;
+  background: var(--panel-sunken);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  font-family: var(--font-ui);
   font-size: 13px;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 .native-input:focus {
   outline: none;
   border-color: var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
 }
 .native-input.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
+  letter-spacing: 0;
 }
 .native-input.error {
-  border-color: #d46a5f;
+  border-color: var(--error);
 }
 textarea.native-input {
   resize: vertical;
-  min-height: 60px;
+  min-height: 72px;
+  line-height: 1.5;
 }
 .native-color {
-  width: 36px;
-  height: 28px;
+  width: 38px;
+  height: 32px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
   background: transparent;
   cursor: pointer;
 }
 .probe-result {
-  font-size: 11px;
-  font-weight: 500;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps-tight);
   white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
 }
 .probe-result.probe-ok {
-  color: #6ed09f;
+  color: var(--running);
 }
 .probe-result.probe-missing {
-  color: #d46a5f;
+  color: var(--error);
 }
 
 .env-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .env-row {
   display: grid;
-  grid-template-columns: 1fr 2fr 24px;
-  gap: 6px;
+  grid-template-columns: 1fr 2fr 26px;
+  gap: 8px;
   align-items: center;
 }
 .env-add {
   align-self: flex-start;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 /* ── Icon picker grid ───────────────────────────────────────────────── */
 
 .icon-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-  gap: 6px;
-  max-height: 240px;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+  max-height: 260px;
   overflow-y: auto;
-  padding: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  padding: 10px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 0;
 }
 .icon-picker-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 8px 4px;
+  gap: 6px;
+  padding: 10px 4px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
-  color: var(--text);
-  min-height: 56px;
+  color: var(--text-soft);
+  min-height: 60px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0;
+  transition: color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
 }
 .icon-picker-tile:hover {
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  background: rgba(217, 119, 87, 0.05);
 }
 .icon-picker-tile.selected {
   border-color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.1);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 .icon-picker-label {
   font-size: 10px;
@@ -1896,8 +2379,526 @@ textarea.native-input {
 }
 
 .diff-add {
-  color: #6ed09f;
+  color: #8aaa6f;
 }
 .diff-del {
-  color: #f47670;
+  color: #c97770;
+}
+
+/* ====== Changes panel ====== */
+
+.changes-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.changes-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--rule);
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.changes-panel-header::before {
+  content: "Working Tree";
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "SOFT" 50;
+  font-weight: 500;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-style: italic;
+}
+
+.changes-panel-count {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  /* Vertical hairline rule before the count, then count itself.
+     Reads like a measurement annotation. */
+  position: relative;
+  padding-left: 14px;
+}
+
+.changes-panel-count::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 1px;
+  background: var(--rule);
+}
+
+.changes-panel-refresh,
+.changes-panel-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--subtle);
+  border-radius: 0;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+    transform 400ms var(--ease-out);
+}
+
+.changes-panel-refresh:hover,
+.changes-panel-mode-btn:hover {
+  color: var(--accent);
+}
+
+.changes-panel-refresh:hover {
+  transform: rotate(-180deg);
+}
+
+.changes-panel-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  /* Pair of hairline rules above/below — reads as a measurement strip. */
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 1px 0;
+}
+
+.changes-panel-mode-btn {
+  width: 24px;
+  height: 22px;
+  border-radius: 0;
+}
+
+.changes-panel-mode-btn.active {
+  color: var(--accent);
+}
+
+.changes-panel-body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.changes-file-pane {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  min-height: 0;
+}
+
+.changes-file-list,
+.changes-file-tree,
+.changes-file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.changes-file-list,
+.changes-file-tree {
+  padding: 4px 0;
+}
+
+.changes-file-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 14px minmax(0, auto) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+  position: relative;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.changes-file-row:hover {
+  background: rgba(217, 119, 87, 0.04);
+  color: var(--text);
+}
+
+.changes-file-row.active {
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+/* Selected row gets a precise terracotta hairline marker on the
+   left edge — replaces the chunky tint-block. */
+.changes-file-row.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.changes-file-status {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0;
+  /* Status is a single capital letter in a hairline circle —
+     reads as a typographic stamp rather than a colored badge. */
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+.changes-file-status.status-modified {
+  color: #d4a64c;
+}
+.changes-file-status.status-deleted {
+  color: var(--error);
+}
+.changes-file-status.status-untracked {
+  color: #8aaa6f;
+}
+.changes-file-status.status-other {
+  color: var(--muted);
+}
+
+.changes-file-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changes-file-dir {
+  font-family: var(--font-mono);
+  color: var(--subtle);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.changes-file-counts {
+  display: inline-flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  flex: 0 0 auto;
+  letter-spacing: 0;
+}
+
+.changes-dir-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.changes-dir-row:hover {
+  color: var(--text);
+}
+
+.changes-dir-chevron {
+  width: 10px;
+  flex: 0 0 10px;
+  color: var(--subtle);
+  font-size: 9px;
+  text-align: center;
+  user-select: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.changes-dir-row:hover .changes-dir-chevron {
+  color: var(--accent);
+}
+
+.changes-dir-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+}
+
+.changes-empty {
+  padding: 24px 18px;
+  color: var(--subtle);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 36, "SOFT" 100;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.changes-empty.error {
+  color: var(--error);
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 11px;
+  font-variation-settings: normal;
+}
+
+.changes-diff-view {
+  overflow: auto;
+  background: var(--panel-sunken);
+  font-size: 12px;
+  /* react-diff-view: Foundry dark theme. Add/del use sage/oxblood,
+     not the typical bright greens/reds. Code background sits one
+     shade below `--bg` so the diff *recedes* into the panel. */
+  --diff-background-color: var(--panel-sunken);
+  --diff-text-color: var(--text-soft);
+  --diff-font-family: var(--font-mono);
+  --diff-selection-background-color: rgba(217, 119, 87, 0.32);
+  --diff-selection-text-color: var(--text);
+  --diff-gutter-insert-background-color: rgba(138, 170, 111, 0.14);
+  --diff-gutter-insert-text-color: #8aaa6f;
+  --diff-gutter-delete-background-color: rgba(201, 119, 112, 0.14);
+  --diff-gutter-delete-text-color: #c97770;
+  --diff-gutter-selected-background-color: rgba(217, 119, 87, 0.18);
+  --diff-gutter-selected-text-color: var(--text);
+  --diff-code-insert-background-color: rgba(138, 170, 111, 0.06);
+  --diff-code-insert-text-color: var(--text);
+  --diff-code-delete-background-color: rgba(201, 119, 112, 0.06);
+  --diff-code-delete-text-color: var(--text);
+  --diff-code-insert-edit-background-color: rgba(138, 170, 111, 0.22);
+  --diff-code-insert-edit-text-color: var(--text);
+  --diff-code-delete-edit-background-color: rgba(201, 119, 112, 0.22);
+  --diff-code-delete-edit-text-color: var(--text);
+  --diff-code-selected-background-color: rgba(217, 119, 87, 0.10);
+  --diff-code-selected-text-color: var(--text);
+  --diff-omit-gutter-line-color: var(--rule);
+}
+
+.changes-diff-view .diff {
+  font-size: 12px;
+}
+
+.changes-diff-view .diff-gutter {
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+}
+
+/* ── HeroUI Button · Foundry overrides ──────────────────────────────────
+   HeroUI buttons land in modals (settings, new-session, confirm). We
+   reshape them to match the Foundry chrome: sharp corners, hairline
+   rules, terracotta accent, small-caps labels for emphasis variants.
+   ──────────────────────────────────────────────────────────────────── */
+
+.button {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: var(--tracking-caps-tight);
+  text-transform: uppercase;
+  border-radius: 0;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
+  cursor: pointer;
+  position: relative;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.18);
+}
+
+.button--sm {
+  padding: 5px 10px;
+  font-size: 10px;
+}
+.button--lg {
+  padding: 10px 18px;
+  font-size: 12px;
+}
+.button--icon-only {
+  padding: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.button--primary {
+  background: var(--accent);
+  color: #1a0e08;
+  border-color: var(--accent);
+}
+.button--primary:hover:not(:disabled):not([data-disabled="true"]) {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 20px -4px rgba(217, 119, 87, 0.5);
+}
+.button--primary:disabled,
+.button--primary[data-disabled="true"] {
+  background: var(--rule);
+  border-color: var(--rule);
+  color: var(--subtle);
+  cursor: not-allowed;
+}
+
+.button--secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--rule-strong);
+}
+.button--secondary:hover:not(:disabled):not([data-disabled="true"]) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.button--tertiary,
+.button--outline {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--rule);
+}
+.button--tertiary:hover:not(:disabled):not([data-disabled="true"]),
+.button--outline:hover:not(:disabled):not([data-disabled="true"]) {
+  color: var(--text);
+  border-color: var(--rule-strong);
+  background: rgba(217, 119, 87, 0.04);
+}
+
+.button--ghost {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+}
+.button--ghost:hover:not(:disabled):not([data-disabled="true"]) {
+  color: var(--text);
+  background: rgba(217, 119, 87, 0.06);
+}
+
+.button--danger {
+  background: transparent;
+  color: var(--error);
+  border-color: var(--error);
+}
+.button--danger:hover:not(:disabled):not([data-disabled="true"]) {
+  background: rgba(212, 106, 95, 0.12);
+}
+
+.button--danger-soft {
+  background: rgba(212, 106, 95, 0.08);
+  color: var(--error);
+  border-color: transparent;
+}
+.button--danger-soft:hover:not(:disabled):not([data-disabled="true"]) {
+  background: rgba(212, 106, 95, 0.18);
+  border-color: var(--error);
+}
+
+.button:disabled,
+.button[data-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── HeroUI Modal · Foundry overrides ────────────────────────────────── */
+
+[role="dialog"] {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+/* Backdrop — slightly warm overlay rather than pure black. */
+[data-slot="backdrop"],
+.modal-backdrop {
+  background: rgba(15, 13, 10, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Native form widgets inside modals. */
+.native-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  background: var(--panel-sunken);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%239e9180' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.native-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
+}
+.native-select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.readonly-field {
+  padding: 8px 12px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* HeroUI Label (used in dialogs). */
+[data-slot="label"] {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--muted);
 }

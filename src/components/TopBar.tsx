@@ -80,7 +80,6 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <strong className="brand">YCode</strong>
       <div className="project-tabs">
         {projectList.map((p) => {
           const active = p.id === activeProjectId;
@@ -92,29 +91,30 @@ export function TopBar() {
               title={p.repo_path}
             >
               <span className="project-tab-name">{p.name}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                isIconOnly
-                onPress={() => onDeleteProject(p)}
-                className="project-tab-close-btn"
+              <span
+                className="project-tab-close"
+                role="button"
                 aria-label="Delete project"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteProject(p);
+                }}
               >
                 ×
-              </Button>
+              </span>
             </div>
           );
         })}
-        <Button
-          size="sm"
-          variant="outline"
-          isIconOnly
-          onPress={onAddProject}
-          isDisabled={creatingProject}
+        <button
+          type="button"
+          className="project-tab-add"
+          onClick={onAddProject}
+          disabled={creatingProject}
           aria-label="New project"
+          title="New project"
         >
           +
-        </Button>
+        </button>
       </div>
       <LayoutSwitcher />
       <button
@@ -124,7 +124,7 @@ export function TopBar() {
         aria-label="Search across sessions (⌘K)"
         title="Search across sessions (⌘K)"
       >
-        🔍 Search
+        Search
       </button>
       <button
         type="button"
