@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 import type { AgentProfileView, ProjectView, SessionView } from "./types";
 
-export type RightTab = "files" | "editor" | "terminal";
+export type RightTab = "files" | "editor" | "terminal" | "changes";
 
 // Middle-pane layout. `visibleIds` is the ordered slot list (0..N-1 where
 // N = visibleIds.length); `focusSlot` indexes which one owns keyboard

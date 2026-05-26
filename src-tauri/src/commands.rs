@@ -5,9 +5,9 @@
 use tauri::State;
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, OpenInExternalEditorRequest, ProjectView,
-    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest, UnifiedEvent,
-    WriteFileRequest, WritePtyRequest,
+    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, OpenInExternalEditorRequest,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest,
+    UnifiedEvent, WriteFileRequest, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -216,6 +216,31 @@ pub async fn write_file(
     state
         .service
         .write_file(request)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_status(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<GitFileChange>, String> {
+    state
+        .service
+        .git_status(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_diff_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<String, String> {
+    state
+        .service
+        .git_diff_file(project_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }

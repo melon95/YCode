@@ -21,9 +21,10 @@ use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, T
 
 use crate::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, OpenInExternalEditorRequest, ProjectView,
-    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest, UiEvent,
-    UiEventKind, UnifiedEvent, WriteFileRequest, WritePtyRequest,
+    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
+    OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
+    SessionView, SpawnPtyRequest, UiEvent, UiEventKind, UnifiedEvent, WriteFileRequest,
+    WritePtyRequest,
 };
 use ycode_introspect::scanner;
 
@@ -104,11 +105,9 @@ impl Service {
         cfg.clone().into()
     }
 
-    /// Persist `incoming` to `~/.config/ycode/config.toml`, swap the live
+    /// Persist `incoming` to `~/.config/ycode/config.json`, swap the live
     /// in-memory copy, recompute PATH availability, and return the refreshed
     /// agent list so the frontend can drop its old snapshot in one round-trip.
-    /// Existing TOML comments in the file are **not** preserved — the UI
-    /// regenerates from scratch.
     pub async fn save_config(
         &self,
         incoming: ConfigView,
@@ -396,6 +395,32 @@ impl Service {
         tokio::task::spawn_blocking(move || write_repo_file(&repo, req.file_path, req.contents))
             .await
             .map_err(|e| IpcError::BadInput(format!("write task: {e}")))?
+    }
+
+    /// List unstaged working-tree changes (modified, deleted, untracked).
+    /// Staged-only changes are filtered out — the "Changes" panel reflects
+    /// what you'd see in `git diff` without `--cached`.
+    pub async fn git_status(&self, project_id: String) -> Result<Vec<GitFileChange>, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_status_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_status task: {e}")))?
+    }
+
+    /// Unified-diff text for one file vs its index entry (unstaged). For
+    /// untracked files the entire file content is returned as additions.
+    /// Empty string if there's nothing to diff.
+    pub async fn git_diff_file(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<String, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_diff_file_blocking(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_diff task: {e}")))?
     }
 
     /// Hand a file off to the user's preferred GUI editor. Resolution order:
@@ -1183,6 +1208,212 @@ fn resolve_under_repo(repo: &Utf8Path, rel: &str) -> Result<std::path::PathBuf, 
         return Err(IpcError::BadInput(format!("path escapes repo: {rel}")));
     }
     Ok(abs)
+}
+
+/// Run `git status --porcelain=v1 -z --untracked-files=normal` and parse out
+/// the working-tree (Y) side. We zip in numstat counts for tracked-modified
+/// files; untracked files get a synthesized `+N / -0` from a line count.
+fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> {
+    use std::process::Command;
+
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=normal"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git status: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git status failed: {stderr}")));
+    }
+
+    // numstat is cheap and lets us avoid per-file `git diff --numstat` calls.
+    // It only covers tracked changes; untracked files we count separately.
+    let numstat_out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["diff", "--numstat", "-z"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git diff: {e}")))?;
+    let numstat = parse_numstat_z(&numstat_out.stdout);
+
+    let mut changes = Vec::new();
+    for entry in split_status_z(&out.stdout) {
+        if entry.len() < 3 {
+            continue;
+        }
+        let xy = &entry[..2];
+        let path_part = &entry[3..];
+        // Working-tree side only — skip staged-only changes (Y = ' ').
+        let y = xy.as_bytes()[1];
+        let x = xy.as_bytes()[0];
+
+        let (status, path) = if x == b'?' && y == b'?' {
+            (GitFileStatus::Untracked, path_part.to_string())
+        } else if y == b'M' {
+            (GitFileStatus::Modified, path_part.to_string())
+        } else if y == b'D' {
+            (GitFileStatus::Deleted, path_part.to_string())
+        } else if y == b' ' {
+            // staged-only — skip
+            continue;
+        } else {
+            (GitFileStatus::Other, path_part.to_string())
+        };
+
+        let (additions, deletions) = match status {
+            GitFileStatus::Untracked => (count_file_lines(repo, &path), 0),
+            _ => numstat.get(&path).copied().unwrap_or((0, 0)),
+        };
+
+        changes.push(GitFileChange {
+            path,
+            status,
+            additions,
+            deletions,
+        });
+    }
+    changes.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(changes)
+}
+
+/// Split NUL-terminated `git status -z` output into one entry per file. Each
+/// returned slice is the raw entry including the 2-char XY prefix + space +
+/// path. Renames produce two NUL-separated tokens; we drop the "old" half
+/// since the panel only cares about the new path.
+fn split_status_z(bytes: &[u8]) -> Vec<String> {
+    let mut out = Vec::new();
+    let s = String::from_utf8_lossy(bytes);
+    let mut iter = s.split('\0');
+    while let Some(entry) = iter.next() {
+        if entry.is_empty() {
+            continue;
+        }
+        // R/C status: next token is the old path — discard.
+        if entry.len() >= 2 {
+            let x = entry.as_bytes()[0];
+            if x == b'R' || x == b'C' {
+                let _ = iter.next();
+            }
+        }
+        out.push(entry.to_string());
+    }
+    out
+}
+
+/// Parse `git diff --numstat -z` output into a map of path → (additions, deletions).
+fn parse_numstat_z(bytes: &[u8]) -> std::collections::HashMap<String, (u32, u32)> {
+    let mut map = std::collections::HashMap::new();
+    let s = String::from_utf8_lossy(bytes);
+    // `-z` makes numstat NUL-terminate records; renames emit three fields
+    // (added, deleted, "old\0new") but we treat the file as a non-rename here
+    // because numstat for unstaged renames is exceedingly rare.
+    let mut iter = s.split('\0');
+    while let Some(line) = iter.next() {
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(3, '\t');
+        let add = parts.next().unwrap_or("0");
+        let del = parts.next().unwrap_or("0");
+        let path = parts.next().unwrap_or("");
+        if path.is_empty() {
+            continue;
+        }
+        let additions = add.parse::<u32>().unwrap_or(0);
+        let deletions = del.parse::<u32>().unwrap_or(0);
+        map.insert(path.to_string(), (additions, deletions));
+    }
+    map
+}
+
+fn count_file_lines(repo: &Utf8Path, rel: &str) -> u32 {
+    let abs = repo.as_std_path().join(rel);
+    let Ok(bytes) = std::fs::read(&abs) else {
+        return 0;
+    };
+    if bytes.is_empty() {
+        return 0;
+    }
+    // Treat a file with N lines (newline-terminated or not) as N additions.
+    let mut count = bytes.iter().filter(|&&b| b == b'\n').count() as u32;
+    if !bytes.ends_with(b"\n") {
+        count += 1;
+    }
+    count
+}
+
+/// Run `git diff -- <path>` for tracked files or synthesize a "new file" diff
+/// for untracked files. Returns empty string when the file is unchanged.
+fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, IpcError> {
+    use std::process::Command;
+
+    // Reject path traversal — same enforcement as `read_repo_file`.
+    let _ = resolve_under_repo(repo, &file_path)?;
+
+    // Tracked vs untracked: `git ls-files --error-unmatch` exits 0 iff tracked.
+    let tracked = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["ls-files", "--error-unmatch", "--"])
+        .arg(&file_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if tracked {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["diff", "--no-color", "--no-ext-diff", "--"])
+            .arg(&file_path)
+            .output()
+            .map_err(|e| IpcError::BadInput(format!("spawn git diff: {e}")))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            return Err(IpcError::BadInput(format!("git diff failed: {stderr}")));
+        }
+        return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+    }
+
+    // Untracked: synthesize a "new file" diff so the frontend's gitdiff-parser
+    // sees a normal-looking patch. `git diff --no-index` would work but exits
+    // 1 on differences which the caller would have to whitelist.
+    let abs = repo.as_std_path().join(&file_path);
+    let bytes = std::fs::read(&abs)
+        .map_err(|e| IpcError::BadInput(format!("read untracked {file_path}: {e}")))?;
+    if bytes.contains(&0u8) {
+        // Binary new file — render a stub patch the parser can still display.
+        let body = format!(
+            "diff --git a/{p} b/{p}\nnew file mode 100644\n--- /dev/null\n+++ b/{p}\nBinary file (untracked)\n",
+            p = file_path
+        );
+        return Ok(body);
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let line_count = if text.ends_with('\n') {
+        lines.len()
+    } else if text.is_empty() {
+        0
+    } else {
+        lines.len()
+    };
+
+    let mut body = String::new();
+    body.push_str(&format!("diff --git a/{p} b/{p}\n", p = file_path));
+    body.push_str("new file mode 100644\n");
+    body.push_str("--- /dev/null\n");
+    body.push_str(&format!("+++ b/{p}\n", p = file_path));
+    body.push_str(&format!("@@ -0,0 +1,{line_count} @@\n"));
+    for line in &lines {
+        body.push('+');
+        body.push_str(line);
+        if !line.ends_with('\n') {
+            body.push('\n');
+        }
+    }
+    Ok(body)
 }
 
 fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {

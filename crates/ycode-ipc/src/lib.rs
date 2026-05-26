@@ -334,6 +334,34 @@ pub struct WriteFileRequest {
     pub contents: String,
 }
 
+/// Working-tree status of a file relative to its index entry. We only surface
+/// the unstaged side here — staged changes are deliberately ignored by the
+/// "Changes" panel per product decision. `Renamed` only fires when the rename
+/// happens in the working tree (rare; typical rename is index-side).
+#[derive(Clone, Debug, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum GitFileStatus {
+    Modified,
+    Deleted,
+    Untracked,
+    /// Catch-all for status codes we don't classify (`T` type-change, etc).
+    Other,
+}
+
+/// One row in the "Changes" panel. `additions`/`deletions` come from
+/// `git diff --numstat` for tracked files; untracked files report `additions`
+/// = line count and `deletions` = 0.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct GitFileChange {
+    /// Repo-relative path, forward-slash separated.
+    pub path: String,
+    pub status: GitFileStatus,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
 /// One row in the "Sessions" sidebar — describes a session jsonl that the
 /// introspect scanner found on disk. Per plan §9.1.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

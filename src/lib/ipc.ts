@@ -21,6 +21,7 @@ import type {
   SpawnPtyRequest,
   FileEntry,
   FileContents,
+  GitFileChange,
   OpenInExternalEditorRequest,
   UiEvent,
 } from "./types";
@@ -83,6 +84,12 @@ export const readFile = (
 
 export const writeFile = (request: WriteFileRequest): Promise<void> =>
   invoke("write_file", { request });
+
+export const gitStatus = (projectId: string): Promise<GitFileChange[]> =>
+  invoke("git_status", { projectId });
+
+export const gitDiffFile = (projectId: string, filePath: string): Promise<string> =>
+  invoke("git_diff_file", { projectId, filePath });
 
 export const scanWorkspaceSessions = (
   projectId: string,

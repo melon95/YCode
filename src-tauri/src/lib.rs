@@ -168,6 +168,8 @@ pub fn run() {
             commands::list_files,
             commands::read_file,
             commands::write_file,
+            commands::git_status,
+            commands::git_diff_file,
             commands::start_workspace_watch,
             commands::stop_workspace_watch,
             commands::scan_workspace_sessions,
