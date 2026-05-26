@@ -95,23 +95,14 @@ impl Default for Config {
                     color: None,
                     introspect: None,
                 },
-                AgentLaunchProfile {
-                    id: "cursor".into(),
-                    display_name: Some("Cursor".into()),
-                    command: "cursor-agent".into(),
-                    args: vec![],
-                    env: BTreeMap::new(),
-                    icon: Some("Cursor".into()),
-                    icon_variant: None,
-                    color: None,
-                    introspect: None,
-                },
-                // Note: bash and aider deliberately omitted from defaults.
-                // Bash: the right-pane ManualTerminal already covers ad-hoc
-                // shell use, and shell isn't really an AI agent CLI. Aider:
-                // no lobehub brand icon yet, so it fell back to a letter
-                // placeholder that looked out of place next to the others.
-                // Users who want either can add them via Settings.
+                // Note: bash, aider, and cursor deliberately omitted from
+                // defaults. Bash: the right-pane ManualTerminal already covers
+                // ad-hoc shell use, and shell isn't really an AI agent CLI.
+                // Aider: no lobehub brand icon yet, so it fell back to a
+                // letter placeholder that looked out of place. Cursor: the
+                // lobehub icon is a mono wireframe cube that sits awkwardly
+                // next to the colored brands. Users who want any of these
+                // can add them via Settings.
             ],
         }
     }

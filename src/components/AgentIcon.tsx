@@ -18,7 +18,6 @@ import GeminiCLI from "@lobehub/icons/es/GeminiCLI";
 import Gemini from "@lobehub/icons/es/Gemini";
 import Google from "@lobehub/icons/es/Google";
 import Cline from "@lobehub/icons/es/Cline";
-import Cursor from "@lobehub/icons/es/Cursor";
 import Copilot from "@lobehub/icons/es/Copilot";
 import GithubCopilot from "@lobehub/icons/es/GithubCopilot";
 import KiloCode from "@lobehub/icons/es/KiloCode";
@@ -56,7 +55,6 @@ export const REGISTRY: Record<string, any> = {
   Gemini,
   Google,
   Cline,
-  Cursor,
   Copilot,
   GithubCopilot,
   KiloCode,
