@@ -3,7 +3,7 @@
 // or title prompt — the agent's display name becomes the session title).
 //
 // The agent list comes straight from the store (populated at startup from
-// the backend's TOML config). No hardcoded filtering — every configured
+// the backend's JSON config). No hardcoded filtering — every configured
 // profile is shown, with `available: false` ones disabled so the user can
 // see at a glance which CLIs they still need to install.
 
@@ -70,7 +70,7 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
           {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
               No agents configured. Edit
-              <code> ~/.config/ycode/config.toml</code> to add one.
+              <code> ~/.config/ycode/config.json</code> to add one.
             </div>
           )}
           {sorted.map((agent) => (

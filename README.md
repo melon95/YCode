@@ -56,29 +56,30 @@ development; release packaging is a separate concern.
 
 ## Configuration
 
-User config lives at the platform-default `ycode/config.toml`
-(`~/.config/ycode/config.toml` on Linux, `~/Library/Application
-Support/dev.ycode.ycode/` on macOS). When the file is missing, defaults
-ship with Claude Code and Gemini CLI registered as ACP agents.
+User config lives at the platform-default `ycode/config.json`
+(`~/.config/ycode/config.json` on Linux, `~/Library/Application
+Support/dev.ycode.ycode/` on macOS). When the file is missing, the shipped
+defaults (Claude Code, Codex, Gemini CLI, Cursor) are written to disk on
+first launch so the user has something concrete to edit.
 
-```toml
-[[agents]]
-id = "claude-code"
-kind = "acp"
-command = "claude-code-acp"
-env = { ANTHROPIC_API_KEY = "$ANTHROPIC_API_KEY" }
-
-[[agents]]
-id = "gemini-cli"
-kind = "acp"
-command = "gemini"
-args = ["--experimental-acp"]
-
-[[agents]]
-id = "codex"
-kind = "pty"
-command = "codex"
-heuristic_profile = "codex"
+```json
+{
+  "agents": [
+    {
+      "id": "claude-code",
+      "display_name": "Claude Code",
+      "command": "claude",
+      "icon": "ClaudeCode",
+      "introspect": "claude"
+    },
+    {
+      "id": "gemini-cli",
+      "display_name": "Gemini CLI",
+      "command": "gemini",
+      "icon": "GeminiCLI"
+    }
+  ]
+}
 ```
 
 `$VAR` references inside `env` are expanded from the host environment at load
@@ -95,7 +96,7 @@ order:
    and the spawn `command`. Zero Rust changes.
 2. **CLI has a stable text interface.** Write a heuristic profile in
    `crates/ycode-pty-adapter/src/heuristics/<name>.rs`, register it in
-   `heuristics::make`, and reference it from `config.toml`. Each profile has a
+   `heuristics::make`, and reference it from `config.json`. Each profile has a
    soft 200 LoC budget — exceeding it is a signal you should be upstreaming
    ACP support, not chasing terminal strings.
 3. **CLI is genuinely unique.** Implement `AgentAdapter` in a new crate and

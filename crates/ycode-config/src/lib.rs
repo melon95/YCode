@@ -1,31 +1,34 @@
 //! User configuration for ycode.
 //!
-//! Single TOML file at `~/.config/ycode/config.toml` (or platform equivalent
+//! Single JSON file at `~/.config/ycode/config.json` (or platform equivalent
 //! via `directories::ProjectDirs`). Holds the list of registered
 //! [`AgentLaunchProfile`]s — these are what the user picks from when starting
 //! a new session.
 //!
 //! ## Schema
 //!
-//! ```toml
-//! [[agents]]
-//! id = "claude-code"
-//! display_name = "Claude Code"
-//! command = "claude"
-//! args = []
-//! # Optional UI / introspection metadata:
-//! icon = "ClaudeCode"        # @lobehub/icons component name (whitelisted)
-//! icon_variant = "color"     # "color" | "mono" — default "color"
-//! color = "#d97757"          # optional brand color hint (currently advisory)
-//! introspect = "claude"      # "claude" | "codex" — binds to a jsonl parser
-//!                            # so this agent's sessions show up in History
-//!
-//! [[agents]]
-//! id = "codex"
-//! display_name = "Codex"
-//! command = "codex"
-//! icon = "Codex"
-//! introspect = "codex"
+//! ```json
+//! {
+//!   "agents": [
+//!     {
+//!       "id": "claude-code",
+//!       "display_name": "Claude Code",
+//!       "command": "claude",
+//!       "args": [],
+//!       "icon": "ClaudeCode",
+//!       "icon_variant": "color",
+//!       "color": "#d97757",
+//!       "introspect": "claude"
+//!     },
+//!     {
+//!       "id": "codex",
+//!       "display_name": "Codex",
+//!       "command": "codex",
+//!       "icon": "Codex",
+//!       "introspect": "codex"
+//!     }
+//!   ]
+//! }
 //! ```
 //!
 //! Under the terminal-first architecture every agent is just a process to
@@ -170,10 +173,7 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
 
     #[error("parse: {0}")]
-    Parse(#[from] toml::de::Error),
-
-    #[error("serialize: {0}")]
-    Serialize(#[from] toml::ser::Error),
+    Parse(#[from] serde_json::Error),
 
     #[error("could not determine config directory for the current user")]
     NoConfigDir,
@@ -184,15 +184,23 @@ pub enum ConfigError {
 
 impl Config {
     /// Load from the platform-default location, applying $VAR expansion. If
-    /// the file is missing, return [`Config::default`].
+    /// the file is missing, write the shipped defaults to disk and return
+    /// them — that way a fresh install ends up with a real `config.json` the
+    /// user can edit, instead of an invisible in-memory copy.
     pub fn load() -> Result<Self, ConfigError> {
         let path = default_path()?;
         if !path.as_std_path().exists() {
             tracing::info!(
-                "no config at {path}; using defaults",
+                "no config at {path}; writing defaults",
                 path = path
             );
-            return Ok(Self::default());
+            let cfg = Self::default();
+            // Best-effort: if we can't write defaults to disk (e.g. read-only
+            // home), still hand back the in-memory copy so the app boots.
+            if let Err(e) = cfg.save_to(&path) {
+                tracing::warn!(error = %e, "failed to persist default config");
+            }
+            return Ok(cfg);
         }
         Self::load_from(&path)
     }
@@ -200,7 +208,7 @@ impl Config {
     /// Load from an explicit path.
     pub fn load_from(path: &Utf8PathBuf) -> Result<Self, ConfigError> {
         let raw = std::fs::read_to_string(path)?;
-        let mut cfg: Self = toml::from_str(&raw)?;
+        let mut cfg: Self = serde_json::from_str(&raw)?;
         cfg.expand_env_vars();
         cfg.validate()?;
         Ok(cfg)
@@ -241,13 +249,12 @@ impl Config {
         self.agents.iter().find(|a| a.id == id)
     }
 
-    /// Serialize to TOML and write to disk. Creates the parent directory if
-    /// needed. Re-runs validation first so a duplicate id can't reach disk.
-    /// **Does not preserve comments** in the existing file — the settings UI
-    /// regenerates from scratch.
+    /// Serialize to pretty JSON and write to disk. Creates the parent
+    /// directory if needed. Re-runs validation first so a duplicate id can't
+    /// reach disk.
     pub fn save_to(&self, path: &Utf8PathBuf) -> Result<(), ConfigError> {
         self.validate()?;
-        let body = toml::to_string_pretty(self)?;
+        let body = serde_json::to_string_pretty(self)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -263,10 +270,10 @@ impl Config {
     }
 }
 
-/// Default config path: `<user-config>/ycode/config.toml`.
+/// Default config path: `<user-config>/ycode/config.json`.
 pub fn default_path() -> Result<Utf8PathBuf, ConfigError> {
     let dirs = ProjectDirs::from("dev", "ycode", "ycode").ok_or(ConfigError::NoConfigDir)?;
-    let path: PathBuf = dirs.config_dir().join("config.toml");
+    let path: PathBuf = dirs.config_dir().join("config.json");
     Utf8PathBuf::from_path_buf(path).map_err(|p| {
         ConfigError::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -288,13 +295,13 @@ mod tests {
     }
 
     #[test]
-    fn parses_minimal_toml() {
-        let toml_src = r#"
-            [[agents]]
-            id = "test"
-            command = "echo"
-        "#;
-        let cfg: Config = toml::from_str(toml_src).unwrap();
+    fn parses_minimal_json() {
+        let json_src = r#"{
+            "agents": [
+                { "id": "test", "command": "echo" }
+            ]
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
         assert_eq!(cfg.agents.len(), 1);
         assert_eq!(cfg.agents[0].id, "test");
         assert!(cfg.agents[0].args.is_empty());
@@ -302,15 +309,13 @@ mod tests {
 
     #[test]
     fn duplicate_id_fails_validation() {
-        let toml_src = r#"
-            [[agents]]
-            id = "dup"
-            command = "a"
-            [[agents]]
-            id = "dup"
-            command = "b"
-        "#;
-        let cfg: Config = toml::from_str(toml_src).unwrap();
+        let json_src = r#"{
+            "agents": [
+                { "id": "dup", "command": "a" },
+                { "id": "dup", "command": "b" }
+            ]
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
         let err = cfg.validate().unwrap_err();
         assert!(matches!(err, ConfigError::DuplicateAgentId(_)));
     }
@@ -318,13 +323,16 @@ mod tests {
     #[test]
     fn env_var_expansion() {
         std::env::set_var("YCODE_TEST_VAR_42", "hello");
-        let toml_src = r#"
-            [[agents]]
-            id = "x"
-            command = "c"
-            env = { FOO = "$YCODE_TEST_VAR_42", LITERAL = "plain" }
-        "#;
-        let mut cfg: Config = toml::from_str(toml_src).unwrap();
+        let json_src = r#"{
+            "agents": [
+                {
+                    "id": "x",
+                    "command": "c",
+                    "env": { "FOO": "$YCODE_TEST_VAR_42", "LITERAL": "plain" }
+                }
+            ]
+        }"#;
+        let mut cfg: Config = serde_json::from_str(json_src).unwrap();
         cfg.expand_env_vars();
         assert_eq!(cfg.agents[0].env.get("FOO").unwrap(), "hello");
         assert_eq!(cfg.agents[0].env.get("LITERAL").unwrap(), "plain");

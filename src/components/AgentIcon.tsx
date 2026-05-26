@@ -1,7 +1,7 @@
 // Brand-icon wrapper for AI CLI agents.
 //
 // Each backend `AgentProfileView` carries an `icon` string — the key the
-// user (or the shipped default config) put in `~/.config/ycode/config.toml`.
+// user (or the shipped default config) put in `~/.config/ycode/config.json`.
 // We look that key up in the whitelist below; misses render a generic
 // fallback so unknown agents still get a placeholder instead of blank space.
 //

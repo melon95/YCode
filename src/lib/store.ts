@@ -54,7 +54,7 @@ const EMPTY_LAYOUT: Layout = { mode: "single", visibleIds: [], focusSlot: 0 };
 
 interface AppState {
   projects: Record<string, ProjectView>;
-  /// Configured agent launch profiles (from `~/.config/ycode/config.toml`
+  /// Configured agent launch profiles (from `~/.config/ycode/config.json`
   /// + the shipped defaults). Loaded once at startup. Drives both the new-
   /// session picker and icon resolution everywhere.
   agents: AgentProfileView[];
