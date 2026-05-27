@@ -329,6 +329,17 @@ export const useStore = create<AppState>((set) => ({
           layout: { ...layout, focusSlot: existingIdx },
         };
       }
+      // If the focused slot already holds an ended session, reuse that slot.
+      // TerminalPane swaps the dead pane out for the NewSessionPicker, so
+      // appending here would leave the user staring at two panes (the dead
+      // one plus the new one) when they only ever saw the picker.
+      const focusedId = layout.visibleIds[layout.focusSlot];
+      const focusedSession = focusedId ? state.sessions[focusedId] : undefined;
+      if (focusedSession && focusedSession.status.type !== "Running") {
+        const visibleIds = layout.visibleIds.slice();
+        visibleIds[layout.focusSlot] = id;
+        return { activeId: id, layout: { ...layout, visibleIds } };
+      }
       if (layout.visibleIds.length < LAYOUT_CAP) {
         const visibleIds = [...layout.visibleIds, id];
         const focusSlot = visibleIds.length - 1;
