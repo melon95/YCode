@@ -5,4 +5,4 @@
  * second-terminal panel for ad-hoc shell commands. The returned id can be
  * used with `write_pty` / `resize_pty` / `kill_pty_raw`.
  */
-export type SpawnPtyRequest = { cwd: string, command: string, args: Array<string>, };
+export type SpawnPtyRequest = { cwd: string, command: string, args: Array<string>, cols?: number | null, rows?: number | null, };

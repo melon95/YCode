@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import {
@@ -31,6 +32,9 @@ const TERMINAL_OPTIONS = {
   lineHeight: 1.2,
   cursorBlink: true,
   scrollback: 5000,
+  // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
+  // marked proposed API in xterm.js.
+  allowProposedApi: true,
   theme: {
     background: "#13120f",
     foreground: "#f0eee6",
@@ -52,6 +56,10 @@ export function ManualTerminal({
   const fitRef = useRef<FitAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const visibleRef = useRef(visible);
+  // Tracks whether we've already pushed a "shell is live" resize_pty after
+  // observing the first byte of PTY output. See the listen effect for why
+  // that's necessary even when spawn already had the right geometry.
+  const firstOutputSeenRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,6 +79,14 @@ export function ManualTerminal({
     term.loadAddon(fit);
     term.loadAddon(search);
     term.loadAddon(new WebLinksAddon());
+    // Default Unicode tables in xterm.js treat many emoji and Nerd-Font PUA
+    // glyphs as 1 cell, while modern shells (zsh/starship + wcwidth) treat
+    // them as 2. The mismatch slowly desynchronises cursor columns between
+    // shell and xterm, surfacing as prompts that "disappear", misaligned
+    // wraps, and overwritten lines. Activating the Unicode 11 addon aligns
+    // xterm with what zsh/starship assume on macOS-style terminals.
+    term.loadAddon(new Unicode11Addon());
+    term.unicode.activeVersion = "11";
     term.open(container);
     termRef.current = term;
     fitRef.current = fit;
@@ -106,34 +122,57 @@ export function ManualTerminal({
 
     let cancelled = false;
     let localPtyId: string | null = null;
+    firstOutputSeenRef.current = false;
     setError(null);
 
-    spawnPtyRaw({ cwd, command: "", args: [] })
-      .then((id) => {
-        if (cancelled) {
-          // Component already torn down — kill the orphan.
-          void killPtyRaw(id).catch(() => {});
-          return;
-        }
-        ptyIdRef.current = id;
-        localPtyId = id;
-        // Sync PTY geometry once the container has layout.
-        requestAnimationFrame(() => {
-          try {
-            fit.fit();
-          } catch {
-            // ignore — window resize handler will retry
+    // Fit BEFORE spawning so the backend opens the PTY at the real terminal
+    // size. If we spawned first and then resize_pty'd, SIGWINCH would race
+    // shell startup: the signal can land before the shell installs its
+    // handler (default action: ignore), leaving the shell stuck at the
+    // backend's hardcoded INITIAL_COLS/ROWS while xterm displays a different
+    // width — visible as misaligned wraps and missing prompts.
+    // Reference: hermes-hq/hermes-ide#113.
+    //
+    // We need cell metrics populated before fitting (FitAddon.fit() bails
+    // silently when cell.width/height === 0). The renderer measures cells
+    // on its first render, scheduled by term.open(). One rAF is usually
+    // enough, but we poll for up to ~10 frames to be safe — and fall back
+    // to xterm's defaults afterwards so we never block spawn indefinitely.
+    const MAX_FIT_ATTEMPTS = 10;
+    let attempts = 0;
+    function fitThenSpawn() {
+      if (cancelled) return;
+      const cell = readCellDims(term);
+      if ((!cell || cell.width === 0 || cell.height === 0) && attempts < MAX_FIT_ATTEMPTS) {
+        attempts++;
+        requestAnimationFrame(fitThenSpawn);
+        return;
+      }
+      try {
+        fit.fit();
+      } catch {
+        // Cell dims unmeasurable — proceed with xterm defaults; the
+        // ResizeObserver below will catch up on the next layout tick.
+      }
+      // FitAddon can return NaN cols/rows (xterm.js#4338). Guard before
+      // handing to the backend — otherwise the PTY opens with junk geometry.
+      const cols = sanitizeDim(term.cols, 2);
+      const rows = sanitizeDim(term.rows, 1);
+      spawnPtyRaw({ cwd, command: "", args: [], cols, rows })
+        .then((id) => {
+          if (cancelled) {
+            // Component already torn down — kill the orphan.
+            void killPtyRaw(id).catch(() => {});
+            return;
           }
-          void resizePty({
-            session_id: id,
-            cols: term.cols,
-            rows: term.rows,
-          }).catch(() => {});
+          ptyIdRef.current = id;
+          localPtyId = id;
+        })
+        .catch((err) => {
+          if (!cancelled) setError(String(err));
         });
-      })
-      .catch((err) => {
-        if (!cancelled) setError(String(err));
-      });
+    }
+    requestAnimationFrame(fitThenSpawn);
 
     return () => {
       cancelled = true;
@@ -172,6 +211,22 @@ export function ManualTerminal({
       let bytes: Uint8Array | null = null;
       if (k.type === "PtyOutput") {
         bytes = base64ToBytes(k.data);
+        // Safety-net resize on the first byte we hear from the shell. By
+        // the time the shell produces output, its SIGWINCH handler is up,
+        // so any resize_pty we issued earlier (during spawn race) that the
+        // shell might have missed is re-applied here. Idempotent if geometry
+        // already matches.
+        if (!firstOutputSeenRef.current) {
+          firstOutputSeenRef.current = true;
+          const term = termRef.current;
+          if (term) {
+            const cols = sanitizeDim(term.cols, 2);
+            const rows = sanitizeDim(term.rows, 1);
+            if (cols !== undefined && rows !== undefined) {
+              void resizePty({ session_id: id, cols, rows }).catch(() => {});
+            }
+          }
+        }
       } else if (k.type === "PtyExit") {
         const tag =
           k.code === null
@@ -192,7 +247,9 @@ export function ManualTerminal({
     };
   }, []);
 
-  // Re-fit on window resize and on visibility flips (hidden → visible).
+  // Re-fit on container resize (covers window resize AND column drags from
+  // react-resizable-panels, which mutate the Panel's DOM width without
+  // firing window.resize) and on visibility flips (hidden → visible).
   useEffect(() => {
     function refit(focus = false) {
       const fit = fitRef.current;
@@ -205,18 +262,20 @@ export function ManualTerminal({
         return;
       }
       if (id) {
-        void resizePty({
-          session_id: id,
-          cols: term.cols,
-          rows: term.rows,
-        }).catch(() => {});
+        const cols = sanitizeDim(term.cols, 2);
+        const rows = sanitizeDim(term.rows, 1);
+        if (cols !== undefined && rows !== undefined) {
+          void resizePty({ session_id: id, cols, rows }).catch(() => {});
+        }
       }
       if (focus) term.focus();
     }
-    const onResize = () => refit();
-    window.addEventListener("resize", onResize);
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => refit());
+    observer.observe(container);
     if (visible) requestAnimationFrame(() => refit(true));
-    return () => window.removeEventListener("resize", onResize);
+    return () => observer.disconnect();
   }, [visible]);
 
   useEffect(() => {
@@ -240,6 +299,34 @@ export function ManualTerminal({
       <div className="manual-terminal-body" ref={containerRef} />
     </div>
   );
+}
+
+// FitAddon can return NaN cols/rows (xterm.js#4338). `term.cols` would then
+// be NaN too; a `< 10` comparison silently passes it through. Return undefined
+// in that case so callers can fall back to backend defaults rather than
+// shipping junk geometry over IPC.
+function sanitizeDim(value: number, min: number): number | undefined {
+  if (!Number.isFinite(value)) return undefined;
+  const floored = Math.floor(value);
+  if (floored < min) return undefined;
+  return floored;
+}
+
+// Peek at xterm's internal render service to detect whether the renderer has
+// measured cell metrics yet. FitAddon.proposeDimensions() bails out silently
+// when these are 0, so we poll on this before fitting.
+function readCellDims(
+  term: Terminal,
+): { width: number; height: number } | undefined {
+  return (
+    term as unknown as {
+      _core?: {
+        _renderService?: {
+          dimensions?: { css?: { cell?: { width: number; height: number } } };
+        };
+      };
+    }
+  )._core?._renderService?.dimensions?.css?.cell;
 }
 
 function base64ToBytes(b64: string): Uint8Array {

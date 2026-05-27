@@ -286,12 +286,25 @@ pub struct ResizePtyRequest {
 /// Spawn a raw PTY not associated with any project session — used by the
 /// second-terminal panel for ad-hoc shell commands. The returned id can be
 /// used with `write_pty` / `resize_pty` / `kill_pty_raw`.
+///
+/// `cols`/`rows` set the PTY's initial geometry. They're optional only for
+/// backward compat; in practice every caller should pass real fitted values.
+/// Opening the PTY at the wrong size and then sending `resize_pty` races
+/// shell startup: the SIGWINCH from the resize can land before the shell
+/// has installed its handler (default action: ignore), so the shell keeps
+/// `COLUMNS` at the initial size and renders its first prompt at the wrong
+/// width. VS Code / Hyper / Tabby all dodge this by passing dimensions at
+/// spawn time; see hermes-hq/hermes-ide#113 for the canonical write-up.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct SpawnPtyRequest {
     pub cwd: String,
     pub command: String,
     pub args: Vec<String>,
+    #[serde(default)]
+    pub cols: Option<u16>,
+    #[serde(default)]
+    pub rows: Option<u16>,
 }
 
 /// One entry in the project file tree. `path` is forward-slash, relative to

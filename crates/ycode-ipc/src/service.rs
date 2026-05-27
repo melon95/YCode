@@ -552,8 +552,11 @@ impl Service {
             // the user may explicitly need them. Plan §8.16.
             env_remove: vec![],
             cwd,
-            rows: INITIAL_ROWS,
-            cols: INITIAL_COLS,
+            // Use the caller's fitted geometry when provided so the shell
+            // reads the real terminal width via TIOCGWINSZ at startup. The
+            // hardcoded fallbacks only kick in for older clients / tests.
+            rows: req.rows.unwrap_or(INITIAL_ROWS),
+            cols: req.cols.unwrap_or(INITIAL_COLS),
         };
         let session = self.terminals.spawn(id.clone(), spec).await?;
         self.pipe_raw_terminal_events(session);

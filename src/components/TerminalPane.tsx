@@ -27,6 +27,7 @@ import {
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { listenSessionEvents, resizePty, writePty } from "../lib/ipc";
@@ -48,6 +49,9 @@ const TERMINAL_OPTIONS = {
   lineHeight: 1.2,
   cursorBlink: true,
   scrollback: 5000,
+  // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
+  // proposed API in xterm.js.
+  allowProposedApi: true,
   theme: {
     background: "#13120f",
     foreground: "#f0eee6",
@@ -606,6 +610,12 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   term.loadAddon(fit);
   term.loadAddon(search);
   term.loadAddon(new WebLinksAddon());
+  // Activate Unicode 11 width tables so emoji / Nerd-Font PUA glyphs match
+  // what zsh/starship and modern shells assume — without this, xterm treats
+  // them as 1 cell while the shell treats them as 2, and cursor columns drift
+  // until the visible prompt and shell's internal cursor disagree.
+  term.loadAddon(new Unicode11Addon());
+  term.unicode.activeVersion = "11";
 
   const container = document.createElement("div");
   container.className = "terminal-container";
