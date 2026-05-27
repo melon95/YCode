@@ -1,66 +1,53 @@
 # ycode
 
-A desktop tool that orchestrates multiple CLI coding agents (Claude Code, Gemini CLI, Codex, any ACP-compatible agent) in parallel — each session runs in its own git worktree on a local subprocess.
+A desktop workbench for running multiple CLI coding agents — Claude Code,
+Codex, Gemini CLI, Cursor, anything you can spawn — side by side, each in its
+own PTY, with a built-in code editor and shell next to them.
 
-> **Strategic stance.** The moat is the `AgentAdapter` abstraction, not the UI.
-> Sculptor (the closest competitor) is essentially a Claude-Code-specific
-> container manager; the explicit goal here is that adding a new CLI is a
-> matter of registering an ACP profile or writing a < 500 LoC heuristic
-> profile, not building a new vertical. See
-> [`/Users/melon/.claude/plans/sleepy-roaming-graham.md`](/Users/melon/.claude/plans/sleepy-roaming-graham.md)
-> for the full plan.
+Tauri 2 shell, React 19 frontend, xterm.js terminals, SQLite for session
+state. Single static binary.
 
-## Status
+## Layout
 
-| Layer | State |
-|---|---|
-| `AgentAdapter` trait + `AgentEvent` superset enum + `Capabilities` flags | done |
-| State machine + permission broker + orchestrator | done |
-| `SessionManager` (multi-session, restart, archive) | done |
-| Adapters: `echo` (in-process), `acp` (hand-rolled JSON-RPC), `pty` (codex profile) | done |
-| Persistence (sqlx + SQLite, WAL mode) | done |
-| Worktree manager (`gix` discovery + shell-out for `git worktree add/remove`) | done |
-| Tauri shell + typed IPC surface (`ycode-ipc::Service`) | done |
-| Frontend (React 19 + TypeScript + Vite 6 + Zustand, ts-rs bindings consumed via `@bindings/*`) | done |
-| Smoke scenarios | echo / echo-permission / echo-cancel / echo-parallel (S4) / echo-restart (S5) / loc-gate (S6) — all green; live `acp-claude` / `acp-gemini` / `pty-codex` gated on external binaries + API keys |
+Three columns:
 
-The plan named "Svelte 5 + Vite"; we landed on React 19 + Vite for the same reasons (typed via ts-rs, mechanical port). State lives in a single Zustand store keyed by session id.
+- **Sidebar** — projects, sessions, history (jsonl scanner for Claude / Codex
+  transcripts), full-text search across past runs.
+- **Middle pane** — your CLI agent sessions. Multiple xterm.js terminals
+  arranged in `single` / `stack` / `columns` / `2×2` / `main+side` grids.
+  Each session is one PTY, restartable, archivable, with title + status
+  badges. Close a pane and the agent keeps running in the background.
+- **Right pane** — three tabs:
+  - **Terminal** — a raw `$SHELL` in the project root. Right-click any pane
+    to **Split Right / Left / Up / Down**, drag the divider to resize,
+    close panes without killing the others. Layout persists across project
+    switches, resets on reload.
+  - **Files / Editor** — file tree (react-arborist) + CodeMirror 6 editor
+    with syntax highlighting for JS/TS/Python/Rust/HTML/CSS/Markdown/JSON,
+    preview-tab semantics borrowed from VS Code.
+  - **Changes** — `git status` view with side-by-side diffs.
+
+A command palette (`Cmd-K`) jumps to any project or session.
 
 ## Build & run
 
-Requirements: Rust 1.80+, `git` on PATH, an ACP-capable CLI for end-to-end use (e.g. `npm i -g @zed-industries/claude-code-acp`).
+Requirements: Rust 1.80+, Node 20+, `git` on PATH. For end-to-end agent use,
+install whichever CLIs you want to run (`claude`, `codex`, `gemini`, …).
 
 ```bash
-# Install frontend deps once.
-npm install
-
-# Production: build the React app, then run the desktop binary.
-npm run build && cargo run -p ycode-tauri
-
-# Dev with HMR: in two terminals,
-#   1) npm run dev               # Vite at http://localhost:1420
-#   2) cargo run -p ycode-tauri  # webview loads devUrl in debug builds
-# Or, with the Tauri CLI installed (`cargo install tauri-cli --version '^2'`):
-#   cargo tauri dev              # auto-runs `npm run dev` per tauri.conf.json
-
-# Run any unit / loopback test.
-cargo test --workspace
-
-# Type-check the frontend without building.
-npm run typecheck
+npm install                       # one-time frontend deps
+npm run tauri dev                 # dev with HMR + Tauri webview
+npm run build && cargo run -p ycode-tauri   # production-ish standalone
+cargo test --workspace            # Rust unit tests
+npm run typecheck                 # tsc --noEmit
 ```
 
-The desktop binary is `~51 MB` debug. `bundle.active = false` in
-`tauri.conf.json` keeps Tauri from demanding signed icon bundles during
-development; release packaging is a separate concern.
+## Agent configuration
 
-## Configuration
-
-User config lives at the platform-default `ycode/config.json`
-(`~/.config/ycode/config.json` on Linux, `~/Library/Application
-Support/dev.ycode.ycode/` on macOS). When the file is missing, the shipped
-defaults (Claude Code, Codex, Gemini CLI, Cursor) are written to disk on
-first launch so the user has something concrete to edit.
+User config lives at the platform default
+(`~/Library/Application Support/dev.ycode.app/config.json` on macOS).
+Missing → the shipped defaults (Claude Code, Codex, Gemini CLI, Cursor) are
+written on first launch.
 
 ```json
 {
@@ -69,86 +56,77 @@ first launch so the user has something concrete to edit.
       "id": "claude-code",
       "display_name": "Claude Code",
       "command": "claude",
+      "args": [],
+      "env": {},
       "icon": "ClaudeCode",
       "introspect": "claude"
     },
     {
-      "id": "gemini-cli",
-      "display_name": "Gemini CLI",
-      "command": "gemini",
-      "icon": "GeminiCLI"
+      "id": "codex",
+      "display_name": "Codex",
+      "command": "codex",
+      "icon": "Codex",
+      "introspect": "codex"
     }
   ]
 }
 ```
 
-`$VAR` references inside `env` are expanded from the host environment at load
-time. Missing variables stay as the literal `$VAR` so the adapter can fail
-loudly on spawn rather than silently launching unauthenticated.
+- `command` is invoked through the user's login shell so `~/.zshrc` (and
+  version managers like `fnm` / `nvm` / `asdf`) get a chance to set up PATH
+  before the CLI runs.
+- `$VAR` references inside `env` are expanded against the host environment
+  at load time. Unresolved vars stay as the literal `$VAR` so the spawn
+  fails loudly instead of silently launching unauthenticated.
+- `introspect` (optional) selects a jsonl parser for the history viewer.
+  Currently `claude` and `codex` are recognised; agents without one still
+  run, they just don't get the rich transcript view.
 
-## Adding a new agent
-
-The S6 cost gate (`cargo run -p ycode-cli -- smoke loc-gate`) enforces that an
-end-to-end adapter for a new CLI fits in < 500 LoC. The cheapest path, in
-order:
-
-1. **CLI already speaks ACP.** Add a `[[agents]]` stanza with `kind = "acp"`
-   and the spawn `command`. Zero Rust changes.
-2. **CLI has a stable text interface.** Write a heuristic profile in
-   `crates/ycode-pty-adapter/src/heuristics/<name>.rs`, register it in
-   `heuristics::make`, and reference it from `config.json`. Each profile has a
-   soft 200 LoC budget — exceeding it is a signal you should be upstreaming
-   ACP support, not chasing terminal strings.
-3. **CLI is genuinely unique.** Implement `AgentAdapter` in a new crate and
-   register a factory in `state::register_factories`. Use this only when the
-   first two routes don't fit.
-
-## Smoke tests
-
-```bash
-# Cheap (no external binaries):
-cargo run -p ycode-cli -- smoke echo
-cargo run -p ycode-cli -- smoke echo-permission
-cargo run -p ycode-cli -- smoke echo-cancel
-cargo run -p ycode-cli -- smoke echo-parallel    # S4
-cargo run -p ycode-cli -- smoke echo-restart     # S5
-cargo run -p ycode-cli -- smoke loc-gate         # S6 cost gate
-
-# Live (require external binaries + API keys):
-cargo run -p ycode-cli -- smoke acp-claude --repo <path>     # S1
-cargo run -p ycode-cli -- smoke acp-gemini --repo <path>     # S2 (cancel mid-turn)
-cargo run -p ycode-cli -- smoke pty-codex  --repo <path>     # S3
-```
-
-Every scenario emits NDJSON of `AgentEvent`s on stdout and structured
-tracing on stderr — pipe stdout through `jq` for a readable transcript.
+The Settings modal in-app edits the same file with a form-based UI.
 
 ## Workspace layout
 
 ```
 ycode/
-├── Cargo.toml                # workspace root
-├── package.json              # frontend deps (React, Vite, Zustand, @tauri-apps/api)
-├── vite.config.ts            # alias @bindings/* → crates/ycode-ipc/bindings/
-├── index.html                # Vite entry
-├── src/                      # React + TS frontend
-│   ├── main.tsx
-│   ├── App.tsx
-│   ├── lib/                  # ipc.ts (Tauri command wrappers), store.ts (Zustand), types.ts
-│   └── components/           # TopBar / Sidebar / SessionRow / LogPane / EventCard / Composer / StatusBar / PermissionDialog
-├── src-tauri/                # Tauri shell — commands.rs is glue, state.rs wires Service
+├── Cargo.toml                    # Rust workspace
+├── package.json                  # Frontend (React, Vite, Tauri JS API)
+├── vite.config.ts                # @bindings/* → crates/ycode-ipc/bindings/
+├── src/                          # React + TypeScript
+│   ├── App.tsx                   # Three-column layout host
+│   ├── lib/
+│   │   ├── ipc.ts                # Tauri command wrappers
+│   │   ├── store.ts              # Zustand store
+│   │   ├── hotkeys.tsx           # Cmd-K, layout cycle, pane focus
+│   │   └── types.ts
+│   └── components/
+│       ├── TopBar.tsx            # Project picker + agent launcher
+│       ├── Sidebar.tsx           # Sessions / history tabs
+│       ├── TerminalPane.tsx      # Middle: agent xterm grid
+│       ├── ManualTerminal.tsx    # Right: a single $SHELL xterm
+│       ├── RightTerminalSplit.tsx# Right: binary-split host
+│       ├── RightPane.tsx         # Right-tab container
+│       ├── EditorPanel.tsx       # CodeMirror editor
+│       ├── FileTreePanel.tsx     # react-arborist tree
+│       ├── ChangesPanel.tsx      # git status + diffs
+│       ├── HistoryTab.tsx        # jsonl transcript viewer
+│       ├── CommandPalette.tsx    # Cmd-K palette
+│       └── SettingsModal.tsx     # Agent profile editor
+├── src-tauri/                    # Tauri shell
+│   └── src/
+│       ├── lib.rs                # tauri::Builder setup
+│       ├── state.rs              # Wires Service into AppState
+│       └── commands.rs           # #[tauri::command] glue
 └── crates/
-    ├── ycode-adapter/        # AgentAdapter trait, AgentEvent, Capabilities, SessionState
-    ├── ycode-acp-adapter/    # ACP over hand-rolled JSON-RPC; loopback test in tests/loopback.rs
-    ├── ycode-pty-adapter/    # PTY + vt100 + heuristic profiles (codex.rs is the example)
-    ├── ycode-echo-adapter/   # in-process toy adapter; smoke target for the S6 LoC gate
-    ├── ycode-core/           # state machine, permission broker, orchestrator, SessionManager
-    ├── ycode-worktree/       # gix discovery + git worktree shell-out
-    ├── ycode-persist/        # sqlx + SQLite + migrations (sessions, events, permissions)
-    ├── ycode-config/         # TOML config + $VAR expansion
-    ├── ycode-ipc/            # typed Service facade + DTOs (ts-rs bindings)
-    └── ycode-cli/            # headless smoke runner (S1–S6 entry points)
+    ├── ycode-terminal/           # portable-pty wrapper, TerminalSession
+    ├── ycode-persist/            # sqlx + SQLite (projects, sessions, WAL)
+    ├── ycode-config/             # config.json schema + $VAR expansion
+    ├── ycode-introspect/         # claude/codex jsonl scanners + parsers
+    └── ycode-ipc/                # Service facade, DTOs, ts-rs bindings
 ```
+
+The frontend imports DTOs from `@bindings/*` — ts-rs writes them into
+`crates/ycode-ipc/bindings/` whenever the Rust struct changes (run
+`cargo test` on the ipc crate to regenerate).
 
 ## License
 
