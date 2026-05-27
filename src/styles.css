@@ -2902,3 +2902,153 @@ textarea.native-input {
   letter-spacing: var(--tracking-caps);
   color: var(--muted);
 }
+
+/* ── App loading curtain ─────────────────────────────────────────────
+   Full-window typographic loader: italic Fraunces wordmark + a hairline
+   rule with a single terracotta scanning head + small-caps caption. The
+   whole curtain fades out (320ms) once `ready` flips, then is hoisted
+   out of the layout via `visibility: hidden` so it stops absorbing
+   clicks and the panes underneath own the cursor. */
+
+.app-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  /* Same warm radial wash the body has, so the curtain feels like a
+     deepening of the chrome rather than a foreign overlay. */
+  background-image:
+    radial-gradient(
+      ellipse 1100px 700px at 50% 35%,
+      rgba(217, 119, 87, 0.06),
+      transparent 65%
+    );
+  visibility: visible;
+  transition: opacity 360ms var(--ease-out), visibility 0s 0s;
+}
+
+/* Explicit fade-in on first mount so the curtain doesn't pop into
+   existence — pairs with the App-side `fontsReady` gate to guarantee a
+   smooth in → hold → out arc rather than a flash of fallback text. */
+.app-loading:not(.loaded) {
+  animation: app-loading-enter 380ms var(--ease-out) both;
+}
+
+@keyframes app-loading-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.app-loading.loaded {
+  opacity: 0;
+  visibility: hidden;
+  /* Delay visibility:hidden until after the opacity transition so the
+     fade actually plays. */
+  transition: opacity 360ms var(--ease-out), visibility 0s 360ms;
+  pointer-events: none;
+}
+
+.app-loading-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  /* Subtle breath on the whole mark — keeps the screen "alive" without
+     drawing attention. */
+  animation: app-loading-breath 3.2s ease-in-out infinite;
+}
+
+.app-loading-word {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 64px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text-soft);
+}
+
+.app-loading-bar {
+  position: relative;
+  width: 72px;
+  height: 1px;
+  background: rgba(217, 119, 87, 0.16);
+  overflow: visible;
+}
+
+/* The "scanning head" — a small bright sliver that traverses the hairline
+   left-to-right on a 1.6s loop. Matches the foundry "type specimen with
+   a measuring rule" feel without resorting to a generic spinner. */
+.app-loading-bar::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 50%,
+    transparent
+  );
+  filter: blur(0.5px);
+  animation: app-loading-trace 1.6s var(--ease-out) infinite;
+}
+
+.app-loading-caption {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--whisper);
+}
+
+@keyframes app-loading-breath {
+  0%, 100% {
+    opacity: 0.78;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes app-loading-trace {
+  0% {
+    transform: translateX(-18px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(72px);
+    opacity: 0;
+  }
+}
+
+/* Respect reduced-motion: drop the trace/breath animations, just hold a
+   static dim mark. */
+@media (prefers-reduced-motion: reduce) {
+  .app-loading-mark,
+  .app-loading-bar::after {
+    animation: none;
+  }
+  .app-loading-bar::after {
+    opacity: 0.8;
+    transform: translateX(27px);
+  }
+}

@@ -22,6 +22,7 @@ import { TerminalPane } from "./components/TerminalPane";
 import { RightPane } from "./components/RightPane";
 import { CommandPalette } from "./components/CommandPalette";
 import { HistoryTab } from "./components/HistoryTab";
+import { AppLoading } from "./components/AppLoading";
 import type { SearchHit } from "./lib/types";
 
 const COLUMN_PANEL_IDS = ["sidebar", "middle", "right"];
@@ -43,6 +44,56 @@ export function App() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [history, setHistory] = useState<HistoryView | null>(null);
+  /// Loading-curtain gate. We hide it only when *all three* of:
+  ///   - the projects/sessions/agents initial fetch has returned (or errored)
+  ///   - the display fonts (Fraunces et al.) have finished loading, so the
+  ///     wordmark isn't shown with a system fallback that swaps mid-fade
+  ///   - the curtain has been **fully visible** (post-fade-in) for at least
+  ///     800ms, so the loading state reads as an intentional moment rather
+  ///     than a sub-second flash. Pegging this to fonts-loaded (not mount)
+  ///     means the full-visibility timer starts only after Fraunces has
+  ///     swapped in, so the user actually sees the wordmark for the full
+  ///     window.
+  /// ...are satisfied. A 1.6s safety timer on the font gate prevents a
+  /// missing-CDN scenario from keeping the user staring at the curtain.
+  const FADE_IN_MS = 380;
+  const HOLD_MS = 800;
+  const [ready, setReady] = useState(false);
+  const [fetched, setFetched] = useState(false);
+  const [holdElapsed, setHoldElapsed] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const fallback = setTimeout(() => {
+      if (!cancelled) setFontsReady(true);
+    }, 1600);
+    const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (fonts?.ready) {
+      fonts.ready.then(() => {
+        if (cancelled) return;
+        clearTimeout(fallback);
+        setFontsReady(true);
+      });
+    } else {
+      clearTimeout(fallback);
+      setFontsReady(true);
+    }
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+    };
+  }, []);
+  // Start the "fully visible" hold timer only after fonts are in — that's
+  // the moment the curtain stops mutating and the user can actually take
+  // in what they're looking at.
+  useEffect(() => {
+    if (!fontsReady) return;
+    const t = setTimeout(() => setHoldElapsed(true), FADE_IN_MS + HOLD_MS);
+    return () => clearTimeout(t);
+  }, [fontsReady]);
+  useEffect(() => {
+    if (fetched && holdElapsed && fontsReady) setReady(true);
+  }, [fetched, holdElapsed, fontsReady]);
 
   // Persist column widths across reloads. Panel ids must match the literal
   // ids passed to <Panel> below or the restored layout won't apply.
@@ -100,8 +151,14 @@ export function App() {
           setProjects(projects);
           setSessions(sessions);
           setAgents(agents);
+          setFetched(true);
         })
-        .catch((err) => console.error("initial load failed", err));
+        .catch((err) => {
+          console.error("initial load failed", err);
+          // Lift the curtain even on failure — otherwise the user is stuck
+          // staring at "preparing workbench" forever and can't reach any UI.
+          if (!cancelled) setFetched(true);
+        });
     };
     refresh();
 
@@ -142,6 +199,7 @@ export function App() {
 
   return (
     <>
+      <AppLoading ready={ready} />
       <TopBar />
       <Group
         orientation="horizontal"
