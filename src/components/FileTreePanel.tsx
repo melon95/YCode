@@ -5,7 +5,7 @@
 // come from `material-icon-theme` via `iconForFile` / `iconForFolder`.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { watch } from "@tauri-apps/plugin-fs";
+import { watchImmediate } from "@tauri-apps/plugin-fs";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import { listFiles } from "../lib/ipc";
 import { useStore } from "../lib/store";
@@ -70,26 +70,46 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     };
   }, [projectId, reloadKey]);
 
-  // Watch the repo directory; any fs event triggers a debounced re-list.
+  // Watch the repo directory for changes. We use `watchImmediate` instead of
+  // `watch` because the latter wraps notify in `notify-debouncer-full`, which
+  // synchronously walkdir's the entire tree on setup (ignoring .gitignore!) to
+  // populate a FileIdMap for rename-event stitching. That walk is the source
+  // of the 1-8s project-switch lag we saw in the perf logs — and we don't use
+  // the rename-stitching feature anyway (any event just refetches the list).
+  //
+  // `watchImmediate` skips the debouncer entirely, so plugin-fs constructs a
+  // plain `RecommendedWatcher` and FSEvents registration is the kernel's O(1)
+  // call. We replace the 400ms debounce on our side with a trailing-edge
+  // setTimeout so a burst of events still only re-lists once.
   useEffect(() => {
     if (!repoPath) return;
     let cancelled = false;
     let unwatch: (() => void) | undefined;
-    watch(
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const DEBOUNCE_MS = 400;
+
+    watchImmediate(
       repoPath,
       () => {
         if (cancelled) return;
-        setReloadKey(reloadKeyRef.current + 1);
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
+          if (!cancelled) setReloadKey(reloadKeyRef.current + 1);
+        }, DEBOUNCE_MS);
       },
-      { recursive: true, delayMs: 400 },
+      { recursive: true },
     )
       .then((fn) => {
         if (cancelled) fn();
         else unwatch = fn;
       })
-      .catch((err) => console.warn("watch failed", err));
+      .catch((err) => {
+        console.warn("watch failed", err);
+      });
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
       unwatch?.();
     };
   }, [repoPath]);
