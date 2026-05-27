@@ -692,9 +692,18 @@ impl Service {
             .iter()
             .map(|s| (*s).to_string())
             .collect();
+        // Wrap the agent invocation in the user's interactive login shell so
+        // `~/.zshrc` (etc.) is sourced before the agent — version managers
+        // like fnm/nvm/asdf inject themselves there, and without this layer
+        // the agent (and any subprocesses it spawns, e.g. Claude Code's bash
+        // tool) only sees the GUI-launched PATH and can't find the user's
+        // chosen node/python/etc. The right-side ManualTerminal already gets
+        // this for free because it spawns $SHELL directly.
+        let (command, args) =
+            wrap_in_login_shell(profile.command.clone(), launch_args(profile, row, mode));
         let spec = SpawnSpec {
-            command: profile.command.clone(),
-            args: launch_args(profile, row, mode),
+            command,
+            args,
             env,
             env_remove,
             cwd,
@@ -897,6 +906,47 @@ fn is_gemini_profile(profile: &AgentLaunchProfile) -> bool {
 
 fn command_basename(command: &str) -> &str {
     command.rsplit(['/', '\\']).next().unwrap_or(command)
+}
+
+/// Wrap an agent invocation in the user's `$SHELL -l -i -c "exec …"` on Unix
+/// so rc files get sourced before the agent starts. `exec` replaces the
+/// shell so signals / process tree behave as if the agent were spawned
+/// directly. Falls back to `/bin/sh` if `$SHELL` is unset. On Windows we
+/// spawn the agent directly — there's no analogous rc-sourcing layer.
+#[cfg(unix)]
+fn wrap_in_login_shell(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    let mut script = String::from("exec ");
+    script.push_str(&posix_shell_quote(&command));
+    for arg in &args {
+        script.push(' ');
+        script.push_str(&posix_shell_quote(arg));
+    }
+    (shell, vec!["-l".into(), "-i".into(), "-c".into(), script])
+}
+
+#[cfg(windows)]
+fn wrap_in_login_shell(command: String, args: Vec<String>) -> (String, Vec<String>) {
+    (command, args)
+}
+
+/// POSIX single-quote escape: wrap in `'…'` and turn each embedded `'` into
+/// `'\''`. Safe for use inside a `sh -c` script.
+fn posix_shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".into();
+    }
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
 }
 
 fn watch_codex_session_id(
@@ -1797,6 +1847,49 @@ mod tests {
         );
         let shell: &[&str] = &[];
         assert_eq!(env_keys_to_strip(&profile("shell", "bash")), shell);
+    }
+
+    #[test]
+    fn posix_shell_quote_escapes_single_quotes_and_empties() {
+        assert_eq!(posix_shell_quote(""), "''");
+        assert_eq!(posix_shell_quote("hello"), "'hello'");
+        assert_eq!(posix_shell_quote("a b"), "'a b'");
+        // Single quote inside: close, escape with backslash, reopen.
+        assert_eq!(posix_shell_quote("it's"), "'it'\\''s'");
+        // Path with spaces and a quote.
+        assert_eq!(
+            posix_shell_quote("/Users/me/it's/path"),
+            "'/Users/me/it'\\''s/path'"
+        );
+        // Shell metacharacters stay literal inside single quotes.
+        assert_eq!(posix_shell_quote("$(rm -rf /)"), "'$(rm -rf /)'");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wrap_in_login_shell_builds_shell_dash_lic_with_exec() {
+        // Pin $SHELL so the test isn't environment-dependent.
+        let prev = std::env::var_os("SHELL");
+        // SAFETY: tests in this crate are run single-threaded enough that
+        // mutating SHELL here is fine; the assertion runs before any other
+        // shell-env reader.
+        unsafe { std::env::set_var("SHELL", "/bin/zsh") };
+        let (cmd, args) = wrap_in_login_shell(
+            "claude".to_string(),
+            vec!["--resume".into(), "abc def".into()],
+        );
+        // Restore before any assertion in case it panics.
+        match prev {
+            Some(v) => unsafe { std::env::set_var("SHELL", v) },
+            None => unsafe { std::env::remove_var("SHELL") },
+        }
+        assert_eq!(cmd, "/bin/zsh");
+        assert_eq!(args[0], "-l");
+        assert_eq!(args[1], "-i");
+        assert_eq!(args[2], "-c");
+        // The script must `exec` (so signals/PIDs behave as if direct-spawned)
+        // and properly quote args that contain spaces.
+        assert_eq!(args[3], "exec 'claude' '--resume' 'abc def'");
     }
 
     #[test]
