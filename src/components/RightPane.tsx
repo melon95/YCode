@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
-import { ManualTerminal } from "./ManualTerminal";
 import { ChangesPanel } from "./ChangesPanel";
+import {
+  RightTerminalSplit,
+  closePane,
+  newSplitState,
+  splitPane,
+  updateRatio,
+  type ProjectSplitState,
+  type SplitDirection,
+  type SplitPath,
+} from "./RightTerminalSplit";
 
 export function RightPane() {
   const projects = useStore((s) => s.projects);
@@ -20,10 +29,16 @@ export function RightPane() {
   const hasOpenFiles = openFiles.length > 0;
 
   // Set of project ids the user has touched this session. We mount one
-  // ManualTerminal per visited project and only flip visibility on switch,
-  // so a long-running shell (e.g. `npm run dev`) doesn't get killed just
+  // terminal subtree per visited project and only flip visibility on switch,
+  // so long-running shells (e.g. `npm run dev`) don't get killed just
   // because the user briefly tabbed to another project.
   const [visitedProjects, setVisitedProjects] = useState<Set<string>>(new Set());
+  // Per-project split tree for the right-pane terminal. In-memory only —
+  // reloading the app reverts every project to a single pane. Keyed by
+  // project id so switching projects preserves each one's layout.
+  const [splitStates, setSplitStates] = useState<
+    Record<string, ProjectSplitState>
+  >({});
   useEffect(() => {
     if (!activeProjectId) return;
     setVisitedProjects((prev) => {
@@ -34,8 +49,8 @@ export function RightPane() {
     });
   }, [activeProjectId]);
 
-  // Drop a project from the visited set when it disappears from the store
-  // (user deleted it). Its ManualTerminal unmounts and the shell gets killed.
+  // Drop a project from the visited set + split state when it disappears
+  // from the store (user deleted it). Its terminals unmount, shells die.
   useEffect(() => {
     setVisitedProjects((prev) => {
       let changed = false;
@@ -48,7 +63,65 @@ export function RightPane() {
       }
       return changed ? next : prev;
     });
+    setSplitStates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of Object.keys(prev)) {
+        if (!projects[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [projects]);
+
+  // Make sure every visited project has a split state. Visited set is
+  // updated first; this effect fills the matching split entry on the next
+  // render pass.
+  useEffect(() => {
+    setSplitStates((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const pid of visitedProjects) {
+        if (!next[pid]) {
+          next[pid] = newSplitState();
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [visitedProjects]);
+
+  const handleSplit = useCallback(
+    (pid: string, paneId: string, direction: SplitDirection) => {
+      setSplitStates((prev) => {
+        const cur = prev[pid];
+        if (!cur) return prev;
+        return { ...prev, [pid]: splitPane(cur, paneId, direction) };
+      });
+    },
+    [],
+  );
+
+  const handleClosePane = useCallback((pid: string, paneId: string) => {
+    setSplitStates((prev) => {
+      const cur = prev[pid];
+      if (!cur) return prev;
+      return { ...prev, [pid]: closePane(cur, paneId) };
+    });
+  }, []);
+
+  const handleUpdateRatio = useCallback(
+    (pid: string, path: SplitPath, ratio: number) => {
+      setSplitStates((prev) => {
+        const cur = prev[pid];
+        if (!cur) return prev;
+        return { ...prev, [pid]: updateRatio(cur, path, ratio) };
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!hasOpenFiles && rightTab === "editor") {
@@ -213,13 +286,14 @@ export function RightPane() {
         {rightTab === "changes" && activeProject && (
           <ChangesPanel projectId={activeProject.id} />
         )}
-        {/* One ManualTerminal per visited project, stacked + hidden via
+        {/* One split tree per visited project, stacked + hidden via
             display:none for the inactive ones. Switching projects flips
-            visibility instead of unmounting, so each project's shell keeps
+            visibility instead of unmounting, so every pane's shell keeps
             running in the background. */}
         {Array.from(visitedProjects).map((pid) => {
           const proj = projects[pid];
-          if (!proj) return null;
+          const state = splitStates[pid];
+          if (!proj || !state) return null;
           const isActiveProject = pid === activeProject?.id;
           const visible = isActiveProject && rightTab === "terminal";
           return (
@@ -227,7 +301,18 @@ export function RightPane() {
               key={pid}
               className={"manual-terminal-host" + (visible ? "" : " hidden")}
             >
-              <ManualTerminal cwd={proj.repo_path} visible={visible} />
+              <RightTerminalSplit
+                tree={state.tree}
+                cwd={proj.repo_path}
+                visible={visible}
+                onSplit={(paneId, direction) =>
+                  handleSplit(pid, paneId, direction)
+                }
+                onClose={(paneId) => handleClosePane(pid, paneId)}
+                onUpdateRatio={(path, ratio) =>
+                  handleUpdateRatio(pid, path, ratio)
+                }
+              />
             </div>
           );
         })}

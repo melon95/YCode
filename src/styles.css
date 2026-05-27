@@ -1996,6 +1996,192 @@ textarea.native-input {
   height: 100%;
 }
 
+/* Right-pane binary-split terminal layout. Flat rendering: leaves and gutters
+   are absolutely positioned children of .split-host, each placed by % rects
+   computed from the split tree. Going flat instead of nesting wrapper divs
+   preserves React identity for surviving leaves when a sibling pane is
+   closed, so their ManualTerminal (and PTY) keep running. */
+.split-host {
+  position: absolute;
+  inset: 0;
+}
+.terminal-pane-card {
+  position: absolute;
+  overflow: hidden;
+}
+/* Header only renders when there is more than one pane (`.with-header`).
+   Single-pane state keeps the original chrome-less look.
+
+   Absolute (not flex): percentage heights inside flex items aren't always
+   "definite" enough at first paint for xterm's FitAddon to read accurate
+   container dimensions, so the initial fit would compute wrong cols/rows.
+   Pixel offsets sidestep that. */
+:root {
+  --pane-header-h: 28px;
+}
+.terminal-pane-card-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--pane-header-h);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 3px 4px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+  user-select: none;
+}
+.terminal-pane-card-body {
+  position: absolute;
+  inset: 0;
+}
+.terminal-pane-card.with-header .terminal-pane-card-body {
+  top: var(--pane-header-h);
+}
+
+/* Visual language matches TerminalPane's .gutter but positioned with %
+   coordinates over the split-host. z-index 50 keeps it above xterm's helper
+   textarea (z-index 11). */
+.split-gutter {
+  position: absolute;
+  z-index: 50;
+  user-select: none;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease;
+}
+.split-gutter::after {
+  content: "";
+  display: block;
+  background: var(--border-strong);
+  border-radius: 2px;
+  transition: background 0.12s ease, width 0.12s ease, height 0.12s ease;
+}
+.split-gutter-vertical {
+  width: 8px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+}
+.split-gutter-vertical::after {
+  width: 2px;
+  height: 36px;
+  max-height: 60%;
+}
+.split-gutter-horizontal {
+  height: 8px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+.split-gutter-horizontal::after {
+  height: 2px;
+  width: 36px;
+  max-width: 60%;
+}
+.split-gutter:hover,
+.split-gutter:active {
+  background: rgba(var(--accent-rgb), 0.18);
+}
+.split-gutter:hover::after,
+.split-gutter:active::after {
+  background: var(--accent);
+}
+.split-gutter-vertical:hover::after,
+.split-gutter-vertical:active::after {
+  width: 3px;
+  max-height: 80%;
+}
+.split-gutter-horizontal:hover::after,
+.split-gutter-horizontal:active::after {
+  height: 3px;
+  max-width: 80%;
+}
+
+/* Close button on multi-pane state. Mirrors TerminalPane's .pane-close so
+   the look matches across panes. */
+.terminal-pane-card-header .pane-close {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+.terminal-pane-card-header .pane-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+/* Right-click context menu for split actions. Portaled into <body>, so it
+   isn't clipped by any pane overflow. */
+.split-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 188px;
+  padding: 4px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-ui);
+}
+.split-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  border-radius: 5px;
+  text-align: left;
+}
+.split-menu button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.split-menu button svg {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+}
+.split-menu button:hover svg {
+  color: #fff;
+}
+.split-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+.split-menu-danger {
+  color: var(--error) !important;
+}
+.split-menu-danger:hover {
+  background: var(--error) !important;
+  color: #fff !important;
+}
+.split-menu-danger svg {
+  color: var(--error) !important;
+}
+.split-menu-danger:hover svg {
+  color: #fff !important;
+}
+
 .editor-panel {
   display: flex;
   flex-direction: column;
