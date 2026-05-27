@@ -52,6 +52,33 @@ function reflowMode(current: LayoutMode, newCount: number): LayoutMode {
 
 const EMPTY_LAYOUT: Layout = { mode: "single", visibleIds: [], focusSlot: 0 };
 
+// Persist the active project so reopening the app restores the user's last
+// pick instead of jumping to whichever project happens to be first in the
+// backend list (currently the newest by `created_at`).
+const ACTIVE_PROJECT_STORAGE_KEY = "ycode-active-project";
+
+function readStoredActiveProjectId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(ACTIVE_PROJECT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredActiveProjectId(id: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (id === null) {
+      window.localStorage.removeItem(ACTIVE_PROJECT_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, id);
+    }
+  } catch {
+    /* quota / privacy mode — best effort */
+  }
+}
+
 interface AppState {
   projects: Record<string, ProjectView>;
   /// Configured agent launch profiles (from `~/.config/ycode/config.json`
@@ -152,24 +179,37 @@ export const useStore = create<AppState>((set) => ({
   setProjects: (list) =>
     set((state) => {
       const projects = Object.fromEntries(list.map((p) => [p.id, p]));
+      // Preference order: current selection (still valid) → last-selected from
+      // localStorage (survives reloads) → newest project as a final fallback.
+      const stored = readStoredActiveProjectId();
       const activeProjectId =
         state.activeProjectId && projects[state.activeProjectId]
           ? state.activeProjectId
-          : (list[0]?.id ?? null);
+          : stored && projects[stored]
+            ? stored
+            : (list[0]?.id ?? null);
+      writeStoredActiveProjectId(activeProjectId);
       return { projects, activeProjectId };
     }),
 
   upsertProject: (p) =>
-    set((state) => ({
-      projects: { ...state.projects, [p.id]: p },
-      activeProjectId: state.activeProjectId ?? p.id,
-    })),
+    set((state) => {
+      const activeProjectId = state.activeProjectId ?? p.id;
+      if (activeProjectId !== state.activeProjectId) {
+        writeStoredActiveProjectId(activeProjectId);
+      }
+      return {
+        projects: { ...state.projects, [p.id]: p },
+        activeProjectId,
+      };
+    }),
 
   removeProject: (id) =>
     set((state) => {
       const projects = { ...state.projects };
       delete projects[id];
       const wasActive = state.activeProjectId === id;
+      if (wasActive) writeStoredActiveProjectId(null);
       return {
         projects,
         activeProjectId: wasActive ? null : state.activeProjectId,
@@ -192,6 +232,7 @@ export const useStore = create<AppState>((set) => ({
             .sort((a, b) => b.updated_at_ms - a.updated_at_ms)[0]?.id ?? null)
         : null;
       const same = state.activeProjectId === id;
+      if (!same) writeStoredActiveProjectId(id);
       // Project switch resets the layout: previous panes were scoped to the
       // old project's sessions, which the user probably no longer wants to
       // see. The most-recent session of the new project (if any) seeds a
