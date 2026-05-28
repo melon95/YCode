@@ -23,6 +23,12 @@ import { RightPane } from "./components/RightPane";
 import { CommandPalette } from "./components/CommandPalette";
 import { HistoryTab } from "./components/HistoryTab";
 import { AppLoading } from "./components/AppLoading";
+import {
+  bindUnlockOnClose,
+  listenPeerLockEvents,
+  readLockedProjectIdFromUrl,
+  snapshotPeerLockedProjects,
+} from "./lib/multiWindow";
 import type { SearchHit } from "./lib/types";
 
 const COLUMN_PANEL_IDS = ["sidebar", "middle", "right"];
@@ -41,6 +47,41 @@ export function App() {
   const setAgents = useStore((s) => s.setAgents);
   const setLiveTitle = useStore((s) => s.setLiveTitle);
   const activeProjectId = useStore((s) => s.activeProjectId);
+  const setLockedProjectId = useStore((s) => s.setLockedProjectId);
+  const setLockedByOtherWindows = useStore((s) => s.setLockedByOtherWindows);
+  const addLockedByOther = useStore((s) => s.addLockedByOther);
+  const removeLockedByOther = useStore((s) => s.removeLockedByOther);
+
+  // Lock-from-URL must run before the projects fetch returns so `setProjects`
+  // can honour the lock when picking the active project. Reading the URL is
+  // synchronous; the peer snapshot is async but the lock alone is enough to
+  // skip the localStorage fallback.
+  useEffect(() => {
+    const id = readLockedProjectIdFromUrl();
+    if (id) setLockedProjectId(id);
+    let unlistenPeers: (() => void) | undefined;
+    let unlistenClose: (() => void) | undefined;
+    let cancelled = false;
+    snapshotPeerLockedProjects().then((set) => {
+      if (cancelled) return;
+      setLockedByOtherWindows([...set]);
+    });
+    unlistenPeers = listenPeerLockEvents({
+      onLocked: addLockedByOther,
+      onUnlocked: removeLockedByOther,
+    });
+    if (id) {
+      bindUnlockOnClose(id).then((u) => {
+        if (cancelled) u();
+        else unlistenClose = u;
+      });
+    }
+    return () => {
+      cancelled = true;
+      unlistenPeers?.();
+      unlistenClose?.();
+    };
+  }, [setLockedProjectId, setLockedByOtherWindows, addLockedByOther, removeLockedByOther]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [history, setHistory] = useState<HistoryView | null>(null);

@@ -81,6 +81,15 @@ function writeStoredActiveProjectId(id: string | null) {
 
 interface AppState {
   projects: Record<string, ProjectView>;
+  /// When non-null, this window is a detached "single project" window —
+  /// only this project's tab is rendered, the new-project "+" is hidden,
+  /// and the user can't switch away. Seeded once from the URL at startup.
+  lockedProjectId: string | null;
+  /// Project ids currently owned by other live windows. Removed from this
+  /// window's project tab strip so the same project never appears twice.
+  /// Pure UI state — not persisted (a relaunch always reconciles via
+  /// `getAllWebviewWindows`).
+  lockedByOtherWindows: Record<string, true>;
   /// Configured agent launch profiles (from `~/.config/ycode/config.json`
   /// + the shipped defaults). Loaded once at startup. Drives both the new-
   /// session picker and icon resolution everywhere.
@@ -125,6 +134,16 @@ interface AppState {
   upsertProject: (p: ProjectView) => void;
   removeProject: (id: string) => void;
   setActiveProjectId: (id: string | null) => void;
+  /// One-shot at startup. Locks this window to a single project and forces
+  /// the active selection to it.
+  setLockedProjectId: (id: string | null) => void;
+  /// Seed the peer-owned set from a snapshot.
+  setLockedByOtherWindows: (ids: string[]) => void;
+  /// Mark a project as taken by a peer window. Auto-switches the active
+  /// project away when we were currently looking at it.
+  addLockedByOther: (id: string) => void;
+  /// Release a project that a peer window just closed.
+  removeLockedByOther: (id: string) => void;
   setRightTab: (tab: RightTab) => void;
   setSessions: (list: SessionView[]) => void;
   upsertSession: (s: SessionView) => void;
@@ -162,6 +181,8 @@ interface AppState {
 
 export const useStore = create<AppState>((set) => ({
   projects: {},
+  lockedProjectId: null,
+  lockedByOtherWindows: {},
   agents: [],
   sessions: {},
   liveTitles: {},
@@ -179,15 +200,24 @@ export const useStore = create<AppState>((set) => ({
   setProjects: (list) =>
     set((state) => {
       const projects = Object.fromEntries(list.map((p) => [p.id, p]));
+      // A detached single-project window forces its lock no matter what
+      // localStorage thinks — that URL is the source of truth.
+      if (state.lockedProjectId && projects[state.lockedProjectId]) {
+        return { projects, activeProjectId: state.lockedProjectId };
+      }
       // Preference order: current selection (still valid) → last-selected from
       // localStorage (survives reloads) → newest project as a final fallback.
+      // Skip projects already owned by a peer window so the main window never
+      // auto-selects a tab it's about to hide.
       const stored = readStoredActiveProjectId();
-      const activeProjectId =
-        state.activeProjectId && projects[state.activeProjectId]
-          ? state.activeProjectId
-          : stored && projects[stored]
-            ? stored
-            : (list[0]?.id ?? null);
+      const isFree = (id: string | null) =>
+        !!id && !!projects[id] && !state.lockedByOtherWindows[id];
+      const fallback = list.find((p) => !state.lockedByOtherWindows[p.id])?.id ?? null;
+      const activeProjectId = isFree(state.activeProjectId)
+        ? state.activeProjectId
+        : isFree(stored)
+          ? stored
+          : fallback;
       writeStoredActiveProjectId(activeProjectId);
       return { projects, activeProjectId };
     }),
@@ -251,6 +281,47 @@ export const useStore = create<AppState>((set) => ({
         dirtyFiles: same ? state.dirtyFiles : {},
         previewFilePath: same ? state.previewFilePath : null,
       };
+    }),
+
+  setLockedProjectId: (id) => set({ lockedProjectId: id }),
+
+  setLockedByOtherWindows: (ids) =>
+    set(() => ({
+      lockedByOtherWindows: Object.fromEntries(ids.map((id) => [id, true])),
+    })),
+
+  addLockedByOther: (id) =>
+    set((state) => {
+      const lockedByOtherWindows = { ...state.lockedByOtherWindows, [id]: true as const };
+      // If the user happened to be looking at the project that just got
+      // detached, jump to any remaining visible project so the middle pane
+      // doesn't keep rendering data from a now-hidden tab.
+      if (state.activeProjectId === id && state.lockedProjectId === null) {
+        const nextActive =
+          Object.values(state.projects)
+            .map((p) => p.id)
+            .find((pid) => pid !== id && !lockedByOtherWindows[pid]) ?? null;
+        writeStoredActiveProjectId(nextActive);
+        return {
+          lockedByOtherWindows,
+          activeProjectId: nextActive,
+          activeId: null,
+          layout: EMPTY_LAYOUT,
+          selectedFilePath: null,
+          openFiles: [],
+          dirtyFiles: {},
+          previewFilePath: null,
+        };
+      }
+      return { lockedByOtherWindows };
+    }),
+
+  removeLockedByOther: (id) =>
+    set((state) => {
+      if (!state.lockedByOtherWindows[id]) return state;
+      const lockedByOtherWindows = { ...state.lockedByOtherWindows };
+      delete lockedByOtherWindows[id];
+      return { lockedByOtherWindows };
     }),
 
   setRightTab: (tab) => set({ rightTab: tab }),

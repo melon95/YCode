@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
@@ -17,17 +17,27 @@ import { listAgents, createSession, createProject, deleteProject } from "../lib/
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView, SessionView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
+import { openProjectInNewWindow } from "../lib/multiWindow";
 import { LayoutSwitcher } from "./LayoutSwitcher";
 import { SettingsModal } from "./SettingsModal";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 export function TopBar() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
   const upsertProject = useStore((s) => s.upsertProject);
   const setActiveProjectId = useStore((s) => s.setActiveProjectId);
   const removeProject = useStore((s) => s.removeProject);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const projects = useStore((s) => s.projects);
+  const lockedProjectId = useStore((s) => s.lockedProjectId);
+  const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
+  const detached = lockedProjectId !== null;
 
   // Listen for the ⌘, hotkey (dispatched from `useHotkeys`).
   useEffect(() => {
@@ -36,9 +46,15 @@ export function TopBar() {
     return () => window.removeEventListener("ycode:open-settings", onOpen);
   }, []);
 
-  const projectList = Object.values(projects).sort(
-    (a, b) => a.created_at_ms - b.created_at_ms,
-  );
+  // In a detached window only the locked project shows. In the main window
+  // peers' projects are hidden so the same id never appears twice.
+  const projectList = useMemo(() => {
+    const all = Object.values(projects).sort(
+      (a, b) => a.created_at_ms - b.created_at_ms,
+    );
+    if (lockedProjectId) return all.filter((p) => p.id === lockedProjectId);
+    return all.filter((p) => !lockedByOtherWindows[p.id]);
+  }, [projects, lockedProjectId, lockedByOtherWindows]);
 
   async function onAddProject() {
     if (creatingProject) return;
@@ -78,44 +94,69 @@ export function TopBar() {
     }
   }
 
+  function onProjectContextMenu(e: React.MouseEvent, p: ProjectView) {
+    e.preventDefault();
+    if (detached) return; // detached windows own one project — nothing to detach
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: "Open in New Window",
+          onSelect: () => {
+            openProjectInNewWindow(p.id, p.name).catch((err) =>
+              toast.danger(`Open in new window failed: ${err}`),
+            );
+          },
+        },
+      ],
+    });
+  }
+
   return (
     <header className="topbar">
-      <div className="project-tabs">
-        {projectList.map((p) => {
-          const active = p.id === activeProjectId;
-          return (
-            <div
-              key={p.id}
-              className={"project-tab" + (active ? " active" : "")}
-              onClick={() => setActiveProjectId(p.id)}
-              title={p.repo_path}
-            >
-              <span className="project-tab-name">{p.name}</span>
-              <span
-                className="project-tab-close"
-                role="button"
-                aria-label="Delete project"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteProject(p);
-                }}
+      {/* Detached windows display the project name in the native window
+          title bar (set when we spawn the WebviewWindow), so we hide the
+          tab strip here to avoid showing the same name twice. */}
+      {!detached && (
+        <div className="project-tabs">
+          {projectList.map((p) => {
+            const active = p.id === activeProjectId;
+            return (
+              <div
+                key={p.id}
+                className={"project-tab" + (active ? " active" : "")}
+                onClick={() => setActiveProjectId(p.id)}
+                onContextMenu={(e) => onProjectContextMenu(e, p)}
+                title={p.repo_path}
               >
-                ×
-              </span>
-            </div>
-          );
-        })}
-        <button
-          type="button"
-          className="project-tab-add"
-          onClick={onAddProject}
-          disabled={creatingProject}
-          aria-label="New project"
-          title="New project"
-        >
-          +
-        </button>
-      </div>
+                <span className="project-tab-name">{p.name}</span>
+                <span
+                  className="project-tab-close"
+                  role="button"
+                  aria-label="Delete project"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteProject(p);
+                  }}
+                >
+                  ×
+                </span>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            className="project-tab-add"
+            onClick={onAddProject}
+            disabled={creatingProject}
+            aria-label="New project"
+            title="New project"
+          >
+            +
+          </button>
+        </div>
+      )}
       <LayoutSwitcher />
       <button
         type="button"
@@ -136,6 +177,14 @@ export function TopBar() {
         <GearIcon />
       </button>
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </header>
   );
 }
