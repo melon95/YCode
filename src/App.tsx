@@ -7,6 +7,7 @@ import {
   usePanelRef,
 } from "react-resizable-panels";
 import {
+  getConfig,
   listAgents,
   listProjects,
   listSessions,
@@ -47,6 +48,8 @@ export function App() {
   const setAgents = useStore((s) => s.setAgents);
   const setLiveTitle = useStore((s) => s.setLiveTitle);
   const activeProjectId = useStore((s) => s.activeProjectId);
+  const fontSizes = useStore((s) => s.fontSizes);
+  const setFontSizes = useStore((s) => s.setFontSizes);
   const setLockedProjectId = useStore((s) => s.setLockedProjectId);
   const setLockedByOtherWindows = useStore((s) => s.setLockedByOtherWindows);
   const addLockedByOther = useStore((s) => s.addLockedByOther);
@@ -186,12 +189,13 @@ export function App() {
     let cancelled = false;
 
     const refresh = () => {
-      Promise.all([listProjects(), listSessions(), listAgents()])
-        .then(([projects, sessions, agents]) => {
+      Promise.all([listProjects(), listSessions(), listAgents(), getConfig()])
+        .then(([projects, sessions, agents, config]) => {
           if (cancelled) return;
           setProjects(projects);
           setSessions(sessions);
           setAgents(agents);
+          setFontSizes(config.font_sizes);
           setFetched(true);
         })
         .catch((err) => {
@@ -227,7 +231,18 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setSessions, setProjects, setAgents, setLiveTitle]);
+  }, [setSessions, setProjects, setAgents, setFontSizes, setLiveTitle]);
+
+  // UI font size → CSS variable. Chrome (sidebar / tab strip / file tree /
+  // top bar) reads `--ui-font-size`. Editor and terminal layers don't go
+  // through CSS — they live in CodeMirror / xterm inline props instead, see
+  // EditorPanel and TerminalPane / ManualTerminal.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--ui-font-size",
+      `${fontSizes.ui}px`,
+    );
+  }, [fontSizes.ui]);
 
   function onPickHit(hit: SearchHit) {
     setHistory({

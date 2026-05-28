@@ -3,7 +3,22 @@
 
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { AgentProfileView, ProjectView, SessionView } from "./types";
+import type {
+  AgentProfileView,
+  FontSizesView,
+  ProjectView,
+  SessionView,
+} from "./types";
+
+export const DEFAULT_FONT_SIZES: FontSizesView = {
+  ui: 13,
+  editor: 13,
+  terminal: 13,
+};
+/// Hard floor/ceiling so a typo (or a stale config file from a future
+/// version) can't make the app unusable.
+export const FONT_SIZE_MIN = 8;
+export const FONT_SIZE_MAX = 32;
 
 export type RightTab = "files" | "editor" | "terminal" | "changes";
 
@@ -128,6 +143,11 @@ interface AppState {
   /// appending a new tab. Promoted to a permanent tab on double-click,
   /// first edit, or any tab interaction.
   previewFilePath: string | null;
+  /// Per-layer font sizes, mirroring the backend config. UI maps to a CSS
+  /// variable that the chrome panels consume; editor flows into the
+  /// CodeMirror inline style; terminal feeds xterm options. Defaults until
+  /// the initial `getConfig` IPC returns.
+  fontSizes: FontSizesView;
 
   setAgents: (list: AgentProfileView[]) => void;
   setProjects: (list: ProjectView[]) => void;
@@ -177,6 +197,7 @@ interface AppState {
   /// tab was selected.
   closeFile: (path: string) => void;
   setLiveTitle: (sessionId: string, title: string) => void;
+  setFontSizes: (f: FontSizesView) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -194,6 +215,7 @@ export const useStore = create<AppState>((set) => ({
   selectedFilePath: null,
   dirtyFiles: {},
   previewFilePath: null,
+  fontSizes: DEFAULT_FONT_SIZES,
 
   setAgents: (list) => set({ agents: list }),
 
@@ -559,7 +581,22 @@ export const useStore = create<AppState>((set) => ({
 
   setLiveTitle: (sessionId, title) =>
     set((state) => ({ liveTitles: { ...state.liveTitles, [sessionId]: title } })),
+
+  setFontSizes: (f) =>
+    set(() => ({
+      fontSizes: {
+        ui: clampFontSize(f.ui),
+        editor: clampFontSize(f.editor),
+        terminal: clampFontSize(f.terminal),
+      },
+    })),
 }));
+
+function clampFontSize(n: number): number {
+  if (!Number.isFinite(n)) return 13;
+  const i = Math.round(n);
+  return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, i));
+}
 
 /// Display rule for a session label: the persisted user title wins (their
 /// explicit rename should never be silently overridden by the CLI), then the

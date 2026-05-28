@@ -33,7 +33,7 @@ pub use ycode_introspect::{
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use ycode_config::AgentLaunchProfile;
+use ycode_config::{AgentLaunchProfile, FontSizes};
 use ycode_persist::{ProjectRow, SessionRow};
 use ycode_terminal::TerminalStatus;
 
@@ -197,12 +197,45 @@ impl From<AgentLaunchProfileView> for AgentLaunchProfile {
 #[ts(export)]
 pub struct ConfigView {
     pub agents: Vec<AgentLaunchProfileView>,
+    pub font_sizes: FontSizesView,
+}
+
+/// Editable mirror of [`ycode_config::FontSizes`]. Mirrored 1:1 — we only
+/// duplicate the type so the ts-rs binding lives next to the rest of the
+/// view types and stays a pure data envelope.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FontSizesView {
+    pub ui: u16,
+    pub editor: u16,
+    pub terminal: u16,
+}
+
+impl From<FontSizes> for FontSizesView {
+    fn from(f: FontSizes) -> Self {
+        Self {
+            ui: f.ui,
+            editor: f.editor,
+            terminal: f.terminal,
+        }
+    }
+}
+
+impl From<FontSizesView> for FontSizes {
+    fn from(v: FontSizesView) -> Self {
+        Self {
+            ui: v.ui,
+            editor: v.editor,
+            terminal: v.terminal,
+        }
+    }
 }
 
 impl From<ycode_config::Config> for ConfigView {
     fn from(c: ycode_config::Config) -> Self {
         Self {
             agents: c.agents.into_iter().map(Into::into).collect(),
+            font_sizes: c.font_sizes.into(),
         }
     }
 }
@@ -211,6 +244,7 @@ impl From<ConfigView> for ycode_config::Config {
     fn from(v: ConfigView) -> Self {
         Self {
             agents: v.agents.into_iter().map(Into::into).collect(),
+            font_sizes: v.font_sizes.into(),
         }
     }
 }

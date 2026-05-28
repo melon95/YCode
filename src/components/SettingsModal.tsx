@@ -25,10 +25,12 @@ import { useStore } from "../lib/store";
 import type { ConfigView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
 import { AgentsSettings } from "./AgentsSettings";
+import { AppearanceSettings } from "./AppearanceSettings";
 
-type SectionId = "agents";
+type SectionId = "agents" | "appearance";
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: "agents", label: "Agents" },
+  { id: "appearance", label: "Appearance" },
 ];
 
 interface Props {
@@ -38,6 +40,7 @@ interface Props {
 
 export function SettingsModal({ open, onClose }: Props) {
   const setAgents = useStore((s) => s.setAgents);
+  const setFontSizes = useStore((s) => s.setFontSizes);
   const [staged, setStaged] = useState<ConfigView | null>(null);
   const [original, setOriginal] = useState<ConfigView | null>(null);
   const [section, setSection] = useState<SectionId>("agents");
@@ -93,6 +96,10 @@ export function SettingsModal({ open, onClose }: Props) {
     try {
       const refreshed = await saveConfig(staged);
       setAgents(refreshed);
+      // `save_config` only returns the agent list; mirror the staged font
+      // sizes into the store so the rest of the UI picks them up without
+      // a second round-trip.
+      setFontSizes(staged.font_sizes);
       setOriginal(staged);
       toast.success("Settings saved");
       onClose();
@@ -119,6 +126,7 @@ export function SettingsModal({ open, onClose }: Props) {
       const cfg = await getConfig();
       setStaged(cfg);
       setOriginal(cfg);
+      setFontSizes(cfg.font_sizes);
       toast.success("Reset to defaults");
     } catch (err) {
       toast.danger(`Reset failed: ${err}`);
@@ -161,6 +169,12 @@ export function SettingsModal({ open, onClose }: Props) {
                   <div className="settings-content">
                     {section === "agents" && (
                       <AgentsSettings
+                        config={staged}
+                        onChange={setStaged}
+                      />
+                    )}
+                    {section === "appearance" && (
+                      <AppearanceSettings
                         config={staged}
                         onChange={setStaged}
                       />

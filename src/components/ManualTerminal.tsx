@@ -24,6 +24,7 @@ import {
   spawnPtyRaw,
   writePty,
 } from "../lib/ipc";
+import { useStore } from "../lib/store";
 
 const TERMINAL_OPTIONS = {
   fontFamily:
@@ -73,6 +74,9 @@ export function ManualTerminal({
     if (!container) return;
 
     const term = new Terminal(TERMINAL_OPTIONS);
+    // Pick up the user-configured size so a newly-mounted manual terminal
+    // doesn't briefly render at the 13px default.
+    term.options.fontSize = useStore.getState().fontSizes.terminal;
     const fit = new FitAddon();
     const search = new SearchAddon();
     let lastSearch = "";
@@ -292,6 +296,29 @@ export function ManualTerminal({
       window.removeEventListener("ycode:focus-manual-terminal", focusTerminal);
     };
   }, []);
+
+  // Apply terminal font size on Settings save. Fires once per change, not
+  // per keystroke, so the fit + PTY resize doesn't degrade typing.
+  const terminalFontSize = useStore((s) => s.fontSizes.terminal);
+  useEffect(() => {
+    const term = termRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
+    if (term.options.fontSize === terminalFontSize) return;
+    term.options.fontSize = terminalFontSize;
+    try {
+      fit.fit();
+    } catch {
+      return;
+    }
+    const id = ptyIdRef.current;
+    if (!id) return;
+    const cols = sanitizeDim(term.cols, 2);
+    const rows = sanitizeDim(term.rows, 1);
+    if (cols !== undefined && rows !== undefined) {
+      void resizePty({ session_id: id, cols, rows }).catch(() => {});
+    }
+  }, [terminalFontSize]);
 
   return (
     <div className="manual-terminal">

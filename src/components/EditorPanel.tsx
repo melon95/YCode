@@ -3,7 +3,7 @@
 // file. An fs.watch on the focused file detects external edits and shows
 // either an auto-reload (clean buffer) or a conflict banner (dirty buffer).
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { watch } from "@tauri-apps/plugin-fs";
 import { toast } from "@heroui/react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
@@ -40,6 +40,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const closeFile = useStore((s) => s.closeFile);
   const setFileDirty = useStore((s) => s.setFileDirty);
   const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
+  const editorFontSize = useStore((s) => s.fontSizes.editor);
 
   const filesRef = useRef<Map<string, FileState>>(new Map());
   // We mutate filesRef in place for performance (CM emits onChange every
@@ -175,7 +176,22 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  const extensions: Extension[] = (() => {
+  // CodeMirror 6's default theme leaves `.cm-editor` with an inherited font
+  // but its `.cm-scroller` carries an explicit `font-family` + `font-size`,
+  // so an inline `style={{ fontSize }}` on the wrapper has no effect. A
+  // theme extension overrides the scroller rule and is the canonical fix.
+  // `useMemo`-cached so identity is stable while editorFontSize is constant,
+  // avoiding a reconfigure on every render.
+  const fontTheme = useMemo(
+    () =>
+      EditorView.theme({
+        "&": { fontSize: `${editorFontSize}px` },
+        ".cm-scroller": { fontSize: `${editorFontSize}px` },
+      }),
+    [editorFontSize],
+  );
+
+  const extensions: Extension[] = useMemo(() => {
     const lang = languageFor(selectedFilePath);
     return [
       keymap.of([
@@ -189,9 +205,10 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         },
       ]),
       EditorView.lineWrapping,
+      fontTheme,
       ...(lang ? [lang] : []),
     ];
-  })();
+  }, [selectedFilePath, fontTheme]);
 
   async function discardAndReload() {
     if (!selectedFilePath) return;

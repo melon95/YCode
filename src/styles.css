@@ -87,7 +87,12 @@
 body {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 13px;
+  /* `--ui-font-size` is driven by Settings → Appearance and applied to
+     hand-picked "main reading surface" selectors (sidebar history rows,
+     file tree, right-pane tab strip). Smaller chrome labels (timestamps,
+     dirty markers) intentionally stay at their literal px so the
+     hierarchy doesn't collapse when the user picks a large UI size. */
+  font-size: var(--ui-font-size, 13px);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -1382,7 +1387,7 @@ body::before {
   border: none;
   color: var(--fg);
   text-align: left;
-  font-size: 12px;
+  font-size: var(--ui-font-size, 13px);
   cursor: pointer;
 }
 
@@ -1619,6 +1624,21 @@ body::before {
   overflow: auto;
   padding: 0;
   background: var(--panel);
+}
+
+.appearance-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  max-width: 480px;
+}
+
+.settings-section-blurb {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .settings-footer {
   display: flex;
@@ -1949,7 +1969,7 @@ textarea.native-input {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  font-size: 12px;
+  font-size: var(--ui-font-size, 13px);
   padding: 4px 0;
 }
 

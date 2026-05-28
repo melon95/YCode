@@ -51,6 +51,29 @@ use thiserror::Error;
 pub struct Config {
     #[serde(default)]
     pub agents: Vec<AgentLaunchProfile>,
+    #[serde(default)]
+    pub font_sizes: FontSizes,
+}
+
+/// Font sizes for the three layers users actually look at, mirroring the
+/// VS Code split (UI chrome / editor / terminal). All in CSS px. The
+/// frontend clamps to a sane range before sending to keep weird values
+/// from making the app unusable, but we re-clamp on load for safety.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct FontSizes {
+    pub ui: u16,
+    pub editor: u16,
+    pub terminal: u16,
+}
+
+impl Default for FontSizes {
+    fn default() -> Self {
+        Self {
+            ui: 13,
+            editor: 13,
+            terminal: 13,
+        }
+    }
 }
 
 impl Default for Config {
@@ -104,6 +127,7 @@ impl Default for Config {
                 // next to the colored brands. Users who want any of these
                 // can add them via Settings.
             ],
+            font_sizes: FontSizes::default(),
         }
     }
 }

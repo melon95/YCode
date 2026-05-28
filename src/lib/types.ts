@@ -29,6 +29,7 @@ export type { SessionStatus } from "@bindings/SessionStatus";
 export type { AgentProfileView } from "@bindings/AgentProfileView";
 export type { AgentLaunchProfileView } from "@bindings/AgentLaunchProfileView";
 export type { ConfigView } from "@bindings/ConfigView";
+export type { FontSizesView } from "@bindings/FontSizesView";
 export type { UiEvent } from "@bindings/UiEvent";
 export type { UiEventKind } from "@bindings/UiEventKind";
 export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";

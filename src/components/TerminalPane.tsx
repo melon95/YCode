@@ -191,6 +191,7 @@ export function TerminalPane() {
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const agents = useStore((s) => s.agents);
+  const terminalFontSize = useStore((s) => s.fontSizes.terminal);
   // Pane-header icon lookup. Sessions carry `agent_profile` (the launch
   // profile id), so we index by id here.
   const agentByProfileId = useMemo(() => {
@@ -358,6 +359,10 @@ export function TerminalPane() {
     for (const id of Object.keys(sessions)) {
       if (!known.has(id)) {
         const inst = createTerminal(id, pool);
+        // Seed the freshly-spawned xterm with the user-configured size
+        // immediately so a new session doesn't briefly render at 13px and
+        // then re-fit on the first effect tick.
+        inst.term.options.fontSize = useStore.getState().fontSizes.terminal;
         known.set(id, inst);
         const buf = pendingRef.current.get(id);
         if (buf) {
@@ -451,6 +456,27 @@ export function TerminalPane() {
     const raf = requestAnimationFrame(() => inst.term.focus());
     return () => cancelAnimationFrame(raf);
   }, [focusedId]);
+
+  // Apply terminal font size to every live xterm whenever the setting
+  // changes. Only visible cells re-fit (hidden ones have zero size and
+  // would throw); the next re-attach in the pool effect catches them.
+  // This effect runs on Settings save, not on every keystroke, so the
+  // fit + PTY resize cost is paid once and doesn't degrade typing.
+  useEffect(() => {
+    const known = terminalsRef.current;
+    known.forEach((inst, id) => {
+      if (inst.term.options.fontSize === terminalFontSize) return;
+      inst.term.options.fontSize = terminalFontSize;
+      if (!visibleIds.includes(id)) return;
+      try {
+        inst.fit.fit();
+      } catch {
+        return;
+      }
+      const { cols, rows } = inst.term;
+      void resizePty({ session_id: id, cols, rows }).catch(() => {});
+    });
+  }, [terminalFontSize, visibleIds]);
 
   // Dispose all terminals on unmount.
   useEffect(() => {
