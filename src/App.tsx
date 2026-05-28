@@ -24,6 +24,7 @@ import { RightPane } from "./components/RightPane";
 import { CommandPalette } from "./components/CommandPalette";
 import { HistoryTab } from "./components/HistoryTab";
 import { AppLoading } from "./components/AppLoading";
+import { UpdateNotice } from "./components/UpdateNotice";
 import {
   bindUnlockOnClose,
   listenPeerLockEvents,
@@ -294,6 +295,7 @@ export function App() {
         onClose={() => setPaletteOpen(false)}
         onPick={onPickHit}
       />
+      <UpdateNotice />
       {history && (
         <div className="history-backdrop" onClick={() => setHistory(null)}>
           <div className="history-modal" onClick={(e) => e.stopPropagation()}>

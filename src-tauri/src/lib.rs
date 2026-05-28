@@ -77,6 +77,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Per plan §8.22: register `ycode://` so the OS hands URL launches
             // back to this binary. On macOS Info.plist controls registration;
