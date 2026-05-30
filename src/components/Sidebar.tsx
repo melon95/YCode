@@ -104,6 +104,16 @@ export function Sidebar() {
     [agentTabs, activeAgent],
   );
 
+  // Mirror the active agent tab id into the store so the ⌘N hotkey can
+  // build a createSession call without reaching into our local state. A
+  // plain string is durable across our re-renders; a function value would
+  // capture this render's closure and go stale on the next one.
+  const setActiveSidebarAgentId = useStore((s) => s.setActiveSidebarAgentId);
+  useEffect(() => {
+    setActiveSidebarAgentId(activeAgent);
+    return () => setActiveSidebarAgentId(null);
+  }, [activeAgent, setActiveSidebarAgentId]);
+
   async function onCreate(
     project: ProjectView,
     profileId: string | null,

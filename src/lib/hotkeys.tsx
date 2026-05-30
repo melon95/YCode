@@ -7,14 +7,17 @@
 //   ⌘1 / ⌘2 / ⌘3   → switch right column to Files / Editor / Terminal
 //   ⌘[  / ⌘]        → previous / next session in the active project
 //   ⌘W              → archive the current session (with confirm)
+//   ⌘N              → open the new-session picker (UI to choose an agent)
 //   ⌘T              → create a session with the first available AI agent
 //   ⌘B              → toggle the left sidebar
 //   ⌘J              → toggle the right pane on the terminal tab
 //   ⇧⌘B             → toggle the right pane
 //
-// Numeric tab switches and the toggle/palette shortcuts fire even when an
-// input has focus (matches the VS Code feel). Other commands are suppressed
-// inside text inputs, the CM6 editor, or the xterm terminals.
+// Session-lifecycle shortcuts (⌘N, ⌘W) plus the toggle/palette ones (⌘K,
+// ⌘B, ⌘J, ⇧⌘B) and the numeric tab switches all fire even when an input
+// has focus — xterm holds focus once a session is running, so gating them
+// would turn each into a one-shot. The remaining shortcuts (⌘[/⌘], ⌘T) are
+// suppressed inside text inputs, the CM6 editor, or the xterm terminals.
 
 import { useEffect } from "react";
 import type { RefObject } from "react";
@@ -114,27 +117,49 @@ export function useHotkeys({
         return;
       }
 
-      if (shouldSkip(e)) return;
-
-      if (key === "[" || key === "]") {
+      // ⌘N (above the shouldSkip gate): create a new session with the
+      // sidebar's current agent. Must fire regardless of focus — once a
+      // session is open, xterm holds focus, and gating on shouldSkip would
+      // turn this into a one-shot. ⇧⌘N is the OS "new window" shortcut and
+      // is handled by the macOS menu, not here.
+      if (key === "n" && !e.shiftKey) {
         e.preventDefault();
         const s = useStore.getState();
-        if (!s.activeProjectId) return;
-        const list = Object.values(s.sessions)
-          .filter((x) => x.project_id === s.activeProjectId)
-          .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
-        if (list.length === 0) return;
-        const idx = list.findIndex((x) => x.id === s.activeId);
-        const next =
-          key === "]"
-            ? (idx + 1) % list.length
-            : idx <= 0
-              ? list.length - 1
-              : idx - 1;
-        s.setActiveId(list[next].id);
+        if (!s.activeProjectId) {
+          toast.warning("Pick a project first");
+          return;
+        }
+        if (s.layout.visibleIds.length >= LAYOUT_CAP) {
+          toast.warning(
+            `Close a pane first — at the ${LAYOUT_CAP}-pane limit.`,
+          );
+          return;
+        }
+        const agentId =
+          s.activeSidebarAgentId ??
+          s.agents.find((a) => a.available && a.id !== "bash")?.id ??
+          null;
+        if (!agentId) {
+          toast.warning("No available AI agent on PATH");
+          return;
+        }
+        try {
+          const view = await createSession({
+            agent_profile_id: agentId,
+            project_id: s.activeProjectId,
+            title: "",
+          });
+          s.upsertSession(view);
+          s.appendSessionToLayout(view.id);
+        } catch (err) {
+          toast.danger(`Create session failed: ${err}`);
+        }
         return;
       }
 
+      // ⌘W (above the shouldSkip gate): archive the currently active
+      // session. xterm typically holds focus once a session is live, so
+      // gating on shouldSkip would silently drop this — same trap ⌘N hit.
       if (key === "w") {
         e.preventDefault();
         const s = useStore.getState();
@@ -154,6 +179,27 @@ export function useHotkeys({
         } catch (err) {
           toast.danger(`Archive failed: ${err}`);
         }
+        return;
+      }
+
+      if (shouldSkip(e)) return;
+
+      if (key === "[" || key === "]") {
+        e.preventDefault();
+        const s = useStore.getState();
+        if (!s.activeProjectId) return;
+        const list = Object.values(s.sessions)
+          .filter((x) => x.project_id === s.activeProjectId)
+          .sort((a, b) => b.updated_at_ms - a.updated_at_ms);
+        if (list.length === 0) return;
+        const idx = list.findIndex((x) => x.id === s.activeId);
+        const next =
+          key === "]"
+            ? (idx + 1) % list.length
+            : idx <= 0
+              ? list.length - 1
+              : idx - 1;
+        s.setActiveId(list[next].id);
         return;
       }
 

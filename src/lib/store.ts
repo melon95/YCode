@@ -174,6 +174,10 @@ interface AppState {
   /// New-session path: focus if already visible, push a new slot if under
   /// the cap, replace the focused slot if at cap.
   openSessionInLayout: (id: string) => void;
+  /// Stronger split-on-create variant used by the ⌘N hotkey: never reuses
+  /// the focused slot even when its session is dead. Always grows the pane
+  /// count unless we're already at [`LAYOUT_CAP`].
+  appendSessionToLayout: (id: string) => void;
   /// Sidebar/hotkey-driven swap: replace the currently focused slot with
   /// this session (or just focus it if it's already visible). Never grows
   /// the pane count.
@@ -198,6 +202,14 @@ interface AppState {
   closeFile: (path: string) => void;
   setLiveTitle: (sessionId: string, title: string) => void;
   setFontSizes: (f: FontSizesView) => void;
+  /// Sidebar publishes the id of the agent profile currently highlighted
+  /// in the agent-tab strip — the same one the "+" button creates against.
+  /// Used by the ⌘N hotkey, which builds the createSession call itself
+  /// rather than firing a Sidebar-owned thunk (function values living in
+  /// the store turned out to capture stale React closures on dependency
+  /// changes; a plain string id steers clear of that whole class of bug).
+  activeSidebarAgentId: string | null;
+  setActiveSidebarAgentId: (id: string | null) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -216,6 +228,7 @@ export const useStore = create<AppState>((set) => ({
   dirtyFiles: {},
   previewFilePath: null,
   fontSizes: DEFAULT_FONT_SIZES,
+  activeSidebarAgentId: null,
 
   setAgents: (list) => set({ agents: list }),
 
@@ -412,6 +425,36 @@ export const useStore = create<AppState>((set) => ({
       return { activeId: id, layout: { ...layout, visibleIds } };
     }),
 
+  appendSessionToLayout: (id) =>
+    set((state) => {
+      const layout = state.layout;
+      const existingIdx = layout.visibleIds.indexOf(id);
+      if (existingIdx >= 0) {
+        return {
+          activeId: id,
+          layout: { ...layout, focusSlot: existingIdx },
+        };
+      }
+      if (layout.visibleIds.length < LAYOUT_CAP) {
+        const visibleIds = [...layout.visibleIds, id];
+        const focusSlot = visibleIds.length - 1;
+        return {
+          activeId: id,
+          layout: {
+            mode: reflowMode(layout.mode, visibleIds.length),
+            visibleIds,
+            focusSlot,
+          },
+        };
+      }
+      // At cap — replace the focused slot. Callers should guard against this
+      // with their own "at cap" check before invoking; this is just the
+      // safety fallback.
+      const visibleIds = layout.visibleIds.slice();
+      visibleIds[layout.focusSlot] = id;
+      return { activeId: id, layout: { ...layout, visibleIds } };
+    }),
+
   openSessionInLayout: (id) =>
     set((state) => {
       const layout = state.layout;
@@ -590,6 +633,8 @@ export const useStore = create<AppState>((set) => ({
         terminal: clampFontSize(f.terminal),
       },
     })),
+
+  setActiveSidebarAgentId: (id) => set({ activeSidebarAgentId: id }),
 }));
 
 function clampFontSize(n: number): number {
