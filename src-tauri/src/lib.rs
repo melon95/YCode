@@ -3,7 +3,7 @@
 mod commands;
 mod state;
 
-use tauri::menu::{Menu, MenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -140,7 +140,7 @@ fn maybe_show_agent_notification(
 /// — it's the discoverable escape hatch from a detached-only window state.
 #[cfg(target_os = "macos")]
 fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    use tauri::menu::{AboutMetadataBuilder, PredefinedMenuItem};
+    use tauri::menu::{AboutMetadataBuilder, PredefinedMenuItem, Submenu};
 
     // ⌘⇧N matches Chrome / VS Code / Safari's "New Window" convention.
     // Plain ⌘N is intentionally left free for a future "new session" action
@@ -420,20 +420,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
+        .run(|_app_handle, _event| {
             // macOS dock-icon click. When there are no visible windows we
             // recreate the main one; the standard "focus existing windows"
             // path runs automatically when there are. Without this branch,
             // the dock icon is a dead-end once the user has closed main —
             // detached project windows alone leave no path back to the
-            // picker.
+            // picker. `RunEvent::Reopen` is macOS-only in Tauri, so the
+            // whole arm is gated to avoid a "variant not found" on Linux
+            // and Windows.
+            #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen {
                 has_visible_windows,
                 ..
-            } = event
+            } = _event
             {
                 if !has_visible_windows {
-                    ensure_main_window(app_handle);
+                    ensure_main_window(_app_handle);
                 }
             }
         });
