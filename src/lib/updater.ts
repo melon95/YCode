@@ -6,6 +6,7 @@
 // (background startup check) or surface them (Settings "Check now" button).
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 /// Hits the configured endpoint and returns the pending update, or `null`
 /// when the user is already on the latest version.
@@ -13,12 +14,17 @@ export async function checkForUpdate(): Promise<Update | null> {
   return await check();
 }
 
-/// Drives the actual download + install. Tauri restarts the app once the
-/// install step completes, so anything queued after `downloadAndInstall`
-/// in the same tick won't run.
+export type InstallPhase = "downloading" | "installing" | "done";
+
+/// Drives the actual download + install, then relaunches. The plugin's
+/// `Finished` event fires once the download is complete; the install
+/// (bundle swap, signature verify) runs as the rest of `downloadAndInstall`
+/// resolves. On macOS the runtime never auto-restarts — without an
+/// explicit `relaunch()` the UI would stall at 100% forever, which is
+/// what users were hitting on v0.1.3.
 export async function installUpdate(
   update: Update,
-  onProgress?: (downloaded: number, total: number | null) => void,
+  onProgress?: (phase: InstallPhase, downloaded: number, total: number | null) => void,
 ): Promise<void> {
   let downloaded = 0;
   let total: number | null = null;
@@ -26,15 +32,17 @@ export async function installUpdate(
     switch (event.event) {
       case "Started":
         total = event.data.contentLength ?? null;
-        onProgress?.(0, total);
+        onProgress?.("downloading", 0, total);
         break;
       case "Progress":
         downloaded += event.data.chunkLength;
-        onProgress?.(downloaded, total);
+        onProgress?.("downloading", downloaded, total);
         break;
       case "Finished":
-        onProgress?.(total ?? downloaded, total);
+        onProgress?.("installing", total ?? downloaded, total);
         break;
     }
   });
+  onProgress?.("done", total ?? downloaded, total);
+  await relaunch();
 }

@@ -28,6 +28,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-process = "2"
 ycode-config.workspace = true
 ycode-ipc.workspace = true
 ycode-persist.workspace = true

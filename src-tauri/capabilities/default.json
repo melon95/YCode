@@ -21,6 +21,7 @@
     "os:allow-platform",
     "os:allow-version",
     "updater:default",
-    "notification:default"
+    "notification:default",
+    "process:default"
   ]
 }

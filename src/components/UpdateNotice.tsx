@@ -13,16 +13,31 @@
 import { useEffect, useState } from "react";
 import { Button, toast } from "@heroui/react";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { checkForUpdate, installUpdate } from "../lib/updater";
+import { checkForUpdate, installUpdate, type InstallPhase } from "../lib/updater";
 
 /// Wait this long after mount before hitting the network. Avoids
 /// competing with the initial workspace fetch + window-state restore.
 const STARTUP_DELAY_MS = 5_000;
 
+function progressLabel(
+  progress: { phase: InstallPhase; done: number; total: number | null } | null,
+): string {
+  if (!progress) return "Preparing…";
+  if (progress.phase === "installing") return "Installing…";
+  if (progress.phase === "done") return "Restarting…";
+  return progress.total
+    ? `Downloading ${Math.round((progress.done / progress.total) * 100)}%…`
+    : "Preparing…";
+}
+
 export function UpdateNotice() {
   const [update, setUpdate] = useState<Update | null>(null);
   const [installing, setInstalling] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
+  const [progress, setProgress] = useState<{
+    phase: InstallPhase;
+    done: number;
+    total: number | null;
+  } | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   // Background check on mount. Silent failure — we don't want a flaky
@@ -60,14 +75,15 @@ export function UpdateNotice() {
   async function onInstall() {
     if (installing || !update) return;
     setInstalling(true);
-    setProgress({ done: 0, total: null });
+    setProgress({ phase: "downloading", done: 0, total: null });
     try {
-      await installUpdate(update, (done, total) => {
-        setProgress({ done, total });
+      await installUpdate(update, (phase, done, total) => {
+        setProgress({ phase, done, total });
       });
-      // Tauri restarts automatically after install. If we get here it
-      // means restart hasn't fired yet — leave the UI in "Installed"
-      // state so the user knows it's finishing.
+      // `installUpdate` calls `relaunch()` itself; anything below is
+      // unreachable in practice — the process is replaced before this
+      // line runs. Kept as a defensive no-op for environments where
+      // relaunch silently fails.
     } catch (err) {
       setInstalling(false);
       setProgress(null);
@@ -86,11 +102,7 @@ export function UpdateNotice() {
         </div>
       )}
       {installing ? (
-        <div className="update-notice-progress">
-          {progress?.total
-            ? `Downloading ${Math.round((progress.done / progress.total) * 100)}%…`
-            : "Preparing…"}
-        </div>
+        <div className="update-notice-progress">{progressLabel(progress)}</div>
       ) : (
         <div className="update-notice-actions">
           <Button variant="ghost" size="sm" onPress={() => setDismissed(true)}>
