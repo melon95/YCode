@@ -197,6 +197,7 @@ export function TerminalPane() {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const agents = useStore((s) => s.agents);
   const terminalFontSize = useStore((s) => s.fontSizes.terminal);
+  const attentionBySession = useStore((s) => s.attentionBySession);
   // Pane-header icon lookup. Sessions carry `agent_profile` (the launch
   // profile id), so we index by id here.
   const agentByProfileId = useMemo(() => {
@@ -585,6 +586,13 @@ export function TerminalPane() {
                   <span className="pane-title" title={title}>
                     {title}
                   </span>
+                  {attentionBySession[id] && !focused && (
+                    <span
+                      className="pane-attention"
+                      title="Agent finished or needs your input"
+                      aria-label="needs attention"
+                    />
+                  )}
                   {ended && <span className="pane-status">ended</span>}
                   <button
                     type="button"

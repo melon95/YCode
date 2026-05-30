@@ -12,6 +12,7 @@ import {
   listProjects,
   listSessions,
   listenSessionEvents,
+  setActiveTerminal,
   startWorkspaceWatch,
   stopWorkspaceWatch,
 } from "./lib/ipc";
@@ -48,6 +49,8 @@ export function App() {
   const setProjects = useStore((s) => s.setProjects);
   const setAgents = useStore((s) => s.setAgents);
   const setLiveTitle = useStore((s) => s.setLiveTitle);
+  const activeId = useStore((s) => s.activeId);
+  const clearAttention = useStore((s) => s.clearAttention);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const fontSizes = useStore((s) => s.fontSizes);
   const setFontSizes = useStore((s) => s.setFontSizes);
@@ -222,6 +225,20 @@ export function App() {
         // HistoryTab subscribes directly; nothing to do here.
         return;
       }
+      if (kind.type === "AgentTurnComplete") {
+        // Skip the badge when the user is in the window AND looking at this
+        // exact pane — they don't need a visual cue for the very pane on
+        // screen. Backend applies the same gate to the OS notification.
+        // Read from the store imperatively to dodge the stale closure that
+        // a captured `activeId` dep would produce.
+        const { activeId: focusedId, markAttention } = useStore.getState();
+        const windowFocused =
+          typeof document !== "undefined" && document.hasFocus();
+        if (!(windowFocused && focusedId === event.session_id)) {
+          markAttention(event.session_id);
+        }
+        return;
+      }
       refresh();
     }).then((u) => {
       if (cancelled) u();
@@ -244,6 +261,31 @@ export function App() {
       `${fontSizes.ui}px`,
     );
   }, [fontSizes.ui]);
+
+  // Mirror the focused pane to the backend so the agent-event pump can skip
+  // OS notifications when the user is already looking at the firing pane.
+  // Also drop any attention badge on the now-active session — the user is
+  // visibly acknowledging it.
+  useEffect(() => {
+    if (activeId) clearAttention(activeId);
+    void setActiveTerminal(activeId).catch(() => {
+      // Best-effort: a missed update just means an extra notification, not
+      // a correctness issue. Don't surface noise here.
+    });
+  }, [activeId, clearAttention]);
+
+  // Coming back to the window while looking at a flagged pane shouldn't keep
+  // the dot lit — the user has now seen it. Without this, an event that
+  // landed while the window was unfocused would leave an attention badge on
+  // the very pane the user just refocused on.
+  useEffect(() => {
+    const onFocus = () => {
+      const { activeId: focusedId, clearAttention } = useStore.getState();
+      if (focusedId) clearAttention(focusedId);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   function onPickHit(hit: SearchHit) {
     setHistory({

@@ -158,11 +158,15 @@ async fn handle_connection(stream: tokio::net::UnixStream, bus: broadcast::Sende
 /// malformed input or when the required `terminal_id` field is missing —
 /// without a routing id there's nowhere meaningful to send the event.
 ///
-/// Extracts a short "last assistant message" preview for the notification
-/// body when possible: Codex passes it directly in the `extra[0]` JSON
-/// (`last-assistant-message`), Claude requires reading the transcript jsonl
-/// referenced by its hook stdin. Extraction failure is silent — the host
-/// then falls back to the generic "<source> finished its turn" body.
+/// Body preview is sourced per-(source, event):
+/// - Codex `turn_complete`: `extra[0]` JSON's `last-assistant-message`
+/// - Claude `notification`: stdin JSON's `message` field (the hook's
+///   per-event payload already carries the user-facing text)
+/// - Claude `stop`: tail the transcript jsonl referenced by stdin and pull
+///   the final assistant turn's text
+///
+/// Extraction failure is silent — the host falls back to the generic
+/// "<source> finished its turn" body.
 fn parse_payload(line: &str) -> Option<UiEvent> {
     let value: serde_json::Value = serde_json::from_str(line).ok()?;
     let terminal_id = value.get("terminal_id")?.as_str()?;
@@ -178,9 +182,10 @@ fn parse_payload(line: &str) -> Option<UiEvent> {
         .and_then(|v| v.as_str())
         .unwrap_or("stop");
 
-    let body_preview = match source {
-        "codex" => extract_codex_message(&value),
-        "claude" => extract_claude_message(&value),
+    let body_preview = match (source, event_kind) {
+        ("codex", _) => extract_codex_message(&value),
+        ("claude", "notification") => extract_claude_notification_message(&value),
+        ("claude", _) => extract_claude_transcript_tail(&value),
         _ => None,
     }
     .map(|s| truncate_preview(&s, 200));
@@ -211,12 +216,34 @@ fn extract_codex_message(payload: &serde_json::Value) -> Option<String> {
     None
 }
 
+/// Pull the user-facing text out of a Claude `Notification` hook. The event's
+/// own JSON payload (piped to stdin by the hook runner) carries a `message`
+/// field already — that's the same string Claude Code would have shown to the
+/// user. Skipping the transcript tail here saves a file read on the
+/// "permission needed" / "idle" path, which is the hot one for the
+/// "needs your attention" notification.
+fn extract_claude_notification_message(payload: &serde_json::Value) -> Option<String> {
+    let stdin = payload.get("stdin")?.as_str()?;
+    let parsed: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let msg = parsed.get("message")?.as_str()?;
+    let trimmed = msg.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 /// Read the last `"type":"assistant"` line out of Claude's transcript jsonl
 /// referenced by its hook stdin (`transcript_path` field). Joins all `text`
 /// content parts in order. Returns `None` if the file is missing, empty, or
 /// contains no assistant turn (e.g. the hook fired mid-tool before any
 /// model output landed).
-fn extract_claude_message(payload: &serde_json::Value) -> Option<String> {
+///
+/// Only the `Stop` hook needs this — `Notification` already carries the
+/// human-readable string in stdin (see
+/// [`extract_claude_notification_message`]).
+fn extract_claude_transcript_tail(payload: &serde_json::Value) -> Option<String> {
     let stdin = payload.get("stdin")?.as_str()?;
     let parsed: serde_json::Value = serde_json::from_str(stdin).ok()?;
     let path_str = parsed.get("transcript_path")?.as_str()?;
@@ -389,7 +416,7 @@ mod tests {
         });
         let outer = serde_json::json!({"stdin": stdin_json.to_string()});
 
-        let got = super::extract_claude_message(&outer).unwrap();
+        let got = super::extract_claude_transcript_tail(&outer).unwrap();
         assert_eq!(got, "line one\nline two");
     }
 
@@ -399,7 +426,68 @@ mod tests {
             "transcript_path": "/nonexistent/path/xyz.jsonl",
         });
         let outer = serde_json::json!({"stdin": stdin_json.to_string()});
-        assert!(super::extract_claude_message(&outer).is_none());
+        assert!(super::extract_claude_transcript_tail(&outer).is_none());
+    }
+
+    /// Notification payloads carry the user-facing text in stdin's `message`
+    /// field — no transcript IO required. This is the hot path on permission
+    /// prompts / idle prompts and we want to confirm it bypasses the file
+    /// read entirely.
+    #[test]
+    fn extract_claude_notification_pulls_message_field() {
+        let stdin_json = serde_json::json!({
+            "session_id": "s",
+            "hook_event_name": "Notification",
+            "message": "Claude needs your permission to use Bash",
+            // A bogus transcript path proves the notification path doesn't
+            // touch the file: if it did, we'd get None instead of the message.
+            "transcript_path": "/nonexistent/should/not/be/read.jsonl",
+        });
+        let outer = serde_json::json!({
+            "terminal_id": "t-1",
+            "source": "claude",
+            "event": "notification",
+            "stdin": stdin_json.to_string(),
+        });
+
+        let got = super::extract_claude_notification_message(&outer).unwrap();
+        assert_eq!(got, "Claude needs your permission to use Bash");
+    }
+
+    /// End-to-end: parse_payload for a Claude notification event must use the
+    /// `message` field rather than tailing the transcript, even when both are
+    /// present in stdin.
+    #[test]
+    fn parse_payload_claude_notification_uses_message() {
+        let stdin_json = serde_json::json!({
+            "session_id": "s",
+            "hook_event_name": "Notification",
+            "message": "Claude is waiting for your input",
+            "transcript_path": "/nonexistent/xyz.jsonl",
+        });
+        let outer = serde_json::json!({
+            "terminal_id": "t-1",
+            "source": "claude",
+            "event": "notification",
+            "stdin": stdin_json.to_string(),
+        });
+        let line = serde_json::to_string(&outer).unwrap();
+        let event = super::parse_payload(&line).expect("payload should parse");
+        match event.kind {
+            crate::events::UiEventKind::AgentTurnComplete {
+                source,
+                event_kind,
+                body_preview,
+            } => {
+                assert_eq!(source, "claude");
+                assert_eq!(event_kind, "notification");
+                assert_eq!(
+                    body_preview.as_deref(),
+                    Some("Claude is waiting for your input"),
+                );
+            }
+            other => panic!("unexpected event kind: {other:?}"),
+        }
     }
 
     #[test]

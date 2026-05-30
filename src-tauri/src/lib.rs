@@ -53,14 +53,24 @@ fn augment_path() {
 }
 
 /// Surface an OS notification for `AgentTurnComplete` according to the user's
-/// `NotificationSettings`. Gating order: master `enabled` first, then
-/// `only_when_unfocused` (skip when any ycode webview is focused — `main`
-/// plus any detached `project-*` window). Body string distinguishes "done"
-/// from "needs attention" so the user can tell at a glance whether to switch
-/// over right now.
+/// `NotificationSettings`. Gating order:
+///
+/// 1. master `enabled` — off → silent.
+/// 2. `only_when_unfocused` AND any ycode window is in front:
+///    - if the event's `session_id` matches the frontend-reported active
+///      terminal, the user is literally watching this pane → silent.
+///    - otherwise the user is in ycode but watching a *different* pane (or
+///      a non-terminal column) → still surface, since they'd otherwise miss
+///      an out-of-view agent finishing.
+/// 3. If `only_when_unfocused` is off, always surface.
+///
+/// Body string distinguishes "done" from "needs attention" so the user can
+/// tell at a glance whether to switch over right now.
 fn maybe_show_agent_notification(
     handle: &tauri::AppHandle,
     settings: ycode_config::NotificationSettings,
+    active_terminal: &std::sync::Mutex<Option<String>>,
+    session_id: &str,
     source: &str,
     event_kind: &str,
     body_preview: Option<&str>,
@@ -74,7 +84,16 @@ fn maybe_show_agent_notification(
             .values()
             .any(|w| w.is_focused().unwrap_or(false));
         if any_focused {
-            return;
+            // Frontend hasn't reported yet → assume no active pane and fall
+            // through to showing. `unwrap_or_default` over a poisoned mutex
+            // keeps the gate from deadlocking on a panicked setter.
+            let active = active_terminal
+                .lock()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            if active.as_deref() == Some(session_id) {
+                return;
+            }
         }
     }
 
@@ -316,6 +335,7 @@ pub fn run() {
 
 
             let service = state.service.clone();
+            let active_terminal_for_pump = state.active_terminal.clone();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut rx = service.subscribe();
@@ -332,6 +352,8 @@ pub fn run() {
                                 maybe_show_agent_notification(
                                     &handle,
                                     settings,
+                                    &active_terminal_for_pump,
+                                    &event.session_id,
                                     source,
                                     event_kind,
                                     body_preview.as_deref(),
@@ -388,6 +410,7 @@ pub fn run() {
             commands::agent_install_hook,
             commands::agent_install_codex_chain,
             commands::agent_uninstall_hook,
+            commands::set_active_terminal,
             commands::test_notification,
         ])
         .build(tauri::generate_context!())

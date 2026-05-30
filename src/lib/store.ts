@@ -148,6 +148,12 @@ interface AppState {
   /// CodeMirror inline style; terminal feeds xterm options. Defaults until
   /// the initial `getConfig` IPC returns.
   fontSizes: FontSizesView;
+  /// Sessions that fired an `AgentTurnComplete` (turn ended / needs input)
+  /// while the user wasn't looking at them. Drives the dot badge on visible
+  /// pane headers and cleared when the session becomes the active pane.
+  /// In-memory only — re-emitted by the CLI on the next event after a
+  /// reload.
+  attentionBySession: Record<string, true>;
 
   setAgents: (list: AgentProfileView[]) => void;
   setProjects: (list: ProjectView[]) => void;
@@ -210,6 +216,12 @@ interface AppState {
   /// changes; a plain string id steers clear of that whole class of bug).
   activeSidebarAgentId: string | null;
   setActiveSidebarAgentId: (id: string | null) => void;
+  /// Mark a session as needing attention (caller filters by focus state to
+  /// avoid badging the pane the user is already watching).
+  markAttention: (sessionId: string) => void;
+  /// Clear the attention badge for a session. Called when the session becomes
+  /// active or when the user otherwise acknowledges the event.
+  clearAttention: (sessionId: string) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -229,6 +241,26 @@ export const useStore = create<AppState>((set) => ({
   previewFilePath: null,
   fontSizes: DEFAULT_FONT_SIZES,
   activeSidebarAgentId: null,
+  attentionBySession: {},
+
+  markAttention: (sessionId) =>
+    set((state) => {
+      if (state.attentionBySession[sessionId]) return state;
+      return {
+        attentionBySession: {
+          ...state.attentionBySession,
+          [sessionId]: true as const,
+        },
+      };
+    }),
+
+  clearAttention: (sessionId) =>
+    set((state) => {
+      if (!state.attentionBySession[sessionId]) return state;
+      const next = { ...state.attentionBySession };
+      delete next[sessionId];
+      return { attentionBySession: next };
+    }),
 
   setAgents: (list) => set({ agents: list }),
 
@@ -375,6 +407,13 @@ export const useStore = create<AppState>((set) => ({
       delete sessions[id];
       const liveTitles = { ...state.liveTitles };
       delete liveTitles[id];
+      const attentionBySession = state.attentionBySession[id]
+        ? (() => {
+            const next = { ...state.attentionBySession };
+            delete next[id];
+            return next;
+          })()
+        : state.attentionBySession;
       // Drop from the layout too — a slot pointing at a removed session
       // would render a blank pane. Reflow mode if the new count needs it.
       const idx = state.layout.visibleIds.indexOf(id);
@@ -396,7 +435,7 @@ export const useStore = create<AppState>((set) => ({
           activeId = visibleIds[focusSlot];
         }
       }
-      return { sessions, liveTitles, layout, activeId };
+      return { sessions, liveTitles, layout, activeId, attentionBySession };
     }),
 
   // Legacy alias. `null` clears the layout; a string id swaps the session

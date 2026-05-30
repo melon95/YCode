@@ -1,6 +1,6 @@
 //! Application state — wires `Service` from on-disk config and DB.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Context, Result};
 use camino::Utf8PathBuf;
@@ -12,6 +12,14 @@ use ycode_persist::Db;
 /// Root managed value installed via `app.manage(state)` in the Tauri builder.
 pub struct AppState {
     pub service: Arc<Service>,
+    /// Frontend pushes the id of the currently focused PTY pane here whenever
+    /// it changes (via `set_active_terminal`). The event pump consults it to
+    /// decide whether an incoming `AgentTurnComplete` should fire an OS
+    /// notification: when the window is focused *and* the event matches this
+    /// id, the user is literally looking at the pane and we stay silent.
+    /// Shared `Arc<Mutex<…>>` so the pump can read it without going through
+    /// `tauri::State` (which would need an `&AppHandle` round-trip).
+    pub active_terminal: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
@@ -30,6 +38,9 @@ impl AppState {
             .with_context(|| format!("opening DB at {db_url}"))?;
 
         let service = Arc::new(Service::new(db, config));
-        Ok(Self { service })
+        Ok(Self {
+            service,
+            active_terminal: Arc::new(Mutex::new(None)),
+        })
     }
 }

@@ -172,6 +172,15 @@ export const agentInstallCodexChain = (existing: string[]): Promise<AgentPatchSt
 
 export const testNotification = (): Promise<void> => invoke("test_notification");
 
+/**
+ * Tell the backend which PTY pane is currently focused. The agent-event pump
+ * uses this to suppress redundant OS notifications when the user is literally
+ * watching the pane that just fired. Pass `null` when no pane is focused
+ * (e.g. the user is in Settings or the layout is empty).
+ */
+export const setActiveTerminal = (sessionId: string | null): Promise<void> =>
+  invoke("set_active_terminal", { sessionId });
+
 export const listenSessionEvents = (
   handler: (event: UiEvent) => void,
 ): Promise<UnlistenFn> =>

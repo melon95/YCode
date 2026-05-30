@@ -885,6 +885,22 @@ body::before {
   border: 1px solid currentColor;
   opacity: 0.7;
 }
+/* Soft pulsing dot next to the pane title for sessions that fired an agent
+   event while the user was looking elsewhere. Sized to read at a glance
+   without crowding the title. */
+.pane-attention {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #d97757);
+  box-shadow: 0 0 0 0 currentColor;
+  animation: pane-attention-pulse 1.6s ease-in-out infinite;
+}
+@keyframes pane-attention-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.82); }
+}
 .pane-close {
   flex: 0 0 auto;
   width: 20px;

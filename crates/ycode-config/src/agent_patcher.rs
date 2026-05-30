@@ -163,9 +163,17 @@ pub fn install_claude_hook(path: &Path, helper_bin: &Path) -> Result<(), PatchEr
     }
 
     let helper = helper_bin.to_string_lossy().into_owned();
-    for (event, sub) in [("Stop", "stop"), ("Notification", "notification")] {
+    // Stop fires on every turn-end and ignores `matcher` per the docs; we keep
+    // the field as `""` for schema cleanliness. Notification's matcher accepts
+    // a `|`-separated subtype list — we deliberately exclude `auth_success`
+    // and the `elicitation_*` subtypes since they're noisy without being
+    // actionable, leaving just the two subtypes that mean "user needed".
+    for (event, sub, matcher) in [
+        ("Stop", "stop", ""),
+        ("Notification", "notification", "permission_prompt|idle_prompt"),
+    ] {
         claude_remove_ycode_entry(&mut root, event);
-        claude_append_ycode_entry(&mut root, event, &helper, sub)?;
+        claude_append_ycode_entry(&mut root, event, &helper, sub, matcher)?;
     }
 
     let body = serde_json::to_string_pretty(&root)?;
@@ -212,6 +220,7 @@ fn claude_append_ycode_entry(
     event: &str,
     helper: &str,
     sub: &str,
+    matcher: &str,
 ) -> Result<(), PatchError> {
     let obj = root.as_object_mut().expect("checked in install_claude_hook");
     let hooks = obj
@@ -235,7 +244,7 @@ fn claude_append_ycode_entry(
     }
     arr.as_array_mut().unwrap().push(serde_json::json!({
         YCODE_MARKER_KEY: true,
-        "matcher": "",
+        "matcher": matcher,
         "hooks": [
             { "type": "command", "command": format!("{helper} {sub} claude") }
         ]
@@ -575,12 +584,19 @@ mod tests {
             .unwrap()
             .contains("stop claude"));
 
+        // Stop has no meaningful matcher (the docs say it's ignored), so we
+        // keep it as the empty string. Notification however filters subtypes:
+        // we want only the two "needs human" ones, not auth_success / the
+        // elicitation noise.
+        assert_eq!(stop[0]["matcher"], "");
+
         let notif = v["hooks"]["Notification"].as_array().unwrap();
         assert_eq!(notif.len(), 1);
         assert!(notif[0]["hooks"][0]["command"]
             .as_str()
             .unwrap()
             .contains("notification claude"));
+        assert_eq!(notif[0]["matcher"], "permission_prompt|idle_prompt");
     }
 
     #[test]
