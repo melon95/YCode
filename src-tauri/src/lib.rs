@@ -108,6 +108,11 @@ fn maybe_show_agent_notification(
         other => other,
     };
     let action_label = match event_kind {
+        // Codex `PermissionRequest` hook fires when Codex is about to ask
+        // for approval — we side-channel the alert here, the user still
+        // answers in Codex's TUI. The wording mirrors the in-CLI prompt
+        // so it's obvious what's being asked.
+        "permission_request" => "needs your approval",
         "notification" => "needs your attention",
         _ => "finished",
     };

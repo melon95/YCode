@@ -63,6 +63,14 @@ pub enum NotifyStatus {
 
 const YCODE_MARKER_KEY: &str = "_ycode_managed";
 const CODEX_MARKER_COMMENT: &str = "# ycode-managed (do not edit this line or the one below)";
+/// Wraps the multi-line `[[hooks.PermissionRequest]]` block. Two-marker
+/// (start/end) form is required because the block spans table headers and
+/// can't be identified by "next line after a comment" the way the single
+/// `notify = [...]` line is. Strip everything between start and end
+/// inclusive on uninstall.
+const CODEX_HOOKS_MARKER_START: &str =
+    "# ycode-managed-hooks (do not edit between this line and the matching end marker)";
+const CODEX_HOOKS_MARKER_END: &str = "# ycode-managed-hooks-end";
 
 /// `$HOME/.claude/settings.json`. Returns `None` when `$HOME` is unset.
 pub fn claude_settings_path() -> Option<PathBuf> {
@@ -270,7 +278,21 @@ fn claude_compact_hooks(root: &mut serde_json::Value) {
 
 // ────────────────────────────── Codex ──────────────────────────────
 
-/// Read `~/.codex/config.toml` and report the state of the `notify` field.
+/// Read `~/.codex/config.toml` and report whether our `notify` + hooks pair
+/// is fully installed. Three outcomes:
+///
+/// - `NotInstalled`: file missing, empty, or none of ours present.
+/// - `Installed`: both the `notify` marker AND the hooks block markers are
+///   present (full ownership).
+/// - `ConflictUserSet`: there's a `notify = …` line we DIDN'T write (no
+///   marker comment above it). Hooks block alone never triggers conflict —
+///   `[[hooks.PermissionRequest]]` is an array of tables so the user can
+///   independently add their own entry without clashing with ours.
+///
+/// **Partial install** (we own notify but hooks block is missing, e.g.
+/// after upgrading from a notify-only era) reports as `NotInstalled` to
+/// nudge the user to re-run install — install is idempotent and tops the
+/// missing piece back up.
 pub fn codex_notify_status(path: &Path) -> Result<NotifyStatus, PatchError> {
     if !path.exists() {
         return Ok(NotifyStatus::NotInstalled);
@@ -280,30 +302,47 @@ pub fn codex_notify_status(path: &Path) -> Result<NotifyStatus, PatchError> {
         return Ok(NotifyStatus::NotInstalled);
     }
     let doc: toml_edit::DocumentMut = raw.parse()?;
+    let we_own_notify = codex_has_notify_marker(&raw);
+    let we_own_hooks = codex_has_hooks_markers(&raw);
 
-    let Some(item) = doc.get("notify") else {
-        return Ok(NotifyStatus::NotInstalled);
-    };
-    let argv = match toml_array_to_strings(item) {
-        Some(v) => v,
-        None => {
-            // notify is set to something we can't make sense of (not an array
-            // of strings). Treat as a user-owned value we won't touch.
-            return Ok(NotifyStatus::ConflictUserSet {
-                existing: vec![item.to_string()],
-            });
+    if let Some(item) = doc.get("notify") {
+        if !we_own_notify {
+            // User wrote this `notify`. Hooks block (if present) is ours
+            // alone but the meaningful conflict signal is whether we can
+            // safely write `notify` — we can't. Surface argv so the UI
+            // can offer chain wrap.
+            let existing = toml_array_to_strings(item).unwrap_or_else(|| vec![item.to_string()]);
+            return Ok(NotifyStatus::ConflictUserSet { existing });
         }
-    };
-    if codex_has_marker(&raw) {
-        Ok(NotifyStatus::Installed)
-    } else {
-        Ok(NotifyStatus::ConflictUserSet { existing: argv })
+        // We own the notify line. Full install only when hooks are present
+        // too. Otherwise NotInstalled → user clicks install → both blocks
+        // get written (the strip step removes the orphaned half first).
+        if we_own_hooks {
+            return Ok(NotifyStatus::Installed);
+        }
+        return Ok(NotifyStatus::NotInstalled);
     }
+
+    // No notify at all. If we somehow have an orphaned hooks block
+    // (uninstall always removes both, so this means the user deleted just
+    // the notify line), report NotInstalled — reinstall fixes it.
+    Ok(NotifyStatus::NotInstalled)
 }
 
-fn codex_has_marker(raw: &str) -> bool {
+fn codex_has_notify_marker(raw: &str) -> bool {
     raw.lines().any(|line| line.trim_start() == CODEX_MARKER_COMMENT)
 }
+
+fn codex_has_hooks_markers(raw: &str) -> bool {
+    let has_start = raw
+        .lines()
+        .any(|line| line.trim_start() == CODEX_HOOKS_MARKER_START);
+    let has_end = raw
+        .lines()
+        .any(|line| line.trim_start() == CODEX_HOOKS_MARKER_END);
+    has_start && has_end
+}
+
 
 fn toml_array_to_strings(item: &toml_edit::Item) -> Option<Vec<String>> {
     let arr = item.as_array()?;
@@ -315,8 +354,11 @@ fn toml_array_to_strings(item: &toml_edit::Item) -> Option<Vec<String>> {
 }
 
 /// Set `notify = ["<helper>", "turn_complete", "codex"]` with our marker
-/// comment, only if no user-set `notify` is present. Returns the resulting
-/// status (e.g. `ConflictUserSet` when we declined to overwrite).
+/// comment, only if no user-set `notify` is present, AND append a
+/// `[[hooks.PermissionRequest]]` block so approval prompts also fan out
+/// to ycode. Returns the resulting status (`ConflictUserSet` when we
+/// declined to overwrite an existing notify; that branch leaves the hooks
+/// block alone too — chain install is the path that wraps both).
 pub fn install_codex_notify(path: &Path, helper_bin: &Path) -> Result<NotifyStatus, PatchError> {
     let current = codex_notify_status(path)?;
     if let NotifyStatus::ConflictUserSet { .. } = &current {
@@ -331,11 +373,14 @@ pub fn install_codex_notify(path: &Path, helper_bin: &Path) -> Result<NotifyStat
         String::new()
     };
 
-    // Strip any prior ycode-managed block (idempotent reinstall).
+    // Strip any prior ycode-managed blocks (both the notify line and the
+    // hooks block) so reinstall is idempotent and an upgrade from an older
+    // notify-only install gracefully adds the new hooks block.
     let stripped = strip_codex_managed_block(&raw);
+    let stripped = strip_codex_hooks_block(&stripped);
 
     let helper = helper_bin.to_string_lossy();
-    let block = format!(
+    let notify_block = format!(
         "\n{marker}\nnotify = [{a:?}, {b:?}, {c:?}]\n",
         marker = CODEX_MARKER_COMMENT,
         a = helper.as_ref(),
@@ -343,9 +388,92 @@ pub fn install_codex_notify(path: &Path, helper_bin: &Path) -> Result<NotifyStat
         c = "codex",
     );
 
-    let new_contents = insert_before_first_table(&stripped, &block);
+    let with_notify = insert_before_first_table(&stripped, &notify_block);
+    let hooks_block = format_codex_hooks_block(helper.as_ref());
+    let new_contents = append_block_at_end(&with_notify, &hooks_block);
     write_atomically(path, &new_contents)?;
     Ok(NotifyStatus::Installed)
+}
+
+/// Build the `[[hooks.PermissionRequest]]` block including the start/end
+/// marker comments. The hook command pings ycode-notify which forwards stdin
+/// (Codex's tool/permission payload) over the UDS and exits with empty
+/// stdout — Codex reads that as "no decision" (fallthrough) and continues
+/// to its normal TUI approval prompt. Net effect: user gets a side-channel
+/// notification, approval still happens in Codex.
+///
+/// The matcher uses `.*` so we cover every tool Codex might ask about
+/// (Bash, apply_patch, MCP tools, future additions). Timeout of 5s is
+/// generous — the helper's own deadline is 200ms.
+///
+/// Note Codex hooks **do not support a separate `args` field** — unlike
+/// Claude Code's `args` array, every argument must be inlined into the
+/// `command` string which is then shell-interpreted. We POSIX-quote the
+/// helper path so a bundle living under e.g. `/Applications/My App.app/…`
+/// still resolves.
+fn format_codex_hooks_block(helper: &str) -> String {
+    let quoted_helper = shell_quote_posix(helper);
+    format!(
+        "\n{start}\n\
+         [[hooks.PermissionRequest]]\n\
+         matcher = \".*\"\n\
+         \n\
+         [[hooks.PermissionRequest.hooks]]\n\
+         type = \"command\"\n\
+         command = {cmd:?}\n\
+         timeout = 5\n\
+         {end}\n",
+        start = CODEX_HOOKS_MARKER_START,
+        end = CODEX_HOOKS_MARKER_END,
+        cmd = format!("{quoted_helper} permission_request codex"),
+    )
+}
+
+/// POSIX-shell-safe single-quote wrapping: wrap in `'…'` and replace any
+/// embedded `'` with the four-byte sequence `'\''` (close, escaped quote,
+/// reopen). Safe for arbitrary bytes including spaces, $, backticks, etc.
+fn shell_quote_posix(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Append `block` at the very end of `raw`, ensuring a blank-line separator
+/// between any prior content and the block. Used for the hooks block which —
+/// unlike `notify = …` — is itself a series of table headers and so doesn't
+/// need to come before the user's tables.
+fn append_block_at_end(raw: &str, block: &str) -> String {
+    let mut out = raw.trim_end().to_string();
+    if !out.is_empty() {
+        out.push_str("\n");
+    }
+    out.push_str(block.trim_start_matches('\n'));
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Strip everything between `CODEX_HOOKS_MARKER_START` and
+/// `CODEX_HOOKS_MARKER_END` (inclusive). Tolerates missing end marker
+/// (drops from start to EOF in that case — happens only if the user
+/// hand-edited and removed it).
+fn strip_codex_hooks_block(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut in_block = false;
+    for line in raw.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\n', '\r']).trim_start();
+        if !in_block && trimmed == CODEX_HOOKS_MARKER_START {
+            in_block = true;
+            continue;
+        }
+        if in_block {
+            if trimmed == CODEX_HOOKS_MARKER_END {
+                in_block = false;
+            }
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 /// Wrap an existing user-set Codex `notify` so YCode fires first and the
@@ -378,15 +506,15 @@ pub fn install_codex_notify_chain(
         String::new()
     };
     // Remove the user's existing `notify = [...]` line (we're encoding it into
-    // our --next argument) and any prior ycode-managed block. If both edits
-    // succeed via toml_edit we keep the structured output; if parsing fails
-    // we fall back to the lossy line strip so we still write something sane.
+    // our --next argument) and any prior ycode-managed blocks (both the
+    // notify line and the hooks block).
     let stripped = strip_codex_managed_block(&raw);
+    let stripped = strip_codex_hooks_block(&stripped);
     let without_notify = remove_top_level_notify(&stripped).unwrap_or(stripped);
 
     let helper = helper_bin.to_string_lossy();
     let chain_json = serde_json::to_string(existing)?;
-    let block = format!(
+    let notify_block = format!(
         "\n{marker}\nnotify = [{a:?}, {b:?}, {c:?}, {d:?}, {chain:?}]\n",
         marker = CODEX_MARKER_COMMENT,
         a = helper.as_ref(),
@@ -396,7 +524,12 @@ pub fn install_codex_notify_chain(
         chain = chain_json,
     );
 
-    let new_contents = insert_before_first_table(&without_notify, &block);
+    let with_notify = insert_before_first_table(&without_notify, &notify_block);
+    // Approval-request hooks are independent of the turn-complete notify
+    // chain — chain wrap is about not stomping the user's notify, but the
+    // hooks block is purely additive (it's a new table, can't conflict).
+    let hooks_block = format_codex_hooks_block(helper.as_ref());
+    let new_contents = append_block_at_end(&with_notify, &hooks_block);
     write_atomically(path, &new_contents)?;
     Ok(NotifyStatus::Installed)
 }
@@ -472,12 +605,18 @@ pub fn uninstall_codex_notify(path: &Path) -> Result<(), PatchError> {
         return Ok(());
     }
     let raw = std::fs::read_to_string(path)?;
-    if !codex_has_marker(&raw) {
+    // Act if EITHER half is ours so an orphaned partial install (e.g. user
+    // hand-deleted the notify line but left the hooks block) still gets
+    // cleaned up.
+    if !codex_has_notify_marker(&raw) && !codex_has_hooks_markers(&raw) {
         return Ok(());
     }
 
     let wrapped = extract_wrapped_chain(&raw);
     let cleaned = strip_codex_managed_block(&raw);
+    // Strip the hooks block too — it's installed in lockstep with the notify
+    // line, so uninstall always removes both regardless of chain state.
+    let cleaned = strip_codex_hooks_block(&cleaned);
 
     if let Some(prev) = wrapped {
         // Restore the user's original notify (without our marker), placed
@@ -723,6 +862,106 @@ mod tests {
         assert!(body.contains("turn_complete"));
     }
 
+    /// PermissionRequest hook is the only official way to side-channel
+    /// approval prompts out to an external program — `notify` only fires on
+    /// turn-complete. Install must always write the hook block alongside,
+    /// and the resulting TOML must parse cleanly (the hook fields land
+    /// under `hooks.PermissionRequest`, not leaked into a neighbouring
+    /// table).
+    #[test]
+    fn codex_install_writes_permission_request_hook() {
+        let (_d, path) = tmp_file("config.toml");
+        install_codex_notify(&path, &helper()).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+
+        assert!(body.contains(CODEX_HOOKS_MARKER_START));
+        assert!(body.contains(CODEX_HOOKS_MARKER_END));
+        assert!(body.contains("[[hooks.PermissionRequest]]"));
+        assert!(body.contains("[[hooks.PermissionRequest.hooks]]"));
+        assert!(body.contains("permission_request"));
+
+        let doc: toml_edit::DocumentMut = body.parse().expect("must parse as valid TOML");
+        let arr = doc["hooks"]["PermissionRequest"]
+            .as_array_of_tables()
+            .expect("PermissionRequest is an array of tables");
+        assert_eq!(arr.len(), 1);
+        let entry = arr.get(0).unwrap();
+        assert_eq!(entry.get("matcher").and_then(|i| i.as_str()), Some(".*"));
+        let inner = entry["hooks"]
+            .as_array_of_tables()
+            .expect("inner hooks array");
+        let cmd = inner
+            .get(0)
+            .and_then(|t| t.get("command"))
+            .and_then(|i| i.as_str())
+            .unwrap();
+        // Codex hooks have no `args` field — args must be inlined in the
+        // command string. The string must include both positional tokens
+        // (event name + source) so ycode-notify can route correctly.
+        assert!(cmd.contains("ycode-notify"));
+        assert!(
+            cmd.contains(" permission_request codex"),
+            "command must inline argv (got {cmd:?})"
+        );
+        assert!(
+            inner.get(0).and_then(|t| t.get("args")).is_none(),
+            "args field would be silently ignored by Codex — must not be present"
+        );
+    }
+
+    /// A helper path with spaces (think `/Applications/My App.app/...`)
+    /// must round-trip through the hook block intact: shell-quoting wraps
+    /// it in single quotes so Codex's shell-style command parsing doesn't
+    /// split it on the embedded space.
+    #[test]
+    fn codex_hook_command_shell_quotes_helper_path() {
+        let (_d, path) = tmp_file("config.toml");
+        let helper_with_space =
+            PathBuf::from("/Applications/My App.app/Contents/Resources/binaries/ycode-notify");
+        install_codex_notify(&path, &helper_with_space).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        let doc: toml_edit::DocumentMut = body.parse().expect("valid TOML");
+        let cmd = doc["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
+        // The whole helper path is wrapped in single quotes; args follow
+        // unquoted. Without this, Codex's shell would split on the space
+        // in "My App.app" and the hook would fail silently.
+        assert!(
+            cmd.starts_with("'/Applications/My App.app/Contents/Resources/binaries/ycode-notify'"),
+            "expected single-quoted helper path, got {cmd:?}"
+        );
+        assert!(cmd.ends_with(" permission_request codex"));
+    }
+
+    /// Pre-existing ycode installs only wrote `notify` — no hooks block.
+    /// An app upgrade reads such a file and must report `NotInstalled` so
+    /// the user is prompted to re-run install (which then adds the hooks
+    /// block). Otherwise upgraded users would silently keep missing the
+    /// approval-request notifications.
+    #[test]
+    fn codex_status_treats_old_notify_only_install_as_not_installed() {
+        let (_d, path) = tmp_file("config.toml");
+        let helper = helper();
+        let old_install = format!(
+            "{marker}\nnotify = [{a:?}, \"turn_complete\", \"codex\"]\n",
+            marker = CODEX_MARKER_COMMENT,
+            a = helper.to_string_lossy(),
+        );
+        std::fs::write(&path, old_install).unwrap();
+        assert_eq!(
+            codex_notify_status(&path).unwrap(),
+            NotifyStatus::NotInstalled,
+            "notify marker alone must not satisfy status (hooks block missing)"
+        );
+
+        // Running install once upgrades the file: both markers present.
+        install_codex_notify(&path, &helper).unwrap();
+        assert_eq!(codex_notify_status(&path).unwrap(), NotifyStatus::Installed);
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains(CODEX_HOOKS_MARKER_START));
+    }
+
     #[test]
     fn codex_install_preserves_existing_settings() {
         let (_d, path) = tmp_file("config.toml");
@@ -774,8 +1013,14 @@ api_key = "sk-xxx"
         let body = std::fs::read_to_string(&path).unwrap();
         let marker_count = body.matches(CODEX_MARKER_COMMENT).count();
         let notify_count = body.matches("\nnotify = ").count();
+        let hooks_start_count = body.matches(CODEX_HOOKS_MARKER_START).count();
+        let hooks_end_count = body.matches(CODEX_HOOKS_MARKER_END).count();
+        let perm_block_count = body.matches("[[hooks.PermissionRequest]]").count();
         assert_eq!(marker_count, 1);
         assert_eq!(notify_count, 1);
+        assert_eq!(hooks_start_count, 1, "hooks block must dedupe");
+        assert_eq!(hooks_end_count, 1, "hooks block must dedupe");
+        assert_eq!(perm_block_count, 1);
     }
 
     #[test]
@@ -790,7 +1035,38 @@ api_key = "sk-xxx"
         assert!(body.contains(r#"approval = "on-request""#));
         assert!(!body.contains(CODEX_MARKER_COMMENT));
         assert!(!body.contains("notify ="));
+        // Hooks block must come out too — install put them in atomically,
+        // uninstall removes them atomically.
+        assert!(!body.contains(CODEX_HOOKS_MARKER_START));
+        assert!(!body.contains(CODEX_HOOKS_MARKER_END));
+        assert!(!body.contains("[[hooks.PermissionRequest]]"));
         assert_eq!(codex_notify_status(&path).unwrap(), NotifyStatus::NotInstalled);
+    }
+
+    /// Hooks installed via chain wrap (when user already has a `notify`)
+    /// must also round-trip cleanly through uninstall: hook block gone,
+    /// user's pre-existing notify restored, no marker residue.
+    #[test]
+    fn codex_chain_install_also_writes_hooks_block() {
+        let (_d, path) = tmp_file("config.toml");
+        std::fs::write(&path, "notify = [\"/old/script\"]\n").unwrap();
+        let existing = match codex_notify_status(&path).unwrap() {
+            NotifyStatus::ConflictUserSet { existing } => existing,
+            other => panic!("expected conflict, got {other:?}"),
+        };
+        install_codex_notify_chain(&path, &helper(), &existing).unwrap();
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains(CODEX_HOOKS_MARKER_START));
+        assert!(body.contains("[[hooks.PermissionRequest]]"));
+
+        // Uninstall should restore the original notify and strip the hooks
+        // block completely.
+        uninstall_codex_notify(&path).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(!body.contains(CODEX_HOOKS_MARKER_START));
+        assert!(!body.contains("[[hooks.PermissionRequest]]"));
+        assert!(body.contains("/old/script"));
     }
 
     #[test]

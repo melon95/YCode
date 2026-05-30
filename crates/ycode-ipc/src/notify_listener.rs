@@ -183,6 +183,7 @@ fn parse_payload(line: &str) -> Option<UiEvent> {
         .unwrap_or("stop");
 
     let body_preview = match (source, event_kind) {
+        ("codex", "permission_request") => extract_codex_permission_request(&value),
         ("codex", _) => extract_codex_message(&value),
         ("claude", "notification") => extract_claude_notification_message(&value),
         ("claude", _) => extract_claude_transcript_tail(&value),
@@ -196,6 +197,85 @@ fn parse_payload(line: &str) -> Option<UiEvent> {
         event_kind,
         body_preview,
     ))
+}
+
+/// Build the notification body for Codex's `PermissionRequest` hook. The
+/// hook pipes a JSON object to stdin (we forward it verbatim under
+/// `stdin`); meaningful fields for the body are:
+///
+/// - `tool_input.description` — human-readable approval reason if Codex
+///   has one (e.g. "Run `rm -rf node_modules`")
+/// - `tool_input.command` — Bash command being requested (`Bash` tool)
+/// - `tool_name` — fallback label when no description is available
+///
+/// We prefer description, fall back to a tool-name-prefixed command, then
+/// to just the tool name. Empty/missing → `None` and the host shows the
+/// generic "Codex needs your approval" body.
+fn extract_codex_permission_request(payload: &serde_json::Value) -> Option<String> {
+    let stdin = payload.get("stdin")?.as_str()?;
+    let parsed: serde_json::Value = serde_json::from_str(stdin).ok()?;
+    let tool_name = parsed.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+    let tool_input = parsed.get("tool_input");
+    let tool_label = format_codex_tool_label(tool_name);
+
+    // Preferred: explicit human-readable description.
+    if let Some(s) = tool_input
+        .and_then(|v| v.get("description"))
+        .and_then(|v| v.as_str())
+    {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+
+    // Bash and similar tools carry the requested command directly.
+    if let Some(s) = tool_input
+        .and_then(|v| v.get("command"))
+        .and_then(|v| v.as_str())
+    {
+        let t = s.trim();
+        if !t.is_empty() {
+            return Some(if tool_label.is_empty() {
+                t.to_string()
+            } else {
+                format!("{tool_label}: {t}")
+            });
+        }
+    }
+
+    // Last-ditch: tool label alone. Still informative — "apply_patch" tells
+    // the user it's a file edit, "codeagentswarm-tasks / check_active" tells
+    // them which MCP server is asking, even without parameters.
+    if !tool_label.is_empty() {
+        return Some(tool_label);
+    }
+    None
+}
+
+/// Render Codex's `tool_name` wire string into a label that reads like the
+/// in-CLI TUI. Codex names MCP tools `mcp__<server>__<tool>` on the wire
+/// (underscores everywhere) but its own permission dialog shows
+/// "codeagentswarm-tasks MCP server to run tool 'check_active'" — server
+/// dashed, prefix dropped, tool kept verbatim. Mirror that so the
+/// notification body stays scannable instead of bleeding `mcp__…__` noise.
+///
+/// Non-MCP names (`Bash`, `apply_patch`, future first-party tools) pass
+/// through unchanged.
+fn format_codex_tool_label(tool_name: &str) -> String {
+    let Some(rest) = tool_name.strip_prefix("mcp__") else {
+        return tool_name.to_string();
+    };
+    // `split_once` on the `__` separator: anything left of the first `__`
+    // is the server, anything right is the tool (which may itself contain
+    // single underscores — `check_active` keeps them).
+    let Some((server, tool)) = rest.split_once("__") else {
+        // Malformed `mcp__foo` with no second separator: surface just the
+        // remaining name rather than dropping it entirely.
+        return rest.to_string();
+    };
+    let server_pretty = server.replace('_', "-");
+    format!("{server_pretty} / {tool}")
 }
 
 /// Pick the assistant text out of Codex's notify payload, which arrives as
@@ -394,6 +474,153 @@ mod tests {
         let inner = r#"{"type":"agent-turn-complete"}"#;
         let outer = serde_json::json!({"extra": [inner]});
         assert!(super::extract_codex_message(&outer).is_none());
+    }
+
+    /// PermissionRequest hook body should prefer `description` when present.
+    /// This is the user-facing "why" Codex sometimes attaches to a tool
+    /// call — way more useful than the raw command line.
+    #[test]
+    fn extract_codex_permission_uses_description() {
+        let inner = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "rm -rf node_modules",
+                "description": "Clean dependency cache before reinstall"
+            }
+        });
+        let outer = serde_json::json!({
+            "stdin": inner.to_string(),
+        });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("Clean dependency cache before reinstall".to_string()),
+        );
+    }
+
+    /// No description → fall back to `tool_name: command` so the user can
+    /// at least see what's about to run.
+    #[test]
+    fn extract_codex_permission_falls_back_to_command() {
+        let inner = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": { "command": "psql -c 'DROP DATABASE prod'" }
+        });
+        let outer = serde_json::json!({ "stdin": inner.to_string() });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("Bash: psql -c 'DROP DATABASE prod'".to_string()),
+        );
+    }
+
+    /// MCP tool calls don't have a `command` field; the body should still
+    /// surface the canonical tool name so the user knows what tool is
+    /// asking, even without parameters. Format-wise, the `mcp__server__tool`
+    /// wire string is rewritten into the TUI-style "server / tool" so the
+    /// notification reads at a glance instead of as raw schema noise.
+    #[test]
+    fn extract_codex_permission_falls_back_to_tool_name_only() {
+        let inner = serde_json::json!({
+            "tool_name": "mcp__fs__write",
+            "tool_input": { "path": "/etc/hosts" }
+        });
+        let outer = serde_json::json!({ "stdin": inner.to_string() });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("fs / write".to_string()),
+        );
+    }
+
+    /// Real-world case caught the original bug: a server name with
+    /// underscores (`codeagentswarm_tasks`) gets dashed for display, the
+    /// `mcp__` prefix drops, and the tool name keeps its internal
+    /// underscores. Matches what Codex's own TUI prompt shows.
+    #[test]
+    fn extract_codex_permission_dashes_mcp_server_name() {
+        let inner = serde_json::json!({
+            "tool_name": "mcp__codeagentswarm_tasks__check_active",
+            "tool_input": {}
+        });
+        let outer = serde_json::json!({ "stdin": inner.to_string() });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("codeagentswarm-tasks / check_active".to_string()),
+        );
+    }
+
+    /// Non-MCP tool names (`Bash`, `apply_patch`, …) must pass through
+    /// untouched — they're already display-friendly and changing them
+    /// would mangle the existing "Bash: …" path.
+    #[test]
+    fn extract_codex_permission_non_mcp_tool_label_passes_through() {
+        let inner = serde_json::json!({
+            "tool_name": "apply_patch",
+            "tool_input": {}
+        });
+        let outer = serde_json::json!({ "stdin": inner.to_string() });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("apply_patch".to_string()),
+        );
+    }
+
+    /// Bash with a command but no description should prefix the formatted
+    /// label — `Bash` is not MCP so it stays bare — and append the command.
+    /// Regression guard for the format_codex_tool_label refactor.
+    #[test]
+    fn extract_codex_permission_bash_uses_tool_label_with_command() {
+        let inner = serde_json::json!({
+            "tool_name": "Bash",
+            "tool_input": { "command": "ls -la" }
+        });
+        let outer = serde_json::json!({ "stdin": inner.to_string() });
+        assert_eq!(
+            super::extract_codex_permission_request(&outer),
+            Some("Bash: ls -la".to_string()),
+        );
+    }
+
+    /// Codex always passes JSON via stdin for PermissionRequest, so an
+    /// empty stdin means malformed input — should return None and let the
+    /// host show its generic "needs your approval" fallback.
+    #[test]
+    fn extract_codex_permission_missing_stdin_is_none() {
+        let outer = serde_json::json!({ "stdin": "" });
+        assert!(super::extract_codex_permission_request(&outer).is_none());
+    }
+
+    /// End-to-end: parse_payload routes Codex permission_request through
+    /// the new extractor and surfaces the description as body_preview.
+    #[test]
+    fn parse_payload_codex_permission_request_uses_description() {
+        let stdin_json = serde_json::json!({
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "description": "Edit src/lib.rs to add the new function",
+            }
+        });
+        let outer = serde_json::json!({
+            "terminal_id": "t-1",
+            "source": "codex",
+            "event": "permission_request",
+            "stdin": stdin_json.to_string(),
+        });
+        let line = serde_json::to_string(&outer).unwrap();
+        let event = super::parse_payload(&line).expect("payload should parse");
+        match event.kind {
+            crate::events::UiEventKind::AgentTurnComplete {
+                source,
+                event_kind,
+                body_preview,
+            } => {
+                assert_eq!(source, "codex");
+                assert_eq!(event_kind, "permission_request");
+                assert_eq!(
+                    body_preview.as_deref(),
+                    Some("Edit src/lib.rs to add the new function"),
+                );
+            }
+            other => panic!("unexpected event kind: {other:?}"),
+        }
     }
 
     #[test]
