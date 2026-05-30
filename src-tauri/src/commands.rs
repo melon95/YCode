@@ -136,6 +136,18 @@ pub async fn write_pty(state: State<'_, AppState>, request: WritePtyRequest) -> 
 }
 
 #[tauri::command]
+pub async fn read_pty_backlog(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    state
+        .service
+        .read_pty_backlog(session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn resize_pty(
     state: State<'_, AppState>,
     request: ResizePtyRequest,

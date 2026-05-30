@@ -58,6 +58,14 @@ export const createSession = (
 export const writePty = (request: WritePtyRequest): Promise<void> =>
   invoke("write_pty", { request });
 
+/**
+ * Pull the backend's rolling PTY scrollback (base64-encoded raw bytes) so a
+ * freshly mounted xterm can replay what already happened in the session
+ * before it attached. Returns "" when the backlog is empty (or "" base64).
+ */
+export const readPtyBacklog = (sessionId: string): Promise<string> =>
+  invoke("read_pty_backlog", { sessionId });
+
 export const resizePty = (request: ResizePtyRequest): Promise<void> =>
   invoke("resize_pty", { request });
 

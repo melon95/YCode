@@ -21,6 +21,7 @@
 //! `tokio::task::spawn_blocking` thread. Async writes/resizes from the
 //! foreground use the master handle through a mutex.
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::Arc;
 
@@ -140,7 +141,23 @@ pub struct TerminalSession {
     /// Current status. Written by the waiter thread on exit; read by IPC.
     status: Arc<RwLock<TerminalStatus>>,
     events_tx: broadcast::Sender<TerminalEvent>,
+    /// Rolling capture of recent PTY output, capped at [`BACKLOG_CAP`]. A new
+    /// xterm.js attaching to an existing session (e.g. when the user opens
+    /// the project in a detached window) replays this through the renderer
+    /// so the user sees the conversation that was already on screen instead
+    /// of a blank prompt. The reader task writes here before broadcasting,
+    /// so subscribers that grabbed the lock to take a snapshot see at least
+    /// every byte that was already broadcast — newer bytes may still be in
+    /// flight, but those will arrive via the live channel after replay.
+    /// Held in a sync `parking_lot::Mutex`-style `std::sync::Mutex` because
+    /// the reader runs on a blocking thread, not an async context.
+    backlog: Arc<std::sync::Mutex<VecDeque<u8>>>,
 }
+
+/// 256 KiB per session — comfortably holds a full TUI screen plus ~100 lines
+/// of recent scrollback for Claude/Codex, while capping memory at roughly
+/// 25 MB even with a hundred live sessions.
+const BACKLOG_CAP: usize = 256 * 1024;
 
 impl TerminalSession {
     /// Open a PTY, spawn the command, start the reader and waiter tasks.
@@ -200,6 +217,7 @@ impl TerminalSession {
 
         let (events_tx, _) = broadcast::channel::<TerminalEvent>(OUTPUT_BUFFER_SLOTS);
         let status = Arc::new(RwLock::new(TerminalStatus::Running));
+        let backlog = Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(BACKLOG_CAP)));
 
         let session = Arc::new(Self {
             id: id.clone(),
@@ -208,15 +226,18 @@ impl TerminalSession {
             killer: Mutex::new(killer),
             status: status.clone(),
             events_tx: events_tx.clone(),
+            backlog: backlog.clone(),
         });
 
-        // Reader: pulls bytes off the master into the broadcast channel.
-        // Exits on EOF (set when the child exits and the kernel closes the
-        // slave end) or on read error.
+        // Reader: pulls bytes off the master into the broadcast channel and
+        // into the rolling backlog for late attachers. Exits on EOF (set when
+        // the child exits and the kernel closes the slave end) or on read
+        // error.
         let reader_id = id.clone();
         let reader_tx = events_tx.clone();
+        let reader_backlog = backlog.clone();
         tokio::task::spawn_blocking(move || {
-            reader_loop(reader_id, reader, reader_tx);
+            reader_loop(reader_id, reader, reader_tx, reader_backlog);
         });
 
         // Waiter: blocks on child.wait() and emits the final Exited event
@@ -235,11 +256,21 @@ impl TerminalSession {
         &self.id
     }
 
-    /// Subscribe to the event stream. Late subscribers miss earlier output —
-    /// the consumer is responsible for its own scrollback (typically the
-    /// xterm.js buffer on the webview side).
+    /// Subscribe to the event stream. Late subscribers miss earlier output;
+    /// pair this with [`backlog_snapshot`](Self::backlog_snapshot) to seed
+    /// the consumer's scrollback before the live stream takes over.
     pub fn subscribe(&self) -> broadcast::Receiver<TerminalEvent> {
         self.events_tx.subscribe()
+    }
+
+    /// Clone the rolling PTY-output buffer. Used by IPC `read_pty_backlog`
+    /// so a freshly opened webview (typically a detached project window)
+    /// can replay what already happened in the session before its own
+    /// listener registered. May trail the live broadcast by one chunk —
+    /// see [`TerminalSession::backlog`].
+    pub fn backlog_snapshot(&self) -> Vec<u8> {
+        let guard = self.backlog.lock().expect("backlog mutex poisoned");
+        guard.iter().copied().collect()
     }
 
     pub async fn status(&self) -> TerminalStatus {
@@ -351,6 +382,7 @@ fn reader_loop(
     session_id: String,
     mut reader: Box<dyn Read + Send>,
     tx: broadcast::Sender<TerminalEvent>,
+    backlog: Arc<std::sync::Mutex<VecDeque<u8>>>,
 ) {
     let mut buf = [0u8; READ_BUF_SIZE];
     let mut osc = OscParser::default();
@@ -368,6 +400,12 @@ fn reader_loop(
                 for title in osc.feed(chunk) {
                     let _ = tx.send(TerminalEvent::TitleChanged(title));
                 }
+                // Persist into the rolling backlog before broadcasting so a
+                // late subscriber that locks the mutex strictly after the
+                // broadcast write sees at least the chunk currently going
+                // out. Live receivers see no extra cost — the lock is held
+                // for ~µs and uncontended in practice.
+                push_into_backlog(&backlog, chunk);
                 // `send` errors only if there are zero subscribers — that's
                 // fine, the bytes are dropped and the reader keeps draining
                 // so the child doesn't backpressure on a full PTY buffer.
@@ -379,6 +417,29 @@ fn reader_loop(
                 break;
             }
         }
+    }
+}
+
+fn push_into_backlog(backlog: &Arc<std::sync::Mutex<VecDeque<u8>>>, chunk: &[u8]) {
+    let Ok(mut buf) = backlog.lock() else {
+        return;
+    };
+    // Drop oldest bytes to stay under the cap. Doing this once per chunk
+    // means a long-running session converges to BACKLOG_CAP without
+    // unbounded growth, even if a CLI dumps a megabyte at startup.
+    let new_len = buf.len() + chunk.len();
+    if new_len > BACKLOG_CAP {
+        let buf_len = buf.len();
+        let drop = (new_len - BACKLOG_CAP).min(buf_len);
+        buf.drain(..drop);
+    }
+    if chunk.len() >= BACKLOG_CAP {
+        // The chunk alone overflows our cap — keep only its tail.
+        buf.clear();
+        let tail = &chunk[chunk.len() - BACKLOG_CAP..];
+        buf.extend(tail.iter().copied());
+    } else {
+        buf.extend(chunk.iter().copied());
     }
 }
 
@@ -559,6 +620,28 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use tokio::time::timeout;
+
+    #[test]
+    fn backlog_caps_at_limit() {
+        let b = Arc::new(std::sync::Mutex::new(VecDeque::new()));
+        push_into_backlog(&b, &vec![b'a'; BACKLOG_CAP / 2]);
+        push_into_backlog(&b, &vec![b'b'; BACKLOG_CAP]);
+        let snap: Vec<u8> = b.lock().unwrap().iter().copied().collect();
+        assert_eq!(snap.len(), BACKLOG_CAP);
+        // The cap-sized chunk alone fills the buffer; the older 'a's are
+        // evicted entirely, plus the tail of the new 'b' run survives.
+        assert!(snap.iter().all(|&c| c == b'b'));
+    }
+
+    #[test]
+    fn backlog_preserves_recent_tail_across_small_chunks() {
+        let b = Arc::new(std::sync::Mutex::new(VecDeque::new()));
+        for _ in 0..1024 {
+            push_into_backlog(&b, &[b'x'; 1024]);
+        }
+        let snap: Vec<u8> = b.lock().unwrap().iter().copied().collect();
+        assert_eq!(snap.len(), BACKLOG_CAP);
+    }
 
     fn tmpdir() -> Utf8PathBuf {
         let d = tempfile::tempdir().unwrap();

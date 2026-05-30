@@ -364,6 +364,7 @@ pub fn run() {
             commands::delete_project,
             commands::create_session,
             commands::write_pty,
+            commands::read_pty_backlog,
             commands::resize_pty,
             commands::kill_session,
             commands::archive_session,

@@ -30,7 +30,12 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { listenSessionEvents, resizePty, writePty } from "../lib/ipc";
+import {
+  listenSessionEvents,
+  readPtyBacklog,
+  resizePty,
+  writePty,
+} from "../lib/ipc";
 import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
@@ -364,11 +369,33 @@ export function TerminalPane() {
         // then re-fit on the first effect tick.
         inst.term.options.fontSize = useStore.getState().fontSizes.terminal;
         known.set(id, inst);
-        const buf = pendingRef.current.get(id);
-        if (buf) {
-          for (const chunk of buf) inst.term.write(chunk);
-          pendingRef.current.delete(id);
-        }
+        // Pull the backend's rolling scrollback before draining pending
+        // live events. For sessions just spawned in this window the
+        // backlog is empty (no harm); for sessions spawned by another
+        // window — the detached "Open project in new window" case — this
+        // is what makes the existing terminal state visible at all
+        // instead of an empty prompt.
+        readPtyBacklog(id)
+          .then((b64) => {
+            // Bail if the terminal got cleaned up in the meantime
+            // (session removed) — write would throw on a disposed term.
+            if (terminalsRef.current.get(id) !== inst) return;
+            if (b64) inst.term.write(base64ToBytes(b64));
+            const buf = pendingRef.current.get(id);
+            if (buf) {
+              for (const chunk of buf) inst.term.write(chunk);
+              pendingRef.current.delete(id);
+            }
+          })
+          .catch(() => {
+            // Backlog fetch failed (session might already be gone).
+            // Still flush pending so live output isn't lost.
+            const buf = pendingRef.current.get(id);
+            if (buf) {
+              for (const chunk of buf) inst.term.write(chunk);
+              pendingRef.current.delete(id);
+            }
+          });
       }
     }
     for (const id of Array.from(known.keys())) {

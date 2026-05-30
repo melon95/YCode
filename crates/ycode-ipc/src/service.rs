@@ -618,6 +618,23 @@ impl Service {
         Ok(())
     }
 
+    /// Return the captured PTY scrollback for `session_id` as a base64
+    /// string. Empty when the session has produced nothing yet. Used by a
+    /// freshly opened webview (e.g. a detached project window) to seed its
+    /// xterm.js renderer with the existing terminal state before
+    /// subscribing to the live event stream. Caps at the backlog limit set
+    /// inside `ycode-terminal`.
+    pub async fn read_pty_backlog(&self, session_id: String) -> Result<String, IpcError> {
+        use base64::Engine;
+        let session = self
+            .terminals
+            .get(&session_id)
+            .await
+            .ok_or_else(|| IpcError::SessionNotLive(session_id))?;
+        let bytes = session.backlog_snapshot();
+        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+    }
+
     pub async fn resize_pty(&self, req: ResizePtyRequest) -> Result<(), IpcError> {
         let session = self
             .terminals
