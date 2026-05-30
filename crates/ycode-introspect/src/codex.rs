@@ -82,10 +82,16 @@ pub fn scan_workspace(home: &Path, cwd: &Path) -> Result<Vec<DiscoveredSession>,
 
 /// Read the first ~60 lines of `path` looking for the first real user
 /// prompt. Codex rollouts encode user input as
-/// `response_item.message.role="user"` with `input_text` content blocks.
-/// The CLI auto-prepends synthetic wrappers like `<environment_context>` and
-/// `<turn_aborted>` under the same role — we skip those by ignoring any
-/// content whose first non-whitespace char is `<` (XML-ish tag).
+/// `response_item.message.role="user"` with one or more `input_text`
+/// content blocks per message.
+///
+/// The CLI auto-prepends a synthetic user message at the start of every
+/// session containing things like `<environment_context>` and (since
+/// AGENTS.md support landed) `# AGENTS.md instructions for <path>`. Those
+/// blocks share the same `role=user` as the real prompt, so we filter
+/// them per-block by recognizing their fixed prefixes — anything left is
+/// the user's actual first turn (matches what Codex's own `resume` picker
+/// shows).
 fn extract_title(path: &Path) -> Option<String> {
     use std::io::{BufRead, BufReader};
     let f = std::fs::File::open(path).ok()?;
@@ -105,20 +111,19 @@ fn extract_title(path: &Path) -> Option<String> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        if let Some(text) = first_user_input_text(&v) {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('<') {
-                return Some(truncate_title(trimmed));
-            }
+        if let Some(text) = first_real_user_text(&v) {
+            return Some(truncate_title(text.trim()));
         }
     }
     None
 }
 
-/// Pull `text` out of `{type: response_item, payload: {type: message,
-/// role: "user", content: [{type: "input_text", text: "..."}]}}` —
-/// the actual codex wire shape for user prompts.
-fn first_user_input_text(v: &serde_json::Value) -> Option<&str> {
+/// Within a `response_item.message` whose role is `user`, return the first
+/// `input_text` block that ISN'T a Codex-injected wrapper. Returns `None`
+/// when the line isn't a user message or every block in it is synthetic
+/// (the auto-prepended one is exactly this case — its blocks are AGENTS.md
+/// + `<environment_context>`).
+fn first_real_user_text(v: &serde_json::Value) -> Option<&str> {
     if v.get("type").and_then(|t| t.as_str()) != Some("response_item") {
         return None;
     }
@@ -130,13 +135,41 @@ fn first_user_input_text(v: &serde_json::Value) -> Option<&str> {
     }
     let content = v.pointer("/payload/content").and_then(|c| c.as_array())?;
     for block in content {
-        if block.get("type").and_then(|t| t.as_str()) == Some("input_text") {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(text);
-            }
+        if block.get("type").and_then(|t| t.as_str()) != Some("input_text") {
+            continue;
+        }
+        let Some(text) = block.get("text").and_then(|t| t.as_str()) else {
+            continue;
+        };
+        if is_synthetic_user_block(text) {
+            continue;
+        }
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return Some(text);
         }
     }
     None
+}
+
+/// Recognize the fixed prefixes Codex uses for auto-injected user-role
+/// blocks. Keep this list narrow so a real prompt that happens to mention
+/// AGENTS.md or start with `<` doesn't get filtered too — these matchers
+/// target the exact opening Codex writes, not the topic.
+fn is_synthetic_user_block(text: &str) -> bool {
+    let t = text.trim_start();
+    // XML-ish wrappers: <environment_context>, <user_instructions>,
+    // <turn_aborted>, etc. A real prompt is extremely unlikely to start
+    // with `<` AND be otherwise indistinguishable from a tag.
+    if t.starts_with('<') {
+        return true;
+    }
+    // AGENTS.md prepend has a fixed header line. The path varies, the
+    // prefix doesn't.
+    if t.starts_with("# AGENTS.md instructions for") {
+        return true;
+    }
+    false
 }
 
 fn truncate_title(s: &str) -> String {
@@ -475,6 +508,51 @@ mod tests {
         );
         std::fs::write(&path, body).unwrap();
         assert_eq!(extract_title(&path).as_deref(), Some("refactor auth"));
+    }
+
+    /// Real-world regression: when the workspace has an AGENTS.md, current
+    /// Codex bundles a "# AGENTS.md instructions for <cwd>" block AND the
+    /// `<environment_context>` block into the SAME synthetic user message
+    /// (two `input_text` entries in one message). Picking the first block
+    /// got us the AGENTS.md path as title — completely useless. The real
+    /// prompt lives in the next message; per-block filtering inside the
+    /// synthetic message lets us skip both blocks and move on.
+    #[test]
+    fn extract_title_skips_agents_md_prepend() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("r.jsonl");
+        let body = concat!(
+            r##"{"type":"session_meta","payload":{"id":"x","cwd":"/repo","originator":"Codex CLI"}}"##,
+            "\n",
+            // Auto-injected user-role message: AGENTS.md prepend + environment context.
+            r##"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>..."},{"type":"input_text","text":"<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>"}]}}"##,
+            "\n",
+            // Real first user prompt.
+            r##"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"list"}]}}"##,
+            "\n",
+        );
+        std::fs::write(&path, body).unwrap();
+        assert_eq!(extract_title(&path).as_deref(), Some("list"));
+    }
+
+    /// A real prompt that genuinely contains AGENTS.md in the middle should
+    /// NOT be filtered — only the fixed `# AGENTS.md instructions for`
+    /// header prefix is recognized.
+    #[test]
+    fn extract_title_keeps_user_prompt_mentioning_agents_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("r.jsonl");
+        let body = concat!(
+            r##"{"type":"session_meta","payload":{"id":"x","cwd":"/repo","originator":"Codex CLI"}}"##,
+            "\n",
+            r##"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"please update AGENTS.md to mention the new build flag"}]}}"##,
+            "\n",
+        );
+        std::fs::write(&path, body).unwrap();
+        assert_eq!(
+            extract_title(&path).as_deref(),
+            Some("please update AGENTS.md to mention the new build flag"),
+        );
     }
 
     #[test]
