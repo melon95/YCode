@@ -47,12 +47,40 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use thiserror::Error;
 
+pub mod agent_patcher;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub agents: Vec<AgentLaunchProfile>,
     #[serde(default)]
     pub font_sizes: FontSizes,
+    #[serde(default)]
+    pub notifications: NotificationSettings,
+}
+
+/// Global on/off + focus-gating switches for the agent-turn-complete OS
+/// notification. The actual per-agent install state lives on disk inside
+/// `~/.claude/settings.json` and `~/.codex/config.toml` (see
+/// [`agent_patcher`]) — we don't shadow it here to avoid two sources of
+/// truth that can drift.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct NotificationSettings {
+    /// Master switch. When false the Tauri event pump skips the system
+    /// toast entirely, even if the agent's CLI hook fired.
+    pub enabled: bool,
+    /// Only fire the toast when no ycode window is focused. Lets users who
+    /// keep ycode in the foreground avoid double-signalling.
+    pub only_when_unfocused: bool,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            only_when_unfocused: true,
+        }
+    }
 }
 
 /// Font sizes for the three layers users actually look at, mirroring the
@@ -128,6 +156,7 @@ impl Default for Config {
                 // can add them via Settings.
             ],
             font_sizes: FontSizes::default(),
+            notifications: NotificationSettings::default(),
         }
     }
 }

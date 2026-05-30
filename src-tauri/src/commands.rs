@@ -2,7 +2,13 @@
 //! delegation — if anything heavier creeps in here, that's a sign the IPC
 //! contract has drifted and should be moved back into `ycode-ipc`.
 
-use tauri::State;
+use std::path::PathBuf;
+
+use tauri::{Manager, State};
+use tauri_plugin_notification::NotificationExt;
+use ycode_config::agent_patcher::{
+    self, claude_settings_path, codex_config_path, HookStatus, NotifyStatus,
+};
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitFileChange, OpenInExternalEditorRequest,
@@ -332,5 +338,143 @@ pub async fn fs_reveal_in_finder(
         .reveal_in_finder(path)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Status payload returned to the webview for the agent-hook commands.
+///
+/// One variant per supported agent so the frontend can pattern-match instead
+/// of doing string-typing on a generic `enabled: bool`. Gemini isn't here on
+/// purpose — v1 doesn't ship hook integration for it (decided 2026-05-29).
+#[derive(serde::Serialize)]
+#[serde(tag = "agent", rename_all = "snake_case")]
+pub enum AgentPatchStatus {
+    Claude(HookStatus),
+    Codex(NotifyStatus),
+}
+
+/// Locate the `ycode-notify` helper binary.
+///
+/// In dev (`cargo run`) it lives next to the YCode binary in `target/<profile>/`.
+/// In a bundled app it ships as a Tauri sidecar resolved via
+/// `BaseDirectory::Resource → binaries/`. We check both so the same code path
+/// works in `cargo tauri dev`, a release `.app`, and a debug `.app`.
+fn resolve_helper_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let bin_name = if cfg!(windows) {
+        "ycode-notify.exe"
+    } else {
+        "ycode-notify"
+    };
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let adjacent = dir.join(bin_name);
+            if adjacent.exists() {
+                return Ok(adjacent);
+            }
+        }
+    }
+
+    if let Ok(p) = app.path().resolve(
+        format!("binaries/{bin_name}"),
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    Err("ycode-notify binary not found — looked next to YCode and in bundled resources".into())
+}
+
+/// Inspect the current state of the per-agent hook config without modifying
+/// anything on disk. `agent` accepts `"claude"` or `"codex"`.
+#[tauri::command]
+pub fn agent_hook_status(agent: String) -> Result<AgentPatchStatus, String> {
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_settings_path().ok_or("HOME unset")?;
+            agent_patcher::claude_hook_status(&path)
+                .map(AgentPatchStatus::Claude)
+                .map_err(|e| e.to_string())
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            agent_patcher::codex_notify_status(&path)
+                .map(AgentPatchStatus::Codex)
+                .map_err(|e| e.to_string())
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
+}
+
+/// Install the hook for `agent`. For Claude this always succeeds (additive).
+/// For Codex this returns `ConflictUserSet` if the user already set `notify`
+/// — we deliberately do NOT overwrite, the UI shows the conflict instead.
+#[tauri::command]
+pub fn agent_install_hook(
+    app: tauri::AppHandle,
+    agent: String,
+) -> Result<AgentPatchStatus, String> {
+    let helper = resolve_helper_bin(&app)?;
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_settings_path().ok_or("HOME unset")?;
+            agent_patcher::install_claude_hook(&path, &helper).map_err(|e| e.to_string())?;
+            Ok(AgentPatchStatus::Claude(HookStatus::Installed))
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            let status = agent_patcher::install_codex_notify(&path, &helper)
+                .map_err(|e| e.to_string())?;
+            Ok(AgentPatchStatus::Codex(status))
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
+}
+
+/// Fire a one-off OS notification so the user can confirm the system
+/// notification channel works (and, on macOS, get the first-launch permission
+/// prompt out of the way before relying on real agent events).
+#[tauri::command]
+pub fn test_notification(app: tauri::AppHandle) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title("YCode")
+        .body("Test notification — your notifications work.")
+        .show()
+        .map_err(|e| e.to_string())
+}
+
+/// Wrap the user's existing Codex `notify` so YCode fires first and their
+/// pre-existing tool still runs (via `ycode-notify --next ARGV_JSON`). The
+/// caller passes the argv it just observed via `agent_hook_status` so we
+/// don't re-read the file and risk a TOCTOU mismatch.
+#[tauri::command]
+pub fn agent_install_codex_chain(
+    app: tauri::AppHandle,
+    existing: Vec<String>,
+) -> Result<AgentPatchStatus, String> {
+    let helper = resolve_helper_bin(&app)?;
+    let path = codex_config_path().ok_or("HOME unset")?;
+    let status = agent_patcher::install_codex_notify_chain(&path, &helper, &existing)
+        .map_err(|e| e.to_string())?;
+    Ok(AgentPatchStatus::Codex(status))
+}
+
+#[tauri::command]
+pub fn agent_uninstall_hook(agent: String) -> Result<AgentPatchStatus, String> {
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_settings_path().ok_or("HOME unset")?;
+            agent_patcher::uninstall_claude_hook(&path).map_err(|e| e.to_string())?;
+            Ok(AgentPatchStatus::Claude(HookStatus::NotInstalled))
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            agent_patcher::uninstall_codex_notify(&path).map_err(|e| e.to_string())?;
+            Ok(AgentPatchStatus::Codex(NotifyStatus::NotInstalled))
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
 }
 

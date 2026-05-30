@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build && cargo build --release -p ycode-notify && mkdir -p src-tauri/binaries && cp target/release/ycode-notify src-tauri/binaries/ycode-notify"
   },
   "app": {
     "windows": [
@@ -34,7 +34,10 @@
       "icons/icon.png",
       "icons/icon.ico",
       "icons/icon.icns"
-    ]
+    ],
+    "resources": {
+      "binaries/ycode-notify": "binaries/ycode-notify"
+    }
   },
   "plugins": {
     "deep-link": {

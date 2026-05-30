@@ -4,6 +4,7 @@ Cargo.lock.bak
 
 # Tauri
 /src-tauri/target
+/src-tauri/binaries
 /dist
 /node_modules
 

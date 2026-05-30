@@ -19,6 +19,10 @@ fn shell_profile(id: &str) -> AgentLaunchProfile {
         command: "/bin/sh".into(),
         args: vec![],
         env: Default::default(),
+        icon: None,
+        icon_variant: None,
+        color: None,
+        introspect: None,
     }
 }
 
@@ -64,6 +68,7 @@ async fn full_session_lifecycle() {
             agent_profile_id: "shell-test".into(),
             project_id: project.id.clone(),
             title: "ipc-smoke".into(),
+            resume: None,
         })
         .await
         .unwrap();
@@ -128,6 +133,7 @@ async fn resize_works_on_live_session() {
             agent_profile_id: "shell-test".into(),
             project_id: project.id,
             title: "resize".into(),
+            resume: None,
         })
         .await
         .unwrap();
@@ -194,6 +200,7 @@ async fn create_session_with_bad_project_errors() {
             agent_profile_id: "shell-test".into(),
             project_id: "nonexistent".into(),
             title: "x".into(),
+            resume: None,
         })
         .await
         .unwrap_err();

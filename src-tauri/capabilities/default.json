@@ -20,6 +20,7 @@
     "clipboard-manager:allow-write-text",
     "os:allow-platform",
     "os:allow-version",
-    "updater:default"
+    "updater:default",
+    "notification:default"
   ]
 }

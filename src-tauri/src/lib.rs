@@ -3,10 +3,11 @@
 mod commands;
 mod state;
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_notification::NotificationExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::state::AppState;
@@ -51,6 +52,178 @@ fn augment_path() {
     }
 }
 
+/// Surface an OS notification for `AgentTurnComplete` according to the user's
+/// `NotificationSettings`. Gating order: master `enabled` first, then
+/// `only_when_unfocused` (skip when any ycode webview is focused — `main`
+/// plus any detached `project-*` window). Body string distinguishes "done"
+/// from "needs attention" so the user can tell at a glance whether to switch
+/// over right now.
+fn maybe_show_agent_notification(
+    handle: &tauri::AppHandle,
+    settings: ycode_config::NotificationSettings,
+    source: &str,
+    event_kind: &str,
+    body_preview: Option<&str>,
+) {
+    if !settings.enabled {
+        return;
+    }
+    if settings.only_when_unfocused {
+        let any_focused = handle
+            .webview_windows()
+            .values()
+            .any(|w| w.is_focused().unwrap_or(false));
+        if any_focused {
+            return;
+        }
+    }
+
+    // Prefer the assistant's actual last words — much more useful than
+    // "claude finished its turn" once you have a few terminals running.
+    // The title carries the routing info ("Claude · finished") so the
+    // body stays free for content.
+    let agent_label = match source {
+        "claude" => "Claude",
+        "codex" => "Codex",
+        "gemini" => "Gemini",
+        other => other,
+    };
+    let action_label = match event_kind {
+        "notification" => "needs your attention",
+        _ => "finished",
+    };
+    let title = format!("{agent_label} · {action_label}");
+    let body = body_preview
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{agent_label} {action_label}"));
+
+    if let Err(e) = handle
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+    {
+        tracing::warn!(error = %e, "agent notification failed");
+    }
+}
+
+/// Build the macOS menu bar with a custom **File → New Window (⌘N)** entry
+/// alongside the system-default groups (Edit / View / Window / Help). The
+/// `Submenu::*_with_id` constructors pull the standard Cocoa items for
+/// those submenus so copy/paste/zoom keep working without us re-implementing
+/// them. The ⌘N accelerator is the universal "open another window" gesture
+/// — it's the discoverable escape hatch from a detached-only window state.
+#[cfg(target_os = "macos")]
+fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadataBuilder, PredefinedMenuItem};
+
+    // ⌘⇧N matches Chrome / VS Code / Safari's "New Window" convention.
+    // Plain ⌘N is intentionally left free for a future "new session" action
+    // (semantically the dominant "new" verb inside ycode).
+    let new_window = MenuItem::with_id(
+        app,
+        "menu-new-window",
+        "New Window",
+        true,
+        Some("CmdOrCtrl+Shift+N"),
+    )?;
+
+    let app_submenu = Submenu::with_items(
+        app,
+        "YCode",
+        true,
+        &[
+            &PredefinedMenuItem::about(
+                app,
+                None,
+                Some(AboutMetadataBuilder::new().name(Some("YCode")).build()),
+            )?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+
+    // Deliberately no `close_window` entry — its default ⌘W binding would
+    // hijack the in-app "archive current session" shortcut. The title-bar
+    // traffic-light buttons still close windows normally.
+    let file_submenu = Submenu::with_items(app, "File", true, &[&new_window])?;
+
+    let edit_submenu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+
+    let view_submenu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &PredefinedMenuItem::fullscreen(app, None)?,
+        ],
+    )?;
+
+    let window_submenu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ],
+    )?;
+
+    Menu::with_items(
+        app,
+        &[
+            &app_submenu,
+            &file_submenu,
+            &edit_submenu,
+            &view_submenu,
+            &window_submenu,
+        ],
+    )
+}
+
+/// Show the main "all projects" window, recreating it from scratch when the
+/// user previously closed it. Without this, closing main while a detached
+/// project window survives leaves the app with no way back to the picker —
+/// the tray "Show YCode" entry and the dock-icon reopen both no-op'd before.
+fn ensure_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return;
+    }
+    let build = tauri::WebviewWindowBuilder::new(
+        app,
+        "main",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("YCode")
+    .inner_size(1100.0, 800.0)
+    .resizable(true);
+    if let Err(e) = build.build() {
+        tracing::warn!(error = %e, "failed to recreate main window");
+    }
+}
+
 pub fn run() {
     augment_path();
 
@@ -62,6 +235,13 @@ pub fn run() {
         .try_init();
 
     tauri::Builder::default()
+        // App-level menu event sink. Items on the macOS menu bar route their
+        // clicks here; the tray menu items keep their own handler below.
+        .on_menu_event(|app, ev| {
+            if ev.id().as_ref() == "menu-new-window" {
+                ensure_main_window(app);
+            }
+        })
         // Per plan §8.22: single-instance must be the first plugin so a
         // second `ycode` launch (or a `ycode://` deep-link) just refocuses
         // the existing window instead of forking a second app process.
@@ -78,6 +258,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Per plan §8.22: register `ycode://` so the OS hands URL launches
             // back to this binary. On macOS Info.plist controls registration;
@@ -100,6 +281,17 @@ pub fn run() {
                 }
             });
 
+            // Install a macOS-style menu bar so File → New Window (⌘N) is
+            // always available — that's the discoverable path back to a
+            // main window after the user has closed it while a detached
+            // project window still survives. On Windows/Linux the menu is
+            // skipped to avoid drawing a chrome strip our UI doesn't expect.
+            #[cfg(target_os = "macos")]
+            {
+                let menu = build_app_menu(app.handle())?;
+                app.set_menu(menu)?;
+            }
+
             let state = tauri::async_runtime::block_on(AppState::initialize())
                 .expect("failed to initialize ycode backend");
 
@@ -114,18 +306,14 @@ pub fn run() {
                 .tooltip("YCode")
                 .menu(&tray_menu)
                 .on_menu_event(|app, ev| match ev.id.as_ref() {
-                    "tray-show" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
-                    }
+                    "tray-show" => ensure_main_window(app),
                     "tray-quit" => {
                         app.exit(0);
                     }
                     _ => {}
                 })
                 .build(app);
+
 
             let service = state.service.clone();
             let handle = app.handle().clone();
@@ -134,6 +322,21 @@ pub fn run() {
                 loop {
                     match rx.recv().await {
                         Ok(event) => {
+                            if let ycode_ipc::UiEventKind::AgentTurnComplete {
+                                source,
+                                event_kind,
+                                body_preview,
+                            } = &event.kind
+                            {
+                                let settings = service.notification_settings().await;
+                                maybe_show_agent_notification(
+                                    &handle,
+                                    settings,
+                                    source,
+                                    event_kind,
+                                    body_preview.as_deref(),
+                                );
+                            }
                             if let Err(e) = handle.emit("ycode://session", &event) {
                                 tracing::warn!(error = %e, "emit failed");
                             }
@@ -180,7 +383,29 @@ pub fn run() {
             commands::fs_reveal_in_finder,
             commands::spawn_pty_raw,
             commands::kill_pty_raw,
+            commands::agent_hook_status,
+            commands::agent_install_hook,
+            commands::agent_install_codex_chain,
+            commands::agent_uninstall_hook,
+            commands::test_notification,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS dock-icon click. When there are no visible windows we
+            // recreate the main one; the standard "focus existing windows"
+            // path runs automatically when there are. Without this branch,
+            // the dock icon is a dead-end once the user has closed main —
+            // detached project windows alone leave no path back to the
+            // picker.
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = event
+            {
+                if !has_visible_windows {
+                    ensure_main_window(app_handle);
+                }
+            }
+        });
 }

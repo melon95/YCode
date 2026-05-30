@@ -44,6 +44,29 @@ pub enum UiEventKind {
     /// its in-memory cache and re-fetch via `load_session_history`. Per plan
     /// §6.2.5 (real-time tail of active session).
     JsonlChanged { agent: String, jsonl_path: String },
+    /// The agent CLI running in this terminal signalled that it finished a
+    /// turn / is waiting for the user. Emitted by the `NotifyListener` when
+    /// the helper binary (Claude `Stop` hook, Codex `notify`) connects.
+    /// `session_id` is the same terminal id we set as `YCODE_TERMINAL_ID`
+    /// when spawning the PTY. The Tauri shell decides whether to surface a
+    /// system notification (typically: only when the window is unfocused).
+    AgentTurnComplete {
+        /// Identifier of the CLI that fired the event — "claude", "codex",
+        /// or "unknown" when the helper was invoked without a source arg.
+        source: String,
+        /// Specific event sub-kind from the hook: "stop" / "notification" /
+        /// "turn_complete". Lets the UI distinguish "done" from "needs
+        /// permission" without inspecting `source`.
+        event_kind: String,
+        /// Short snippet of the last assistant message extracted from the
+        /// hook payload (Codex notify JSON's `last-assistant-message` field,
+        /// Claude's transcript jsonl tail). Truncated to ~200 chars before
+        /// emission so the renderer can drop it straight into the toast.
+        /// `None` when extraction failed (file missing, unknown agent, etc.)
+        /// — the Tauri shell falls back to the generic "finished its turn"
+        /// body.
+        body_preview: Option<String>,
+    },
 }
 
 impl UiEvent {
@@ -81,6 +104,22 @@ impl UiEvent {
             kind: UiEventKind::JsonlChanged {
                 agent: agent.into(),
                 jsonl_path: jsonl_path.into(),
+            },
+        }
+    }
+
+    pub fn agent_turn_complete(
+        session_id: impl Into<String>,
+        source: impl Into<String>,
+        event_kind: impl Into<String>,
+        body_preview: Option<String>,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            kind: UiEventKind::AgentTurnComplete {
+                source: source.into(),
+                event_kind: event_kind.into(),
+                body_preview,
             },
         }
     }

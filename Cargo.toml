@@ -6,6 +6,7 @@ members = [
     "crates/ycode-config",
     "crates/ycode-ipc",
     "crates/ycode-introspect",
+    "crates/ycode-notify",
     "src-tauri",
 ]
 

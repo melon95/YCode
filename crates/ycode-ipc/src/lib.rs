@@ -19,6 +19,7 @@
 //! Events flow back through [`UiEvent`] on the channel `"ycode://session"`.
 
 pub mod events;
+pub mod notify_listener;
 pub mod service;
 
 pub use events::{UiEvent, UiEventKind};
@@ -33,7 +34,7 @@ pub use ycode_introspect::{
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use ycode_config::{AgentLaunchProfile, FontSizes};
+use ycode_config::{AgentLaunchProfile, FontSizes, NotificationSettings};
 use ycode_persist::{ProjectRow, SessionRow};
 use ycode_terminal::TerminalStatus;
 
@@ -198,6 +199,33 @@ impl From<AgentLaunchProfileView> for AgentLaunchProfile {
 pub struct ConfigView {
     pub agents: Vec<AgentLaunchProfileView>,
     pub font_sizes: FontSizesView,
+    pub notifications: NotificationSettingsView,
+}
+
+/// Editable mirror of [`ycode_config::NotificationSettings`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NotificationSettingsView {
+    pub enabled: bool,
+    pub only_when_unfocused: bool,
+}
+
+impl From<NotificationSettings> for NotificationSettingsView {
+    fn from(n: NotificationSettings) -> Self {
+        Self {
+            enabled: n.enabled,
+            only_when_unfocused: n.only_when_unfocused,
+        }
+    }
+}
+
+impl From<NotificationSettingsView> for NotificationSettings {
+    fn from(v: NotificationSettingsView) -> Self {
+        Self {
+            enabled: v.enabled,
+            only_when_unfocused: v.only_when_unfocused,
+        }
+    }
 }
 
 /// Editable mirror of [`ycode_config::FontSizes`]. Mirrored 1:1 — we only
@@ -236,6 +264,7 @@ impl From<ycode_config::Config> for ConfigView {
         Self {
             agents: c.agents.into_iter().map(Into::into).collect(),
             font_sizes: c.font_sizes.into(),
+            notifications: c.notifications.into(),
         }
     }
 }
@@ -245,6 +274,7 @@ impl From<ConfigView> for ycode_config::Config {
         Self {
             agents: v.agents.into_iter().map(Into::into).collect(),
             font_sizes: v.font_sizes.into(),
+            notifications: v.notifications.into(),
         }
     }
 }
@@ -336,8 +366,10 @@ pub struct SpawnPtyRequest {
     pub command: String,
     pub args: Vec<String>,
     #[serde(default)]
+    #[ts(optional)]
     pub cols: Option<u16>,
     #[serde(default)]
+    #[ts(optional)]
     pub rows: Option<u16>,
 }
 

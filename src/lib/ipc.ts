@@ -130,6 +130,40 @@ export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
 export const killPtyRaw = (ptyId: string): Promise<void> =>
   invoke("kill_pty_raw", { ptyId });
 
+// ── Agent hook config (per-agent CLI patches for completion notifications) ──
+
+/**
+ * Status returned by the `agent_hook_status` / `agent_install_hook` commands.
+ * Discriminated by `agent`; the inner `kind` enum mirrors `HookStatus` (Claude)
+ * or `NotifyStatus` (Codex) from the Rust side.
+ */
+export type AgentPatchStatus =
+  | { agent: "claude"; kind: "not_installed" | "installed" }
+  | {
+      agent: "codex";
+      kind: "not_installed" | "installed" | "conflict_user_set";
+      existing?: string[];
+    };
+
+export const agentHookStatus = (agent: "claude" | "codex"): Promise<AgentPatchStatus> =>
+  invoke("agent_hook_status", { agent });
+
+export const agentInstallHook = (agent: "claude" | "codex"): Promise<AgentPatchStatus> =>
+  invoke("agent_install_hook", { agent });
+
+export const agentUninstallHook = (agent: "claude" | "codex"): Promise<AgentPatchStatus> =>
+  invoke("agent_uninstall_hook", { agent });
+
+/**
+ * Wrap an existing user-set Codex notify so YCode fires first and the user's
+ * existing tool still runs. Pass the argv we just observed via
+ * `agentHookStatus` to avoid a TOCTOU mismatch on the backend.
+ */
+export const agentInstallCodexChain = (existing: string[]): Promise<AgentPatchStatus> =>
+  invoke("agent_install_codex_chain", { existing });
+
+export const testNotification = (): Promise<void> => invoke("test_notification");
+
 export const listenSessionEvents = (
   handler: (event: UiEvent) => void,
 ): Promise<UnlistenFn> =>

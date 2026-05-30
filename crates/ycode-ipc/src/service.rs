@@ -7,7 +7,7 @@
 //! Methods deliberately avoid Tauri-specific types so this crate stays
 //! transport-agnostic.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use thiserror::Error;
@@ -20,7 +20,7 @@ use ycode_persist::{Db, NewProject, NewSession, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
+    notify_listener, AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
     SessionView, SpawnPtyRequest, UiEvent, UiEventKind, UnifiedEvent, WriteFileRequest,
@@ -54,20 +54,41 @@ pub struct Service {
     /// Per-project jsonl watcher tokens. Replacing an entry cancels the
     /// previous watcher. Per plan §8.12 / §8.21.
     workspace_watchers: RwLock<std::collections::HashMap<String, CancellationToken>>,
+    /// Path of the Unix domain socket the notify listener bound to. Injected
+    /// into every spawned PTY's environment as `YCODE_NOTIFY_SOCK` so the
+    /// `ycode-notify` helper invoked by agent hooks knows where to connect.
+    /// `None` when the listener failed to start (Windows v1, or bind error)
+    /// — in that case completion notifications are silently disabled.
+    notify_sock_path: Option<PathBuf>,
 }
 
 impl Service {
     pub fn new(db: Db, config: Config) -> Self {
         let available = compute_available_agents(&config);
         let (tx, _) = broadcast::channel(UI_BUS_CAPACITY);
+        let shutdown = CancellationToken::new();
+        // Start the notify listener inside the current tokio runtime. Bind
+        // failure (or non-Unix targets) returns `None` and disables
+        // completion notifications without aborting startup.
+        let notify_sock_path = if tokio::runtime::Handle::try_current().is_ok() {
+            notify_listener::start(
+                tx.clone(),
+                shutdown.child_token(),
+                notify_listener::default_socket_path(),
+            )
+        } else {
+            warn!("Service::new called outside a tokio runtime; notify listener disabled");
+            None
+        };
         Self {
             db,
             terminals: Arc::new(TerminalManager::new()),
             config: RwLock::new(config),
             available_agents: RwLock::new(available),
             ui_bus: tx,
-            shutdown: CancellationToken::new(),
+            shutdown,
             workspace_watchers: RwLock::new(std::collections::HashMap::new()),
+            notify_sock_path,
         }
     }
 
@@ -103,6 +124,14 @@ impl Service {
     pub async fn get_config(&self) -> ConfigView {
         let cfg = self.config.read().await;
         cfg.clone().into()
+    }
+
+    /// Cheap accessor used by the Tauri event pump on every
+    /// `AgentTurnComplete`. Reading the full [`ConfigView`] would clone the
+    /// whole agent list — `NotificationSettings` is `Copy`, so we hand back
+    /// a value and release the lock immediately.
+    pub async fn notification_settings(&self) -> ycode_config::NotificationSettings {
+        self.config.read().await.notifications
     }
 
     /// Persist `incoming` to `~/.config/ycode/config.json`, swap the live
@@ -543,11 +572,13 @@ impl Service {
         } else {
             req.command
         };
+        let mut env = terminal_env(std::env::vars());
+        inject_notify_env(&mut env, &id, self.notify_sock_path.as_deref());
         let spec = SpawnSpec {
             command,
             args: req.args,
             // Inherit the host environment so the shell gets PATH/HOME/etc.
-            env: terminal_env(std::env::vars()),
+            env,
             // Raw PTYs are user-driven shells: don't strip API_KEY vars —
             // the user may explicitly need them. Plan §8.16.
             env_remove: vec![],
@@ -688,9 +719,10 @@ impl Service {
         cwd: Utf8PathBuf,
         mode: LaunchMode,
     ) -> Result<Arc<TerminalSession>, IpcError> {
-        let env = terminal_env(
+        let mut env = terminal_env(
             std::env::vars().chain(profile.env.iter().map(|(k, v)| (k.clone(), v.clone()))),
         );
+        inject_notify_env(&mut env, id, self.notify_sock_path.as_deref());
         let env_remove = env_keys_to_strip(profile)
             .iter()
             .map(|s| (*s).to_string())
@@ -1186,6 +1218,25 @@ where
     env.insert("CLICOLOR_FORCE".into(), "1".into());
     env.remove("NO_COLOR");
     env.into_iter().collect()
+}
+
+/// Inject `YCODE_TERMINAL_ID` (always) and `YCODE_NOTIFY_SOCK` (when the
+/// notify listener bound successfully) into a spawned PTY's environment.
+/// Existing entries for these keys are stripped first so a misbehaving
+/// host shell can't override what the helper expects.
+fn inject_notify_env(
+    env: &mut Vec<(String, String)>,
+    terminal_id: &str,
+    sock_path: Option<&std::path::Path>,
+) {
+    env.retain(|(k, _)| k != "YCODE_TERMINAL_ID" && k != "YCODE_NOTIFY_SOCK");
+    env.push(("YCODE_TERMINAL_ID".into(), terminal_id.to_string()));
+    if let Some(p) = sock_path {
+        env.push((
+            "YCODE_NOTIFY_SOCK".into(),
+            p.to_string_lossy().into_owned(),
+        ));
+    }
 }
 
 /// Walk `root` honouring `.gitignore` / `.git/info/exclude` / global gitignore
