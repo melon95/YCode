@@ -352,6 +352,15 @@ pub async fn fs_reveal_in_finder(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn open_url(state: State<'_, AppState>, url: String) -> Result<(), String> {
+    state
+        .service
+        .open_url(url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Status payload returned to the webview for the agent-hook commands.
 ///
 /// One variant per supported agent so the frontend can pattern-match instead

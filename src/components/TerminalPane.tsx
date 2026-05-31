@@ -32,6 +32,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import {
   listenSessionEvents,
+  openUrl,
   readPtyBacklog,
   resizePty,
   writePty,
@@ -670,7 +671,13 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   let lastSearch = "";
   term.loadAddon(fit);
   term.loadAddon(search);
-  term.loadAddon(new WebLinksAddon());
+  // WebLinksAddon's default `window.open` is a no-op in Tauri's WKWebView,
+  // so route clicks through a backend command that uses the OS opener.
+  term.loadAddon(
+    new WebLinksAddon((_event, uri) => {
+      void openUrl(uri).catch(() => {});
+    }),
+  );
   // Activate Unicode 11 width tables so emoji / Nerd-Font PUA glyphs match
   // what zsh/starship and modern shells assume — without this, xterm treats
   // them as 1 cell while the shell treats them as 2, and cursor columns drift

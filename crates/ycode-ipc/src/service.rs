@@ -473,6 +473,15 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("reveal task: {e}")))?
     }
 
+    /// Open a URL in the user's default browser. Used by xterm.js
+    /// `WebLinksAddon`, whose default `window.open` is a no-op inside
+    /// Tauri's WKWebView.
+    pub async fn open_url(&self, url: String) -> Result<(), IpcError> {
+        tokio::task::spawn_blocking(move || open_url_blocking(url))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("open-url task: {e}")))?
+    }
+
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
         let rows = self.db.sessions().list_live().await?;
         let mut out = Vec::with_capacity(rows.len());
@@ -1615,6 +1624,42 @@ fn reveal_in_finder_blocking(path: String) -> Result<(), IpcError> {
     cmd.spawn()
         .map(|_| ())
         .map_err(|e| IpcError::BadInput(format!("reveal {path}: {e}")))
+}
+
+fn open_url_blocking(url: String) -> Result<(), IpcError> {
+    // Restrict to web schemes so a malicious URL in PTY output can't be turned
+    // into an arbitrary local-app launch via `open <url>` (which on macOS will
+    // happily dispatch e.g. `file://`, `vscode://`, `x-apple-…://` handlers).
+    let trimmed = url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return Err(IpcError::BadInput(format!("refusing non-http url: {url}")));
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(trimmed);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(trimmed);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        // `start` is a cmd builtin, not a standalone exe; the empty title arg
+        // keeps `start` from interpreting a quoted URL as the window title.
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", trimmed]);
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| IpcError::BadInput(format!("open url {url}: {e}")))
 }
 
 fn default_editor() -> String {

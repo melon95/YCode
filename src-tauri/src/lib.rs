@@ -410,6 +410,7 @@ pub fn run() {
             commands::search_sessions,
             commands::fs_open_in_external_editor,
             commands::fs_reveal_in_finder,
+            commands::open_url,
             commands::spawn_pty_raw,
             commands::kill_pty_raw,
             commands::agent_hook_status,

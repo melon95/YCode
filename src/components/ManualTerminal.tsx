@@ -20,6 +20,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   killPtyRaw,
   listenSessionEvents,
+  openUrl,
   resizePty,
   spawnPtyRaw,
   writePty,
@@ -82,7 +83,13 @@ export function ManualTerminal({
     let lastSearch = "";
     term.loadAddon(fit);
     term.loadAddon(search);
-    term.loadAddon(new WebLinksAddon());
+    // WebLinksAddon's default `window.open` is a no-op in Tauri's WKWebView,
+    // so route clicks through a backend command that uses the OS opener.
+    term.loadAddon(
+      new WebLinksAddon((_event, uri) => {
+        void openUrl(uri).catch(() => {});
+      }),
+    );
     // Default Unicode tables in xterm.js treat many emoji and Nerd-Font PUA
     // glyphs as 1 cell, while modern shells (zsh/starship + wcwidth) treat
     // them as 2. The mismatch slowly desynchronises cursor columns between

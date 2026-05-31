@@ -132,6 +132,14 @@ export const openInExternalEditor = (
 export const revealInFinder = (path: string): Promise<void> =>
   invoke("fs_reveal_in_finder", { path });
 
+/**
+ * Open a URL in the system default browser. xterm.js' WebLinksAddon defaults
+ * to `window.open(uri)`, which is a no-op in Tauri's WKWebView — so terminals
+ * pass this as their custom handler.
+ */
+export const openUrl = (url: string): Promise<void> =>
+  invoke("open_url", { url });
+
 export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
   invoke("spawn_pty_raw", { request });
 
