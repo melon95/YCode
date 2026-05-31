@@ -304,6 +304,7 @@ export function RightPane() {
               <RightTerminalSplit
                 tree={state.tree}
                 cwd={proj.repo_path}
+                projectId={pid}
                 visible={visible}
                 onSplit={(paneId, direction) =>
                   handleSplit(pid, paneId, direction)

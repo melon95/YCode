@@ -38,6 +38,7 @@ import {
   writePty,
 } from "../lib/ipc";
 import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
+import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
 
@@ -676,6 +677,20 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   term.loadAddon(
     new WebLinksAddon((_event, uri) => {
       void openUrl(uri).catch(() => {});
+    }),
+  );
+  // Cmd-click on file-path-shaped substrings → open in right-pane editor.
+  // Resolve the project id from the session at click time so reassigning a
+  // session to a different project (rare but possible) still routes to the
+  // correct repo.
+  term.registerLinkProvider(
+    createFileLinkProvider(term, (candidate, line, column) => {
+      const projectId =
+        useStore.getState().sessions[sessionId]?.project_id;
+      if (!projectId) return;
+      void activateFilePath(projectId, candidate, line, column).catch(
+        () => {},
+      );
     }),
   );
   // Activate Unicode 11 width tables so emoji / Nerd-Font PUA glyphs match

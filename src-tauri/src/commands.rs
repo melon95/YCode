@@ -361,6 +361,19 @@ pub async fn open_url(state: State<'_, AppState>, url: String) -> Result<(), Str
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn resolve_terminal_path(
+    state: State<'_, AppState>,
+    project_id: String,
+    candidate: String,
+) -> Result<Option<String>, String> {
+    state
+        .service
+        .resolve_terminal_path(project_id, candidate)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Status payload returned to the webview for the agent-hook commands.
 ///
 /// One variant per supported agent so the frontend can pattern-match instead

@@ -26,6 +26,7 @@ import {
   writePty,
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
+import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 
 const TERMINAL_OPTIONS = {
   fontFamily:
@@ -49,15 +50,20 @@ const TERMINAL_OPTIONS = {
 export function ManualTerminal({
   cwd,
   visible,
+  projectId,
 }: {
   cwd: string;
   visible: boolean;
+  projectId: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const visibleRef = useRef(visible);
+  // Mirror `projectId` into a ref so the link-provider closure (created once
+  // per mount) always reads the current value when a click activates.
+  const projectIdRef = useRef(projectId);
   // Tracks whether we've already pushed a "shell is live" resize_pty after
   // observing the first byte of PTY output. See the listen effect for why
   // that's necessary even when spawn already had the right geometry.
@@ -67,6 +73,10 @@ export function ManualTerminal({
   useEffect(() => {
     visibleRef.current = visible;
   }, [visible]);
+
+  useEffect(() => {
+    projectIdRef.current = projectId;
+  }, [projectId]);
 
   // Boot the xterm Terminal exactly once per mount/cwd. The cwd dep makes
   // React tear down + rebuild when the active project changes.
@@ -88,6 +98,23 @@ export function ManualTerminal({
     term.loadAddon(
       new WebLinksAddon((_event, uri) => {
         void openUrl(uri).catch(() => {});
+      }),
+    );
+    // Cmd-click on file-path-shaped substrings → open in right-pane editor.
+    // Read projectId via ref at activation time so the link provider survives
+    // project switches (rare for this terminal, since the host cwd is fixed,
+    // but kept consistent with TerminalPane's session-based lookup).
+    //
+    // The provider is owned by the Terminal — `term.dispose()` in cleanup
+    // tears it down, so we don't track the IDisposable separately.
+    term.registerLinkProvider(
+      createFileLinkProvider(term, (candidate, line, column) => {
+        void activateFilePath(
+          projectIdRef.current,
+          candidate,
+          line,
+          column,
+        ).catch(() => {});
       }),
     );
     // Default Unicode tables in xterm.js treat many emoji and Nerd-Font PUA

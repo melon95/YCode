@@ -140,6 +140,18 @@ export const revealInFinder = (path: string): Promise<void> =>
 export const openUrl = (url: string): Promise<void> =>
   invoke("open_url", { url });
 
+/**
+ * Resolve a candidate path scraped from terminal output (absolute, relative,
+ * or bare like `src/foo.ts`) to a project-relative path the editor can open.
+ * Returns null when the candidate isn't a regular file inside the project —
+ * the terminal link provider matches optimistically and uses this to filter.
+ */
+export const resolveTerminalPath = (
+  projectId: string,
+  candidate: string,
+): Promise<string | null> =>
+  invoke("resolve_terminal_path", { projectId, candidate });
+
 export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
   invoke("spawn_pty_raw", { request });
 

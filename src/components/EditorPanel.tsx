@@ -24,6 +24,7 @@ import {
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
+import type { EditorGotoDetail } from "../lib/fileLinkProvider";
 
 interface FileState {
   /// Last known disk contents — what a save will be compared against.
@@ -253,6 +254,65 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     window.addEventListener("ycode:close-file", onCloseFile);
     return () => window.removeEventListener("ycode:close-file", onCloseFile);
   }, [handleClose]);
+
+  // ── Cmd-click goto from terminal file links ─────────────────────────────
+  //
+  // `ycode:editor-goto` fires after `openFile` has already switched
+  // `selectedFilePath`, but the file's contents and the CodeMirror view both
+  // come up asynchronously. Poll with rAF (capped) until both are ready.
+  // `useStore.getState()` reads the live selection so we don't rely on a
+  // stale closure when the user clicks multiple paths in quick succession.
+  const pendingGotoRef = useRef<EditorGotoDetail | null>(null);
+  useEffect(() => {
+    function tryApply(attemptsLeft: number) {
+      const pending = pendingGotoRef.current;
+      if (!pending) return;
+      if (pending.path !== useStore.getState().selectedFilePath) {
+        // Selection moved on (or not yet there). Keep the request pinned —
+        // future rAF ticks or another goto will catch up.
+        if (attemptsLeft <= 0) {
+          pendingGotoRef.current = null;
+          return;
+        }
+        requestAnimationFrame(() => tryApply(attemptsLeft - 1));
+        return;
+      }
+      const fs = filesRef.current.get(pending.path);
+      const view = cmRef.current?.view;
+      if (!fs?.loaded || fs.isBinary || !view) {
+        if (attemptsLeft <= 0) {
+          pendingGotoRef.current = null;
+          return;
+        }
+        requestAnimationFrame(() => tryApply(attemptsLeft - 1));
+        return;
+      }
+      pendingGotoRef.current = null;
+      const totalLines = view.state.doc.lines;
+      const targetLine = Math.max(1, Math.min(totalLines, pending.line));
+      const line = view.state.doc.line(targetLine);
+      const colOffset = pending.column
+        ? Math.max(0, Math.min(line.length, pending.column - 1))
+        : 0;
+      const pos = line.from + colOffset;
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: "center" }),
+      });
+      view.focus();
+    }
+    function onGoto(event: Event) {
+      const detail = (event as CustomEvent<EditorGotoDetail>).detail;
+      if (!detail || typeof detail.path !== "string") return;
+      pendingGotoRef.current = detail;
+      // ~1s of rAF retries covers IPC read + CM mount for typical files;
+      // very large files just won't auto-jump, which is preferable to
+      // looping forever.
+      tryApply(60);
+    }
+    window.addEventListener("ycode:editor-goto", onGoto);
+    return () => window.removeEventListener("ycode:editor-goto", onGoto);
+  }, []);
 
   if (openFiles.length === 0) {
     return (

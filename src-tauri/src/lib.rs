@@ -411,6 +411,7 @@ pub fn run() {
             commands::fs_open_in_external_editor,
             commands::fs_reveal_in_finder,
             commands::open_url,
+            commands::resolve_terminal_path,
             commands::spawn_pty_raw,
             commands::kill_pty_raw,
             commands::agent_hook_status,

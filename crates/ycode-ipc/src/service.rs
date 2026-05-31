@@ -482,6 +482,27 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("open-url task: {e}")))?
     }
 
+    /// Resolve a candidate path scraped from terminal output to a
+    /// project-relative path. Used by the file-link provider in xterm panes
+    /// so a Cmd-click on something that looks like `src/foo.ts` or
+    /// `/abs/path` opens the file in the right-pane editor.
+    ///
+    /// Returns `Ok(None)` when the candidate isn't a regular file inside the
+    /// project; the frontend treats that as "no-op". Reserving `Err` for true
+    /// errors (bad project id) keeps the link provider quiet on false-positive
+    /// matches.
+    pub async fn resolve_terminal_path(
+        &self,
+        project_id: String,
+        candidate: String,
+    ) -> Result<Option<String>, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || resolve_terminal_path_blocking(&repo, &candidate))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("resolve-path task: {e}")))?
+    }
+
     pub async fn list_sessions(&self) -> Result<Vec<SessionView>, IpcError> {
         let rows = self.db.sessions().list_live().await?;
         let mut out = Vec::with_capacity(rows.len());
@@ -1624,6 +1645,111 @@ fn reveal_in_finder_blocking(path: String) -> Result<(), IpcError> {
     cmd.spawn()
         .map(|_| ())
         .map_err(|e| IpcError::BadInput(format!("reveal {path}: {e}")))
+}
+
+/// Try to map a terminal-scraped candidate to a project-relative path.
+///
+/// Resolution order:
+///   1. Direct: absolute, or relative joined to the project root.
+///   2. Bare-filename fallback: if the candidate has no `/`, walk the project
+///      tree (honouring `.gitignore`) and return the first match. Covers
+///      `ls` output where the shell's cwd ≠ the project root (or the file
+///      lives in a subdir we have no way to know about).
+///
+/// Returns `None` (not an error) when nothing resolves — the link provider
+/// matches optimistically and lets the backend filter out false positives.
+fn resolve_terminal_path_blocking(
+    repo: &Utf8Path,
+    candidate: &str,
+) -> Result<Option<String>, IpcError> {
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let repo_canon = repo
+        .as_std_path()
+        .canonicalize()
+        .map_err(|e| IpcError::BadInput(format!("repo canonicalize: {e}")))?;
+
+    // ── 1. Direct resolve ────────────────────────────────────────────────
+    let raw = std::path::PathBuf::from(trimmed);
+    let abs_candidate = if raw.is_absolute() {
+        raw
+    } else {
+        repo.as_std_path().join(&raw)
+    };
+    if let Ok(canon) = abs_candidate.canonicalize() {
+        if canon.is_file() && canon.starts_with(&repo_canon) {
+            return Ok(Some(rel_under_repo(&repo_canon, &canon)?));
+        }
+    }
+
+    // ── 2. Bare-filename fallback ────────────────────────────────────────
+    //
+    // Only fire when there's no `/` in the candidate. With a slash, the
+    // user (or shell) gave us an explicit path; silently rewriting that to
+    // a same-named file elsewhere in the tree would be surprising.
+    if !trimmed.contains('/') {
+        if let Some(rel) = find_first_by_name(&repo_canon, trimmed) {
+            return Ok(Some(rel));
+        }
+    }
+
+    Ok(None)
+}
+
+fn rel_under_repo(
+    repo_canon: &std::path::Path,
+    file_canon: &std::path::Path,
+) -> Result<String, IpcError> {
+    let rel = file_canon
+        .strip_prefix(repo_canon)
+        .map_err(|e| IpcError::BadInput(format!("strip prefix: {e}")))?;
+    // Editor expects forward-slash project-relative paths (same format the
+    // file tree emits). On Unix that's already the case; the explicit
+    // conversion keeps Windows builds honest if/when we ship there.
+    Ok(rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
+/// Walk `repo_canon` honouring `.gitignore` (same filters as `walk_repo`) and
+/// return the first regular file whose basename matches `name`.
+///
+/// Uses early-return on the first hit. Re-walks per click; project trees are
+/// usually small enough for this to be fine, and a stale cache would be a
+/// worse UX than a few extra ms.
+fn find_first_by_name(repo_canon: &std::path::Path, name: &str) -> Option<String> {
+    use ignore::WalkBuilder;
+    let walker = WalkBuilder::new(repo_canon)
+        .hidden(false)
+        .filter_entry(|entry| entry.file_name() != ".git")
+        .build();
+    for result in walker {
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        if entry.file_name() != name {
+            continue;
+        }
+        let path = entry.path();
+        if let Ok(rel) = path.strip_prefix(repo_canon) {
+            return Some(
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/"),
+            );
+        }
+    }
+    None
 }
 
 fn open_url_blocking(url: String) -> Result<(), IpcError> {
