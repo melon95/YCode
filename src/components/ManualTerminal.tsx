@@ -27,6 +27,7 @@ import {
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
+import { attachImeInputBridge, isPrintableCharEvent } from "../lib/terminalInput";
 
 const TERMINAL_OPTIONS = {
   fontFamily:
@@ -135,14 +136,25 @@ export function ManualTerminal({
       })) {
         return false;
       }
-      const data = macCommandShortcutData(event);
-      if (!data) return true;
-      const id = ptyIdRef.current;
-      if (!id) return false;
-      event.preventDefault();
-      void writePty({ session_id: id, data: utf8ToBase64(data) }).catch(() => {});
-      return false;
+      const macData = macCommandShortcutData(event);
+      if (macData) {
+        const id = ptyIdRef.current;
+        if (!id) return false;
+        event.preventDefault();
+        void writePty({ session_id: id, data: utf8ToBase64(macData) }).catch(() => {});
+        return false;
+      }
+      // See TerminalPane for the rationale behind the next two short-circuits:
+      // both keep xterm.js out of the way so macOS Chinese IME punctuation
+      // auto-replace (e.g. `?` → `？`) reaches the PTY through the natural
+      // textarea input flow instead of being clobbered by xterm's keydown
+      // writer + preventDefault.
+      if (event.isComposing) return false;
+      if (isPrintableCharEvent(event)) return false;
+      return true;
     });
+
+    const imeBridgeDispose = attachImeInputBridge(term, () => ptyIdRef.current);
 
     const dataDisposable = term.onData((data) => {
       const id = ptyIdRef.current;
@@ -216,6 +228,7 @@ export function ManualTerminal({
       cancelled = true;
       const id = localPtyId ?? ptyIdRef.current;
       ptyIdRef.current = null;
+      imeBridgeDispose();
       dataDisposable.dispose();
       binaryDisposable.dispose();
       term.dispose();

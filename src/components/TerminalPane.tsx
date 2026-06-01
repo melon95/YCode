@@ -39,6 +39,10 @@ import {
 } from "../lib/ipc";
 import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
+import {
+  attachImeInputBridge,
+  isPrintableCharEvent,
+} from "../lib/terminalInput";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
 
@@ -712,15 +716,30 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
     })) {
       return false;
     }
-    const data = macCommandShortcutData(event);
-    if (!data) return true;
-    event.preventDefault();
-    void writePty({
-      session_id: sessionId,
-      data: utf8ToBase64(data),
-    }).catch(() => {});
-    return false;
+    const macData = macCommandShortcutData(event);
+    if (macData) {
+      event.preventDefault();
+      void writePty({
+        session_id: sessionId,
+        data: utf8ToBase64(macData),
+      }).catch(() => {});
+      return false;
+    }
+    // IME composition: hand the event back to the browser/IME completely
+    // so xterm.js doesn't preventDefault and break the composition chain.
+    if (event.isComposing) return false;
+    // Printable single-char keystrokes (no Cmd/Ctrl/Alt): route through the
+    // textarea's `input` event instead of xterm.js's keydown writer. This is
+    // the only way macOS Chinese IME punctuation auto-replace (e.g. `?` →
+    // `？`) reaches the PTY — xterm's keydown path would write the raw `?`
+    // and preventDefault, killing the IME's replacement before it commits.
+    // The attached input bridge below picks up whatever character actually
+    // lands in the textarea (raw or IME-replaced) and writes it to the PTY.
+    if (isPrintableCharEvent(event)) return false;
+    return true;
   });
+
+  const imeBridgeDispose = attachImeInputBridge(term, () => sessionId);
 
   const dataDisposable = term.onData((data) => {
     void writePty({
@@ -745,6 +764,7 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
     fit,
     container,
     cleanup: () => {
+      imeBridgeDispose();
       dataDisposable.dispose();
       binaryDisposable.dispose();
       term.dispose();
