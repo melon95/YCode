@@ -592,11 +592,20 @@ export function TerminalPane() {
                   <span className="pane-title" title={title}>
                     {title}
                   </span>
-                  {attentionBySession[id] && !focused && (
+                  {!ended && (
                     <span
-                      className="pane-attention"
-                      title="Agent finished or needs your input"
-                      aria-label="needs attention"
+                      className={
+                        "pane-status-dot" +
+                        (attentionBySession[id] ? " ringing" : "")
+                      }
+                      title={
+                        attentionBySession[id]
+                          ? "Agent finished — your turn"
+                          : "Idle"
+                      }
+                      aria-label={
+                        attentionBySession[id] ? "ready for input" : "idle"
+                      }
                     />
                   )}
                   {ended && <span className="pane-status">ended</span>}

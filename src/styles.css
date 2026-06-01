@@ -885,15 +885,25 @@ body::before {
   border: 1px solid currentColor;
   opacity: 0.7;
 }
-/* Soft pulsing dot next to the pane title for sessions that fired an agent
-   event while the user was looking elsewhere. Sized to read at a glance
-   without crowding the title. */
-.pane-attention {
+/* Per-pane liveness indicator next to the title. Always present for running
+   sessions so a glance at any pane in a multi-agent layout shows its state.
+   Default state ("idle"): muted, no animation — agent is at rest, no recent
+   turn-complete signal. "ringing" modifier (set when `attentionBySession[id]`
+   is truthy): switches to the accent colour and gently pulses. The store
+   clears the attention flag on focus / activeId change, so the focused pane
+   naturally drops back to Idle the moment the user reads it. */
+.pane-status-dot {
   flex: 0 0 auto;
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: var(--idle);
+  opacity: 0.55;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+.pane-status-dot.ringing {
   background: var(--accent, #d97757);
+  opacity: 1;
   box-shadow: 0 0 0 0 currentColor;
   animation: pane-attention-pulse 1.6s ease-in-out infinite;
 }
