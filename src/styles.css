@@ -2480,6 +2480,54 @@ textarea.native-input {
   text-overflow: ellipsis;
 }
 
+.cmd-palette-hit-ts {
+  margin-left: auto;
+}
+
+.cmd-palette-hit-file {
+  padding: 7px 14px;
+}
+
+.cmd-palette-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cmd-palette-file-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.cmd-palette-file-name {
+  font-size: 13px;
+  color: var(--fg, #f0eee6);
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-palette-file-dir {
+  font-size: 11px;
+  color: var(--muted, rgba(255, 255, 255, 0.55));
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.cmd-palette-match {
+  background: transparent;
+  color: var(--accent, #d97757);
+  font-weight: 600;
+}
+
 /* ── HistoryTab (read-only structured session viewer) ──────────────────── */
 
 .history-backdrop {
