@@ -392,7 +392,7 @@ pub enum AgentPatchStatus {
 /// In a bundled app it ships as a Tauri sidecar resolved via
 /// `BaseDirectory::Resource → binaries/`. We check both so the same code path
 /// works in `cargo tauri dev`, a release `.app`, and a debug `.app`.
-fn resolve_helper_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn resolve_helper_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let bin_name = if cfg!(windows) {
         "ycode-notify.exe"
     } else {

@@ -37,6 +37,19 @@ pub enum PatchError {
     Schema { file: &'static str, msg: String },
 }
 
+/// Subtype filter we install on Claude's `Notification` hook. We deliberately
+/// keep ONLY `permission_prompt` (Claude is genuinely blocked waiting on the
+/// user to approve a tool call). `idle_prompt` is intentionally excluded: it
+/// fires ~60s after a turn already ended, restating "user needed" when the
+/// turn was already covered by `Stop`. Surfacing it as a second "needs your
+/// attention" toast contradicts the already-shipped "finished" one — the
+/// user reads it as "Claude didn't actually finish", which is wrong.
+/// `auth_success` and the `elicitation_*` subtypes are likewise excluded
+/// (noisy without being actionable). [`refresh_claude_hook_if_stale`] uses
+/// this constant to silently upgrade users whose settings.json was written
+/// by an older ycode that included `idle_prompt`.
+pub const CLAUDE_NOTIFICATION_MATCHER: &str = "permission_prompt";
+
 /// State of the Claude `Stop` + `Notification` hook entries.
 ///
 /// Claude hooks are a list per event, so we can coexist with the user's
@@ -173,12 +186,11 @@ pub fn install_claude_hook(path: &Path, helper_bin: &Path) -> Result<(), PatchEr
     let helper = helper_bin.to_string_lossy().into_owned();
     // Stop fires on every turn-end and ignores `matcher` per the docs; we keep
     // the field as `""` for schema cleanliness. Notification's matcher accepts
-    // a `|`-separated subtype list — we deliberately exclude `auth_success`
-    // and the `elicitation_*` subtypes since they're noisy without being
-    // actionable, leaving just the two subtypes that mean "user needed".
+    // a `|`-separated subtype list — see CLAUDE_NOTIFICATION_MATCHER below for
+    // why we keep only `permission_prompt`.
     for (event, sub, matcher) in [
         ("Stop", "stop", ""),
-        ("Notification", "notification", "permission_prompt|idle_prompt"),
+        ("Notification", "notification", CLAUDE_NOTIFICATION_MATCHER),
     ] {
         claude_remove_ycode_entry(&mut root, event);
         claude_append_ycode_entry(&mut root, event, &helper, sub, matcher)?;
@@ -186,6 +198,54 @@ pub fn install_claude_hook(path: &Path, helper_bin: &Path) -> Result<(), PatchEr
 
     let body = serde_json::to_string_pretty(&root)?;
     write_atomically(path, &body)
+}
+
+/// Silently refresh ycode's Claude hook entries when their matcher is out of
+/// date relative to [`CLAUDE_NOTIFICATION_MATCHER`]. Used at app startup so
+/// users on an older ycode version whose settings.json still has e.g.
+/// `permission_prompt|idle_prompt` get the misleading "needs your attention"
+/// idle toast turned off without having to re-click Install in Settings.
+///
+/// Returns `Ok(true)` when a refresh was performed, `Ok(false)` when the file
+/// is missing, the hook isn't ycode-managed, or the matcher already matches.
+/// Errors propagate so callers can log them (but the typical caller swallows
+/// the error since this is best-effort migration, not a hard requirement).
+pub fn refresh_claude_hook_if_stale(
+    path: &Path,
+    helper_bin: &Path,
+) -> Result<bool, PatchError> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let raw = std::fs::read_to_string(path)?;
+    if raw.trim().is_empty() {
+        return Ok(false);
+    }
+    let value: serde_json::Value = serde_json::from_str(&raw)?;
+    // Nothing ycode-managed to refresh.
+    if !claude_has_ycode_entry(&value, "Notification") {
+        return Ok(false);
+    }
+    let current_matcher = value
+        .get("hooks")
+        .and_then(|h| h.get("Notification"))
+        .and_then(|a| a.as_array())
+        .and_then(|arr| {
+            arr.iter().find(|entry| {
+                entry
+                    .get(YCODE_MARKER_KEY)
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
+        })
+        .and_then(|entry| entry.get("matcher"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if current_matcher == CLAUDE_NOTIFICATION_MATCHER {
+        return Ok(false);
+    }
+    install_claude_hook(path, helper_bin)?;
+    Ok(true)
 }
 
 /// Strip our managed entries from `Stop` and `Notification`. Other user
@@ -725,8 +785,8 @@ mod tests {
 
         // Stop has no meaningful matcher (the docs say it's ignored), so we
         // keep it as the empty string. Notification however filters subtypes:
-        // we want only the two "needs human" ones, not auth_success / the
-        // elicitation noise.
+        // we only want `permission_prompt` (Claude blocked on tool approval).
+        // `idle_prompt` was intentionally removed — see install_claude_hook.
         assert_eq!(stop[0]["matcher"], "");
 
         let notif = v["hooks"]["Notification"].as_array().unwrap();
@@ -735,7 +795,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("notification claude"));
-        assert_eq!(notif[0]["matcher"], "permission_prompt|idle_prompt");
+        assert_eq!(notif[0]["matcher"], "permission_prompt");
     }
 
     #[test]
@@ -821,6 +881,41 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         // hooks object compacted away entirely.
         assert!(v.get("hooks").is_none());
+    }
+
+    #[test]
+    fn claude_refresh_rewrites_legacy_matcher() {
+        let (_d, path) = tmp_file("settings.json");
+        // Simulate a settings.json written by an older ycode that included
+        // `idle_prompt` in the Notification matcher.
+        install_claude_hook(&path, &helper()).unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let bumped = raw.replace(
+            "\"matcher\": \"permission_prompt\"",
+            "\"matcher\": \"permission_prompt|idle_prompt\"",
+        );
+        assert_ne!(raw, bumped, "test prelude must mutate the matcher");
+        std::fs::write(&path, &bumped).unwrap();
+
+        let refreshed = refresh_claude_hook_if_stale(&path, &helper()).unwrap();
+        assert!(refreshed, "stale matcher should trigger a refresh");
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let notif = v["hooks"]["Notification"].as_array().unwrap();
+        assert_eq!(notif[0]["matcher"], CLAUDE_NOTIFICATION_MATCHER);
+
+        // Second call is a no-op now that the file is current.
+        let refreshed_again = refresh_claude_hook_if_stale(&path, &helper()).unwrap();
+        assert!(!refreshed_again);
+    }
+
+    #[test]
+    fn claude_refresh_is_no_op_when_not_installed() {
+        let (_d, path) = tmp_file("settings.json");
+        // Missing file.
+        assert!(!refresh_claude_hook_if_stale(&path, &helper()).unwrap());
+        // Present but no ycode-managed entry.
+        std::fs::write(&path, r#"{"hooks":{"Stop":[{"matcher":"x","hooks":[]}]}}"#).unwrap();
+        assert!(!refresh_claude_hook_if_stale(&path, &helper()).unwrap());
     }
 
     #[test]

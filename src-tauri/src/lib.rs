@@ -320,6 +320,28 @@ pub fn run() {
             let state = tauri::async_runtime::block_on(AppState::initialize())
                 .expect("failed to initialize ycode backend");
 
+            // One-time silent migration for users on older ycode builds whose
+            // ~/.claude/settings.json still has `idle_prompt` in the
+            // Notification matcher — that fires a misleading "needs your
+            // attention" toast ~60s after Claude actually finished a turn.
+            // `refresh_claude_hook_if_stale` is a no-op when nothing changed,
+            // and any error is logged but never blocks startup (best-effort).
+            if let Some(claude_path) = ycode_config::agent_patcher::claude_settings_path() {
+                match commands::resolve_helper_bin(app.handle()) {
+                    Ok(helper) => match ycode_config::agent_patcher::refresh_claude_hook_if_stale(
+                        &claude_path,
+                        &helper,
+                    ) {
+                        Ok(true) => tracing::info!(
+                            "refreshed Claude Notification hook matcher to drop idle_prompt"
+                        ),
+                        Ok(false) => {}
+                        Err(e) => tracing::warn!(error = %e, "claude hook refresh failed"),
+                    },
+                    Err(e) => tracing::warn!(error = %e, "skipping claude hook refresh: helper bin missing"),
+                }
+            }
+
             // Menu-bar tray icon. Per plan §8.22 shows a static label + a
             // "Show / Quit" menu — the live session count is updated via
             // `set_tray_tooltip` from the frontend (TODO once sessions
