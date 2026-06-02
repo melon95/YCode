@@ -159,6 +159,23 @@ export function Sidebar() {
       toast.warning("This jsonl has no resumable session id yet.");
       return;
     }
+    // Reuse-if-running: a jsonl conversation can already be live in this
+    // window from an earlier click. Spawning another `--resume <id>` then
+    // would attach a second CLI to the same on-disk conversation, double
+    // the panes, and almost certainly isn't what the user means by "open
+    // this row again". Match by `agent_session_id` — that's the stable
+    // CLI-side id, while `SessionView.id` is our window-local ULID and
+    // rolls every resume.
+    const existing = Object.values(useStore.getState().sessions).find(
+      (s) =>
+        s.agent_session_id === d.session_id &&
+        s.status.type === "Running" &&
+        s.project_id === project.id,
+    );
+    if (existing) {
+      openSessionInLayout(existing.id);
+      return;
+    }
     // Discovered rows carry the introspect id — map back to a launch profile.
     const profile = agentTabs.find((a) => a.introspect === d.agent);
     if (!profile) {
