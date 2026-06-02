@@ -1,29 +1,53 @@
 // Bridge xterm.js keyboard input to a PTY in a way that doesn't break
-// macOS Chinese IME punctuation auto-replace (e.g. `.` → `。`, `?` → `？`).
+// macOS Chinese IME punctuation auto-replace (e.g. `.` → `。`, `?` → `？`)
+// AND doesn't double-write characters on certain key presses (a known
+// macOS Chinese IME + WebKit interaction with xterm.js, observed both
+// synchronously and across tasks).
 //
-// Why we don't just use xterm.js's built-in path:
-//   xterm.js's `_keyDown` synchronously writes the raw keystroke (`?`) and
-//   then `preventDefault`s the event, which short-circuits the IME before it
-//   can replace the codepoint. The follow-up `input` event (with the
-//   replaced `？`) is then dropped by xterm.js's `_inputEvent` guard
-//   `(!ev.composed || !this._keyDownSeen)`. End result: `？` never makes it
-//   to the PTY in Chinese IME mode.
+// Background — xterm.js can emit data through two paths for one IME commit:
 //
-// What we do instead:
-//   • For printable single-character keystrokes with no Cmd/Ctrl/Alt, we
-//     tell xterm.js to skip its keydown/keypress processing (returning
-//     false from the custom key event handler). xterm's listener is registered
-//     with capture=true, so this short-circuits the event before
-//     preventDefault — the IME's natural input flow can run to completion.
-//   • A bubble-phase `input` listener on `term.textarea` forwards the
-//     actually-inserted character (raw or IME-replaced) directly to the PTY.
-//     Bubble phase means xterm's own capture-phase `_inputEvent` runs first;
-//     if it ever does process the event (it calls `cancel()` which stops
-//     propagation), we won't double-write.
-//   • A `composing` flag (set by compositionstart/end) suppresses our
-//     forwarding during multi-key IME composition like pinyin — the final
-//     committed text comes through as a post-compositionend `input` event,
-//     which is what we forward.
+//   1. `_inputEvent` calls `triggerDataEvent(data)` when
+//      `(!ev.composed || !this._keyDownSeen)` is true. The `_keyDownSeen`
+//      half is the Sogou-IME fix from xterm.js PR #3680: if no key is
+//      currently held (`keyup` already fired) when a composed `insertText`
+//      arrives, xterm.js processes it as direct input. On macOS Chinese
+//      IME the second press of upper-row symbols defers `input` to AFTER
+//      `keyup`, so this path fires.
+//   2. `_finalizeComposition`'s `setTimeout(0)` reads
+//      `textarea.value.substring(...)` and writes whatever the IME
+//      committed. This path always fires on `compositionend`.
+//
+// When BOTH fire for the same commit, the character is written twice. The
+// two fires can also be > 50 ms apart (delayed `input` event after
+// `setTimeout(0)` already ran), so a tight onData-only dedup window can
+// miss them. References:
+//   • xterm.js #3679 / PR #3680    (`_keyDownSeen` condition)
+//   • WebKit Bug 164324            (input → compositionend ordering)
+//   • xterm.js #5374               (macOS Safari shifted-character quirks)
+//
+// Strategy:
+//
+//   • The custom key event handler (in TerminalPane / ManualTerminal) tells
+//     xterm.js to skip its keydown/keypress writer for printable
+//     single-character keystrokes with no Cmd/Ctrl/Alt. That prevents the
+//     raw-char-then-preventDefault path that broke IME replacement
+//     originally (the `?` → `？` bug). It also routes printable input
+//     entirely through the bubble-phase `input` listener and `term.onData`.
+//   • All writes funnel through one `safeWrite(data, source)` with two
+//     dedup layers:
+//       (a) **Tight unconditional window** (60 ms) for printable single
+//           codepoint chars only — collapses adjacent identical writes
+//           regardless of source. Control bytes (Enter, Tab, Backspace,
+//           CSI escapes from arrow keys) are exempt because they're the
+//           keys users legitimately hold for OS-level auto-repeat.
+//       (b) **Post-compositionend allowance** (only for `term.onData`):
+//           each `compositionend` resets a counter to 1 valid onData
+//           write within a 150 ms window. The first onData call for that
+//           commit goes through; subsequent ones in the window are
+//           dropped. This catches the `_inputEvent` + `setTimeout` pair
+//           even when they fire > 60 ms apart. The allowance only gates
+//           `term.onData` — `input` events from non-IME keys typed within
+//           the window still go through `bridge.onInput`.
 
 import { writePty } from "./ipc";
 import type { Terminal } from "@xterm/xterm";
@@ -45,43 +69,110 @@ export function isPrintableCharEvent(event: KeyboardEvent): boolean {
   return typeof event.key === "string" && event.key.length === 1;
 }
 
-/** Attach a bubble-phase `input` listener that forwards inserted text to
- *  the PTY. Returns a disposer that removes the listener. */
+/** Is this string a single printable Unicode codepoint? Used by the dedup
+ *  layer to exempt control bytes (Enter, Tab, Backspace, CSI escapes etc.)
+ *  from de-duplication so OS-level key auto-repeat isn't broken. */
+function isDedupCandidate(data: string): boolean {
+  if (data.length !== 1) return false;
+  const code = data.charCodeAt(0);
+  // Control range (includes \r, \n, \t, \x1b for escape sequences).
+  if (code < 0x20) return false;
+  if (code === 0x7f) return false; // DEL
+  return true;
+}
+
+/** Take ownership of the IME-relevant input paths on `term`:
+ *   - composition tracking on `term.textarea`
+ *   - a bubble-phase `input` listener for non-composition forwards
+ *   - a dedup-wrapped `term.onData` handler for composition forwards
+ *
+ *  Caller should NOT additionally register their own `term.onData` for
+ *  data → PTY: this function does it. Other listeners (e.g. `onBinary`
+ *  for mouse tracking) are unaffected.
+ *
+ *  Returns a disposer that removes every listener registered here. */
 export function attachImeInputBridge(
   term: Terminal,
   getSessionId: () => string | null,
 ): () => void {
   const textarea = term.textarea;
-  if (!textarea) return () => {};
 
   let composing = false;
+  let lastCompositionEndAt = 0;
+  // Each compositionend permits exactly one `term.onData` write through the
+  // post-composition window. Subsequent onData calls in the window are the
+  // IME-double-fire that we're filtering.
+  let allowedOnDataAfterComposition = 0;
+  const POST_COMPOSITION_WINDOW_MS = 150;
+
+  // Shared dedup state between bridge.onInput and term.onData paths.
+  let lastWriteContent = "";
+  let lastWriteAt = 0;
+  const TIGHT_DEDUP_MS = 60;
+
+  const inPostCompositionWindow = () =>
+    Date.now() - lastCompositionEndAt < POST_COMPOSITION_WINDOW_MS;
+
+  function safeWrite(data: string, source: "input" | "ondata"): void {
+    if (!data) return;
+    const now = Date.now();
+
+    // Layer (a): tight unconditional dedup, single printable codepoint only.
+    if (
+      isDedupCandidate(data) &&
+      data === lastWriteContent &&
+      now - lastWriteAt < TIGHT_DEDUP_MS
+    ) {
+      return;
+    }
+
+    // Layer (b): post-compositionend allowance for term.onData only.
+    if (source === "ondata" && inPostCompositionWindow()) {
+      if (allowedOnDataAfterComposition <= 0) return;
+      allowedOnDataAfterComposition--;
+    }
+
+    lastWriteContent = data;
+    lastWriteAt = now;
+    const id = getSessionId();
+    if (!id) return;
+    void writePty({ session_id: id, data: utf8ToBase64(data) }).catch(() => {
+      // PTY is gone (process exited). Drop keystroke silently.
+    });
+  }
+
   const onCompositionStart = () => {
     composing = true;
   };
   const onCompositionEnd = () => {
     composing = false;
+    lastCompositionEndAt = Date.now();
+    allowedOnDataAfterComposition = 1;
   };
   const onInput = (e: Event) => {
     const ie = e as InputEvent;
     if (composing) return;
     if (ie.inputType !== "insertText") return;
     if (!ie.data) return;
-    const id = getSessionId();
-    if (!id) return;
-    void writePty({ session_id: id, data: utf8ToBase64(ie.data) }).catch(() => {});
-    // Clear textarea so subsequent reads (e.g. xterm.js's _finalizeComposition
-    // setTimeout, which reads textarea.value.substring(...)) don't double-write
-    // the same character.
-    textarea.value = "";
+    safeWrite(ie.data, "input");
   };
 
-  textarea.addEventListener("compositionstart", onCompositionStart);
-  textarea.addEventListener("compositionend", onCompositionEnd);
-  textarea.addEventListener("input", onInput);
+  if (textarea) {
+    textarea.addEventListener("compositionstart", onCompositionStart);
+    textarea.addEventListener("compositionend", onCompositionEnd);
+    textarea.addEventListener("input", onInput);
+  }
+
+  const dataDisposable = term.onData((data) => {
+    safeWrite(data, "ondata");
+  });
 
   return () => {
-    textarea.removeEventListener("compositionstart", onCompositionStart);
-    textarea.removeEventListener("compositionend", onCompositionEnd);
-    textarea.removeEventListener("input", onInput);
+    dataDisposable.dispose();
+    if (textarea) {
+      textarea.removeEventListener("compositionstart", onCompositionStart);
+      textarea.removeEventListener("compositionend", onCompositionEnd);
+      textarea.removeEventListener("input", onInput);
+    }
   };
 }

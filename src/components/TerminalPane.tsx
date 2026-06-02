@@ -748,16 +748,10 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
     return true;
   });
 
+  // Bridge owns term.onData (with IME-aware dedup) plus textarea composition
+  // listeners. We don't register our own term.onData separately — that would
+  // race the bridge's dedup wrapper for the same callback queue.
   const imeBridgeDispose = attachImeInputBridge(term, () => sessionId);
-
-  const dataDisposable = term.onData((data) => {
-    void writePty({
-      session_id: sessionId,
-      data: utf8ToBase64(data),
-    }).catch(() => {
-      // PTY is gone (process exited). Drop keystroke silently.
-    });
-  });
 
   const binaryDisposable = term.onBinary((data) => {
     // `data` is a string where each char code is one raw byte (mouse
@@ -774,7 +768,6 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
     container,
     cleanup: () => {
       imeBridgeDispose();
-      dataDisposable.dispose();
       binaryDisposable.dispose();
       term.dispose();
       container.remove();

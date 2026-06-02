@@ -154,13 +154,10 @@ export function ManualTerminal({
       return true;
     });
 
+    // Bridge owns term.onData (with IME-aware dedup) plus textarea composition
+    // listeners.
     const imeBridgeDispose = attachImeInputBridge(term, () => ptyIdRef.current);
 
-    const dataDisposable = term.onData((data) => {
-      const id = ptyIdRef.current;
-      if (!id) return;
-      void writePty({ session_id: id, data: utf8ToBase64(data) }).catch(() => {});
-    });
     const binaryDisposable = term.onBinary((data) => {
       const id = ptyIdRef.current;
       if (!id) return;
@@ -229,7 +226,6 @@ export function ManualTerminal({
       const id = localPtyId ?? ptyIdRef.current;
       ptyIdRef.current = null;
       imeBridgeDispose();
-      dataDisposable.dispose();
       binaryDisposable.dispose();
       term.dispose();
       termRef.current = null;
