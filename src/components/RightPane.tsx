@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../lib/store";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
@@ -27,6 +27,81 @@ export function RightPane() {
   const setSelectedFilePath = useStore((s) => s.setSelectedFilePath);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const hasOpenFiles = openFiles.length > 0;
+
+  // File-tree column width, in pixels. Only consulted in the `with-editor`
+  // workspace mode — tree-only mode keeps the existing `1fr` rule from CSS.
+  // Persisted across reloads via localStorage; defaults to a sane 280px
+  // (the previous static 32% looked about right at the most common right-
+  // pane width). Min 180px matches the prior CSS minmax floor; the 600px
+  // ceiling keeps the editor from collapsing on a narrow window.
+  const FILE_TREE_MIN = 180;
+  const FILE_TREE_MAX = 600;
+  const FILE_TREE_STORAGE_KEY = "ycode-file-tree-width";
+  const [fileTreeWidth, setFileTreeWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 280;
+    const raw = window.localStorage.getItem(FILE_TREE_STORAGE_KEY);
+    const n = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return 280;
+    return Math.min(FILE_TREE_MAX, Math.max(FILE_TREE_MIN, n));
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(FILE_TREE_STORAGE_KEY, String(fileTreeWidth));
+    } catch {
+      /* quota / privacy mode — best effort */
+    }
+  }, [fileTreeWidth]);
+
+  const [resizing, setResizing] = useState(false);
+  // Drag start snapshot. Captured on pointerdown; consumed by the
+  // pointermove effect below. A ref (not state) so updating it during a
+  // drag doesn't trigger re-renders.
+  const dragStartRef = useRef<{ x: number; w: number } | null>(null);
+  const onResizerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only the primary mouse button / single touch. Right-clicks shouldn't
+      // start a resize.
+      if (e.button !== 0) return;
+      e.preventDefault();
+      dragStartRef.current = { x: e.clientX, w: fileTreeWidth };
+      setResizing(true);
+    },
+    [fileTreeWidth],
+  );
+
+  // Drag-lifecycle effect. Listeners and body-style locks are owned by an
+  // effect (rather than installed inline on pointerdown) so that an unmount
+  // mid-drag — possible if the active project disappears while the user is
+  // holding the handle — still tears them down via the cleanup. Keying off
+  // `resizing` makes start/stop symmetric.
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (ev: PointerEvent) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dx = ev.clientX - start.x;
+      setFileTreeWidth(
+        Math.min(FILE_TREE_MAX, Math.max(FILE_TREE_MIN, start.w + dx)),
+      );
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    // Keep the cursor steady and prevent text selection during the drag,
+    // even when the pointer strays off the 1px handle into adjacent panes.
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+      dragStartRef.current = null;
+    };
+  }, [resizing]);
 
   // Set of project ids the user has touched this session. We mount one
   // terminal subtree per visited project and only flip visibility on switch,
@@ -236,6 +311,16 @@ export function RightPane() {
                 (workspaceVisible ? "" : " hidden") +
                 (editorVisible ? " with-editor" : " tree-only")
               }
+              style={
+                editorVisible
+                  ? {
+                      // 3-column grid only in editor mode: tree | 1px handle |
+                      // editor. `.tree-only`'s `1fr` from the stylesheet wins
+                      // for the tree-only case (no inline style applied).
+                      gridTemplateColumns: `${fileTreeWidth}px 1px minmax(0, 1fr)`,
+                    }
+                  : undefined
+              }
             >
               {/* One FileTreePanel per visited project. Switching projects
                   flips `.hidden`, so the new tree doesn't pay listFiles +
@@ -254,6 +339,20 @@ export function RightPane() {
                   );
                 })}
               </div>
+              {/* Drag handle. Lives between tree and editor in the grid;
+                  the hit area is widened in CSS via a pseudo-element so the
+                  user doesn't need pixel-perfect aim. */}
+              {editorVisible && (
+                <div
+                  className={
+                    "file-tree-resizer" + (resizing ? " dragging" : "")
+                  }
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize file tree"
+                  onPointerDown={onResizerPointerDown}
+                />
+              )}
               {/* Editor follows the active project's openFiles (a global
                   store slice cleared on project switch). One instance is
                   enough — the heavy work is the file tree, not the editor. */}

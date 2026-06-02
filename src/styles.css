@@ -686,7 +686,10 @@ body {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(180px, 32%) minmax(0, 1fr);
+  /* `.with-editor` mode gets its 3-column template (tree | handle | editor)
+     inline from RightPane.tsx with the user's persisted file-tree width.
+     This fallback covers a render where inline style isn't yet applied. */
+  grid-template-columns: 280px 1px minmax(0, 1fr);
 }
 
 /* When only the tree is visible (the user is on the Files tab with no open
@@ -703,9 +706,29 @@ body {
 .right-editor-file-tree {
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid var(--border);
   background: var(--panel);
   position: relative;
+}
+
+/* 1px column with a wider invisible hit area, mirroring the top-level
+   `.col-handle` pattern so feel matches the sidebar/right-pane dividers. */
+.file-tree-resizer {
+  background: var(--rule);
+  cursor: col-resize;
+  position: relative;
+  transition: background var(--duration-base) var(--ease-out);
+}
+.file-tree-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+.file-tree-resizer:hover,
+.file-tree-resizer.dragging {
+  background: var(--accent);
 }
 
 /* One FileTreePanel per visited project lives here, hidden via .hidden
@@ -719,10 +742,6 @@ body {
 
 .file-tree-host.hidden {
   display: none;
-}
-
-.right-editor-workspace.tree-only .right-editor-file-tree {
-  border-right: none;
 }
 
 .right-editor-main {
