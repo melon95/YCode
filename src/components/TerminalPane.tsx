@@ -43,6 +43,7 @@ import {
   attachImeInputBridge,
   isPrintableCharEvent,
 } from "../lib/terminalInput";
+import { getTheme } from "../lib/themes";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
 
@@ -51,9 +52,20 @@ type TermInstance = {
   fit: FitAddon;
   container: HTMLDivElement;
   cleanup: () => void;
+  /// Id of the theme last actually written into `term.options.theme`. We
+  /// stamp this every time we (re)skin a Terminal so that hidden pool
+  /// members can stay stale during a theme swap without paying their
+  /// redraw cost up front — when a stale member is later attached to a
+  /// visible slot, the reparent effect compares this against the current
+  /// store theme and catches it up exactly once.
+  lastThemeId: string;
 };
 
-const TERMINAL_OPTIONS = {
+// Non-color options live here; the theme block is grafted on at construction
+// time from `lib/themes.ts` so a Settings → Appearance swap can re-skin live
+// terminals (see `useEffect` watching `theme` below) instead of being baked
+// in at boot.
+const TERMINAL_BASE_OPTIONS = {
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   fontSize: 13,
@@ -63,29 +75,6 @@ const TERMINAL_OPTIONS = {
   // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
   // proposed API in xterm.js.
   allowProposedApi: true,
-  theme: {
-    background: "#13120f",
-    foreground: "#f0eee6",
-    cursor: "#d97757",
-    cursorAccent: "#13120f",
-    selectionBackground: "rgba(217, 119, 87, 0.28)",
-    black: "#13120f",
-    red: "#d46a5f",
-    green: "#4caf81",
-    yellow: "#d6a95c",
-    blue: "#8aa4c8",
-    magenta: "#c58fbd",
-    cyan: "#7bb8a6",
-    white: "#f0eee6",
-    brightBlack: "#736b5f",
-    brightRed: "#f47670",
-    brightGreen: "#6ed09f",
-    brightYellow: "#efc06f",
-    brightBlue: "#a8bddb",
-    brightMagenta: "#d8a8cf",
-    brightCyan: "#98d0bf",
-    brightWhite: "#fff9ef",
-  },
 } as const;
 
 // User-draggable split positions, stored per `${mode}-${count}` key so each
@@ -308,8 +297,19 @@ export function TerminalPane() {
     },
     [mode, count, splitsMap],
   );
-  // Per-session byte buffer for output that arrives before its Terminal
-  // exists. Drained by the create effect.
+  // Per-session byte buffer used **only during the lazy-create init window**:
+  // the lazy-create flow inserts an empty array when it begins, the
+  // PtyOutput listener pushes any live bytes that arrive between
+  // `createTerminal` and `readPtyBacklog` resolving, and the resolve
+  // handler drains it. Presence of an entry doubles as the "initializing"
+  // marker — used by the listener to keep live bytes from getting written
+  // ahead of the backlog snapshot.
+  //
+  // Critically, sessions that don't have a Terminal at all do NOT get a
+  // pendingRef entry. Their PtyOutput is dropped — the backend's rolling
+  // backlog will replay it when (and only if) the user actually opens them.
+  // Without this we'd buffer indefinitely for every accumulated history
+  // session, recreating the memory bloat that motivated this refactor.
   const pendingRef = useRef<Map<string, Uint8Array[]>>(new Map());
 
   // Single global subscriber. Routes per-session PTY events to the matching
@@ -342,13 +342,23 @@ export function TerminalPane() {
       }
       if (!bytes) return;
 
-      const inst = terminalsRef.current.get(event.session_id);
-      if (inst) {
-        inst.term.write(bytes);
+      const id = event.session_id;
+      const inst = terminalsRef.current.get(id);
+      if (!inst) {
+        // No Terminal yet — session hasn't been opened in this window.
+        // Drop and rely on `readPtyBacklog` to replay when the user
+        // eventually attaches. Buffering here would mean unbounded
+        // memory for every accumulated history session.
+        return;
+      }
+      const initBuf = pendingRef.current.get(id);
+      if (initBuf) {
+        // Lazy-create is mid-flight: backlog hasn't returned yet, so
+        // queue these live bytes to be drained in-order *after* the
+        // backlog writes (see the readPtyBacklog handler below).
+        initBuf.push(bytes);
       } else {
-        const buf = pendingRef.current.get(event.session_id) ?? [];
-        buf.push(bytes);
-        pendingRef.current.set(event.session_id, buf);
+        inst.term.write(bytes);
       }
     }).then((u) => {
       if (cancelled) u();
@@ -360,56 +370,21 @@ export function TerminalPane() {
     };
   }, []);
 
-  // Mirror the store's sessions map into Terminal instances. Eager creation
-  // (in the hidden pool) closes the race window where output arrives before
-  // a slot is ever assigned.
-  useLayoutEffect(() => {
-    const pool = poolRef.current;
-    if (!pool) return;
+  // Dispose Terminals whose session was removed from the store. Creation
+  // is no longer mirrored from the sessions map — Terminals are now built
+  // lazily in the reparent effect, the first time a session actually
+  // becomes visible. That cuts the per-window memory floor from
+  // O(historical sessions × xterm overhead) down to O(currently or
+  // previously opened sessions). Combined with the lastThemeId stamp,
+  // global ops like theme switching are O(visible) instead of O(all).
+  useEffect(() => {
     const known = terminalsRef.current;
-
-    for (const id of Object.keys(sessions)) {
-      if (!known.has(id)) {
-        const inst = createTerminal(id, pool);
-        // Seed the freshly-spawned xterm with the user-configured size
-        // immediately so a new session doesn't briefly render at 13px and
-        // then re-fit on the first effect tick.
-        inst.term.options.fontSize = useStore.getState().fontSizes.terminal;
-        known.set(id, inst);
-        // Pull the backend's rolling scrollback before draining pending
-        // live events. For sessions just spawned in this window the
-        // backlog is empty (no harm); for sessions spawned by another
-        // window — the detached "Open project in new window" case — this
-        // is what makes the existing terminal state visible at all
-        // instead of an empty prompt.
-        readPtyBacklog(id)
-          .then((b64) => {
-            // Bail if the terminal got cleaned up in the meantime
-            // (session removed) — write would throw on a disposed term.
-            if (terminalsRef.current.get(id) !== inst) return;
-            if (b64) inst.term.write(base64ToBytes(b64));
-            const buf = pendingRef.current.get(id);
-            if (buf) {
-              for (const chunk of buf) inst.term.write(chunk);
-              pendingRef.current.delete(id);
-            }
-          })
-          .catch(() => {
-            // Backlog fetch failed (session might already be gone).
-            // Still flush pending so live output isn't lost.
-            const buf = pendingRef.current.get(id);
-            if (buf) {
-              for (const chunk of buf) inst.term.write(chunk);
-              pendingRef.current.delete(id);
-            }
-          });
-      }
-    }
+    const pending = pendingRef.current;
     for (const id of Array.from(known.keys())) {
       if (!sessions[id]) {
         known.get(id)!.cleanup();
         known.delete(id);
-        pendingRef.current.delete(id);
+        pending.delete(id);
       }
     }
   }, [sessions]);
@@ -422,17 +397,64 @@ export function TerminalPane() {
     if (!pool) return;
     const known = terminalsRef.current;
 
+    const currentThemeId = useStore.getState().theme;
     visibleIds.forEach((id) => {
-      const inst = known.get(id);
-      if (!inst) return;
       const cell = cellBodyRefs.current.get(id);
       if (!cell) return;
+
+      let inst = known.get(id);
+      let justCreated = false;
+      if (!inst) {
+        // Lazy creation. Mounting straight into the visible cell means
+        // we never park a brand-new Terminal in the pool — the most
+        // common case (open a session, look at it, close it) only ever
+        // touches one xterm instance.
+        //
+        // pendingRef gets a sentinel array first: the global PtyOutput
+        // listener checks for it and queues live bytes here instead of
+        // writing them ahead of the backlog snapshot we're about to
+        // fetch. The readPtyBacklog handler drains and deletes the
+        // entry to flip the listener back into the direct-write path.
+        pendingRef.current.set(id, []);
+        inst = createTerminal(id, cell);
+        inst.term.options.fontSize = useStore.getState().fontSizes.terminal;
+        known.set(id, inst);
+        justCreated = true;
+
+        const createdInst = inst;
+        readPtyBacklog(id)
+          .then((b64) => {
+            if (terminalsRef.current.get(id) !== createdInst) return;
+            if (b64) createdInst.term.write(base64ToBytes(b64));
+            const buf = pendingRef.current.get(id);
+            if (buf) for (const chunk of buf) createdInst.term.write(chunk);
+            pendingRef.current.delete(id);
+          })
+          .catch(() => {
+            if (terminalsRef.current.get(id) !== createdInst) return;
+            const buf = pendingRef.current.get(id);
+            if (buf) for (const chunk of buf) createdInst.term.write(chunk);
+            pendingRef.current.delete(id);
+          });
+      }
+
       const moved = inst.container.parentElement !== cell;
-      if (moved) cell.appendChild(inst.container);
+      if (moved && !justCreated) cell.appendChild(inst.container);
       inst.container.style.display = "block";
-      if (moved) {
-        // Fit immediately on (re)attach so the renderer doesn't paint one
-        // frame at the pool's stale dimensions. The cell ResizeObserver
+      // Lazy theme catch-up. While this terminal was hidden in the pool
+      // the user may have switched themes — we deliberately skipped the
+      // pool-wide reskin to keep theme swaps snappy regardless of how
+      // many sessions accumulated. The single redraw here is cheap (one
+      // term, ~30ms) and happens exactly when the user actually starts
+      // looking at it. `justCreated` terms already booted with the
+      // current theme via createTerminal.
+      if (!justCreated && inst.lastThemeId !== currentThemeId) {
+        inst.term.options.theme = getTheme(currentThemeId).xterm;
+        inst.lastThemeId = currentThemeId;
+      }
+      if (moved || justCreated) {
+        // Fit immediately on (re)attach / create so the renderer doesn't
+        // paint one frame at stale dimensions. The cell ResizeObserver
         // below covers subsequent size changes.
         try {
           inst.fit.fit();
@@ -511,6 +533,49 @@ export function TerminalPane() {
       void resizePty({ session_id: id, cols, rows }).catch(() => {});
     });
   }, [terminalFontSize, visibleIds]);
+
+  // Re-skin every live terminal when the theme changes. The subscription
+  // intentionally goes through the store's vanilla `subscribe()` instead
+  // of `useStore((s) => s.theme)` — a selector here would force this
+  // whole component to re-render on every theme swap (and TerminalPane
+  // owns a large JSX tree), and the only thing the React render does
+  // with the theme is feed it into this effect. Going around React keeps
+  // the swap to a single xterm refresh per pane with zero reconciliation.
+  //
+  // Strategy when the theme moves:
+  //   - `rAF` the visible-pane skin so the chrome can paint first.
+  //   - `requestIdleCallback` (fallback `setTimeout`) the hidden-pool
+  //     terminals — they're off-screen, no rush.
+  const visibleIdsRef = useRef<string[]>(visibleIds);
+  useEffect(() => {
+    visibleIdsRef.current = visibleIds;
+  }, [visibleIds]);
+  useEffect(() => {
+    // Skin ONLY the visible terms on theme change. Hidden pool members
+    // skip the work entirely — the reparent layout effect picks up stale
+    // ones on attach via `lastThemeId`. This is the difference between a
+    // ~zero-cost swap (the typical case: 0–4 visible terms) and a 4-second
+    // freeze (the user had 122 accumulated sessions in the pool — even
+    // `setTimeout(0)` ran them all back-to-back on the main thread,
+    // because WKWebView doesn't ship `requestIdleCallback` and the fallback
+    // path was as blocking as a direct loop).
+    let pending: number | null = null;
+    return useStore.subscribe((state, prev) => {
+      if (state.theme === prev.theme) return;
+      const themeId = state.theme;
+      const theme = getTheme(themeId).xterm;
+      const visible = new Set(visibleIdsRef.current);
+      if (pending !== null) cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => {
+        pending = null;
+        for (const [id, inst] of terminalsRef.current) {
+          if (!visible.has(id)) continue;
+          inst.term.options.theme = theme;
+          inst.lastThemeId = themeId;
+        }
+      });
+    });
+  }, []);
 
   // Dispose all terminals on unmount.
   useEffect(() => {
@@ -679,7 +744,13 @@ export function TerminalPane() {
 }
 
 function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
-  const term = new Terminal(TERMINAL_OPTIONS);
+  // Snapshot the current theme so first paint is correct; the live re-skin
+  // pass below handles subsequent swaps. Reading from the store imperatively
+  // here (rather than threading the theme through createTerminal's call sites)
+  // keeps the existing TermInstance creation contract small.
+  const themeId = useStore.getState().theme;
+  const theme = getTheme(themeId).xterm;
+  const term = new Terminal({ ...TERMINAL_BASE_OPTIONS, theme });
   const fit = new FitAddon();
   const search = new SearchAddon();
   let lastSearch = "";
@@ -766,6 +837,7 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
     term,
     fit,
     container,
+    lastThemeId: themeId,
     cleanup: () => {
       imeBridgeDispose();
       binaryDisposable.dispose();

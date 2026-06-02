@@ -28,8 +28,12 @@ import {
 import { useStore } from "../lib/store";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import { attachImeInputBridge, isPrintableCharEvent } from "../lib/terminalInput";
+import { getTheme } from "../lib/themes";
 
-const TERMINAL_OPTIONS = {
+// Non-color options. Theme is grafted on at construction time from
+// `lib/themes.ts`, and a separate effect below re-skins the live term
+// when the user changes the theme — same split as TerminalPane.
+const TERMINAL_BASE_OPTIONS = {
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   fontSize: 13,
@@ -39,13 +43,6 @@ const TERMINAL_OPTIONS = {
   // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
   // marked proposed API in xterm.js.
   allowProposedApi: true,
-  theme: {
-    background: "#13120f",
-    foreground: "#f0eee6",
-    cursor: "#d97757",
-    cursorAccent: "#13120f",
-    selectionBackground: "rgba(217, 119, 87, 0.28)",
-  },
 } as const;
 
 export function ManualTerminal({
@@ -85,7 +82,10 @@ export function ManualTerminal({
     const container = containerRef.current;
     if (!container) return;
 
-    const term = new Terminal(TERMINAL_OPTIONS);
+    const term = new Terminal({
+      ...TERMINAL_BASE_OPTIONS,
+      theme: getTheme(useStore.getState().theme).xterm,
+    });
     // Pick up the user-configured size so a newly-mounted manual terminal
     // doesn't briefly render at the 13px default.
     term.options.fontSize = useStore.getState().fontSizes.terminal;
@@ -362,6 +362,30 @@ export function ManualTerminal({
       void resizePty({ session_id: id, cols, rows }).catch(() => {});
     }
   }, [terminalFontSize]);
+
+  // Mirror theme changes onto the live xterm instance. Goes through the
+  // store's vanilla `subscribe()` instead of `useStore((s) => s.theme)`
+  // so the component doesn't re-render the whole manual-terminal JSX tree
+  // just to refresh xterm's palette — the only thing the React render
+  // ever did with the theme value was feed it into this effect.
+  //
+  // The actual `options.theme` assignment is deferred to the next
+  // animation frame so the chrome's CSS variable swap can paint first
+  // instead of waiting on xterm's synchronous redraw.
+  useEffect(() => {
+    let pending: number | null = null;
+    return useStore.subscribe((state, prev) => {
+      if (state.theme === prev.theme) return;
+      const term = termRef.current;
+      if (!term) return;
+      const theme = getTheme(state.theme).xterm;
+      if (pending !== null) cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => {
+        pending = null;
+        term.options.theme = theme;
+      });
+    });
+  }, []);
 
   return (
     <div className="manual-terminal">
