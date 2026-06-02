@@ -6,4 +6,11 @@ import type { NotificationSettingsView } from "./NotificationSettingsView";
 /**
  * Editable mirror of [`ycode_config::Config`].
  */
-export type ConfigView = { agents: Array<AgentLaunchProfileView>, font_sizes: FontSizesView, notifications: NotificationSettingsView, };
+export type ConfigView = { agents: Array<AgentLaunchProfileView>, font_sizes: FontSizesView, notifications: NotificationSettingsView, 
+/**
+ * Active theme id. Mirrors the string from disk verbatim — the frontend
+ * looks it up in its theme registry and falls back to "foundry" when the
+ * id is unknown (lets future themes round-trip safely through older app
+ * versions).
+ */
+theme: string, };

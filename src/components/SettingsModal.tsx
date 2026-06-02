@@ -7,7 +7,7 @@
 // "Save" pushes via `save_config` and refreshes the agents store; "Cancel"
 // drops the staged copy. Closing with unsaved changes prompts a confirm.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Modal,
@@ -45,6 +45,7 @@ interface Props {
 export function SettingsModal({ open, onClose }: Props) {
   const setAgents = useStore((s) => s.setAgents);
   const setFontSizes = useStore((s) => s.setFontSizes);
+  const setTheme = useStore((s) => s.setTheme);
   const [staged, setStaged] = useState<ConfigView | null>(null);
   const [original, setOriginal] = useState<ConfigView | null>(null);
   const [section, setSection] = useState<SectionId>("agents");
@@ -53,6 +54,18 @@ export function SettingsModal({ open, onClose }: Props) {
 
   // Snapshot the backend config on open. Re-fetched every open so we never
   // edit a stale copy after another part of the app refreshed agents.
+  //
+  // `onClose` is read through a ref instead of being a useEffect dep — the
+  // parent (TopBar) re-renders whenever the global theme changes (App.tsx
+  // re-renders the whole tree), which mints a fresh `() => setSettingsOpen(false)`
+  // each time. If `onClose` were a real dep, this effect would re-fire on
+  // every theme swap, fetch the backend config again, and clobber the user's
+  // unsaved live-preview pick — making the theme card's selection appear
+  // to "snap back" to the on-disk value mid-edit.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -66,7 +79,7 @@ export function SettingsModal({ open, onClose }: Props) {
       .catch((err) => {
         if (cancelled) return;
         toast.danger(`Failed to load config: ${err}`);
-        onClose();
+        onCloseRef.current();
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -74,7 +87,7 @@ export function SettingsModal({ open, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   const dirty =
     staged !== null && original !== null && !sameConfig(staged, original);
@@ -88,6 +101,13 @@ export function SettingsModal({ open, onClose }: Props) {
         destructive: true,
       });
       if (!ok) return;
+      // Theme is live-previewed (AppearanceSettings calls `setTheme` straight
+      // through the store so the chrome updates the instant the user picks a
+      // card). Discard has to undo that side effect explicitly — the rest of
+      // the staged copy never escapes this component.
+      if (original && original.theme !== useStore.getState().theme) {
+        setTheme(original.theme);
+      }
     }
     setStaged(null);
     setOriginal(null);
@@ -101,9 +121,10 @@ export function SettingsModal({ open, onClose }: Props) {
       const refreshed = await saveConfig(staged);
       setAgents(refreshed);
       // `save_config` only returns the agent list; mirror the staged font
-      // sizes into the store so the rest of the UI picks them up without
-      // a second round-trip.
+      // sizes and theme into the store so the rest of the UI picks them up
+      // without a second round-trip.
       setFontSizes(staged.font_sizes);
+      setTheme(staged.theme);
       setOriginal(staged);
       toast.success("Settings saved");
       onClose();
@@ -131,6 +152,7 @@ export function SettingsModal({ open, onClose }: Props) {
       setStaged(cfg);
       setOriginal(cfg);
       setFontSizes(cfg.font_sizes);
+      setTheme(cfg.theme);
       toast.success("Reset to defaults");
     } catch (err) {
       toast.danger(`Reset failed: ${err}`);

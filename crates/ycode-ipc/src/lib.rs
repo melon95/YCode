@@ -200,6 +200,11 @@ pub struct ConfigView {
     pub agents: Vec<AgentLaunchProfileView>,
     pub font_sizes: FontSizesView,
     pub notifications: NotificationSettingsView,
+    /// Active theme id. Mirrors the string from disk verbatim — the frontend
+    /// looks it up in its theme registry and falls back to "foundry" when the
+    /// id is unknown (lets future themes round-trip safely through older app
+    /// versions).
+    pub theme: String,
 }
 
 /// Editable mirror of [`ycode_config::NotificationSettings`].
@@ -265,6 +270,7 @@ impl From<ycode_config::Config> for ConfigView {
             agents: c.agents.into_iter().map(Into::into).collect(),
             font_sizes: c.font_sizes.into(),
             notifications: c.notifications.into(),
+            theme: c.theme,
         }
     }
 }
@@ -275,6 +281,7 @@ impl From<ConfigView> for ycode_config::Config {
             agents: v.agents.into_iter().map(Into::into).collect(),
             font_sizes: v.font_sizes.into(),
             notifications: v.notifications.into(),
+            theme: v.theme,
         }
     }
 }

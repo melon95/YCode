@@ -17,6 +17,7 @@ import {
   stopWorkspaceWatch,
 } from "./lib/ipc";
 import { useStore } from "./lib/store";
+import { applyTheme, getTheme } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
@@ -54,6 +55,7 @@ export function App() {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const fontSizes = useStore((s) => s.fontSizes);
   const setFontSizes = useStore((s) => s.setFontSizes);
+  const setTheme = useStore((s) => s.setTheme);
   const setLockedProjectId = useStore((s) => s.setLockedProjectId);
   const setLockedByOtherWindows = useStore((s) => s.setLockedByOtherWindows);
   const addLockedByOther = useStore((s) => s.addLockedByOther);
@@ -200,6 +202,7 @@ export function App() {
           setSessions(sessions);
           setAgents(agents);
           setFontSizes(config.font_sizes);
+          setTheme(config.theme);
           setFetched(true);
         })
         .catch((err) => {
@@ -249,7 +252,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setSessions, setProjects, setAgents, setFontSizes, setLiveTitle]);
+  }, [setSessions, setProjects, setAgents, setFontSizes, setTheme, setLiveTitle]);
 
   // UI font size → CSS variable. Chrome (sidebar / tab strip / file tree /
   // top bar) reads `--ui-font-size`. Editor and terminal layers don't go
@@ -261,6 +264,29 @@ export function App() {
       `${fontSizes.ui}px`,
     );
   }, [fontSizes.ui]);
+
+  // Active theme → CSS variable map on `:root`. Critically NOT routed
+  // through `useStore((s) => s.theme)` — that selector would make App.tsx
+  // (the root of the React tree) re-render on every theme switch, which
+  // cascades into re-renders of TopBar, Sidebar, TerminalPane, RightPane
+  // and every editor / file tree inside. The CSS variable write itself is
+  // sub-millisecond; the bulk of the lag users see is the React work
+  // triggered by that subscription. So we wire the apply path through the
+  // store's vanilla `subscribe()` API — fires synchronously on state
+  // change, sidesteps React entirely.
+  //
+  // `getTheme` falls back to Foundry when the persisted id is unknown
+  // (forward-compatible config files). xterm panes still subscribe to
+  // `theme` themselves because they need to reach into live `term.options`
+  // when the theme moves — a CSS swap alone can't repaint xterm.
+  useEffect(() => {
+    applyTheme(getTheme(useStore.getState().theme));
+    return useStore.subscribe((state, prev) => {
+      if (state.theme !== prev.theme) {
+        applyTheme(getTheme(state.theme));
+      }
+    });
+  }, []);
 
   // Mirror the focused pane to the backend so the agent-event pump can skip
   // OS notifications when the user is already looking at the firing pane.

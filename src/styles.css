@@ -13,6 +13,11 @@
    ============================================================ */
 
 :root {
+  /* The variables below are the *fallback* Foundry palette — used while
+     the JS theme applier (lib/themes.ts → applyTheme) hasn't yet written
+     the active theme's overrides to `:root.style`. Anything that needs
+     to be themable must read through these tokens; raw color literals
+     elsewhere in this file have been ported to use them. */
   color-scheme: dark;
 
   /* Surfaces — warm ink stack. Each step is ~3% lighter; pure
@@ -27,7 +32,7 @@
      half-pixel on retina — both look intentional. */
   --rule: #2a221a;
   --rule-strong: #3a2f25;
-  --rule-accent: rgba(217, 119, 87, 0.32);
+  --rule-accent: rgba(var(--accent-rgb), 0.32);
 
   /* Type. Parchment over ink. */
   --text: #ebe1cf;
@@ -42,16 +47,55 @@
   --accent-soft: #e08a6e;
   --accent-strong: #ec9576;
   --accent-rgb: 217, 119, 87;
-  --accent-tint: rgba(217, 119, 87, 0.08);
-  --accent-tint-hover: rgba(217, 119, 87, 0.14);
-  --accent-glow: 0 0 0 1px rgba(217, 119, 87, 0.18),
-    0 0 24px -8px rgba(217, 119, 87, 0.55);
+  --accent-tint: rgba(var(--accent-rgb), 0.08);
+  --accent-tint-hover: rgba(var(--accent-rgb), 0.14);
+  --accent-glow: 0 0 0 1px rgba(var(--accent-rgb), 0.18),
+    0 0 24px -8px rgba(var(--accent-rgb), 0.55);
 
   /* Status — desaturated against the warm base. */
   --idle: #756d61;
   --running: #8aaa6f;
+  --running-rgb: 138, 170, 111;
   --error: #d46a5f;
+  --error-rgb: 212, 106, 95;
   --warning: #d6a95c;
+  --warning-rgb: 214, 169, 92;
+
+  /* Diff palette — kept as its own token pair (rather than reusing
+     running/error) because the diff-add/del backgrounds need a slightly
+     warmer green and a more saturated red than the status pills do. */
+  --diff-add-rgb: 138, 170, 111;
+  --diff-del-rgb: 201, 119, 112;
+
+  /* History chat role labels. Cyan/teal/blue/magenta family — semantic
+     parallels to the xterm ANSI palette so the chrome reads close to the
+     terminal's color story. Themes override these for light surfaces. */
+  --role-user: #7bb8a6;
+  --role-thinking: #c58fbd;
+  --role-tool: #8aa4c8;
+  --role-plan: #efc06f;
+
+  /* Theme-polarity tokens. Light themes flip these so shadow halos read
+     as ink-on-paper and inset highlights as warm-white-on-light. Always
+     consumed via `rgba(var(--shadow-rgb), alpha)` rather than as solid
+     colors. */
+  --shadow-rgb: 0, 0, 0;
+  --highlight-rgb: 255, 255, 255;
+  --selection-bg: rgba(var(--accent-rgb), 0.32);
+  /* Paper-grain noise — opacity 0 disables it (set by themes that look
+     wrong with grain, like the cool-neutral Daylight). Blend mode flips
+     between `overlay` on dark and `multiply` on warm-light. */
+  --grain-opacity: 0.025;
+  --grain-blend-mode: overlay;
+  /* Body vignette gradients. Two soft radial washes layered on `body`. */
+  --vignette-warm: rgba(var(--accent-rgb), 0.05);
+  --vignette-cool: rgba(120, 80, 200, 0.025);
+
+  /* Text color sitting on a filled accent surface (hover-filled menu
+     items, danger buttons). White reads cleanly on every shipped accent
+     so far; themes can override if a future accent picks up a lighter
+     shade. */
+  --text-on-accent: #ffffff;
 
   /* Type stack. Fraunces gives optical sizing for display
      callouts. Geist handles UI body — variable, well-drawn,
@@ -98,35 +142,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg);
   color: var(--text);
-  /* Subtle radial vignette + warm wash — creates depth without
-     overwhelming. Foreground is unaffected. */
-  background-image:
-    radial-gradient(
-      ellipse 1200px 800px at 20% -10%,
-      rgba(217, 119, 87, 0.05),
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 900px 600px at 100% 100%,
-      rgba(120, 80, 200, 0.025),
-      transparent 60%
-    );
-  background-attachment: fixed;
   position: relative;
-}
-
-/* Paper grain — 0.6% opacity SVG noise, multiplied over chrome.
-   Subtle enough to feel like the screen has tooth, never as
-   pattern. Disabled by pointer-events so clicks pass through. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.025;
-  z-index: 100;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.85 0 0 0 0.45 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
+  /* NOTE: the original design had two fixed full-viewport `radial-gradient`
+     vignettes plus a `body::before` paper-grain layer with
+     `mix-blend-mode: overlay`. Both were keyed to per-theme CSS variables,
+     which meant every theme switch invalidated a 100vw × 100vh GPU layer
+     and re-blended it pixel by pixel. On Tauri's WKWebView this cost
+     ~4 seconds of paint per swap (measured: rAF after setTheme fired at
+     +4155ms). The vignette / grain effects are pure ornament; the user-
+     facing cost was not remotely worth keeping them. If we want them back
+     later, gate them on a `prefers-reduced-motion`-style escape hatch and
+     keep them independent of the theme variables. */
 }
 
 /* Editorial utility — tracked-out small caps. Used for section
@@ -157,11 +183,12 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* Selection — terracotta wash. */
+/* Selection — accent wash, themed via `--selection-bg`. */
 ::selection {
-  background: rgba(217, 119, 87, 0.32);
+  background: var(--selection-bg);
   color: var(--text);
 }
+
 
 /* Focus ring — single token, applied via :focus-visible. */
 :focus-visible {
@@ -202,14 +229,14 @@ body::before {
 .col-handle:hover,
 .col-handle[data-resize-handle-active] {
   background: var(--accent);
-  box-shadow: 0 0 12px -2px rgba(217, 119, 87, 0.6);
+  box-shadow: 0 0 12px -2px rgba(var(--accent-rgb), 0.6);
 }
 
 .topbar {
   flex: 0 0 44px;
   background: linear-gradient(
     180deg,
-    rgba(217, 119, 87, 0.02),
+    rgba(var(--accent-rgb), 0.02),
     transparent
   ),
   var(--surface);
@@ -341,7 +368,7 @@ body::before {
 }
 
 .project-tab-close:hover {
-  background: rgba(217, 119, 87, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   color: var(--accent);
 }
 
@@ -391,7 +418,7 @@ body::before {
   background: var(--panel);
   border: 1px solid var(--rule-strong);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.28);
   font-size: 13px;
 }
 
@@ -596,7 +623,7 @@ body::before {
 }
 
 .right-file-tab:hover {
-  background: rgba(240, 238, 230, 0.05);
+  background: rgba(var(--highlight-rgb), 0.05);
   color: var(--text);
 }
 
@@ -644,7 +671,7 @@ body::before {
 }
 
 .right-file-tab-close:hover {
-  background: rgba(240, 238, 230, 0.09);
+  background: rgba(var(--highlight-rgb), 0.09);
   color: var(--text);
 }
 
@@ -807,7 +834,7 @@ body::before {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: #13120f;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
@@ -816,7 +843,7 @@ body::before {
 .pane-cell.focused {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.25),
-    0 0 24px -8px rgba(217, 119, 87, 0.4);
+    0 0 24px -8px rgba(var(--accent-rgb), 0.4);
 }
 
 .pane-header {
@@ -928,7 +955,7 @@ body::before {
   padding: 0;
 }
 .pane-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--highlight-rgb), 0.08);
   color: var(--text);
 }
 
@@ -1072,7 +1099,7 @@ body::before {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.45);
   min-width: 320px;
 }
 .layout-option {
@@ -1090,7 +1117,7 @@ body::before {
   line-height: 1.2;
 }
 .layout-option:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--highlight-rgb), 0.04);
   color: var(--text);
 }
 .layout-option.active {
@@ -1205,7 +1232,7 @@ body::before {
 }
 
 .picker-agent.unavailable .picker-agent-avatar {
-  background: rgba(115, 107, 95, 0.22);
+  background: rgba(var(--shadow-rgb), 0.22);
   color: var(--muted);
 }
 
@@ -1264,7 +1291,7 @@ body::before {
 }
 
 .session-row:hover {
-  background: rgba(217, 119, 87, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 
 .session-row.active {
@@ -1373,7 +1400,7 @@ body::before {
 
 .form-error {
   color: var(--error);
-  background: rgba(212, 106, 95, 0.1);
+  background: rgba(var(--error-rgb), 0.1);
   border: 1px solid var(--error);
   border-radius: 4px;
   padding: 6px 8px;
@@ -1418,7 +1445,7 @@ body::before {
 }
 
 .discovered-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--highlight-rgb), 0.04);
 }
 
 .discovered-row-agent {
@@ -1526,8 +1553,8 @@ body::before {
   border: 1px solid var(--rule) !important;
   border-radius: 6px !important;
   box-shadow:
-    0 24px 60px -20px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(217, 119, 87, 0.04) !important;
+    0 24px 60px -20px rgba(var(--shadow-rgb), 0.7),
+    0 0 0 1px rgba(var(--accent-rgb), 0.04) !important;
   position: relative;
   overflow: hidden;
 }
@@ -1655,9 +1682,168 @@ body::before {
 .appearance-settings {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 28px;
   padding: 20px 24px;
-  max-width: 480px;
+  max-width: 560px;
+}
+
+.appearance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.appearance-section-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Theme picker grid — cards lay out responsively so a 6th theme drops
+   onto a new row without code changes. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Reserve the 2px border space at all times — `.selected` switches to a
+     2px outline-style border so the layout doesn't shift on click. */
+  padding: 9px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.theme-card:hover {
+  border-color: var(--rule-strong);
+  background: var(--panel-raised);
+}
+.theme-card:active {
+  transform: translateY(1px);
+}
+.theme-card.selected {
+  /* Two-layer outline: a solid accent ring at full opacity plus a wider
+     translucent halo. The halo uses 22% alpha (not the global 8% tint)
+     so it reads on every surface — Foundry's warm-dark, Daylight's near-
+     white, and the warm-light Parchment alike — without depending on
+     `--accent-tint`'s subtler ramp. */
+  border-color: var(--accent);
+  background: var(--panel-raised);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 5px rgba(var(--accent-rgb), 0.22);
+}
+.theme-card-active-pill {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px 2px 4px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.theme-card-active-pill::before {
+  content: "✓";
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* The card preview is a tiny abstract "ycode in miniature" — a body color
+   with an inset panel and two text rules plus a small accent block. It's
+   intentionally agnostic of the real layout; we want users to read the
+   *palette*, not memorize the chrome arrangement. */
+.theme-card-preview {
+  position: relative;
+  height: 64px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.theme-card-preview-panel {
+  position: absolute;
+  inset: 8px 8px 8px 28px;
+  padding: 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.theme-card-preview-line {
+  height: 3px;
+  width: 80%;
+  border-radius: 1px;
+  opacity: 0.85;
+}
+.theme-card-preview-line.short {
+  width: 50%;
+  opacity: 0.55;
+}
+.theme-card-preview-accent {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 2px;
+}
+
+.theme-card-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.theme-card-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.theme-card-mode {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.theme-card-swatches {
+  display: flex;
+  gap: 4px;
+}
+.theme-card-swatch {
+  flex: 1;
+  height: 6px;
+  border-radius: 2px;
+  border: 1px solid rgba(var(--shadow-rgb), 0.12);
 }
 
 .update-notice {
@@ -1670,7 +1856,7 @@ body::before {
   background: var(--panel);
   border: 1px solid var(--rule-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.35);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1783,7 +1969,7 @@ body::before {
     background var(--duration-fast) var(--ease-out);
 }
 .agent-row:hover {
-  background: rgba(217, 119, 87, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
   color: var(--text);
 }
 .agent-row.selected {
@@ -1855,7 +2041,7 @@ body::before {
   color: var(--error);
 }
 .agent-editor-actions .danger:hover {
-  background: rgba(212, 106, 95, 0.1);
+  background: rgba(var(--error-rgb), 0.1);
 }
 
 /* ── Form primitives shared by the editor ───────────────────────────── */
@@ -1909,7 +2095,7 @@ body::before {
   outline: none;
   border-color: var(--accent);
   background: var(--bg);
-  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.08);
 }
 .native-input.mono {
   font-family: var(--font-mono);
@@ -2002,7 +2188,7 @@ textarea.native-input {
 }
 .icon-picker-tile:hover {
   color: var(--text);
-  background: rgba(217, 119, 87, 0.05);
+  background: rgba(var(--accent-rgb), 0.05);
 }
 .icon-picker-tile.selected {
   border-color: var(--accent);
@@ -2052,7 +2238,7 @@ textarea.native-input {
 }
 
 .file-row:hover {
-  background: rgba(240, 238, 230, 0.05);
+  background: rgba(var(--highlight-rgb), 0.05);
 }
 
 .file-row.file.selected,
@@ -2244,7 +2430,7 @@ textarea.native-input {
   padding: 0;
 }
 .terminal-pane-card-header .pane-close:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--highlight-rgb), 0.08);
   color: var(--text);
 }
 
@@ -2258,7 +2444,7 @@ textarea.native-input {
   background: var(--panel-raised);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.45);
   font-family: var(--font-ui);
 }
 .split-menu button {
@@ -2278,14 +2464,14 @@ textarea.native-input {
 }
 .split-menu button:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 .split-menu button svg {
   flex: 0 0 auto;
   color: var(--text-soft);
 }
 .split-menu button:hover svg {
-  color: #fff;
+  color: var(--text-on-accent);
 }
 .split-menu-sep {
   height: 1px;
@@ -2297,13 +2483,13 @@ textarea.native-input {
 }
 .split-menu-danger:hover {
   background: var(--error) !important;
-  color: #fff !important;
+  color: var(--text-on-accent) !important;
 }
 .split-menu-danger svg {
   color: var(--error) !important;
 }
 .split-menu-danger:hover svg {
-  color: #fff !important;
+  color: var(--text-on-accent) !important;
 }
 
 .editor-panel {
@@ -2319,7 +2505,7 @@ textarea.native-input {
   gap: 8px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-2, rgba(255, 255, 255, 0.02));
+  background: var(--bg-2, rgba(var(--highlight-rgb), 0.02));
   font-size: 11px;
 }
 
@@ -2336,8 +2522,8 @@ textarea.native-input {
 .editor-viewer-badge {
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--fg-dim, rgba(255, 255, 255, 0.6));
+  background: rgba(var(--highlight-rgb), 0.08);
+  color: var(--fg-dim, rgba(var(--highlight-rgb), 0.6));
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -2354,7 +2540,7 @@ textarea.native-input {
 }
 
 .editor-viewer-action:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(var(--highlight-rgb), 0.05);
 }
 
 .editor-warning {
@@ -2363,9 +2549,9 @@ textarea.native-input {
   gap: 8px;
   margin: 6px 10px 0;
   padding: 6px 10px;
-  background: rgba(214, 169, 92, 0.12);
-  color: #efc06f;
-  border: 1px solid rgba(214, 169, 92, 0.45);
+  background: rgba(var(--warning-rgb), 0.12);
+  color: var(--role-plan);
+  border: 1px solid rgba(var(--warning-rgb), 0.45);
   border-radius: 4px;
   font-size: 11px;
 }
@@ -2403,7 +2589,7 @@ textarea.native-input {
 .cmd-palette-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(var(--shadow-rgb), 0.55);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2417,7 +2603,7 @@ textarea.native-input {
   background: var(--surface, #1c1b18);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 48px rgba(var(--shadow-rgb), 0.6);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2443,7 +2629,7 @@ textarea.native-input {
 
 .cmd-palette-status {
   padding: 14px 16px;
-  color: var(--muted, rgba(255, 255, 255, 0.6));
+  color: var(--muted, rgba(var(--highlight-rgb), 0.6));
   font-size: 12px;
 }
 
@@ -2454,13 +2640,13 @@ textarea.native-input {
   padding: 10px 14px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(var(--highlight-rgb), 0.04);
   color: var(--fg, #f0eee6);
   cursor: pointer;
 }
 
 .cmd-palette-hit.focused {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--highlight-rgb), 0.06);
 }
 
 .cmd-palette-hit-meta {
@@ -2468,7 +2654,7 @@ textarea.native-input {
   align-items: center;
   gap: 10px;
   font-size: 11px;
-  color: var(--muted, rgba(255, 255, 255, 0.55));
+  color: var(--muted, rgba(var(--highlight-rgb), 0.55));
 }
 
 .cmd-palette-hit-agent {
@@ -2522,7 +2708,7 @@ textarea.native-input {
 
 .cmd-palette-file-dir {
   font-size: 11px;
-  color: var(--muted, rgba(255, 255, 255, 0.55));
+  color: var(--muted, rgba(var(--highlight-rgb), 0.55));
   flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
@@ -2543,7 +2729,7 @@ textarea.native-input {
 .history-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(var(--shadow-rgb), 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2556,7 +2742,7 @@ textarea.native-input {
   background: var(--surface, #1c1b18);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 48px rgba(var(--shadow-rgb), 0.6);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2621,7 +2807,7 @@ textarea.native-input {
 }
 
 .history-tab-filter-btn.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--highlight-rgb), 0.08);
 }
 
 .history-tab-close {
@@ -2660,15 +2846,15 @@ textarea.native-input {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--highlight-rgb), 0.02);
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
 .history-card.highlighted {
-  border-color: #d97757;
-  background: rgba(217, 119, 87, 0.08);
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .history-card-role {
@@ -2679,19 +2865,19 @@ textarea.native-input {
 }
 
 .history-card-role.role-user {
-  color: #7bb8a6;
+  color: var(--role-user);
 }
 .history-card-role.role-assistant {
-  color: #d97757;
+  color: var(--accent);
 }
 .history-card-role.role-thinking {
-  color: #c58fbd;
+  color: var(--role-thinking);
 }
 .history-card-role.role-tool {
-  color: #8aa4c8;
+  color: var(--role-tool);
 }
 .history-card-role.role-plan {
-  color: #efc06f;
+  color: var(--role-plan);
 }
 
 .history-card-text {
@@ -2732,15 +2918,15 @@ textarea.native-input {
 }
 
 .history-card-decision {
-  color: #efc06f;
+  color: var(--role-plan);
   margin-left: 4px;
 }
 
 .diff-add {
-  color: #8aaa6f;
+  color: var(--running);
 }
 .diff-del {
-  color: #c97770;
+  color: var(--error);
 }
 
 /* ====== Changes panel ====== */
@@ -2893,7 +3079,7 @@ textarea.native-input {
 }
 
 .changes-file-row:hover {
-  background: rgba(217, 119, 87, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
   color: var(--text);
 }
 
@@ -2934,13 +3120,13 @@ textarea.native-input {
 }
 
 .changes-file-status.status-modified {
-  color: #d4a64c;
+  color: var(--warning);
 }
 .changes-file-status.status-deleted {
   color: var(--error);
 }
 .changes-file-status.status-untracked {
-  color: #8aaa6f;
+  color: var(--running);
 }
 .changes-file-status.status-other {
   color: var(--muted);
@@ -3048,23 +3234,23 @@ textarea.native-input {
   --diff-background-color: var(--panel-sunken);
   --diff-text-color: var(--text-soft);
   --diff-font-family: var(--font-mono);
-  --diff-selection-background-color: rgba(217, 119, 87, 0.32);
+  --diff-selection-background-color: rgba(var(--accent-rgb), 0.32);
   --diff-selection-text-color: var(--text);
-  --diff-gutter-insert-background-color: rgba(138, 170, 111, 0.14);
-  --diff-gutter-insert-text-color: #8aaa6f;
-  --diff-gutter-delete-background-color: rgba(201, 119, 112, 0.14);
-  --diff-gutter-delete-text-color: #c97770;
-  --diff-gutter-selected-background-color: rgba(217, 119, 87, 0.18);
+  --diff-gutter-insert-background-color: rgba(var(--diff-add-rgb), 0.14);
+  --diff-gutter-insert-text-color: var(--running);
+  --diff-gutter-delete-background-color: rgba(var(--diff-del-rgb), 0.14);
+  --diff-gutter-delete-text-color: var(--error);
+  --diff-gutter-selected-background-color: rgba(var(--accent-rgb), 0.18);
   --diff-gutter-selected-text-color: var(--text);
-  --diff-code-insert-background-color: rgba(138, 170, 111, 0.06);
+  --diff-code-insert-background-color: rgba(var(--diff-add-rgb), 0.06);
   --diff-code-insert-text-color: var(--text);
-  --diff-code-delete-background-color: rgba(201, 119, 112, 0.06);
+  --diff-code-delete-background-color: rgba(var(--diff-del-rgb), 0.06);
   --diff-code-delete-text-color: var(--text);
-  --diff-code-insert-edit-background-color: rgba(138, 170, 111, 0.22);
+  --diff-code-insert-edit-background-color: rgba(var(--diff-add-rgb), 0.22);
   --diff-code-insert-edit-text-color: var(--text);
-  --diff-code-delete-edit-background-color: rgba(201, 119, 112, 0.22);
+  --diff-code-delete-edit-background-color: rgba(var(--diff-del-rgb), 0.22);
   --diff-code-delete-edit-text-color: var(--text);
-  --diff-code-selected-background-color: rgba(217, 119, 87, 0.10);
+  --diff-code-selected-background-color: rgba(var(--accent-rgb), 0.10);
   --diff-code-selected-text-color: var(--text);
   --diff-omit-gutter-line-color: var(--rule);
 }
@@ -3103,7 +3289,7 @@ textarea.native-input {
 
 .button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.18);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
 }
 
 .button--sm {
@@ -3122,13 +3308,13 @@ textarea.native-input {
 
 .button--primary {
   background: var(--accent);
-  color: #1a0e08;
+  color: var(--text-on-accent);
   border-color: var(--accent);
 }
 .button--primary:hover:not(:disabled):not([data-disabled="true"]) {
   background: var(--accent-soft);
   border-color: var(--accent-soft);
-  box-shadow: 0 0 20px -4px rgba(217, 119, 87, 0.5);
+  box-shadow: 0 0 20px -4px rgba(var(--accent-rgb), 0.5);
 }
 .button--primary:disabled,
 .button--primary[data-disabled="true"] {
@@ -3158,7 +3344,7 @@ textarea.native-input {
 .button--outline:hover:not(:disabled):not([data-disabled="true"]) {
   color: var(--text);
   border-color: var(--rule-strong);
-  background: rgba(217, 119, 87, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 
 .button--ghost {
@@ -3168,7 +3354,7 @@ textarea.native-input {
 }
 .button--ghost:hover:not(:disabled):not([data-disabled="true"]) {
   color: var(--text);
-  background: rgba(217, 119, 87, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .button--danger {
@@ -3177,16 +3363,16 @@ textarea.native-input {
   border-color: var(--error);
 }
 .button--danger:hover:not(:disabled):not([data-disabled="true"]) {
-  background: rgba(212, 106, 95, 0.12);
+  background: rgba(var(--error-rgb), 0.12);
 }
 
 .button--danger-soft {
-  background: rgba(212, 106, 95, 0.08);
+  background: rgba(var(--error-rgb), 0.08);
   color: var(--error);
   border-color: transparent;
 }
 .button--danger-soft:hover:not(:disabled):not([data-disabled="true"]) {
-  background: rgba(212, 106, 95, 0.18);
+  background: rgba(var(--error-rgb), 0.18);
   border-color: var(--error);
 }
 
@@ -3206,12 +3392,17 @@ textarea.native-input {
   font-family: var(--font-ui);
 }
 
-/* Backdrop — slightly warm overlay rather than pure black. */
+/* Backdrop — slightly warm overlay rather than pure black.
+   `backdrop-filter: blur(...)` was previously here but removed: it forces
+   the GPU to re-sample and re-blur the entire viewport every time the
+   underlying pixels change, and the Settings modal is exactly where the
+   user changes the theme — so toggling themes inside the modal re-blurred
+   the whole app per-frame, costing several seconds on Tauri's WKWebView.
+   A plain dim-overlay reads as "modal is on top" just fine without the
+   per-frame GPU bill. */
 [data-slot="backdrop"],
 .modal-backdrop {
-  background: rgba(15, 13, 10, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(var(--shadow-rgb), 0.72);
 }
 
 /* Native form widgets inside modals. */
@@ -3235,7 +3426,7 @@ textarea.native-input {
 .native-select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.08);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.08);
 }
 .native-select option {
   background: var(--panel);
@@ -3281,7 +3472,7 @@ textarea.native-input {
   background-image:
     radial-gradient(
       ellipse 1100px 700px at 50% 35%,
-      rgba(217, 119, 87, 0.06),
+      rgba(var(--accent-rgb), 0.06),
       transparent 65%
     );
   visibility: visible;
@@ -3338,7 +3529,7 @@ textarea.native-input {
   position: relative;
   width: 72px;
   height: 1px;
-  background: rgba(217, 119, 87, 0.16);
+  background: rgba(var(--accent-rgb), 0.16);
   overflow: visible;
 }
 

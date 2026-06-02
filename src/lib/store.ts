@@ -9,6 +9,7 @@ import type {
   ProjectView,
   SessionView,
 } from "./types";
+import { DEFAULT_THEME_ID } from "./themes";
 
 export const DEFAULT_FONT_SIZES: FontSizesView = {
   ui: 13,
@@ -148,6 +149,12 @@ interface AppState {
   /// CodeMirror inline style; terminal feeds xterm options. Defaults until
   /// the initial `getConfig` IPC returns.
   fontSizes: FontSizesView;
+  /// Active theme id (Foundry / Midnight / Forest / Parchment / Daylight).
+  /// Looked up in `lib/themes.ts` — unknown ids gracefully fall back to the
+  /// default at render time so a stale config file can't softlock the UI.
+  /// `App.tsx` writes the resolved theme's CSS variable map to `:root` on
+  /// change; TerminalPane / ManualTerminal re-skin live xterm instances.
+  theme: string;
   /// Sessions that fired an `AgentTurnComplete` (turn ended / needs input)
   /// while the user wasn't looking at them. Drives the dot badge on visible
   /// pane headers and cleared when the session becomes the active pane.
@@ -208,6 +215,7 @@ interface AppState {
   closeFile: (path: string) => void;
   setLiveTitle: (sessionId: string, title: string) => void;
   setFontSizes: (f: FontSizesView) => void;
+  setTheme: (id: string) => void;
   /// Sidebar publishes the id of the agent profile currently highlighted
   /// in the agent-tab strip — the same one the "+" button creates against.
   /// Used by the ⌘N hotkey, which builds the createSession call itself
@@ -240,6 +248,7 @@ export const useStore = create<AppState>((set) => ({
   dirtyFiles: {},
   previewFilePath: null,
   fontSizes: DEFAULT_FONT_SIZES,
+  theme: DEFAULT_THEME_ID,
   activeSidebarAgentId: null,
   attentionBySession: {},
 
@@ -672,6 +681,9 @@ export const useStore = create<AppState>((set) => ({
         terminal: clampFontSize(f.terminal),
       },
     })),
+
+  setTheme: (id) =>
+    set((state) => (state.theme === id ? state : { theme: id })),
 
   setActiveSidebarAgentId: (id) => set({ activeSidebarAgentId: id }),
 }));

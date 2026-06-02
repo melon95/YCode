@@ -57,6 +57,15 @@ pub struct Config {
     pub font_sizes: FontSizes,
     #[serde(default)]
     pub notifications: NotificationSettings,
+    /// Active theme id from the frontend theme registry (see
+    /// `src/lib/themes.ts`). Unknown ids fall back to the default at render
+    /// time, so a future-version config file can't softlock the UI.
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "foundry".into()
 }
 
 /// Global on/off + focus-gating switches for the agent-turn-complete OS
@@ -157,6 +166,7 @@ impl Default for Config {
             ],
             font_sizes: FontSizes::default(),
             notifications: NotificationSettings::default(),
+            theme: default_theme(),
         }
     }
 }
