@@ -1264,6 +1264,17 @@ where
     env.insert("CLICOLOR".into(), "1".into());
     env.insert("CLICOLOR_FORCE".into(), "1".into());
     env.remove("NO_COLOR");
+    // macOS launchd-launched .app processes inherit a minimal environment with
+    // no LANG/LC_*, so the spawned shell falls back to the POSIX C locale and
+    // zle treats UTF-8 multi-byte sequences as 8-bit Latin-1 — every byte in
+    // 0x80-0x9F renders as a literal `<00xx>` reverse-video marker, so pasted
+    // or IME-typed CJK turns into garbage. dev mode is fine because it
+    // inherits the user's terminal LANG. Default to en_US.UTF-8 here only
+    // when the user hasn't already set a locale (their shell rc still wins).
+    env.entry("LANG".into())
+        .or_insert_with(|| "en_US.UTF-8".into());
+    env.entry("LC_CTYPE".into())
+        .or_insert_with(|| "UTF-8".into());
     env.into_iter().collect()
 }
 
