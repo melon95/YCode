@@ -155,6 +155,19 @@ export function attachImeInputBridge(
     if (ie.inputType !== "insertText") return;
     if (!ie.data) return;
     safeWrite(ie.data, "input");
+    // Reset textarea after each forwarded keystroke. xterm.js only clears
+    // its hidden textarea on blur / Ctrl-C / Enter, so without this it
+    // accumulates everything the user types ("a" → "ai" → "ai " → ...).
+    // Under fast English typing, `_handleAnyTextareaChanges` /
+    // `_finalizeComposition` can fire on a stray keyCode-229 keydown and
+    // run their `setTimeout(0)` after several more keys have landed; they
+    // then read the FULL accumulated `textarea.value.substring(...)` and
+    // re-emit it through `triggerDataEvent`, which lands in our
+    // `term.onData` as a multi-char chunk that neither dedup layer below
+    // catches (layer a requires a single codepoint; layer b only gates
+    // the post-compositionend window). Programmatic `value =` assignment
+    // doesn't fire another input event, so this is loop-safe.
+    if (textarea) textarea.value = "";
   };
 
   if (textarea) {
