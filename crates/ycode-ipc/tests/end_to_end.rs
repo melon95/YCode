@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use ycode_config::{AgentLaunchProfile, Config};
 use ycode_ipc::{
     CreateProjectRequest, CreateSessionRequest, ResizePtyRequest, Service, UiEventKind,
-    WritePtyRequest,
+    WriteFileRequest, WritePtyRequest,
 };
 use ycode_persist::Db;
 
@@ -208,4 +208,114 @@ async fn create_session_with_bad_project_errors() {
         err,
         ycode_ipc::IpcError::Persist(ycode_persist::PersistError::ProjectNotFound(_))
     ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn create_session_with_unknown_agent_errors_without_persisting_row() {
+    let (svc, _w, repo) = fixture().await;
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "unknown-agent".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+
+    let err = svc
+        .create_session(CreateSessionRequest {
+            agent_profile_id: "missing-agent".into(),
+            project_id: project.id,
+            title: "x".into(),
+            resume: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, ycode_ipc::IpcError::UnknownAgentProfile(_)));
+    assert!(svc.list_sessions().await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn read_write_and_resolve_files_stay_inside_project_root() {
+    let (svc, _w, repo) = fixture().await;
+    std::fs::create_dir_all(repo.join("src").as_std_path()).unwrap();
+    std::fs::write(repo.join("src/main.ts").as_std_path(), "old").unwrap();
+
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "files-rw".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+
+    svc.write_file(WriteFileRequest {
+        project_id: project.id.clone(),
+        file_path: "src/main.ts".into(),
+        contents: "new contents".into(),
+    })
+    .await
+    .unwrap();
+    let file = svc
+        .read_file(project.id.clone(), "src/main.ts".into())
+        .await
+        .unwrap();
+    assert!(!file.is_binary);
+    assert_eq!(file.contents, "new contents");
+
+    assert_eq!(
+        svc.resolve_terminal_path(project.id.clone(), "./src/main.ts".into())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("src/main.ts")
+    );
+    assert!(svc
+        .read_file(project.id.clone(), "../outside.txt".into())
+        .await
+        .is_err());
+    assert!(svc
+        .write_file(WriteFileRequest {
+            project_id: project.id,
+            file_path: "../outside.txt".into(),
+            contents: "bad".into(),
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn delete_project_archives_live_sessions_and_removes_project() {
+    let (svc, _w, repo) = fixture().await;
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "delete-project".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+    let view = svc
+        .create_session(CreateSessionRequest {
+            agent_profile_id: "shell-test".into(),
+            project_id: project.id.clone(),
+            title: "delete me".into(),
+            resume: None,
+        })
+        .await
+        .unwrap();
+
+    svc.delete_project(project.id.clone()).await.unwrap();
+
+    assert!(!svc
+        .list_sessions()
+        .await
+        .unwrap()
+        .iter()
+        .any(|s| s.id == view.id));
+    assert!(!svc
+        .list_projects()
+        .await
+        .unwrap()
+        .iter()
+        .any(|p| p.id == project.id));
 }

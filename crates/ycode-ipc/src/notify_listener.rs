@@ -382,23 +382,44 @@ mod tests {
     use tokio::io::AsyncWriteExt;
     use tokio::net::UnixStream;
 
-    fn unique_sock_path() -> PathBuf {
+    fn unique_sock_path() -> (tempfile::TempDir, PathBuf) {
         // macOS sockaddr_un caps at 104 bytes including the NUL terminator,
         // and `$TMPDIR` under `/var/folders/...` already eats ~50 chars. A
-        // full ulid (26 chars) + the prefix pushes us over on some setups,
-        // so we use `/tmp` and a short counter — collisions across parallel
-        // tests are still effectively zero.
+        // full ulid (26 chars) + the prefix pushes us over on some setups.
+        // Keep each test isolated in a short /tmp directory.
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        PathBuf::from(format!("/tmp/yc-nt-{}-{n}.sock", std::process::id()))
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("yc{}-{n}-", std::process::id()))
+            .tempdir_in("/tmp")
+            .unwrap();
+        let path = dir.path().join("n.sock");
+        (dir, path)
+    }
+
+    fn unix_socket_bind_available() -> bool {
+        let (_dir, path) = unique_sock_path();
+        match std::os::unix::net::UnixListener::bind(&path) {
+            Ok(listener) => {
+                drop(listener);
+                let _ = std::fs::remove_file(path);
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => false,
+            Err(_) => false,
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn forwards_valid_payload() {
+        if !unix_socket_bind_available() {
+            eprintln!("skipping Unix socket listener test: bind is not permitted");
+            return;
+        }
         let (tx, mut rx) = broadcast::channel::<UiEvent>(16);
         let cancel = CancellationToken::new();
-        let path = unique_sock_path();
+        let (_dir, path) = unique_sock_path();
         let bound = start(tx, cancel.clone(), path.clone()).expect("listener should bind");
         assert!(bound.exists());
 
@@ -424,7 +445,10 @@ mod tests {
             } => {
                 assert_eq!(source, "claude");
                 assert_eq!(event_kind, "stop");
-                assert!(body_preview.is_none(), "no transcript available in this test");
+                assert!(
+                    body_preview.is_none(),
+                    "no transcript available in this test"
+                );
             }
             other => panic!("unexpected event kind: {other:?}"),
         }
@@ -437,9 +461,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ignores_payload_without_terminal_id() {
+        if !unix_socket_bind_available() {
+            eprintln!("skipping Unix socket listener test: bind is not permitted");
+            return;
+        }
         let (tx, mut rx) = broadcast::channel::<UiEvent>(16);
         let cancel = CancellationToken::new();
-        let path = unique_sock_path();
+        let (_dir, path) = unique_sock_path();
         let bound = start(tx, cancel.clone(), path).expect("listener should bind");
 
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -733,7 +761,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn rebinds_over_stale_socket() {
-        let path = unique_sock_path();
+        if !unix_socket_bind_available() {
+            eprintln!("skipping Unix socket listener test: bind is not permitted");
+            return;
+        }
+        let (_dir, path) = unique_sock_path();
         // Pre-create a leftover file as if a previous run had crashed.
         std::fs::write(&path, b"stale").unwrap();
 

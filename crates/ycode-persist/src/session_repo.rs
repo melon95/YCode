@@ -244,6 +244,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resume_metadata_round_trips() {
+        let db = Db::open_in_memory().await.unwrap();
+        seed_project(&db).await;
+        db.sessions()
+            .insert(NewSession {
+                id: "resume".into(),
+                title: "test".into(),
+                agent_profile: "codex".into(),
+                agent_session_id: Some("native-session-id".into()),
+                agent_thread_name: Some("thread name".into()),
+                project_id: "p-test".into(),
+            })
+            .await
+            .unwrap();
+
+        let row = db.sessions().get("resume").await.unwrap();
+        assert_eq!(row.agent_session_id.as_deref(), Some("native-session-id"));
+        assert_eq!(row.agent_thread_name.as_deref(), Some("thread name"));
+
+        db.sessions()
+            .update_agent_session_id("resume", "updated-native-id")
+            .await
+            .unwrap();
+        db.sessions()
+            .update_agent_thread_name("resume", "updated thread")
+            .await
+            .unwrap();
+        let row = db.sessions().get("resume").await.unwrap();
+        assert_eq!(row.agent_session_id.as_deref(), Some("updated-native-id"));
+        assert_eq!(row.agent_thread_name.as_deref(), Some("updated thread"));
+    }
+
+    #[tokio::test]
+    async fn list_for_project_filters_archived_sessions() {
+        let db = Db::open_in_memory().await.unwrap();
+        seed_project(&db).await;
+        db.sessions()
+            .insert(fixture("live", "p-test"))
+            .await
+            .unwrap();
+        db.sessions()
+            .insert(fixture("archived", "p-test"))
+            .await
+            .unwrap();
+
+        db.sessions().archive("archived").await.unwrap();
+
+        let rows = db.sessions().list_for_project("p-test").await.unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["live"]
+        );
+    }
+
+    #[tokio::test]
     async fn missing_session_errors() {
         let db = Db::open_in_memory().await.unwrap();
         assert!(matches!(
