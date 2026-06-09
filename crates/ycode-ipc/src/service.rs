@@ -173,9 +173,7 @@ impl Service {
             return p.is_file();
         }
         std::env::var_os("PATH")
-            .map(|paths| {
-                std::env::split_paths(&paths).any(|d| d.join(command).is_file())
-            })
+            .map(|paths| std::env::split_paths(&paths).any(|d| d.join(command).is_file()))
             .unwrap_or(false)
     }
 
@@ -1181,10 +1179,8 @@ fn find_latest_gemini_session_id(
 
 fn gemini_project_key(home: &std::path::Path, cwd: &Utf8Path) -> Option<String> {
     let projects_path = home.join(".gemini").join("projects.json");
-    let value: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(projects_path).ok()?,
-    )
-    .ok()?;
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(projects_path).ok()?).ok()?;
     value
         .get("projects")?
         .get(cwd.as_str())?
@@ -1251,7 +1247,6 @@ fn collect_json_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) 
     }
 }
 
-
 fn terminal_env<I>(vars: I) -> Vec<(String, String)>
 where
     I: IntoIterator<Item = (String, String)>,
@@ -1290,10 +1285,7 @@ fn inject_notify_env(
     env.retain(|(k, _)| k != "YCODE_TERMINAL_ID" && k != "YCODE_NOTIFY_SOCK");
     env.push(("YCODE_TERMINAL_ID".into(), terminal_id.to_string()));
     if let Some(p) = sock_path {
-        env.push((
-            "YCODE_NOTIFY_SOCK".into(),
-            p.to_string_lossy().into_owned(),
-        ));
+        env.push(("YCODE_NOTIFY_SOCK".into(), p.to_string_lossy().into_owned()));
     }
 }
 
@@ -1596,11 +1588,7 @@ fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, Ip
     })
 }
 
-fn write_repo_file(
-    repo: &Utf8Path,
-    file_path: String,
-    contents: String,
-) -> Result<(), IpcError> {
+fn write_repo_file(repo: &Utf8Path, file_path: String, contents: String) -> Result<(), IpcError> {
     let abs = resolve_under_repo(repo, &file_path)?;
     std::fs::write(&abs, contents.as_bytes())
         .map_err(|e| IpcError::BadInput(format!("write {}: {e}", file_path)))?;
@@ -2163,7 +2151,8 @@ mod tests {
 
     #[test]
     fn parses_gemini_session_file() {
-        let contents = r#"{"sessionId":"44444444-4444-4444-8444-444444444444","kind":"main","messages":[]}"#;
+        let contents =
+            r#"{"sessionId":"44444444-4444-4444-8444-444444444444","kind":"main","messages":[]}"#;
         assert_eq!(
             parse_gemini_session_file(contents).as_deref(),
             Some("44444444-4444-4444-8444-444444444444")
@@ -2203,21 +2192,13 @@ mod tests {
     fn gemini_session_scan_ignores_files_older_than_launch() {
         let tmp = tempfile::tempdir().unwrap();
         let old = tmp.path().join("session-2026-01-01T00-00-old.json");
-        std::fs::write(
-            &old,
-            r#"{"sessionId":"old","kind":"main","messages":[]}"#,
-        )
-        .unwrap();
+        std::fs::write(&old, r#"{"sessionId":"old","kind":"main","messages":[]}"#).unwrap();
         let cutoff = std::time::SystemTime::now();
 
         assert!(find_latest_gemini_session_id_in(tmp.path(), cutoff).is_none());
 
         let new = tmp.path().join("session-2026-01-01T00-01-new.json");
-        std::fs::write(
-            &new,
-            r#"{"sessionId":"new","kind":"main","messages":[]}"#,
-        )
-        .unwrap();
+        std::fs::write(&new, r#"{"sessionId":"new","kind":"main","messages":[]}"#).unwrap();
         assert_eq!(
             find_latest_gemini_session_id_in(tmp.path(), cutoff).as_deref(),
             Some("new")

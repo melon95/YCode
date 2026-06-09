@@ -198,9 +198,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         app,
         "View",
         true,
-        &[
-            &PredefinedMenuItem::fullscreen(app, None)?,
-        ],
+        &[&PredefinedMenuItem::fullscreen(app, None)?],
     )?;
 
     let window_submenu = Submenu::with_items(
@@ -235,14 +233,11 @@ fn ensure_main_window(app: &tauri::AppHandle) {
         let _ = win.set_focus();
         return;
     }
-    let build = tauri::WebviewWindowBuilder::new(
-        app,
-        "main",
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .title("YCode")
-    .inner_size(1100.0, 800.0)
-    .resizable(true);
+    let build =
+        tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+            .title("YCode")
+            .inner_size(1100.0, 800.0)
+            .resizable(true);
     if let Err(e) = build.build() {
         tracing::warn!(error = %e, "failed to recreate main window");
     }

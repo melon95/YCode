@@ -46,7 +46,7 @@ npm run typecheck                 # tsc --noEmit
 
 User config lives at the platform default
 (`~/Library/Application Support/dev.ycode.app/config.json` on macOS).
-Missing → the shipped defaults (Claude Code, Codex, Gemini CLI, Cursor) are
+Missing → the shipped defaults (Claude Code and Codex) are
 written on first launch.
 
 ```json
@@ -82,7 +82,8 @@ written on first launch.
   Currently `claude` and `codex` are recognised; agents without one still
   run, they just don't get the rich transcript view.
 
-The Settings modal in-app edits the same file with a form-based UI.
+The Settings modal in-app edits the same file. New profiles are added from
+the built-in agent catalog, then saved as ordinary config entries.
 
 ## Workspace layout
 

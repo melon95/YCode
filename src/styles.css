@@ -2029,6 +2029,87 @@ body {
   white-space: nowrap;
   letter-spacing: 0;
 }
+.agents-catalog {
+  border-top: 1px solid var(--rule);
+  padding: 12px;
+  background: var(--panel-sunken);
+}
+.agents-catalog-title {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  margin: 0 0 8px;
+}
+.agents-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 196px;
+  overflow-y: auto;
+}
+.agent-catalog-tile {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.agent-catalog-tile:hover:not(:disabled) {
+  border-color: rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.05);
+  color: var(--text);
+}
+.agent-catalog-tile:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+.agent-catalog-icon {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-catalog-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 14, "SOFT" 100;
+  font-size: 12px;
+  color: inherit;
+}
+.agent-catalog-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--subtle);
+  letter-spacing: 0;
+}
+.agents-catalog-empty {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 12, "SOFT" 100;
+  font-size: 12px;
+  color: var(--subtle);
+  line-height: 1.4;
+}
 
 .agent-editor {
   overflow-y: auto;

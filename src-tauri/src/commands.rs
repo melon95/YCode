@@ -341,10 +341,7 @@ pub async fn fs_open_in_external_editor(
 }
 
 #[tauri::command]
-pub async fn fs_reveal_in_finder(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+pub async fn fs_reveal_in_finder(state: State<'_, AppState>, path: String) -> Result<(), String> {
     state
         .service
         .reveal_in_finder(path)
@@ -354,11 +351,7 @@ pub async fn fs_reveal_in_finder(
 
 #[tauri::command]
 pub async fn open_url(state: State<'_, AppState>, url: String) -> Result<(), String> {
-    state
-        .service
-        .open_url(url)
-        .await
-        .map_err(|e| e.to_string())
+    state.service.open_url(url).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -458,8 +451,8 @@ pub fn agent_install_hook(
         }
         "codex" => {
             let path = codex_config_path().ok_or("HOME unset")?;
-            let status = agent_patcher::install_codex_notify(&path, &helper)
-                .map_err(|e| e.to_string())?;
+            let status =
+                agent_patcher::install_codex_notify(&path, &helper).map_err(|e| e.to_string())?;
             Ok(AgentPatchStatus::Codex(status))
         }
         other => Err(format!("unsupported agent: {other}")),
@@ -526,4 +519,3 @@ pub fn agent_uninstall_hook(agent: String) -> Result<AgentPatchStatus, String> {
         other => Err(format!("unsupported agent: {other}")),
     }
 }
-

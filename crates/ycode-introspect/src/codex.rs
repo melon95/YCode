@@ -210,13 +210,34 @@ fn read_first_line(path: &Path) -> Result<String, IntrospectError> {
 
 #[derive(Clone, Debug)]
 pub enum RawEvent {
-    UserMessage { text: String, ts_ms: i64 },
-    AssistantMessage { text: String, ts_ms: i64 },
-    Reasoning { text: String, ts_ms: i64 },
-    FunctionCall { name: String, args: Value, ts_ms: i64 },
-    FunctionResult { name: String, output: String, ts_ms: i64 },
-    SessionMeta { cwd: Option<String> },
-    Unknown { type_tag: String },
+    UserMessage {
+        text: String,
+        ts_ms: i64,
+    },
+    AssistantMessage {
+        text: String,
+        ts_ms: i64,
+    },
+    Reasoning {
+        text: String,
+        ts_ms: i64,
+    },
+    FunctionCall {
+        name: String,
+        args: Value,
+        ts_ms: i64,
+    },
+    FunctionResult {
+        name: String,
+        output: String,
+        ts_ms: i64,
+    },
+    SessionMeta {
+        cwd: Option<String>,
+    },
+    Unknown {
+        type_tag: String,
+    },
 }
 
 pub fn parse_line(line: &str) -> Result<RawEvent, IntrospectError> {
@@ -316,8 +337,7 @@ pub fn parse_line(line: &str) -> Result<RawEvent, IntrospectError> {
                     }
                 }
                 "reasoning" => Ok(RawEvent::Reasoning {
-                    text: collect_summary_text(v.pointer("/payload/summary"))
-                        .unwrap_or_default(),
+                    text: collect_summary_text(v.pointer("/payload/summary")).unwrap_or_default(),
                     ts_ms,
                 }),
                 other => Ok(RawEvent::Unknown {
@@ -376,7 +396,8 @@ fn parse_ts(v: &Value) -> i64 {
     // Codex emits `timestamp` at the top level or `ts` inside payload — try both.
     let tries = [v.get("timestamp"), v.pointer("/payload/timestamp")];
     for s in tries.into_iter().flatten().filter_map(|t| t.as_str()) {
-        if let Ok(t) = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+        if let Ok(t) =
+            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
         {
             return t.unix_timestamp() * 1000 + (t.millisecond() as i64);
         }
@@ -401,11 +422,7 @@ pub fn normalize(raw: RawEvent, seq: u64, session_id: &str) -> Option<UnifiedEve
             },
         ),
         RawEvent::Reasoning { text, ts_ms } => (ts_ms, UnifiedEventKind::Thinking { text }),
-        RawEvent::FunctionCall {
-            name,
-            args,
-            ts_ms,
-        } => (
+        RawEvent::FunctionCall { name, args, ts_ms } => (
             ts_ms,
             UnifiedEventKind::ToolUse {
                 tool: name,

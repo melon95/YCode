@@ -280,8 +280,10 @@ impl TerminalSession {
     /// Forward bytes to the PTY master (== child stdin).
     pub async fn write(&self, bytes: &[u8]) -> Result<(), TerminalError> {
         let mut w = self.writer.lock().await;
-        w.write_all(bytes).map_err(|e| TerminalError::Io(format!("write: {e}")))?;
-        w.flush().map_err(|e| TerminalError::Io(format!("flush: {e}")))?;
+        w.write_all(bytes)
+            .map_err(|e| TerminalError::Io(format!("write: {e}")))?;
+        w.flush()
+            .map_err(|e| TerminalError::Io(format!("flush: {e}")))?;
         Ok(())
     }
 

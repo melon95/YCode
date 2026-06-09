@@ -26,4 +26,3 @@ pub struct ProjectRow {
     pub repo_path: String,
     pub created_at: i64,
 }
-

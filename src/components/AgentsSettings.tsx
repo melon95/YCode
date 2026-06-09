@@ -15,10 +15,112 @@ const INTROSPECT_OPTIONS = [
   { value: "codex", label: "Codex jsonl parser" },
 ];
 
+const KNOWN_AGENTS: AgentLaunchProfileView[] = [
+  {
+    id: "claude-code",
+    display_name: "Claude Code",
+    command: "claude",
+    args: [],
+    env: {},
+    icon: "ClaudeCode",
+    icon_variant: null,
+    color: null,
+    introspect: "claude",
+  },
+  {
+    id: "codex",
+    display_name: "Codex",
+    command: "codex",
+    args: [],
+    env: {},
+    icon: "Codex",
+    icon_variant: null,
+    color: null,
+    introspect: "codex",
+  },
+  {
+    id: "gemini-cli",
+    display_name: "Gemini CLI",
+    command: "gemini",
+    args: [],
+    env: {},
+    icon: "GeminiCLI",
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "opencode",
+    display_name: "OpenCode",
+    command: "opencode",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "cursor-agent",
+    display_name: "Cursor Agent",
+    command: "cursor-agent",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "qwen-code",
+    display_name: "Qwen Code",
+    command: "qwen",
+    args: [],
+    env: {},
+    icon: "Qwen",
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "goose",
+    display_name: "Goose",
+    command: "goose",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "kilo-code",
+    display_name: "Kilo Code",
+    command: "kilo",
+    args: [],
+    env: {},
+    icon: "KiloCode",
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "copilot",
+    display_name: "GitHub Copilot",
+    command: "copilot",
+    args: [],
+    env: {},
+    icon: "GithubCopilot",
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+];
+
 /// Built-in agent ids — these ship with canonical brand icons that we don't
 /// want users to second-guess. Renaming the id (i.e., diverging from the
 /// default) is the gesture that re-opens the icon controls.
-const BUILTIN_AGENT_IDS = new Set(["claude-code", "codex", "gemini-cli"]);
+const BUILTIN_AGENT_IDS = new Set(["claude-code", "codex"]);
 
 interface Props {
   config: ConfigView;
@@ -44,18 +146,8 @@ export function AgentsSettings({ config, onChange }: Props) {
     onChange({ ...config, agents: next });
   }
 
-  function addAgent() {
-    const fresh: AgentLaunchProfileView = {
-      id: uniqueId(config.agents.map((a) => a.id), "new-agent"),
-      display_name: "New Agent",
-      command: "",
-      args: [],
-      env: {},
-      icon: null,
-      icon_variant: null,
-      color: null,
-      introspect: null,
-    };
+  function addKnownAgent(template: AgentLaunchProfileView) {
+    const fresh = cloneAgent(template);
     const agents = [...config.agents, fresh];
     onChange({ ...config, agents });
     setSelectedIdx(agents.length - 1);
@@ -78,6 +170,10 @@ export function AgentsSettings({ config, onChange }: Props) {
     .filter((_, i) => i !== selectedIdx)
     .map((a) => a.id);
   const idCollision = selected ? otherIds.includes(selected.id) : false;
+  const configuredIds = new Set(config.agents.map((a) => a.id));
+  const availableKnownAgents = KNOWN_AGENTS.filter(
+    (a) => !configuredIds.has(a.id),
+  );
 
   return (
     <div className="agents-settings">
@@ -86,9 +182,6 @@ export function AgentsSettings({ config, onChange }: Props) {
           <span className="agents-list-count">
             {config.agents.length} agent{config.agents.length === 1 ? "" : "s"}
           </span>
-          <Button size="sm" variant="outline" onPress={addAgent}>
-            + New
-          </Button>
         </div>
         <div className="agents-list-rows">
           {config.agents.map((a, i) => (
@@ -118,7 +211,44 @@ export function AgentsSettings({ config, onChange }: Props) {
             <div className="agents-list-empty">
               No agents configured.
               <br />
-              Click + New to add one.
+              Add one from the catalog below.
+            </div>
+          )}
+        </div>
+        <div className="agents-catalog">
+          <div className="agents-catalog-title">Add from catalog</div>
+          <div className="agents-catalog-grid">
+            {KNOWN_AGENTS.map((agent) => {
+              const added = configuredIds.has(agent.id);
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className="agent-catalog-tile"
+                  disabled={added}
+                  onClick={() => addKnownAgent(agent)}
+                >
+                  <span className="agent-catalog-icon">
+                    <AgentIcon
+                      icon={agent.icon}
+                      variant={agent.icon_variant}
+                      fallbackChar={agent.display_name || agent.id}
+                      size={18}
+                    />
+                  </span>
+                  <span className="agent-catalog-name">
+                    {agent.display_name || agent.id}
+                  </span>
+                  <span className="agent-catalog-command">
+                    {added ? "Added" : agent.command}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {availableKnownAgents.length === 0 && (
+            <div className="agents-catalog-empty">
+              Every catalog agent is already configured.
             </div>
           )}
         </div>
@@ -133,8 +263,7 @@ export function AgentsSettings({ config, onChange }: Props) {
           />
         ) : (
           <div className="agent-editor-empty">
-            Select an agent on the left, or click <strong>+ New</strong> to
-            add one.
+            Select a configured agent on the left, or add one from the catalog.
           </div>
         )}
       </div>
@@ -401,11 +530,12 @@ function Field({
   );
 }
 
-function uniqueId(existing: string[], base: string): string {
-  if (!existing.includes(base)) return base;
-  let n = 2;
-  while (existing.includes(`${base}-${n}`)) n++;
-  return `${base}-${n}`;
+function cloneAgent(agent: AgentLaunchProfileView): AgentLaunchProfileView {
+  return {
+    ...agent,
+    args: [...agent.args],
+    env: { ...agent.env },
+  };
 }
 
 function uniqueEnvKey(existing: string[]): string {

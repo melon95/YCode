@@ -184,11 +184,7 @@ pub fn parse_line(line: &str) -> Result<RawEvent, IntrospectError> {
                             .unwrap_or("")
                             .to_string();
                         let input = block.get("input").cloned().unwrap_or(Value::Null);
-                        return Ok(RawEvent::ToolUse {
-                            tool,
-                            input,
-                            ts_ms,
-                        });
+                        return Ok(RawEvent::ToolUse { tool, input, ts_ms });
                     }
                     if block_type == "thinking" {
                         let text = block
@@ -245,10 +241,10 @@ pub fn parse_line(line: &str) -> Result<RawEvent, IntrospectError> {
 
 fn parse_ts(v: &Value) -> i64 {
     if let Some(s) = v.get("timestamp").and_then(|t| t.as_str()) {
-        if let Ok(t) = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+        if let Ok(t) =
+            time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
         {
-            return t.unix_timestamp() * 1000
-                + (t.millisecond() as i64);
+            return t.unix_timestamp() * 1000 + (t.millisecond() as i64);
         }
     }
     0
@@ -296,11 +292,7 @@ pub fn normalize(raw: RawEvent, seq: u64, session_id: &str) -> UnifiedEvent {
             },
         ),
         RawEvent::Thinking { text, ts_ms } => (ts_ms, UnifiedEventKind::Thinking { text }),
-        RawEvent::ToolUse {
-            tool,
-            input,
-            ts_ms,
-        } => (
+        RawEvent::ToolUse { tool, input, ts_ms } => (
             ts_ms,
             UnifiedEventKind::ToolUse {
                 tool,
@@ -370,7 +362,8 @@ mod tests {
 
     #[test]
     fn parses_user_assistant_text() {
-        let user = r#"{"type":"user","message":{"content":"hi"},"timestamp":"2024-05-01T12:00:00Z"}"#;
+        let user =
+            r#"{"type":"user","message":{"content":"hi"},"timestamp":"2024-05-01T12:00:00Z"}"#;
         match parse_line(user).unwrap() {
             RawEvent::User { text, .. } => assert_eq!(text, "hi"),
             other => panic!("got {other:?}"),
@@ -389,7 +382,10 @@ mod tests {
         match parse_line(line).unwrap() {
             RawEvent::ToolUse { tool, input, .. } => {
                 assert_eq!(tool, "Read");
-                assert_eq!(input.get("file_path").and_then(|v| v.as_str()), Some("a.ts"));
+                assert_eq!(
+                    input.get("file_path").and_then(|v| v.as_str()),
+                    Some("a.ts")
+                );
             }
             other => panic!("got {other:?}"),
         }
@@ -397,7 +393,8 @@ mod tests {
 
     #[test]
     fn parses_thinking_block() {
-        let line = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hm"}]}}"#;
+        let line =
+            r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"hm"}]}}"#;
         match parse_line(line).unwrap() {
             RawEvent::Thinking { text, .. } => assert_eq!(text, "hm"),
             other => panic!("got {other:?}"),

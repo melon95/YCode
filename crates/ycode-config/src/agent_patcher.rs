@@ -210,10 +210,7 @@ pub fn install_claude_hook(path: &Path, helper_bin: &Path) -> Result<(), PatchEr
 /// is missing, the hook isn't ycode-managed, or the matcher already matches.
 /// Errors propagate so callers can log them (but the typical caller swallows
 /// the error since this is best-effort migration, not a hard requirement).
-pub fn refresh_claude_hook_if_stale(
-    path: &Path,
-    helper_bin: &Path,
-) -> Result<bool, PatchError> {
+pub fn refresh_claude_hook_if_stale(path: &Path, helper_bin: &Path) -> Result<bool, PatchError> {
     if !path.exists() {
         return Ok(false);
     }
@@ -290,7 +287,9 @@ fn claude_append_ycode_entry(
     sub: &str,
     matcher: &str,
 ) -> Result<(), PatchError> {
-    let obj = root.as_object_mut().expect("checked in install_claude_hook");
+    let obj = root
+        .as_object_mut()
+        .expect("checked in install_claude_hook");
     let hooks = obj
         .entry("hooks".to_string())
         .or_insert_with(|| serde_json::json!({}));
@@ -390,7 +389,8 @@ pub fn codex_notify_status(path: &Path) -> Result<NotifyStatus, PatchError> {
 }
 
 fn codex_has_notify_marker(raw: &str) -> bool {
-    raw.lines().any(|line| line.trim_start() == CODEX_MARKER_COMMENT)
+    raw.lines()
+        .any(|line| line.trim_start() == CODEX_MARKER_COMMENT)
 }
 
 fn codex_has_hooks_markers(raw: &str) -> bool {
@@ -402,7 +402,6 @@ fn codex_has_hooks_markers(raw: &str) -> bool {
         .any(|line| line.trim_start() == CODEX_HOOKS_MARKER_END);
     has_start && has_end
 }
-
 
 fn toml_array_to_strings(item: &toml_edit::Item) -> Option<Vec<String>> {
     let arr = item.as_array()?;
@@ -836,10 +835,7 @@ mod tests {
         // Still exactly one ycode entry per event.
         for event in ["Stop", "Notification"] {
             let arr = v["hooks"][event].as_array().unwrap();
-            let mine = arr
-                .iter()
-                .filter(|e| e[YCODE_MARKER_KEY] == true)
-                .count();
+            let mine = arr.iter().filter(|e| e[YCODE_MARKER_KEY] == true).count();
             assert_eq!(mine, 1, "event {event} had {mine} ycode entries");
         }
     }
@@ -899,7 +895,8 @@ mod tests {
 
         let refreshed = refresh_claude_hook_if_stale(&path, &helper()).unwrap();
         assert!(refreshed, "stale matcher should trigger a refresh");
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let notif = v["hooks"]["Notification"].as_array().unwrap();
         assert_eq!(notif[0]["matcher"], CLAUDE_NOTIFICATION_MATCHER);
 
@@ -941,7 +938,10 @@ mod tests {
     #[test]
     fn codex_status_missing_file_is_not_installed() {
         let (_d, path) = tmp_file("config.toml");
-        assert_eq!(codex_notify_status(&path).unwrap(), NotifyStatus::NotInstalled);
+        assert_eq!(
+            codex_notify_status(&path).unwrap(),
+            NotifyStatus::NotInstalled
+        );
     }
 
     #[test]
@@ -1135,7 +1135,10 @@ api_key = "sk-xxx"
         assert!(!body.contains(CODEX_HOOKS_MARKER_START));
         assert!(!body.contains(CODEX_HOOKS_MARKER_END));
         assert!(!body.contains("[[hooks.PermissionRequest]]"));
-        assert_eq!(codex_notify_status(&path).unwrap(), NotifyStatus::NotInstalled);
+        assert_eq!(
+            codex_notify_status(&path).unwrap(),
+            NotifyStatus::NotInstalled
+        );
     }
 
     /// Hooks installed via chain wrap (when user already has a `notify`)
@@ -1196,7 +1199,10 @@ api_key = "sk-xxx"
         let nux = doc["tui"]["model_availability_nux"]
             .as_table()
             .expect("nux still a table");
-        assert!(nux.get("notify").is_none(), "notify must NOT live under tui.*");
+        assert!(
+            nux.get("notify").is_none(),
+            "notify must NOT live under tui.*"
+        );
         assert_eq!(nux.get("gpt-5").and_then(|v| v.as_integer()), Some(1));
     }
 

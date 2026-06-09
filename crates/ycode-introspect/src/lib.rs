@@ -17,9 +17,7 @@ pub mod codex;
 pub mod scanner;
 pub mod unified;
 
-pub use unified::{
-    DiffSummary, PlanStep, ToolStatus, UnifiedEvent, UnifiedEventKind, UnifiedRole,
-};
+pub use unified::{DiffSummary, PlanStep, ToolStatus, UnifiedEvent, UnifiedEventKind, UnifiedRole};
 
 use std::path::{Path, PathBuf};
 

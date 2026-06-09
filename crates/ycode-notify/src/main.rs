@@ -235,8 +235,13 @@ mod tests {
     #[test]
     fn next_decodes_argv_json() {
         let chain = r#"["sky","turn-ended","--previous-notify","[\"x\"]"]"#;
-        let (e, s, n, p) =
-            parse_argv(argv(&["turn_complete", "codex", "--next", chain, "{\"foo\":1}"]));
+        let (e, s, n, p) = parse_argv(argv(&[
+            "turn_complete",
+            "codex",
+            "--next",
+            chain,
+            "{\"foo\":1}",
+        ]));
         assert_eq!(e, "turn_complete");
         assert_eq!(s, "codex");
         let n = n.unwrap();

@@ -115,7 +115,7 @@ impl Default for FontSizes {
 
 impl Default for Config {
     /// Ship-with-the-app defaults so a user with no config file still sees
-    /// the common CLIs. Agent discovery (which of these are actually on
+    /// the primary supported CLIs. Agent discovery (which of these are actually on
     /// PATH) happens at startup. `icon` values must match a key in the
     /// frontend's `AgentIcon` whitelist registry; unknown names render
     /// the generic placeholder.
@@ -144,25 +144,12 @@ impl Default for Config {
                     color: None,
                     introspect: Some("codex".into()),
                 },
-                AgentLaunchProfile {
-                    id: "gemini-cli".into(),
-                    display_name: Some("Gemini CLI".into()),
-                    command: "gemini".into(),
-                    args: vec![],
-                    env: BTreeMap::new(),
-                    icon: Some("GeminiCLI".into()),
-                    icon_variant: None,
-                    color: None,
-                    introspect: None,
-                },
-                // Note: bash, aider, and cursor deliberately omitted from
-                // defaults. Bash: the right-pane ManualTerminal already covers
-                // ad-hoc shell use, and shell isn't really an AI agent CLI.
-                // Aider: no lobehub brand icon yet, so it fell back to a
-                // letter placeholder that looked out of place. Cursor: the
-                // lobehub icon is a mono wireframe cube that sits awkwardly
-                // next to the colored brands. Users who want any of these
-                // can add them via Settings.
+                // Note: bash, aider, gemini, and cursor deliberately omitted
+                // from defaults. Bash: the right-pane ManualTerminal already
+                // covers ad-hoc shell use, and shell isn't really an AI agent
+                // CLI. Aider: no lobehub brand icon yet, so it fell back to a
+                // letter placeholder that looked out of place. Gemini and
+                // Cursor can be added via Settings by users who want them.
             ],
             font_sizes: FontSizes::default(),
             notifications: NotificationSettings::default(),
@@ -345,7 +332,7 @@ mod tests {
         let cfg = Config::default();
         assert!(cfg.find("claude-code").is_some());
         assert!(cfg.find("codex").is_some());
-        assert!(cfg.find("gemini-cli").is_some());
+        assert!(cfg.find("gemini-cli").is_none());
     }
 
     #[test]
