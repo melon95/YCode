@@ -6,11 +6,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { watchImmediate } from "@tauri-apps/plugin-fs";
+import { toast } from "@heroui/react";
 import { Tree, type NodeRendererProps } from "react-arborist";
-import { listFiles } from "../lib/ipc";
+import {
+  createPath,
+  deletePath,
+  listFiles,
+  renamePath,
+  revealInFinder,
+} from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { FileEntry } from "../lib/types";
 import { iconForFile, iconForFolder } from "../lib/fileIcons";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { confirmDialog } from "../lib/confirm";
 
 interface TreeNode {
   id: string;
@@ -18,6 +27,18 @@ interface TreeNode {
   is_dir: boolean;
   /** Present iff `is_dir`. `react-arborist` treats undefined as "leaf". */
   children?: TreeNode[];
+}
+
+interface CreatingState {
+  /** Repo-relative parent dir. Empty string = repo root. */
+  parentDir: string;
+  isDir: boolean;
+}
+
+interface MenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
 }
 
 const ROW_HEIGHT = 24;
@@ -30,10 +51,24 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
   const [reloadKey, setReloadKey] = useState(0);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
   const openFile = useStore((s) => s.openFile);
+  const closeFile = useStore((s) => s.closeFile);
+  const openFiles = useStore((s) => s.openFiles);
   const setRightTab = useStore((s) => s.setRightTab);
   const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
   const reloadKeyRef = useRef(reloadKey);
   reloadKeyRef.current = reloadKey;
+
+  // Editing state for inline rename / create. `editingPath` swaps the row's
+  // label for an input; `creating` shows a one-shot input at the top of the
+  // panel scoped to a parent directory.
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [creating, setCreating] = useState<CreatingState | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+
+  // `openFiles` is read inside event handlers fired well after the closure
+  // was captured; mirror through a ref so we always see the current set.
+  const openFilesRef = useRef(openFiles);
+  openFilesRef.current = openFiles;
 
   // Measure container so react-arborist knows its viewport size.
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -134,6 +169,148 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     [openFile, setRightTab],
   );
 
+  // Close any tabs whose path was just deleted/renamed. Directory ops cascade
+  // to descendants via the `path/` prefix check.
+  const closeAffectedTabs = useCallback(
+    (gonePath: string) => {
+      const prefix = gonePath + "/";
+      for (const p of openFilesRef.current) {
+        if (p === gonePath || p.startsWith(prefix)) closeFile(p);
+      }
+    },
+    [closeFile],
+  );
+
+  const doDelete = useCallback(
+    async (node: TreeNode) => {
+      const ok = await confirmDialog({
+        title: `Delete ${node.name}?`,
+        message: node.is_dir
+          ? "This will permanently remove the directory and all of its contents."
+          : "This will permanently remove the file from disk.",
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      try {
+        await deletePath(projectId, node.id);
+        closeAffectedTabs(node.id);
+      } catch (err) {
+        toast.danger(`Delete ${node.name}: ${err}`);
+      }
+    },
+    [projectId, closeAffectedTabs],
+  );
+
+  const doRevealInFinder = useCallback(
+    async (relPath: string) => {
+      if (!repoPath) return;
+      try {
+        await revealInFinder(`${repoPath}/${relPath}`);
+      } catch (err) {
+        toast.danger(`Reveal in Finder failed: ${err}`);
+      }
+    },
+    [repoPath],
+  );
+
+  function startCreate(parentDir: string, isDir: boolean) {
+    setEditingPath(null);
+    setCreating({ parentDir, isDir });
+  }
+
+  function startRename(path: string) {
+    setCreating(null);
+    setEditingPath(path);
+  }
+
+  async function commitCreate(rawName: string) {
+    if (!creating) return;
+    const name = rawName.trim();
+    if (!name) {
+      setCreating(null);
+      return;
+    }
+    if (name.includes("/")) {
+      toast.danger("Name cannot contain '/'");
+      return;
+    }
+    const targetPath = creating.parentDir ? `${creating.parentDir}/${name}` : name;
+    const isDir = creating.isDir;
+    setCreating(null);
+    try {
+      await createPath(projectId, targetPath, isDir);
+      if (!isDir) {
+        // Auto-open new files so the user can start typing immediately. Skip
+        // for directories — there's nothing to display.
+        openFile(targetPath, { preview: false });
+        setRightTab("editor");
+      }
+    } catch (err) {
+      toast.danger(`Create ${targetPath}: ${err}`);
+    }
+  }
+
+  async function commitRename(oldPath: string, rawName: string) {
+    const name = rawName.trim();
+    const oldName = basename(oldPath);
+    if (!name || name === oldName) {
+      setEditingPath(null);
+      return;
+    }
+    if (name.includes("/")) {
+      toast.danger("Name cannot contain '/'");
+      return;
+    }
+    const dir = dirname(oldPath);
+    const newPath = dir ? `${dir}/${name}` : name;
+    setEditingPath(null);
+    try {
+      await renamePath(projectId, oldPath, newPath);
+      // Reopen affected tabs at their new paths so the user keeps the file
+      // they were just looking at. Done before closing the old paths to
+      // preserve tab focus order.
+      const oldPrefix = oldPath + "/";
+      const reopens: string[] = [];
+      for (const p of openFilesRef.current) {
+        if (p === oldPath) reopens.push(newPath);
+        else if (p.startsWith(oldPrefix)) {
+          reopens.push(newPath + p.slice(oldPath.length));
+        }
+      }
+      closeAffectedTabs(oldPath);
+      for (const p of reopens) openFile(p, { preview: false });
+    } catch (err) {
+      toast.danger(`Rename ${oldPath}: ${err}`);
+    }
+  }
+
+  function openNodeContextMenu(e: React.MouseEvent, node: TreeNode) {
+    e.preventDefault();
+    e.stopPropagation();
+    // VS Code convention: right-click a file → new sibling; right-click a
+    // folder → new child.
+    const parentDir = node.is_dir ? node.id : dirname(node.id);
+    const items: ContextMenuItem[] = [
+      { label: "New File", onSelect: () => startCreate(parentDir, false) },
+      { label: "New Folder", onSelect: () => startCreate(parentDir, true) },
+      { label: "Rename", onSelect: () => startRename(node.id) },
+      { label: "Delete", onSelect: () => void doDelete(node) },
+      { label: "Reveal in Finder", onSelect: () => void doRevealInFinder(node.id) },
+    ];
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  function openBackgroundContextMenu(e: React.MouseEvent) {
+    // Don't fight a node-targeted menu — its handler stops propagation.
+    e.preventDefault();
+    const items: ContextMenuItem[] = [
+      { label: "New File", onSelect: () => startCreate("", false) },
+      { label: "New Folder", onSelect: () => startCreate("", true) },
+    ];
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
   // Row is defined inside the component so it captures the open handlers via
   // closure. react-arborist v3 doesn't pass arbitrary props to the renderer,
   // so this is the cleanest way to thread project-scoped callbacks down.
@@ -143,6 +320,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
       const iconUrl = isDir
         ? iconForFolder(node.data.name, node.isOpen)
         : iconForFile(node.data.name);
+      const isEditing = editingPath === node.data.id;
       return (
         <div
           ref={dragHandle}
@@ -153,6 +331,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
             (node.isSelected ? " selected" : "")
           }
           onClick={(e) => {
+            if (isEditing) return;
             e.stopPropagation();
             if (isDir) {
               node.toggle();
@@ -162,10 +341,12 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
             openPreview(node.data.id);
           }}
           onDoubleClick={(e) => {
+            if (isEditing) return;
             e.stopPropagation();
             if (isDir) return;
             openPinned(node.data.id);
           }}
+          onContextMenu={(e) => openNodeContextMenu(e, node.data)}
           title={node.data.id}
         >
           {/* VS Code / Cursor convention: only directories show a chevron,
@@ -179,15 +360,39 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
           ) : (
             <span className="file-row-icon placeholder" aria-hidden />
           )}
-          <span className="file-row-name">{node.data.name}</span>
+          {isEditing ? (
+            <InlineNameInput
+              initial={node.data.name}
+              onCommit={(name) => void commitRename(node.data.id, name)}
+              onCancel={() => setEditingPath(null)}
+            />
+          ) : (
+            <span className="file-row-name">{node.data.name}</span>
+          )}
         </div>
       );
     },
-    [openPreview, openPinned],
+    // commitRename is recreated each render but the closures it captures
+    // (projectId, openFile) are stable; rebuilding Row on every keystroke
+    // would discard react-arborist's internal selection. We intentionally
+    // exclude it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openPreview, openPinned, editingPath],
   );
 
   return (
-    <div className="file-tree" ref={containerRef}>
+    <div
+      className="file-tree"
+      ref={containerRef}
+      onContextMenu={openBackgroundContextMenu}
+    >
+      {creating && (
+        <CreateRow
+          state={creating}
+          onCommit={commitCreate}
+          onCancel={() => setCreating(null)}
+        />
+      )}
       {error ? (
         <div className="form-error">{error}</div>
       ) : entries.length === 0 && !loading ? (
@@ -206,7 +411,131 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
           {Row}
         </Tree>
       )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function CreateRow({
+  state,
+  onCommit,
+  onCancel,
+}: {
+  state: CreatingState;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Unmount-on-success would otherwise refire onBlur and try to create twice.
+  const settledRef = useRef(false);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+  const commit = (value: string) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCommit(value);
+  };
+  const cancel = () => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCancel();
+  };
+  const where = state.parentDir ? `/${state.parentDir}/` : "/";
+  return (
+    <div className="file-tree-create-row">
+      <span className="file-tree-create-icon">{state.isDir ? "▸" : "·"}</span>
+      <input
+        ref={inputRef}
+        className="file-tree-create-input"
+        placeholder={state.isDir ? "folder name" : "file name"}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit(e.currentTarget.value);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        onKeyUp={(e) => e.stopPropagation()}
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v) commit(v);
+          else cancel();
+        }}
+      />
+      <span className="file-tree-create-where" title={where}>{where}</span>
+    </div>
+  );
+}
+
+function InlineNameInput({
+  initial,
+  onCommit,
+  onCancel,
+}: {
+  initial: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  // The input unmounts both on Enter (commit succeeded; the watcher refresh
+  // remounts a fresh row) and on blur. Without this guard, the unmount-driven
+  // blur would fire a second commit against the now-stale path.
+  const settledRef = useRef(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    // Select the basename without its extension so the typical rename
+    // (changing the stem) doesn't require an extra ⌘-A. Falls back to a
+    // whole-string selection for dotfiles / extension-less names.
+    const dot = initial.lastIndexOf(".");
+    if (dot > 0) el.setSelectionRange(0, dot);
+    else el.select();
+  }, [initial]);
+  const commit = (value: string) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCommit(value);
+  };
+  const cancel = () => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCancel();
+  };
+  return (
+    <input
+      ref={ref}
+      className="file-row-input"
+      defaultValue={initial}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        // react-arborist binds its own type-to-jump / shortcut handlers
+        // (notably ".", arrows, backspace) on the tree container. Stop the
+        // bubble so typing inside the rename input doesn't trigger them.
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit(e.currentTarget.value);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancel();
+        }
+      }}
+      onKeyUp={(e) => e.stopPropagation()}
+      onBlur={(e) => commit(e.target.value)}
+    />
   );
 }
 
@@ -247,4 +576,14 @@ function buildTree(entries: FileEntry[]): TreeNode[] {
   };
   sortNode(roots);
   return roots;
+}
+
+function basename(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+function dirname(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx >= 0 ? path.slice(0, idx) : "";
 }

@@ -16,12 +16,7 @@ import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
-import {
-  openInExternalEditor,
-  readFile,
-  revealInFinder,
-  writeFile,
-} from "../lib/ipc";
+import { readFile, writeFile } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
 import type { EditorGotoDetail } from "../lib/fileLinkProvider";
@@ -330,39 +325,9 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const loaded = fileState?.loaded ?? false;
   const value = fileState?.value ?? "";
   const isBinary = fileState?.isBinary ?? false;
-  const absPath = selectedFilePath && repoPath ? `${repoPath}/${selectedFilePath}` : null;
-
-  async function onOpenInEditor() {
-    if (!absPath) return;
-    try {
-      await openInExternalEditor({ path: absPath, editor: null });
-    } catch (err) {
-      toast.danger(`Open in editor failed: ${err}`);
-    }
-  }
-
-  async function onRevealInFinder() {
-    if (!absPath) return;
-    try {
-      await revealInFinder(absPath);
-    } catch (err) {
-      toast.danger(`Reveal in Finder failed: ${err}`);
-    }
-  }
 
   return (
     <div className="editor-panel">
-      {selectedFilePath && (
-        <div className="editor-viewer-header">
-          <span className="editor-viewer-path">{selectedFilePath}</span>
-          <button type="button" onClick={onOpenInEditor} className="editor-viewer-action">
-            Open in editor
-          </button>
-          <button type="button" onClick={onRevealInFinder} className="editor-viewer-action">
-            Reveal in Finder
-          </button>
-        </div>
-      )}
       {externalChange && (
         <div className="editor-warning">
           File changed on disk while you were editing.

@@ -424,6 +424,51 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("write task: {e}")))?
     }
 
+    /// Delete a file or directory inside the repo. Directories are removed
+    /// recursively. Path traversal escaping the repo is rejected.
+    pub async fn delete_path(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || delete_repo_path(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("delete task: {e}")))?
+    }
+
+    /// Rename / move a file or directory within the repo. Both endpoints must
+    /// stay inside the repo. The destination must not already exist.
+    pub async fn rename_path(
+        &self,
+        project_id: String,
+        from_path: String,
+        to_path: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || rename_repo_path(&repo, from_path, to_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("rename task: {e}")))?
+    }
+
+    /// Create a new empty file (`is_dir = false`) or directory (`is_dir = true`)
+    /// inside the repo. Parent directories are created on demand. Fails if the
+    /// target already exists.
+    pub async fn create_path(
+        &self,
+        project_id: String,
+        file_path: String,
+        is_dir: bool,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || create_repo_path(&repo, file_path, is_dir))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("create task: {e}")))?
+    }
+
     /// List unstaged working-tree changes (modified, deleted, untracked).
     /// Staged-only changes are filtered out — the "Changes" panel reflects
     /// what you'd see in `git diff` without `--cached`.
@@ -1592,6 +1637,67 @@ fn write_repo_file(repo: &Utf8Path, file_path: String, contents: String) -> Resu
     let abs = resolve_under_repo(repo, &file_path)?;
     std::fs::write(&abs, contents.as_bytes())
         .map_err(|e| IpcError::BadInput(format!("write {}: {e}", file_path)))?;
+    Ok(())
+}
+
+fn delete_repo_path(repo: &Utf8Path, file_path: String) -> Result<(), IpcError> {
+    if file_path.is_empty() {
+        return Err(IpcError::BadInput("path is empty".into()));
+    }
+    let abs = resolve_under_repo(repo, &file_path)?;
+    let meta = std::fs::symlink_metadata(&abs)
+        .map_err(|e| IpcError::BadInput(format!("stat {}: {e}", file_path)))?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(&abs)
+            .map_err(|e| IpcError::BadInput(format!("delete dir {}: {e}", file_path)))?;
+    } else {
+        std::fs::remove_file(&abs)
+            .map_err(|e| IpcError::BadInput(format!("delete {}: {e}", file_path)))?;
+    }
+    Ok(())
+}
+
+fn rename_repo_path(
+    repo: &Utf8Path,
+    from_path: String,
+    to_path: String,
+) -> Result<(), IpcError> {
+    if from_path.is_empty() || to_path.is_empty() {
+        return Err(IpcError::BadInput("path is empty".into()));
+    }
+    if from_path == to_path {
+        return Ok(());
+    }
+    let from_abs = resolve_under_repo(repo, &from_path)?;
+    let to_abs = resolve_under_repo(repo, &to_path)?;
+    if to_abs.exists() {
+        return Err(IpcError::BadInput(format!("destination exists: {}", to_path)));
+    }
+    std::fs::rename(&from_abs, &to_abs)
+        .map_err(|e| IpcError::BadInput(format!("rename {} → {}: {e}", from_path, to_path)))?;
+    Ok(())
+}
+
+fn create_repo_path(repo: &Utf8Path, file_path: String, is_dir: bool) -> Result<(), IpcError> {
+    if file_path.is_empty() {
+        return Err(IpcError::BadInput("path is empty".into()));
+    }
+    let abs = resolve_under_repo(repo, &file_path)?;
+    if abs.exists() {
+        return Err(IpcError::BadInput(format!("already exists: {}", file_path)));
+    }
+    if is_dir {
+        std::fs::create_dir(&abs)
+            .map_err(|e| IpcError::BadInput(format!("create dir {}: {e}", file_path)))?;
+    } else {
+        // `create_new` so a race with another writer fails loudly rather than
+        // truncating their file.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&abs)
+            .map_err(|e| IpcError::BadInput(format!("create {}: {e}", file_path)))?;
+    }
     Ok(())
 }
 

@@ -93,6 +93,21 @@ export const readFile = (
 export const writeFile = (request: WriteFileRequest): Promise<void> =>
   invoke("write_file", { request });
 
+export const deletePath = (projectId: string, filePath: string): Promise<void> =>
+  invoke("delete_path", { projectId, filePath });
+
+export const renamePath = (
+  projectId: string,
+  fromPath: string,
+  toPath: string,
+): Promise<void> => invoke("rename_path", { projectId, fromPath, toPath });
+
+export const createPath = (
+  projectId: string,
+  filePath: string,
+  isDir: boolean,
+): Promise<void> => invoke("create_path", { projectId, filePath, isDir });
+
 export const gitStatus = (projectId: string): Promise<GitFileChange[]> =>
   invoke("git_status", { projectId });
 

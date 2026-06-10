@@ -2385,6 +2385,60 @@ textarea.native-input {
   color: var(--muted);
 }
 
+.file-row-input {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font: inherit;
+  outline: none;
+}
+
+.file-tree-create-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(var(--highlight-rgb), 0.04);
+}
+
+.file-tree-create-icon {
+  width: 16px;
+  flex: 0 0 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.file-tree-create-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  font: inherit;
+  outline: none;
+}
+
+.file-tree-create-where {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
 .manual-terminal-host {
   position: absolute;
   inset: 0;
@@ -2597,50 +2651,6 @@ textarea.native-input {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-}
-
-.editor-viewer-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2, rgba(var(--highlight-rgb), 0.02));
-  font-size: 11px;
-}
-
-.editor-viewer-path {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--fg);
-}
-
-.editor-viewer-badge {
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(var(--highlight-rgb), 0.08);
-  color: var(--fg-dim, rgba(var(--highlight-rgb), 0.6));
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.editor-viewer-action {
-  padding: 2px 8px;
-  font-size: 11px;
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.editor-viewer-action:hover {
-  background: rgba(var(--highlight-rgb), 0.05);
 }
 
 .editor-warning {

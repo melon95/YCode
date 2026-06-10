@@ -239,6 +239,47 @@ pub async fn write_file(
 }
 
 #[tauri::command]
+pub async fn delete_path(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .delete_path(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rename_path(
+    state: State<'_, AppState>,
+    project_id: String,
+    from_path: String,
+    to_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .rename_path(project_id, from_path, to_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_path(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+    is_dir: bool,
+) -> Result<(), String> {
+    state
+        .service
+        .create_path(project_id, file_path, is_dir)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn git_status(
     state: State<'_, AppState>,
     project_id: String,
