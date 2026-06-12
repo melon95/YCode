@@ -42,7 +42,23 @@ interface MaterialIconsManifest {
   fileNames: Record<string, string>;
   folderNames: Record<string, string>;
   folderNamesExpanded: Record<string, string>;
+  languageIds: Record<string, string>;
 }
+
+// material-icon-theme leaves a handful of common extensions out of
+// `fileExtensions` on purpose — VS Code resolves them through its built-in
+// language registrations (`typescript`, `javascript`, `html`, …) and the
+// manifest only carries the language-id → icon side. We don't have VS Code's
+// ext→language detector, so map the obvious gaps by hand. Anything not on
+// this short list will continue to fall through to the default file icon.
+const EXT_TO_LANGUAGE: Record<string, string> = {
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  js: "javascript",
+  cjs: "javascript",
+  html: "html",
+};
 
 /// Resolve the icon URL for a file. `name` is the basename (e.g. `index.ts`).
 export function iconForFile(name: string): string | null {
@@ -52,12 +68,19 @@ export function iconForFile(name: string): string | null {
 
   // Try progressively shorter extensions: `index.test.tsx` → tries `test.tsx`
   // then `tsx`. material-icon-theme registers compound extensions for some
-  // file types (e.g. test files, story files).
+  // file types (e.g. test files, story files). When `fileExtensions` misses,
+  // probe the language-id fallback (covers .ts/.js/.html which the manifest
+  // routes through VS Code's language registry).
   const parts = lower.split(".");
   for (let i = 1; i < parts.length; i++) {
     const ext = parts.slice(i).join(".");
     const byExt = m.fileExtensions[ext];
     if (byExt) return URL_BY_NAME[byExt] ?? null;
+    const lang = EXT_TO_LANGUAGE[ext];
+    if (lang) {
+      const byLang = m.languageIds[lang];
+      if (byLang) return URL_BY_NAME[byLang] ?? null;
+    }
   }
   return URL_BY_NAME[DEFAULT_FILE] ?? null;
 }
