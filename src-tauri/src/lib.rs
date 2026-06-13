@@ -243,6 +243,43 @@ fn ensure_main_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Render a string as an AppleScript string literal: wrap in quotes, escape
+/// backslashes/quotes, and turn newlines into `return` so multi-line messages
+/// display on separate lines.
+#[cfg(target_os = "macos")]
+fn applescript_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\" & return & \""),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Surface a fatal startup error to the user instead of aborting with a scary
+/// OS crash report. Always logs to stderr; on macOS also shows a native modal
+/// via `osascript` — a separate process, so it works before the Tauri event
+/// loop is running and can't deadlock the main thread. Callers exit afterward.
+fn show_fatal_dialog(msg: &str) {
+    eprintln!("FATAL: {msg}");
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display dialog {} with title \"YCode\" buttons {{\"OK\"}} default button \"OK\" with icon stop",
+            applescript_string(msg)
+        );
+        let _ = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .status();
+    }
+}
+
 pub fn run() {
     augment_path();
 
@@ -312,8 +349,28 @@ pub fn run() {
                 app.set_menu(menu)?;
             }
 
-            let state = tauri::async_runtime::block_on(AppState::initialize())
-                .expect("failed to initialize ycode backend");
+            // A failed backend init used to `.expect()` here, which aborts the
+            // process and leaves the user staring at a macOS crash report. The
+            // common triggers are recoverable-by-the-user: an older YCode build
+            // opening a DB a newer build already migrated (migration mismatch),
+            // or two instances racing the DB at first launch. Surface a readable
+            // dialog and exit cleanly instead of crashing.
+            let state = match tauri::async_runtime::block_on(AppState::initialize()) {
+                Ok(state) => state,
+                Err(e) => {
+                    tracing::error!(error = ?e, "backend init failed");
+                    let detail = format!("{e:#}");
+                    let mut msg = format!("YCode couldn't start its backend.\n\n{detail}");
+                    if detail.contains("migration") {
+                        msg.push_str(
+                            "\n\nThe app database was likely created by a newer version of YCode. \
+                             Please download and install the latest version, then try again.",
+                        );
+                    }
+                    show_fatal_dialog(&msg);
+                    std::process::exit(1);
+                }
+            };
 
             // One-time silent migration for users on older ycode builds whose
             // ~/.claude/settings.json still has `idle_prompt` in the
