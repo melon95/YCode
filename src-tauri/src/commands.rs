@@ -11,9 +11,9 @@ use ycode_config::agent_patcher::{
 };
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, OpenInExternalEditorRequest,
-    ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest,
-    UnifiedEvent, WriteFileRequest, WritePtyRequest,
+    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, LspManifestView,
+    OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
+    SessionView, SpawnPtyRequest, UnifiedEvent, WriteFileRequest, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -518,6 +518,108 @@ pub fn set_active_terminal(state: State<'_, AppState>, session_id: Option<String
 /// Fire a one-off OS notification so the user can confirm the system
 /// notification channel works (and, on macOS, get the first-launch permission
 /// prompt out of the way before relying on real agent events).
+// ── Language server install / uninstall ────────────────────────────────────
+
+#[tauri::command]
+pub async fn lsp_list_manifests(
+    state: State<'_, AppState>,
+) -> Result<Vec<LspManifestView>, String> {
+    state
+        .service
+        .lsp_list_manifests()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_install(state: State<'_, AppState>, server_id: String) -> Result<(), String> {
+    state
+        .service
+        .lsp_install(server_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_uninstall(state: State<'_, AppState>, server_id: String) -> Result<(), String> {
+    state
+        .service
+        .lsp_uninstall(server_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_did_open(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+    content: String,
+    version: i64,
+) -> Result<bool, String> {
+    state
+        .service
+        .lsp_did_open(project_id, file_path, content, version)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_did_change(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+    version: i64,
+    content: String,
+) -> Result<bool, String> {
+    state
+        .service
+        .lsp_did_change(project_id, file_path, version, content)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_did_close(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .lsp_did_close(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_definition(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+    line: u32,
+    character: u32,
+) -> Result<serde_json::Value, String> {
+    state
+        .service
+        .lsp_definition(project_id, file_path, line, character)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lsp_semantic_tokens_full(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    state
+        .service
+        .lsp_semantic_tokens_full(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn test_notification(app: tauri::AppHandle) -> Result<(), String> {
     app.notification()

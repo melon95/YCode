@@ -16,15 +16,19 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use ycode_config::{AgentLaunchProfile, Config};
-use ycode_persist::{Db, NewProject, NewSession, PersistError};
+use ycode_lsp::{
+    builtin_manifests, manifest_by_id, path_to_file_uri, InstallSpec, LspManager,
+    NotificationSink, ServerNotification,
+};
+use ycode_persist::{Db, NewLspInstallation, NewProject, NewSession, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
     notify_listener, AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
-    OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
-    SessionView, SpawnPtyRequest, UiEvent, UiEventKind, UnifiedEvent, WriteFileRequest,
-    WritePtyRequest,
+    LspManifestView, OpenInExternalEditorRequest, ProjectView,
+    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest, UiEvent,
+    UiEventKind, UnifiedEvent, WriteFileRequest, WritePtyRequest,
 };
 use ycode_introspect::scanner;
 
@@ -43,6 +47,8 @@ pub struct Service {
     /// Set of agent ids whose `command` was found on PATH at startup. Other
     /// agents are surfaced to the UI as `available: false`.
     available_agents: RwLock<std::collections::HashSet<String>>,
+    /// Per-project LSP fleet. Spawned lazily on the first `lsp_did_open`.
+    lsp: Arc<LspManager>,
     /// Fan-in of all per-session terminal streams + membership events.
     /// Subscribers are typically the Tauri shell's emit task.
     ui_bus: broadcast::Sender<UiEvent>,
@@ -67,6 +73,22 @@ impl Service {
         let available = compute_available_agents(&config);
         let (tx, _) = broadcast::channel(UI_BUS_CAPACITY);
         let shutdown = CancellationToken::new();
+        // The LSP client crate doesn't depend on `ycode-ipc`, so we hand it
+        // a closure that knows how to translate `ServerNotification` into a
+        // `UiEvent`. Keeps the dependency edge one-way.
+        let bus_for_sink = tx.clone();
+        let sink: NotificationSink = Arc::new(move |server_id: &str, notif: ServerNotification| {
+            match notif {
+                ServerNotification::PublishDiagnostics { uri, params } => {
+                    let _ = bus_for_sink.send(UiEvent::lsp_diagnostics(
+                        server_id.to_string(),
+                        uri,
+                        params,
+                    ));
+                }
+            }
+        });
+        let lsp = Arc::new(LspManager::new(db.clone(), sink));
         // Start the notify listener inside the current tokio runtime. Bind
         // failure (or non-Unix targets) returns `None` and disables
         // completion notifications without aborting startup.
@@ -85,6 +107,7 @@ impl Service {
             terminals: Arc::new(TerminalManager::new()),
             config: RwLock::new(config),
             available_agents: RwLock::new(available),
+            lsp,
             ui_bus: tx,
             shutdown,
             workspace_watchers: RwLock::new(std::collections::HashMap::new()),
@@ -109,6 +132,14 @@ impl Service {
     /// next `select!` poll. Idempotent.
     pub fn shutdown(&self) {
         self.shutdown.cancel();
+    }
+
+    /// Async shutdown — like [`shutdown`](Self::shutdown) but also drains the
+    /// LSP fleet so we send `shutdown`/`exit` to each server instead of
+    /// relying solely on `kill_on_drop` when the app quits.
+    pub async fn shutdown_async(&self) {
+        self.shutdown.cancel();
+        self.lsp.shutdown_all().await;
     }
 
     pub async fn list_agents(&self) -> Vec<AgentProfileView> {
@@ -799,6 +830,240 @@ impl Service {
             kind: UiEventKind::SessionTouched,
         });
         Ok(view)
+    }
+
+    // ── Language server lifecycle (PR1: install / uninstall) ───────────────
+
+    /// Snapshot of every built-in manifest merged with the user's local install
+    /// state. The Settings → Languages page renders one card per entry.
+    pub async fn lsp_list_manifests(&self) -> Result<Vec<LspManifestView>, IpcError> {
+        let installed = self.db.lsp_installations().list().await?;
+        let installed_by_id: std::collections::HashMap<String, _> =
+            installed.into_iter().map(|row| (row.id.clone(), row)).collect();
+
+        let mut out = Vec::new();
+        for manifest in builtin_manifests() {
+            let platform_supported = match &manifest.install {
+                InstallSpec::GithubReleaseGzip { assets, .. } => {
+                    assets.for_current_platform().is_some()
+                }
+                // npm-based installers are portable across all platforms we
+                // build for — the requirement check (`npm` on PATH) is what
+                // gates them, not the platform itself.
+                InstallSpec::Npm { .. } => true,
+            };
+            let requirement_message = lsp_requirement_message(&manifest.install);
+            let installation = installed_by_id.get(&manifest.id).cloned().map(Into::into);
+            out.push(LspManifestView {
+                manifest,
+                installation,
+                platform_supported,
+                requirement_message,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Start an install in the background. Returns as soon as the task is
+    /// spawned; progress + completion arrive on the UI bus as
+    /// `LspInstallProgress` / `LspInstallFinished` events.
+    pub async fn lsp_install(&self, server_id: String) -> Result<(), IpcError> {
+        let manifest = manifest_by_id(&server_id)
+            .ok_or_else(|| ycode_lsp::LspError::UnknownServer(server_id.clone()))?;
+
+        let bus = self.ui_bus.clone();
+        let db = self.db.clone();
+        let cancel = self.shutdown.clone();
+        tokio::spawn(async move {
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<ycode_lsp::InstallProgress>(32);
+
+            // Pump per-step progress onto the UI bus until the installer drops
+            // its sender.
+            let bus_for_pump = bus.clone();
+            let pump = tokio::spawn(async move {
+                while let Some(progress) = rx.recv().await {
+                    let _ = bus_for_pump.send(UiEvent::lsp_install_progress(progress));
+                }
+            });
+
+            let outcome = tokio::select! {
+                _ = cancel.cancelled() => Err(ycode_lsp::LspError::InstallCommand(
+                    "install".into(),
+                    "cancelled".into(),
+                )),
+                result = ycode_lsp::install(&manifest, tx) => result,
+            };
+
+            // Drop the sender's other half via task join so the pump exits.
+            let _ = pump.await;
+
+            match outcome {
+                Ok(record) => {
+                    if let Err(e) = db
+                        .lsp_installations()
+                        .upsert(NewLspInstallation {
+                            id: record.server_id.clone(),
+                            version: record.version.clone(),
+                            binary_path: record.binary_path,
+                        })
+                        .await
+                    {
+                        warn!(server_id = %record.server_id, error = %e, "persist lsp install failed");
+                        let _ = bus.send(UiEvent::lsp_install_failed(
+                            record.server_id,
+                            format!("persist: {e}"),
+                        ));
+                        return;
+                    }
+                    let _ = bus.send(UiEvent::lsp_install_finished(
+                        record.server_id,
+                        record.version,
+                    ));
+                }
+                Err(e) => {
+                    warn!(server_id = %server_id, error = %e, "lsp install failed");
+                    let _ = bus.send(UiEvent::lsp_install_failed(server_id, e.to_string()));
+                }
+            }
+        });
+        Ok(())
+    }
+
+    /// Remove the install directory and forget the DB row. Idempotent.
+    pub async fn lsp_uninstall(&self, server_id: String) -> Result<(), IpcError> {
+        if manifest_by_id(&server_id).is_none() {
+            return Err(ycode_lsp::LspError::UnknownServer(server_id).into());
+        }
+        ycode_lsp::uninstall(&server_id).await?;
+        self.db.lsp_installations().delete(&server_id).await?;
+        let _ = self.ui_bus.send(UiEvent::lsp_uninstalled(server_id));
+        Ok(())
+    }
+
+    // ── Language server document sync + queries (PR2) ──────────────────────
+
+    /// Open a document with the appropriate language server. Returns `true`
+    /// iff a server is actually handling the file (manifest matched + server
+    /// installed). Errors only on hard failures — "no manifest" / "not
+    /// installed" are silent `Ok(false)` so the editor can call this on
+    /// every open without sprinkling try/catch.
+    pub async fn lsp_did_open(
+        &self,
+        project_id: String,
+        file_path: String,
+        content: String,
+        version: i64,
+    ) -> Result<bool, IpcError> {
+        let Some((session, uri, language_id)) = self
+            .lsp_session_for(&project_id, &file_path)
+            .await?
+        else {
+            return Ok(false);
+        };
+        session
+            .did_open(&uri, &language_id, version, &content)
+            .await?;
+        Ok(true)
+    }
+
+    pub async fn lsp_did_change(
+        &self,
+        project_id: String,
+        file_path: String,
+        version: i64,
+        content: String,
+    ) -> Result<bool, IpcError> {
+        // Don't spawn on `didChange` — if the editor never sent `didOpen`,
+        // there's nothing to update. Look up by file routing instead.
+        let Some(manifest) = LspManager::manifest_for_file(&file_path) else {
+            return Ok(false);
+        };
+        let Some(session) = self.lsp.get(&project_id, &manifest.id).await else {
+            return Ok(false);
+        };
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        let abs = repo.as_std_path().join(&file_path);
+        let uri = path_to_file_uri(&abs);
+        session.did_change_full(&uri, version, &content).await?;
+        Ok(true)
+    }
+
+    pub async fn lsp_did_close(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<(), IpcError> {
+        let Some(manifest) = LspManager::manifest_for_file(&file_path) else {
+            return Ok(());
+        };
+        let Some(session) = self.lsp.get(&project_id, &manifest.id).await else {
+            return Ok(());
+        };
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        let abs = repo.as_std_path().join(&file_path);
+        let uri = path_to_file_uri(&abs);
+        session.did_close(&uri).await?;
+        Ok(())
+    }
+
+    /// `textDocument/definition`. Returns the raw LSP payload — either a
+    /// `Location`, `Location[]`, or `LocationLink[]`. The frontend already
+    /// understands all three so we forward instead of normalising.
+    pub async fn lsp_definition(
+        &self,
+        project_id: String,
+        file_path: String,
+        line: u32,
+        character: u32,
+    ) -> Result<serde_json::Value, IpcError> {
+        let Some((session, uri, _)) = self.lsp_session_for(&project_id, &file_path).await? else {
+            return Ok(serde_json::Value::Null);
+        };
+        Ok(session.definition(&uri, line, character).await?)
+    }
+
+    /// `textDocument/semanticTokens/full`. Forwarded raw — the frontend maps
+    /// the pinned token type legend (`ycode_lsp::TOKEN_TYPES`) to CSS classes.
+    pub async fn lsp_semantic_tokens_full(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<serde_json::Value, IpcError> {
+        let Some((session, uri, _)) = self.lsp_session_for(&project_id, &file_path).await? else {
+            return Ok(serde_json::Value::Null);
+        };
+        Ok(session.semantic_tokens_full(&uri).await?)
+    }
+
+    /// Helper: spawn-or-return the session that should drive `file_path`.
+    /// `Ok(None)` means "no LSP for this file" — either extension isn't
+    /// covered by any manifest, or the matching server isn't installed.
+    async fn lsp_session_for(
+        &self,
+        project_id: &str,
+        file_path: &str,
+    ) -> Result<Option<(Arc<ycode_lsp::LspSession>, String, String)>, IpcError> {
+        let Some(manifest) = LspManager::manifest_for_file(file_path) else {
+            return Ok(None);
+        };
+        let project = self.db.projects().get(project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        let abs = repo.as_std_path().join(file_path);
+        let uri = path_to_file_uri(&abs);
+        let language_id = LspManager::language_id_for(&manifest, file_path).to_string();
+        match self
+            .lsp
+            .get_or_spawn(project_id, repo.as_std_path(), manifest)
+            .await
+        {
+            Ok(session) => Ok(Some((session, uri, language_id))),
+            // Not installed → silent skip. Caller treats as "no LSP for this
+            // file" and the editor keeps working without LSP features.
+            Err(ycode_lsp::LspError::UnknownServer(_)) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn spawn_pty(
@@ -2312,6 +2577,31 @@ mod tests {
     }
 }
 
+/// External-tool gating message for an `InstallSpec`. `None` means "no
+/// prerequisites the user needs to install themselves" — the UI shows the
+/// install button as fully enabled.
+fn lsp_requirement_message(spec: &InstallSpec) -> Option<String> {
+    match spec {
+        InstallSpec::GithubReleaseGzip { .. } => None,
+        InstallSpec::Npm { .. } => {
+            if std::env::var_os("PATH")
+                .map(|paths| {
+                    std::env::split_paths(&paths).any(|d| {
+                        d.join("npm").is_file()
+                            || d.join("npm.cmd").is_file()
+                            || d.join("npm.exe").is_file()
+                    })
+                })
+                .unwrap_or(false)
+            {
+                None
+            } else {
+                Some("Requires npm on PATH. Install Node.js first.".into())
+            }
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum IpcError {
     #[error("unknown agent profile `{0}`")]
@@ -2337,4 +2627,7 @@ pub enum IpcError {
 
     #[error("config: {0}")]
     Config(#[from] ycode_config::ConfigError),
+
+    #[error("lsp: {0}")]
+    Lsp(#[from] ycode_lsp::LspError),
 }

@@ -1,0 +1,25 @@
+[package]
+name = "ycode-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Language Server lifecycle — manifest registry, installer, and per-project LSP client sessions."
+
+[dependencies]
+ycode-persist.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "process", "io-util", "sync", "rt", "macros"] }
+tracing.workspace = true
+camino.workspace = true
+directories.workspace = true
+ts-rs.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+futures-util = "0.3"
+flate2 = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { workspace = true, features = ["full", "test-util"] }

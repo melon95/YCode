@@ -6,6 +6,7 @@ members = [
     "crates/ycode-config",
     "crates/ycode-ipc",
     "crates/ycode-introspect",
+    "crates/ycode-lsp",
     "crates/ycode-notify",
     "src-tauri",
 ]
@@ -60,6 +61,7 @@ ycode-persist = { path = "crates/ycode-persist" }
 ycode-config = { path = "crates/ycode-config" }
 ycode-ipc = { path = "crates/ycode-ipc" }
 ycode-introspect = { path = "crates/ycode-introspect" }
+ycode-lsp = { path = "crates/ycode-lsp" }
 
 [profile.dev]
 opt-level = 0

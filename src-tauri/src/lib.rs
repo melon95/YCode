@@ -440,6 +440,14 @@ pub fn run() {
             commands::agent_uninstall_hook,
             commands::set_active_terminal,
             commands::test_notification,
+            commands::lsp_list_manifests,
+            commands::lsp_install,
+            commands::lsp_uninstall,
+            commands::lsp_did_open,
+            commands::lsp_did_change,
+            commands::lsp_did_close,
+            commands::lsp_definition,
+            commands::lsp_semantic_tokens_full,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

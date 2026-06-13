@@ -1912,6 +1912,224 @@ body {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* ── Languages (LSP) ──────────────────────────────────────────────────── */
+
+.languages-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  max-width: 640px;
+}
+
+.lsp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lsp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.lsp-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lsp-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lsp-card-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.lsp-card-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--subtle);
+}
+
+.lsp-card-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lsp-card-badge.installed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.lsp-card-badge.installing {
+  border-color: var(--rule-strong);
+  color: var(--text);
+}
+
+.lsp-card-description {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.lsp-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--subtle);
+}
+.lsp-card-meta-label {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-size: 10px;
+  font-weight: 600;
+}
+.lsp-card-ext {
+  padding: 1px 6px;
+  background: var(--panel-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text);
+}
+
+.lsp-card-warning {
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--rule-strong);
+  background: var(--panel-sunken);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lsp-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lsp-card-progress-bar {
+  height: 4px;
+  background: var(--panel-sunken);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.lsp-card-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width var(--duration-fast) var(--ease-out);
+}
+.lsp-card-progress-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.lsp-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lsp-card-link {
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.lsp-card-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ── Editor: LSP semantic token decorations ──────────────────────────── */
+
+/* CodeMirror's lang packages already colour keywords, strings, comments, etc.
+   These rules layer the *semantic* information from the LSP on top — same
+   visual style, but tied to the symbol's actual role (function vs method
+   vs property) instead of textual heuristics. Colours are pulled from the
+   theme palette so every active ycode theme picks them up for free.
+
+   The class names line up with `LSP_TOKEN_TYPES` in `src/lib/lspExtension.ts`
+   and the Rust legend in `crates/ycode-lsp/src/client.rs:TOKEN_TYPES`. */
+
+.cm-editor .lsp-token-keyword,
+.cm-editor .lsp-token-modifier {
+  color: var(--syntax-keyword, #c586c0);
+  font-weight: 500;
+}
+.cm-editor .lsp-token-comment {
+  color: var(--syntax-comment, #6a9955);
+  font-style: italic;
+}
+.cm-editor .lsp-token-string {
+  color: var(--syntax-string, #ce9178);
+}
+.cm-editor .lsp-token-number,
+.cm-editor .lsp-token-regexp {
+  color: var(--syntax-number, #b5cea8);
+}
+.cm-editor .lsp-token-type,
+.cm-editor .lsp-token-class,
+.cm-editor .lsp-token-enum,
+.cm-editor .lsp-token-interface,
+.cm-editor .lsp-token-struct,
+.cm-editor .lsp-token-typeParameter {
+  color: var(--syntax-type, #4ec9b0);
+}
+.cm-editor .lsp-token-function,
+.cm-editor .lsp-token-method,
+.cm-editor .lsp-token-macro {
+  color: var(--syntax-function, #dcdcaa);
+}
+.cm-editor .lsp-token-variable,
+.cm-editor .lsp-token-parameter,
+.cm-editor .lsp-token-property,
+.cm-editor .lsp-token-enumMember {
+  color: var(--syntax-variable, #9cdcfe);
+}
+.cm-editor .lsp-token-namespace {
+  color: var(--syntax-namespace, #4ec9b0);
+}
+.cm-editor .lsp-token-operator {
+  color: var(--syntax-operator, #d4d4d4);
+}
+.cm-editor .lsp-token-decorator,
+.cm-editor .lsp-token-event {
+  color: var(--syntax-decorator, #dcdcaa);
+}
+
+/* ⌘/Ctrl-hover goto-def affordance: underline the word + show the link
+   cursor so the user knows a modified click will jump to definition. */
+.cm-editor .cm-lsp-goto-link {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
 .settings-footer {
   display: flex;
   align-items: center;

@@ -72,6 +72,22 @@ export type { ToolStatus } from "@bindings/ToolStatus";
 export type { PlanStep } from "@bindings/PlanStep";
 export type { DiffSummary } from "@bindings/DiffSummary";
 
+export type { ServerManifest } from "@bindings/ServerManifest";
+export type { InstallSpec } from "@bindings/InstallSpec";
+export type { AssetPattern } from "@bindings/AssetPattern";
+export type { CommandSpec } from "@bindings/CommandSpec";
+export type { InstallStage } from "@bindings/InstallStage";
+
+import type { LspManifestView as RawLspManifestView } from "@bindings/LspManifestView";
+import type { LspInstallationView as RawLspInstallationView } from "@bindings/LspInstallationView";
+
+export type LspInstallationView = Omit<RawLspInstallationView, "installed_at_ms"> & {
+  installed_at_ms: number;
+};
+export type LspManifestView = Omit<RawLspManifestView, "installation"> & {
+  installation: LspInstallationView | null;
+};
+
 /// Lowercased status label used as a CSS modifier (`.dot.running` etc.).
 export type StatusLabel = "running" | "exited" | "error";
 

@@ -26,13 +26,20 @@ import type { ConfigView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
 import { AgentsSettings } from "./AgentsSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { LanguagesSettings } from "./LanguagesSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 
-type SectionId = "agents" | "appearance" | "notifications" | "updates";
+type SectionId =
+  | "agents"
+  | "appearance"
+  | "languages"
+  | "notifications"
+  | "updates";
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: "agents", label: "Agents" },
   { id: "appearance", label: "Appearance" },
+  { id: "languages", label: "Languages" },
   { id: "notifications", label: "Notifications" },
   { id: "updates", label: "Updates" },
 ];
@@ -205,6 +212,7 @@ export function SettingsModal({ open, onClose }: Props) {
                         onChange={setStaged}
                       />
                     )}
+                    {section === "languages" && <LanguagesSettings />}
                     {section === "notifications" && (
                       <NotificationsSettings
                         config={staged}

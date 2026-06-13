@@ -9,6 +9,7 @@ description = "Typed Tauri command/event surface — protocol between ycode core
 [dependencies]
 ycode-config.workspace = true
 ycode-introspect.workspace = true
+ycode-lsp.workspace = true
 ycode-persist.workspace = true
 ycode-terminal.workspace = true
 base64 = "0.22"

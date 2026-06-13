@@ -5,7 +5,9 @@
 //! pane regardless of which broadcast channel the shell uses internally.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use ts_rs::TS;
+use ycode_lsp::{InstallProgress, InstallStage};
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -67,6 +69,33 @@ pub enum UiEventKind {
         /// body.
         body_preview: Option<String>,
     },
+    /// Progress update from an in-flight LSP install. `session_id` carries
+    /// the manifest id so the Settings card can correlate. Streamed by the
+    /// installer through the same broadcast bus as everything else.
+    LspInstallProgress {
+        stage: InstallStage,
+        percent: Option<u8>,
+        message: String,
+    },
+    /// Terminal events for an LSP install. `outcome` reports the version
+    /// label on success, or the error string on failure. The Settings UI
+    /// uses this to refresh `lsp_list_manifests` and surface a toast.
+    LspInstallFinished {
+        ok: bool,
+        version: Option<String>,
+        error: Option<String>,
+    },
+    /// Server was uninstalled — UI should refresh its list.
+    LspUninstalled,
+    /// `textDocument/publishDiagnostics` passed through from a running
+    /// language server. `params` is the raw LSP payload — the frontend
+    /// decides how (or whether) to render it.
+    LspDiagnostics {
+        server_id: String,
+        uri: String,
+        #[ts(type = "unknown")]
+        params: Value,
+    },
 }
 
 impl UiEvent {
@@ -120,6 +149,59 @@ impl UiEvent {
                 source: source.into(),
                 event_kind: event_kind.into(),
                 body_preview,
+            },
+        }
+    }
+
+    pub fn lsp_install_progress(progress: InstallProgress) -> Self {
+        Self {
+            session_id: progress.server_id,
+            kind: UiEventKind::LspInstallProgress {
+                stage: progress.stage,
+                percent: progress.percent,
+                message: progress.message,
+            },
+        }
+    }
+
+    pub fn lsp_install_finished(server_id: impl Into<String>, version: String) -> Self {
+        Self {
+            session_id: server_id.into(),
+            kind: UiEventKind::LspInstallFinished {
+                ok: true,
+                version: Some(version),
+                error: None,
+            },
+        }
+    }
+
+    pub fn lsp_install_failed(server_id: impl Into<String>, error: String) -> Self {
+        Self {
+            session_id: server_id.into(),
+            kind: UiEventKind::LspInstallFinished {
+                ok: false,
+                version: None,
+                error: Some(error),
+            },
+        }
+    }
+
+    pub fn lsp_uninstalled(server_id: impl Into<String>) -> Self {
+        Self {
+            session_id: server_id.into(),
+            kind: UiEventKind::LspUninstalled,
+        }
+    }
+
+    pub fn lsp_diagnostics(server_id: String, uri: String, params: Value) -> Self {
+        Self {
+            // No good "owner" id for an unsolicited server push — route by
+            // server_id so the frontend can fan-out to the right editor.
+            session_id: server_id.clone(),
+            kind: UiEventKind::LspDiagnostics {
+                server_id,
+                uri,
+                params,
             },
         }
     }

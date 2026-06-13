@@ -32,6 +32,12 @@ pub use ycode_introspect::{
     DiffSummary, PlanStep, ToolStatus, UnifiedEvent, UnifiedEventKind, UnifiedRole,
 };
 
+// LSP types — same idea: the Tauri shell talks to them through the IPC
+// crate so the binding directory stays the single source of truth.
+pub use ycode_lsp::{
+    AssetPattern, CommandSpec, InstallProgress, InstallSpec, InstallStage, ServerManifest,
+};
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use ycode_config::{AgentLaunchProfile, FontSizes, NotificationSettings};
@@ -480,4 +486,40 @@ pub struct SearchHit {
     pub seq: u64,
     pub ts_ms: i64,
     pub preview: String,
+}
+
+/// Frontend-facing snapshot of one language server: its built-in manifest
+/// merged with the user's local install state. The Settings → Languages
+/// page renders one card per entry.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LspManifestView {
+    pub manifest: ServerManifest,
+    /// `None` until the user installs this server.
+    pub installation: Option<LspInstallationView>,
+    /// False on platforms the manifest doesn't list an asset for. The UI
+    /// shows the card disabled with an "Unsupported on this platform" hint.
+    pub platform_supported: bool,
+    /// False when an external dependency is missing (e.g. `npm` not on
+    /// PATH for npm-based installers). The UI surfaces the message so the
+    /// user knows what to install first.
+    pub requirement_message: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LspInstallationView {
+    pub version: String,
+    pub binary_path: String,
+    pub installed_at_ms: i64,
+}
+
+impl From<ycode_persist::LspInstallationRow> for LspInstallationView {
+    fn from(row: ycode_persist::LspInstallationRow) -> Self {
+        Self {
+            version: row.version,
+            binary_path: row.binary_path,
+            installed_at_ms: row.installed_at,
+        }
+    }
 }

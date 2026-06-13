@@ -22,6 +22,7 @@ import type {
   FileEntry,
   FileContents,
   GitFileChange,
+  LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
 } from "./types";
@@ -206,6 +207,68 @@ export const agentInstallCodexChain = (existing: string[]): Promise<AgentPatchSt
   invoke("agent_install_codex_chain", { existing });
 
 export const testNotification = (): Promise<void> => invoke("test_notification");
+
+// ── Language servers ───────────────────────────────────────────────────────
+
+/**
+ * Snapshot every built-in LSP manifest merged with the user's local install
+ * status. Re-fetch after `LspInstallFinished` or `LspUninstalled` events to
+ * pick up the latest install state.
+ */
+export const lspListManifests = (): Promise<LspManifestView[]> =>
+  invoke("lsp_list_manifests");
+
+/**
+ * Kick off an install for a given manifest id. Resolves as soon as the
+ * background task is spawned; watch the session-event stream for
+ * `LspInstallProgress` / `LspInstallFinished` payloads to track progress.
+ */
+export const lspInstall = (serverId: string): Promise<void> =>
+  invoke("lsp_install", { serverId });
+
+export const lspUninstall = (serverId: string): Promise<void> =>
+  invoke("lsp_uninstall", { serverId });
+
+/**
+ * Tell the matching language server (if any) the user opened a document.
+ * Resolves `true` iff a server actually picked it up — `false` means no
+ * manifest matched the extension or the matching server isn't installed.
+ * The editor should treat `false` as "no LSP features for this file" and
+ * skip future `didChange` / definition / semantic-tokens calls for it.
+ */
+export const lspDidOpen = (
+  projectId: string,
+  filePath: string,
+  content: string,
+  version: number,
+): Promise<boolean> =>
+  invoke("lsp_did_open", { projectId, filePath, content, version });
+
+export const lspDidChange = (
+  projectId: string,
+  filePath: string,
+  version: number,
+  content: string,
+): Promise<boolean> =>
+  invoke("lsp_did_change", { projectId, filePath, version, content });
+
+export const lspDidClose = (projectId: string, filePath: string): Promise<void> =>
+  invoke("lsp_did_close", { projectId, filePath });
+
+/** Raw LSP `textDocument/definition` payload. `null` when no server is wired. */
+export const lspDefinition = (
+  projectId: string,
+  filePath: string,
+  line: number,
+  character: number,
+): Promise<unknown> =>
+  invoke("lsp_definition", { projectId, filePath, line, character });
+
+export const lspSemanticTokensFull = (
+  projectId: string,
+  filePath: string,
+): Promise<unknown> =>
+  invoke("lsp_semantic_tokens_full", { projectId, filePath });
 
 /**
  * Tell the backend which PTY pane is currently focused. The agent-event pump
