@@ -22,6 +22,27 @@ state. Single static binary.
 | ![Files panel with repository tree](docs/assets/files.png) | ![Changes panel with working tree diff](docs/assets/changes.png) |
 | Repository file tree + editor entry point | Working tree review with side-by-side diffs |
 
+## Features
+
+- **Multi-agent workspace** — run Claude Code, Codex, Gemini CLI, Cursor, or
+  any custom CLI agent side by side in real PTY sessions.
+- **Flexible session management** — create, resume, restart, archive, rename,
+  and arrange sessions in single, stacked, column, grid, or main+side layouts.
+- **Persistent agent history** — scan and search past Claude and Codex
+  transcripts, then reopen historical conversations from the sidebar.
+- **Built-in project tools** — manage projects, browse files, edit code, use
+  the right-side shell terminal, and review Git changes without leaving the
+  app.
+- **Editor and language support** — CodeMirror editing, syntax highlighting,
+  preview tabs, LSP installation, semantic tokens, and goto-definition.
+- **Configurable agents** — manage agent commands, args, environment
+  variables, icons, and transcript parsers through Settings and the built-in
+  agent catalog.
+- **Desktop notifications** — optional Claude and Codex hook integrations can
+  notify YCode when an agent finishes or needs attention.
+- **Personalized desktop app** — themes, font-size controls, persisted window
+  state, deep links, and Tauri updater support.
+
 ## Layout
 
 Three columns:
