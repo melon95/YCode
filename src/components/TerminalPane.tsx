@@ -72,6 +72,13 @@ const TERMINAL_BASE_OPTIONS = {
   lineHeight: 1.2,
   cursorBlink: true,
   scrollback: 5000,
+  // Force a floor on fg/bg contrast. xterm.js renders the SGR "dim" attribute
+  // (which CLIs like Claude Code use for diff context lines, line numbers,
+  // secondary text) by blending the foreground toward the background. On dark
+  // themes that just darkens it; on light themes it washes near-black ink out
+  // to near-invisible pale gray. minimumContrastRatio makes xterm re-darken
+  // any pair below this ratio until it's legible — 4.5 = WCAG AA for body text.
+  minimumContrastRatio: 4.5,
   // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
   // proposed API in xterm.js.
   allowProposedApi: true,

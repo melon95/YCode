@@ -40,6 +40,11 @@ const TERMINAL_BASE_OPTIONS = {
   lineHeight: 1.2,
   cursorBlink: true,
   scrollback: 5000,
+  // Force a floor on fg/bg contrast so SGR "dim" text (diff context lines,
+  // line numbers, secondary CLI output) stays legible on light themes, where
+  // xterm's dim-blend toward a pale background would otherwise wash it out.
+  // 4.5 = WCAG AA. See TerminalPane for the full rationale.
+  minimumContrastRatio: 4.5,
   // Required for the Unicode11Addon below — `term.unicode.activeVersion` is
   // marked proposed API in xterm.js.
   allowProposedApi: true,
