@@ -1,11 +1,26 @@
 # ycode
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/melon95/YCode)](https://github.com/melon95/YCode/releases)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db.svg)](https://tauri.app)
+
 A desktop workbench for running multiple CLI coding agents — Claude Code,
 Codex, Gemini CLI, Cursor, anything you can spawn — side by side, each in its
 own PTY, with a built-in code editor and shell next to them.
 
 Tauri 2 shell, React 19 frontend, xterm.js terminals, SQLite for session
 state. Single static binary.
+
+**[⬇️ Download the latest release](https://github.com/melon95/YCode/releases)**
+
+## Screenshots
+
+![ycode three-column workspace with agent launcher and terminal](docs/assets/overview.png)
+
+|  |  |
+| --- | --- |
+| ![Files panel with repository tree](docs/assets/files.png) | ![Changes panel with working tree diff](docs/assets/changes.png) |
+| Repository file tree + editor entry point | Working tree review with side-by-side diffs |
 
 ## Layout
 
@@ -24,7 +39,9 @@ Three columns:
     switches, resets on reload.
   - **Files / Editor** — file tree (react-arborist) + CodeMirror 6 editor
     with syntax highlighting for JS/TS/Python/Rust/HTML/CSS/Markdown/JSON,
-    preview-tab semantics borrowed from VS Code.
+    preview-tab semantics borrowed from VS Code. Language servers (LSP) add
+    semantic highlighting and goto-definition; install and manage them from
+    the **Languages** settings panel.
   - **Changes** — `git status` view with side-by-side diffs.
 
 A command palette (`Cmd-K`) jumps to any project or session.
@@ -37,6 +54,7 @@ install whichever CLIs you want to run (`claude`, `codex`, `gemini`, …).
 ```bash
 npm install                       # one-time frontend deps
 npm run tauri dev                 # dev with HMR + Tauri webview
+npm run dev                       # frontend-only Vite server
 npm run build && cargo run -p ycode-tauri   # production-ish standalone
 cargo test --workspace            # Rust unit tests
 npm run typecheck                 # tsc --noEmit
@@ -122,6 +140,8 @@ ycode/
     ├── ycode-persist/            # sqlx + SQLite (projects, sessions, WAL)
     ├── ycode-config/             # config.json schema + $VAR expansion
     ├── ycode-introspect/         # claude/codex jsonl scanners + parsers
+    ├── ycode-lsp/                # language-server install + LSP client
+    ├── ycode-notify/             # desktop notifications
     └── ycode-ipc/                # Service facade, DTOs, ts-rs bindings
 ```
 
@@ -131,4 +151,4 @@ The frontend imports DTOs from `@bindings/*` — ts-rs writes them into
 
 ## License
 
-MIT OR Apache-2.0
+MIT — see [LICENSE](LICENSE).
