@@ -3517,13 +3517,18 @@ textarea.native-input {
 }
 
 .changes-dir-chevron {
-  width: 10px;
-  flex: 0 0 10px;
+  width: 16px;
+  flex: 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--subtle);
-  font-size: 9px;
-  text-align: center;
   user-select: none;
-  transition: color var(--duration-fast) var(--ease-out);
+  transition: transform 0.12s ease, color var(--duration-fast) var(--ease-out);
+}
+
+.changes-dir-chevron.open {
+  transform: rotate(90deg);
 }
 
 .changes-dir-row:hover .changes-dir-chevron {

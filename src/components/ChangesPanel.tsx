@@ -79,6 +79,14 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     }
   }, [diffText]);
 
+  // Binary/unsupported files (images, etc.) come back as a patch with no
+  // hunks — react-diff-view renders nothing, leaving the pane blank. Detect
+  // "we have a diff but nothing to render" so we can show a notice instead.
+  const hasRenderableDiff = useMemo(
+    () => files.some((f) => f.hunks.length > 0),
+    [files],
+  );
+
   const tree = useMemo(() => buildTree(changes), [changes]);
 
   const toggleDir = (path: string) =>
@@ -180,10 +188,15 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           {!loadingDiff && !selected && (
             <div className="changes-empty">Select a file to view its diff.</div>
           )}
-          {!loadingDiff && selected && files.length === 0 && (
-            <div className="changes-empty">No diff to display.</div>
+          {!loadingDiff && selected && !hasRenderableDiff && (
+            <div className="changes-empty">
+              {diffText
+                ? "Preview not supported for this file type."
+                : "No diff to display."}
+            </div>
           )}
           {!loadingDiff &&
+            hasRenderableDiff &&
             files.map((file, i) => (
               <Diff
                 key={i}
@@ -321,7 +334,12 @@ function TreeRow({
         style={{ paddingLeft: 10 + depth * 12 }}
         title={node.path}
       >
-        <span className="changes-dir-chevron">{isCollapsed ? "▸" : "▾"}</span>
+        <span
+          className={"changes-dir-chevron" + (isCollapsed ? "" : " open")}
+          aria-hidden
+        >
+          <ChevronIcon />
+        </span>
         <span className="changes-dir-label">{node.label}</span>
       </button>
       {!isCollapsed && (
@@ -423,6 +441,27 @@ function RefreshIcon() {
     >
       <path d="M21 12a9 9 0 1 1-3-6.7" />
       <path d="M21 4v5h-5" />
+    </svg>
+  );
+}
+
+// Directory disclosure caret. Matches the file tree's chevron (an SVG that
+// rotates 90° when the folder is expanded) so the Working Tree and the file
+// manager read the same.
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6l6 6-6 6" />
     </svg>
   );
 }
