@@ -1674,16 +1674,21 @@ fn resolve_under_repo(repo: &Utf8Path, rel: &str) -> Result<std::path::PathBuf, 
     Ok(abs)
 }
 
-/// Run `git status --porcelain=v1 -z --untracked-files=normal` and parse out
+/// Run `git status --porcelain=v1 -z --untracked-files=all` and parse out
 /// the working-tree (Y) side. We zip in numstat counts for tracked-modified
 /// files; untracked files get a synthesized `+N / -0` from a line count.
+///
+/// `=all` (not `normal`) so a wholly-untracked directory lists each file
+/// individually (`docs/assets/logo.png`) instead of collapsing to a single
+/// `docs/assets/` entry — the latter has an empty basename and renders as a
+/// nameless row in the panel. Ignored files are still excluded.
 fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> {
     use std::process::Command;
 
     let out = Command::new("git")
         .arg("-C")
         .arg(repo.as_std_path())
-        .args(["status", "--porcelain=v1", "-z", "--untracked-files=normal"])
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git status: {e}")))?;
     if !out.status.success() {
