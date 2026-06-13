@@ -349,11 +349,17 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
           onContextMenu={(e) => openNodeContextMenu(e, node.data)}
           title={node.data.id}
         >
-          {/* VS Code / Cursor convention: only directories show a chevron,
+          {/* VS Code / Cursor convention: only directories show a chevron;
               files render `[icon][name]` flush-left so a depth's icons /
-              names line up at the leftmost visible glyph. */}
+              names line up at the leftmost visible glyph. The chevron is an
+              SVG that rotates 90° when the folder is open. */}
           {isDir && (
-            <span className="file-row-chevron">{node.isOpen ? "▾" : "▸"}</span>
+            <span
+              className={"file-row-chevron" + (node.isOpen ? " open" : "")}
+              aria-hidden
+            >
+              <ChevronIcon />
+            </span>
           )}
           {iconUrl ? (
             <img src={iconUrl} alt="" className="file-row-icon" />
@@ -536,6 +542,24 @@ function InlineNameInput({
       onKeyUp={(e) => e.stopPropagation()}
       onBlur={(e) => commit(e.target.value)}
     />
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
   );
 }
 

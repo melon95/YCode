@@ -2350,11 +2350,15 @@ textarea.native-input {
 .file-row-chevron {
   width: 16px;
   flex: 0 0 16px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
-  user-select: none;
+  transition: transform 0.12s ease;
+}
+
+.file-row-chevron.open {
+  transform: rotate(90deg);
 }
 
 .file-row-icon {
