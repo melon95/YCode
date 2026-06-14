@@ -474,6 +474,7 @@ pub fn run() {
             commands::rename_session,
             commands::list_files,
             commands::read_file,
+            commands::read_file_data_url,
             commands::write_file,
             commands::delete_path,
             commands::rename_path,

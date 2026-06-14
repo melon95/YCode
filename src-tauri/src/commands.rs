@@ -227,6 +227,19 @@ pub async fn read_file(
 }
 
 #[tauri::command]
+pub async fn read_file_data_url(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<String, String> {
+    state
+        .service
+        .read_file_data_url(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn write_file(
     state: State<'_, AppState>,
     request: WriteFileRequest,

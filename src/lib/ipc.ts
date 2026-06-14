@@ -91,6 +91,16 @@ export const readFile = (
 ): Promise<FileContents> =>
   invoke("read_file", { projectId, filePath });
 
+/**
+ * Read a file as a base64 `data:` URL (MIME inferred from extension) so the
+ * editor can render images/SVGs inline via an <img> tag.
+ */
+export const readFileDataUrl = (
+  projectId: string,
+  filePath: string,
+): Promise<string> =>
+  invoke("read_file_data_url", { projectId, filePath });
+
 export const writeFile = (request: WriteFileRequest): Promise<void> =>
   invoke("write_file", { request });
 

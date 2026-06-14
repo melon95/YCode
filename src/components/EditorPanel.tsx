@@ -10,7 +10,7 @@ import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { EditorView, keymap } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { indentWithTab } from "@codemirror/commands";
-import { indentUnit } from "@codemirror/language";
+import { indentUnit, StreamLanguage } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
@@ -18,6 +18,12 @@ import { rust } from "@codemirror/lang-rust";
 import { python } from "@codemirror/lang-python";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
+import { yaml } from "@codemirror/lang-yaml";
+import { xml } from "@codemirror/lang-xml";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
 import {
   lspDefinition,
   lspDidChange,
@@ -25,10 +31,12 @@ import {
   lspDidOpen,
   lspSemanticTokensFull,
   readFile,
+  readFileDataUrl,
   writeFile,
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { confirmDialog } from "../lib/confirm";
+import { renderMarkdown } from "../lib/markdown";
 import type { EditorGotoDetail } from "../lib/fileLinkProvider";
 import {
   applyLspTokens,
@@ -70,6 +78,16 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const [externalChange, setExternalChange] = useState(false);
   const skipNextWatchRef = useRef(false);
   const cmRef = useRef<ReactCodeMirrorRef>(null);
+  // Preview/Raw toggle for markdown & SVG files, keyed by path so each tab
+  // remembers its own choice. Files default to "preview" (absent from the map).
+  const [previewModes, setPreviewModes] = useState<
+    Record<string, "preview" | "raw">
+  >({});
+  const setPreviewMode = useCallback(
+    (path: string, mode: "preview" | "raw") =>
+      setPreviewModes((prev) => ({ ...prev, [path]: mode })),
+    [],
+  );
 
   // Drop cache entries for closed tabs so reopens re-read from disk.
   useEffect(() => {
@@ -93,10 +111,13 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     }
   }, [openFiles, projectId]);
 
-  // Lazy-load the focused file (no IPC if already cached).
+  // Lazy-load the focused file (no IPC if already cached). Images/SVGs render
+  // through <ImagePreview>, which fetches its own data URL — skip the text
+  // read and LSP wiring entirely for them.
   useEffect(() => {
     if (!selectedFilePath) return;
     setExternalChange(false);
+    if (isImagePath(selectedFilePath)) return;
     const cached = filesRef.current.get(selectedFilePath);
     if (cached?.loaded) return;
     // Placeholder so React knows the tab is in-flight.
@@ -150,6 +171,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   // the load effect above.
   useEffect(() => {
     if (!selectedFilePath || !repoPath) return;
+    if (isImagePath(selectedFilePath)) return;
     const abs = `${repoPath}/${selectedFilePath}`;
     let cancelled = false;
     let unwatch: (() => void) | undefined;
@@ -477,6 +499,11 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const loaded = fileState?.loaded ?? false;
   const value = fileState?.value ?? "";
   const isBinary = fileState?.isBinary ?? false;
+  const isImage = isImagePath(selectedFilePath);
+  const previewKind = previewKindFor(selectedFilePath);
+  const previewMode: "preview" | "raw" =
+    (selectedFilePath ? previewModes[selectedFilePath] : undefined) ?? "preview";
+  const showPreviewTabs = !!previewKind && loaded && !isBinary;
 
   return (
     <div className="editor-panel">
@@ -486,10 +513,40 @@ export function EditorPanel({ projectId }: { projectId: string }) {
           <button onClick={discardAndReload}>Discard &amp; reload</button>
         </div>
       )}
-      {!selectedFilePath ? null : isBinary ? (
+      {showPreviewTabs && selectedFilePath && (
+        <div className="preview-tabs">
+          <button
+            type="button"
+            className={previewMode === "preview" ? "active" : ""}
+            onClick={() => setPreviewMode(selectedFilePath, "preview")}
+          >
+            Preview
+          </button>
+          <button
+            type="button"
+            className={previewMode === "raw" ? "active" : ""}
+            onClick={() => setPreviewMode(selectedFilePath, "raw")}
+          >
+            Raw
+          </button>
+        </div>
+      )}
+      {!selectedFilePath ? null : isImage ? (
+        <ImagePreview
+          projectId={projectId}
+          path={selectedFilePath}
+          repoPath={repoPath}
+        />
+      ) : isBinary ? (
         <div className="empty">Binary file — editor cannot display.</div>
       ) : !loaded ? (
         <div className="empty">Loading…</div>
+      ) : previewKind && previewMode === "preview" ? (
+        previewKind === "markdown" ? (
+          <MarkdownPreview value={value} />
+        ) : (
+          <SvgPreview value={value} />
+        )
       ) : (
         <CodeMirror
           ref={cmRef}
@@ -523,6 +580,127 @@ export function EditorPanel({ projectId }: { projectId: string }) {
 function basename(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+// Raster images are binary — preview only, no source to edit. SVG and Markdown
+// are text, so they get a Preview/Raw toggle instead (see previewKindFor).
+const IMAGE_EXTS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "ico",
+  "avif",
+  "apng",
+]);
+
+/// True for raster image files we render as an inline (non-editable) preview.
+function isImagePath(path: string | null): boolean {
+  if (!path) return false;
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(ext);
+}
+
+/// Text files that render a preview by default but can be edited via the Raw
+/// tab. Returns the renderer to use, or null for plain editor-only files.
+function previewKindFor(path: string | null): "markdown" | "svg" | null {
+  if (!path) return null;
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "svg") return "svg";
+  if (ext === "md" || ext === "markdown") return "markdown";
+  return null;
+}
+
+/// Sanitized markdown preview. Reads the live editor buffer so switching back
+/// from Raw shows unsaved edits.
+function MarkdownPreview({ value }: { value: string }) {
+  const html = useMemo(() => renderMarkdown(value), [value]);
+  return (
+    <div
+      className="markdown-preview"
+      // Sanitized in renderMarkdown via DOMPurify.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+/// SVG preview rendered through an <img> + data URL so any embedded <script>
+/// can't execute (image-loaded SVGs run in a restricted mode). Reflects the
+/// live buffer including unsaved edits.
+function SvgPreview({ value }: { value: string }) {
+  const src = useMemo(
+    () => `data:image/svg+xml;utf8,${encodeURIComponent(value)}`,
+    [value],
+  );
+  return (
+    <div className="image-preview">
+      <img src={src} alt="SVG preview" />
+    </div>
+  );
+}
+
+/// Inline image/SVG preview. Fetches the file as a base64 `data:` URL (no raw
+/// filesystem path is exposed to the WebView) and re-fetches when the file
+/// changes on disk so saving from an external tool updates the preview live.
+function ImagePreview({
+  projectId,
+  path,
+  repoPath,
+}: {
+  projectId: string;
+  path: string;
+  repoPath?: string;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSrc(null);
+    setError(null);
+    const load = () => {
+      readFileDataUrl(projectId, path)
+        .then((url) => {
+          if (!cancelled) setSrc(url);
+        })
+        .catch((err) => {
+          if (!cancelled) setError(String(err));
+        });
+    };
+    load();
+
+    if (!repoPath) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const abs = `${repoPath}/${path}`;
+    let unwatch: (() => void) | undefined;
+    watch(abs, () => !cancelled && load(), { delayMs: 300 })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unwatch = fn;
+      })
+      .catch((err) => console.warn("image watch failed", err));
+    return () => {
+      cancelled = true;
+      unwatch?.();
+    };
+  }, [projectId, path, repoPath]);
+
+  if (error) {
+    return <div className="empty">Failed to load image: {error}</div>;
+  }
+  if (!src) {
+    return <div className="empty">Loading…</div>;
+  }
+  return (
+    <div className="image-preview">
+      <img src={src} alt={basename(path)} />
+    </div>
+  );
 }
 
 interface LspPosition {
@@ -591,7 +769,14 @@ function indentUnitFor(path: string | null): string {
 
 function languageFor(path: string | null): Extension | null {
   if (!path) return null;
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  const name = (path.split("/").pop() ?? "").toLowerCase();
+  // Special-name config files that carry no (useful) extension.
+  if (name === "dockerfile" || name.startsWith("dockerfile.")) {
+    return StreamLanguage.define(dockerFile);
+  }
+  // Dotfiles like `.env` / `.bashrc` keep their "extension" after the dot;
+  // extensionless names (e.g. `Makefile`) fall through as the whole name.
+  const ext = name.includes(".") ? (name.split(".").pop() ?? "") : name;
   switch (ext) {
     case "js":
     case "jsx":
@@ -602,6 +787,8 @@ function languageFor(path: string | null): Extension | null {
     case "tsx":
       return javascript({ jsx: true, typescript: true });
     case "json":
+    case "jsonc":
+    case "json5":
       return json();
     case "md":
     case "markdown":
@@ -617,6 +804,36 @@ function languageFor(path: string | null): Extension | null {
     case "html":
     case "htm":
       return html();
+    // ── Config / data formats ───────────────────────────────────────────
+    case "yaml":
+    case "yml":
+      return yaml();
+    case "xml":
+    case "svg":
+    case "xsd":
+    case "xsl":
+    case "xslt":
+    case "plist":
+      return xml();
+    case "toml":
+      return StreamLanguage.define(toml);
+    case "ini":
+    case "cfg":
+    case "conf":
+    case "properties":
+    case "env":
+    case "editorconfig":
+      return StreamLanguage.define(properties);
+    case "sh":
+    case "bash":
+    case "zsh":
+    case "ksh":
+    case "fish":
+    case "bashrc":
+    case "zshrc":
+    case "profile":
+    case "bash_profile":
+      return StreamLanguage.define(shell);
     default:
       return null;
   }

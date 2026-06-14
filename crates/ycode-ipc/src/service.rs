@@ -445,6 +445,21 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
     }
 
+    /// Read a project file and return it as a base64 `data:` URL so the editor
+    /// can render images/SVGs inline. Path traversal escaping the repo is
+    /// rejected — same enforcement as `read_file`.
+    pub async fn read_file_data_url(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<String, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || read_repo_file_data_url(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
+    }
+
     /// Overwrite a project file's contents. Path traversal escaping the repo
     /// is rejected. Parent directories must already exist.
     pub async fn write_file(&self, req: WriteFileRequest) -> Result<(), IpcError> {
@@ -1901,6 +1916,36 @@ fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, Ip
         contents,
         is_binary,
     })
+}
+
+/// Read a file and return it as a `data:` URL (base64-encoded). The MIME type
+/// is inferred from the extension; unknown types fall back to
+/// `application/octet-stream`, which is still a valid (if non-rendering) URL.
+fn read_repo_file_data_url(repo: &Utf8Path, file_path: String) -> Result<String, IpcError> {
+    use base64::Engine;
+    let abs = resolve_under_repo(repo, &file_path)?;
+    let bytes =
+        std::fs::read(&abs).map_err(|e| IpcError::BadInput(format!("read {}: {e}", file_path)))?;
+    let mime = mime_for_path(&file_path);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{encoded}"))
+}
+
+/// Map a file path's extension to an image MIME type for inline preview.
+fn mime_for_path(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "apng" => "image/apng",
+        _ => "application/octet-stream",
+    }
 }
 
 fn write_repo_file(repo: &Utf8Path, file_path: String, contents: String) -> Result<(), IpcError> {
