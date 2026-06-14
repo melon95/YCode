@@ -21,3 +21,7 @@ Thumbs.db
 # Local config
 .env
 .env.local
+
+# Test output
+/e2e/.tmp
+/src-tauri/gen/schemas/linux-schema.json
