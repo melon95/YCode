@@ -8,6 +8,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const tmpRoot = path.join(__dirname, ".tmp");
 const testHome = path.join(tmpRoot, "home");
+const fixtureProject = path.join(tmpRoot, "fixture-project");
 
 let tauriDriver;
 let driverExiting = false;
@@ -40,6 +41,7 @@ export const config = {
   onPrepare() {
     ensureSupportedPlatform();
     prepareIsolatedHome();
+    prepareFixtureProject();
 
     if (process.env.E2E_SKIP_BUILD === "1") return;
 
@@ -120,6 +122,20 @@ function resolveTauriDriverBinary() {
 function prepareIsolatedHome() {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   fs.mkdirSync(testHome, { recursive: true });
+}
+
+function prepareFixtureProject() {
+  fs.mkdirSync(path.join(fixtureProject, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(fixtureProject, "docs", "fixture.md"),
+    [
+      "# Fixture doc",
+      "",
+      "This file is edited by the real Tauri WebDriver e2e suite.",
+      "",
+    ].join("\n"),
+  );
+  process.env.E2E_FIXTURE_PROJECT_PATH = fixtureProject;
 }
 
 function e2eEnv() {
