@@ -170,6 +170,10 @@ The frontend imports DTOs from `@bindings/*` — ts-rs writes them into
 `crates/ycode-ipc/bindings/` whenever the Rust struct changes (run
 `cargo test` on the ipc crate to regenerate).
 
+## Thanks
+
+Thanks to [Linux Do](https://linux.do) for the promotion and support.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
