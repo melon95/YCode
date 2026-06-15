@@ -992,6 +992,16 @@ body {
   height: 100%;
 }
 
+/* xterm 6.0's `.xterm-viewport` keeps a hard-coded `#000` background (only the
+   inner scrollable element is themed). When a pane's height isn't an exact
+   multiple of the cell height, the sub-row remainder at the bottom leaks that
+   black — visible as a dark strip under the last line, glaring on light
+   themes. Make the viewport transparent and let the themed wrapper (its
+   background is set from the active xterm theme in JS) show through instead. */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
 /* Drag handles sitting on top of the grid's gap lines. Wider than the
    8px gap so the grab area is forgiving; centered via transform so the
    `left`/`top` values match the split percentage exactly. z-index 50

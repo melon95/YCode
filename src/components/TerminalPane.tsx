@@ -456,7 +456,9 @@ export function TerminalPane() {
       // looking at it. `justCreated` terms already booted with the
       // current theme via createTerminal.
       if (!justCreated && inst.lastThemeId !== currentThemeId) {
-        inst.term.options.theme = getTheme(currentThemeId).xterm;
+        const xterm = getTheme(currentThemeId).xterm;
+        inst.term.options.theme = xterm;
+        inst.container.style.backgroundColor = xterm.background ?? "";
         inst.lastThemeId = currentThemeId;
       }
       if (moved || justCreated) {
@@ -578,6 +580,7 @@ export function TerminalPane() {
         for (const [id, inst] of terminalsRef.current) {
           if (!visible.has(id)) continue;
           inst.term.options.theme = theme;
+          inst.container.style.backgroundColor = theme.background ?? "";
           inst.lastThemeId = themeId;
         }
       });
@@ -793,6 +796,11 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
 
   const container = document.createElement("div");
   container.className = "terminal-container";
+  // Paint the wrapper with the active terminal background so the sub-row
+  // remainder at the bottom of a pane (height isn't an exact multiple of the
+  // cell height) matches the terminal instead of leaking xterm's hard-coded
+  // `#000` viewport background. Kept in sync on every theme change below.
+  container.style.backgroundColor = theme.background ?? "";
   // Hidden until reparented into a slot cell.
   container.style.display = "none";
   parent.appendChild(container);

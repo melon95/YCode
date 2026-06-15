@@ -132,6 +132,12 @@ export function ManualTerminal({
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
     term.open(container);
+    // Paint the wrapper with the terminal background so the sub-row remainder
+    // at the bottom (container height isn't an exact multiple of the cell
+    // height) matches the terminal instead of leaking xterm's hard-coded
+    // `#000` viewport background. Kept in sync by the theme effect below.
+    container.style.backgroundColor =
+      getTheme(useStore.getState().theme).xterm.background ?? "";
     termRef.current = term;
     fitRef.current = fit;
 
@@ -388,6 +394,8 @@ export function ManualTerminal({
       pending = requestAnimationFrame(() => {
         pending = null;
         term.options.theme = theme;
+        const container = containerRef.current;
+        if (container) container.style.backgroundColor = theme.background ?? "";
       });
     });
   }, []);
