@@ -32,12 +32,12 @@ export function UpdatesSettings() {
         toast.success("You're on the latest version.");
         return;
       }
-      // Reuse the same toast UI rendered by `UpdateNotice` instead of
-      // duplicating the install flow inside Settings.
+      // Reuse the same notice card rendered by `UpdateNotice` instead of
+      // duplicating the install flow inside Settings. No extra toast here —
+      // the card already announces the version and owns the install action.
       window.dispatchEvent(
         new CustomEvent("ycode:update-available", { detail: update }),
       );
-      toast.success(`Update available: v${update.version}`);
     } catch (err) {
       toast.danger(`Check failed: ${err}`);
     } finally {
