@@ -11,6 +11,12 @@ own PTY, with a built-in code editor and shell next to them.
 Tauri 2 shell, React 19 frontend, xterm.js terminals, SQLite for session
 state. Single static binary.
 
+> **Codex is a first-class agent in ycode.** It ships as an out-of-the-box
+> default, with a dedicated transcript parser so you can scan, full-text
+> search, and resume past Codex sessions from the sidebar — and desktop
+> notifications when a Codex run finishes or needs attention. See
+> [Codex support](#codex-support).
+
 **[⬇️ Download the latest release](https://github.com/melon95/YCode/releases)**
 
 ## Screenshots
@@ -66,6 +72,25 @@ Three columns:
   - **Changes** — `git status` view with side-by-side diffs.
 
 A command palette (`Cmd-K`) jumps to any project or session.
+
+## Codex support
+
+Codex is treated as a first-class agent throughout ycode:
+
+- **Out of the box** — Codex ships as a shipped default profile (alongside
+  Claude Code), written to your config on first launch. No setup beyond having
+  the `codex` CLI on PATH.
+- **Real PTY sessions** — launch one or many Codex sessions and arrange them in
+  any grid; each is restartable, archivable, and keeps running in the
+  background when its pane is closed.
+- **Transcript history** — a dedicated Codex jsonl parser
+  (`crates/ycode-introspect`) powers the history viewer: scan, full-text
+  search, and reopen past Codex conversations from the sidebar.
+- **Completion notifications** — optional Codex hook integration notifies ycode
+  when a run finishes or needs your attention.
+- **Open and reusable** — the parser, agent catalog, and PTY session manager
+  are MIT-licensed, so they double as a public reference for integrating Codex
+  into other tools.
 
 ## Build & run
 
