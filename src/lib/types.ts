@@ -66,6 +66,15 @@ export type UnifiedEvent = Omit<RawUnifiedEvent, "seq" | "ts_ms"> & {
   ts_ms: number;
 };
 
+// Usage views type every numeric field as f64 on the Rust side, so ts-rs
+// emits `number` throughout — no bigint retyping needed.
+export type { TokenCountsView } from "@bindings/TokenCountsView";
+export type { SessionUsageView } from "@bindings/SessionUsageView";
+export type { ModelUsageView } from "@bindings/ModelUsageView";
+export type { DailyUsageView } from "@bindings/DailyUsageView";
+export type { ProjectUsageView } from "@bindings/ProjectUsageView";
+export type { WorkspaceUsageView } from "@bindings/WorkspaceUsageView";
+
 export type { UnifiedEventKind } from "@bindings/UnifiedEventKind";
 export type { UnifiedRole } from "@bindings/UnifiedRole";
 export type { ToolStatus } from "@bindings/ToolStatus";

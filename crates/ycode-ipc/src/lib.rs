@@ -488,6 +488,90 @@ pub struct SearchHit {
     pub preview: String,
 }
 
+// --- Token usage views ---------------------------------------------------
+//
+// Numeric fields are `f64` on purpose: token counts and timestamps are
+// integers, but typing them as `i64`/`u64` makes ts-rs emit `bigint`, forcing
+// a retype layer in the frontend. These are read-only display DTOs delivered
+// as JSON numbers anyway, and the magnitudes (token counts, unix-millis) sit
+// well within f64's exact-integer range, so `f64 -> number` is both correct
+// and frictionless here.
+
+/// Token counters for a usage rollup. `reasoning` is a subset of `output`
+/// (Codex reasoning tokens), kept for display only and excluded from `total`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TokenCountsView {
+    pub input: f64,
+    pub output: f64,
+    pub cache_creation: f64,
+    pub cache_read: f64,
+    pub reasoning: f64,
+    pub total: f64,
+}
+
+/// One session's usage row in the usage table.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SessionUsageView {
+    pub agent: String,
+    pub session_id: Option<String>,
+    pub title: Option<String>,
+    pub jsonl_path: String,
+    /// Dominant model (the one accounting for the most tokens).
+    pub model: Option<String>,
+    pub tokens: TokenCountsView,
+    pub cost_usd: f64,
+    pub first_ts_ms: f64,
+    pub last_ts_ms: f64,
+    pub message_count: f64,
+}
+
+/// Usage grouped by model across the workspace.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ModelUsageView {
+    pub model: String,
+    pub tokens: TokenCountsView,
+    pub cost_usd: f64,
+}
+
+/// Usage grouped by calendar day (UTC, `YYYY-MM-DD`).
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DailyUsageView {
+    pub date: String,
+    pub tokens: TokenCountsView,
+    pub cost_usd: f64,
+}
+
+/// Usage rolled up for one registered project. Only populated by the
+/// cross-project view (`get_all_usage`); the single-project view returns an
+/// empty `by_project`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ProjectUsageView {
+    pub project_id: String,
+    pub name: String,
+    pub tokens: TokenCountsView,
+    pub cost_usd: f64,
+    pub session_count: f64,
+}
+
+/// Everything the Usage screen renders for one workspace. Costs are offline
+/// estimates (known model families only); see `ycode_introspect::usage`.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WorkspaceUsageView {
+    pub totals: TokenCountsView,
+    pub total_cost_usd: f64,
+    pub sessions: Vec<SessionUsageView>,
+    pub by_model: Vec<ModelUsageView>,
+    pub by_day: Vec<DailyUsageView>,
+    /// Per-project breakdown. Empty for the single-project view.
+    pub by_project: Vec<ProjectUsageView>,
+}
+
 /// Frontend-facing snapshot of one language server: its built-in manifest
 /// merged with the user's local install state. The Settings → Languages
 /// page renders one card per entry.

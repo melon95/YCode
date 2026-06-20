@@ -484,6 +484,8 @@ pub fn run() {
             commands::start_workspace_watch,
             commands::stop_workspace_watch,
             commands::scan_workspace_sessions,
+            commands::get_workspace_usage,
+            commands::get_all_usage,
             commands::load_session_history,
             commands::search_sessions,
             commands::fs_open_in_external_editor,

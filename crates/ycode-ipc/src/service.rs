@@ -25,12 +25,13 @@ use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, T
 
 use crate::{
     notify_listener, AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
-    LspManifestView, OpenInExternalEditorRequest, ProjectView,
-    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionView, SpawnPtyRequest, UiEvent,
-    UiEventKind, UnifiedEvent, WriteFileRequest, WritePtyRequest,
+    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
+    LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
+    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
+    SpawnPtyRequest, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent, WorkspaceUsageView,
+    WriteFileRequest, WritePtyRequest,
 };
-use ycode_introspect::scanner;
+use ycode_introspect::{scanner, usage};
 
 /// Default PTY geometry. The frontend resizes after attaching to match the
 /// actual xterm.js viewport.
@@ -273,6 +274,40 @@ impl Service {
         }
         out.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
         Ok(out)
+    }
+
+    /// Aggregate token usage + estimated cost across every claude + codex
+    /// session for a project's cwd, grouped by session / model / day. Reads
+    /// the same on-disk jsonl the history viewer uses; costs are offline
+    /// estimates (see `ycode_introspect::usage`).
+    pub async fn get_workspace_usage(
+        &self,
+        project_id: String,
+    ) -> Result<WorkspaceUsageView, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let cwd = std::path::PathBuf::from(project.repo_path);
+        let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
+        let agg = tokio::task::spawn_blocking(move || usage::aggregate_workspace(&home, &cwd))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("usage task: {e}")))?;
+        Ok(to_usage_view(agg))
+    }
+
+    /// Like [`get_workspace_usage`](Self::get_workspace_usage) but spanning
+    /// *every* registered project: one global rollup plus a per-project
+    /// breakdown (`by_project`). Powers the Settings → Usage screen's project
+    /// split.
+    pub async fn get_all_usage(&self) -> Result<WorkspaceUsageView, IpcError> {
+        let rows = self.db.projects().list().await?;
+        let projects: Vec<(String, String, PathBuf)> = rows
+            .into_iter()
+            .map(|r| (r.id, r.name, PathBuf::from(r.repo_path)))
+            .collect();
+        let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
+        let agg = tokio::task::spawn_blocking(move || usage::aggregate_all_projects(&home, &projects))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("usage task: {e}")))?;
+        Ok(to_usage_view(agg))
     }
 
     /// Read + parse + normalise an entire jsonl into a UnifiedEvent stream.
@@ -2221,6 +2256,69 @@ fn default_editor() -> String {
 
 fn home_dir() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(std::path::PathBuf::from)
+}
+
+fn token_counts_view(t: &usage::TokenCounts) -> TokenCountsView {
+    TokenCountsView {
+        input: t.input as f64,
+        output: t.output as f64,
+        cache_creation: t.cache_creation as f64,
+        cache_read: t.cache_read as f64,
+        reasoning: t.reasoning as f64,
+        total: t.total() as f64,
+    }
+}
+
+fn to_usage_view(agg: usage::WorkspaceUsage) -> WorkspaceUsageView {
+    WorkspaceUsageView {
+        totals: token_counts_view(&agg.totals),
+        total_cost_usd: agg.total_cost_usd,
+        sessions: agg
+            .sessions
+            .into_iter()
+            .map(|s| SessionUsageView {
+                agent: s.agent,
+                session_id: s.session_id,
+                title: s.title,
+                jsonl_path: s.jsonl_path,
+                model: s.model,
+                tokens: token_counts_view(&s.tokens),
+                cost_usd: s.cost_usd,
+                first_ts_ms: s.first_ts_ms as f64,
+                last_ts_ms: s.last_ts_ms as f64,
+                message_count: s.message_count as f64,
+            })
+            .collect(),
+        by_model: agg
+            .by_model
+            .into_iter()
+            .map(|m| ModelUsageView {
+                model: m.model,
+                tokens: token_counts_view(&m.tokens),
+                cost_usd: m.cost_usd,
+            })
+            .collect(),
+        by_day: agg
+            .by_day
+            .into_iter()
+            .map(|d| DailyUsageView {
+                date: d.date,
+                tokens: token_counts_view(&d.tokens),
+                cost_usd: d.cost_usd,
+            })
+            .collect(),
+        by_project: agg
+            .by_project
+            .into_iter()
+            .map(|p| ProjectUsageView {
+                project_id: p.project_id,
+                name: p.name,
+                tokens: token_counts_view(&p.tokens),
+                cost_usd: p.cost_usd,
+                session_count: p.session_count as f64,
+            })
+            .collect(),
+    }
 }
 
 /// Background task driving one workspace's jsonl notify watcher. Watches the

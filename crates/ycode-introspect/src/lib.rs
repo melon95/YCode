@@ -16,6 +16,7 @@ pub mod claude;
 pub mod codex;
 pub mod scanner;
 pub mod unified;
+pub mod usage;
 
 pub use unified::{DiffSummary, PlanStep, ToolStatus, UnifiedEvent, UnifiedEventKind, UnifiedRole};
 

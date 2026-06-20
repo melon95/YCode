@@ -25,6 +25,7 @@ import type {
   LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
+  WorkspaceUsageView,
 } from "./types";
 
 export const listAgents = (): Promise<AgentProfileView[]> => invoke("list_agents");
@@ -129,6 +130,14 @@ export const scanWorkspaceSessions = (
   projectId: string,
 ): Promise<DiscoveredSessionView[]> =>
   invoke("scan_workspace_sessions", { projectId });
+
+export const getWorkspaceUsage = (
+  projectId: string,
+): Promise<WorkspaceUsageView> =>
+  invoke("get_workspace_usage", { projectId });
+
+export const getAllUsage = (): Promise<WorkspaceUsageView> =>
+  invoke("get_all_usage");
 
 export const loadSessionHistory = (
   agent: string,

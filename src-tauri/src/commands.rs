@@ -13,7 +13,8 @@ use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitFileChange, LspManifestView,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
-    SessionView, SpawnPtyRequest, UnifiedEvent, WriteFileRequest, WritePtyRequest,
+    SessionView, SpawnPtyRequest, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
+    WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -349,6 +350,29 @@ pub async fn scan_workspace_sessions(
     state
         .service
         .scan_workspace_sessions(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_workspace_usage(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<WorkspaceUsageView, String> {
+    state
+        .service
+        .get_workspace_usage(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_all_usage(
+    state: State<'_, AppState>,
+) -> Result<WorkspaceUsageView, String> {
+    state
+        .service
+        .get_all_usage()
         .await
         .map_err(|e| e.to_string())
 }

@@ -29,18 +29,21 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { LanguagesSettings } from "./LanguagesSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
+import { UsageSettings } from "./UsageSettings";
 
 type SectionId =
   | "agents"
   | "appearance"
   | "languages"
   | "notifications"
+  | "usage"
   | "updates";
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
   { id: "agents", label: "Agents" },
   { id: "appearance", label: "Appearance" },
   { id: "languages", label: "Languages" },
   { id: "notifications", label: "Notifications" },
+  { id: "usage", label: "Usage" },
   { id: "updates", label: "Updates" },
 ];
 
@@ -213,6 +216,7 @@ export function SettingsModal({ open, onClose }: Props) {
                       />
                     )}
                     {section === "languages" && <LanguagesSettings />}
+                    {section === "usage" && <UsageSettings />}
                     {section === "notifications" && (
                       <NotificationsSettings
                         config={staged}
