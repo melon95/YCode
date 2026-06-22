@@ -1627,8 +1627,10 @@ body {
 
 .settings-body {
   padding: 0;
-  min-height: 480px;
-  max-height: 70vh;
+  /* Fixed height (per-viewport, not per-section) so switching tabs with
+     different content heights doesn't resize the dialog and shift it via the
+     vertical-centering. Each section's content scrolls inside instead. */
+  height: clamp(420px, 78vh, 680px);
   overflow: hidden;
   background: var(--panel);
 }
@@ -1645,7 +1647,7 @@ body {
   display: grid;
   grid-template-columns: 180px 1fr;
   height: 100%;
-  min-height: 480px;
+  min-height: 0;
 }
 .settings-nav {
   display: flex;
@@ -2554,17 +2556,17 @@ body {
 /* ── Agents master-detail ───────────────────────────────────────────── */
 
 .agents-settings {
-  display: grid;
-  grid-template-columns: 280px 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  min-height: 480px;
+  min-height: 0;
 }
 .agents-list {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--rule);
   background: var(--panel);
   min-height: 0;
+  flex: 1;
 }
 .agents-list-header {
   display: flex;
@@ -2608,29 +2610,63 @@ body {
   border: 0;
   border-bottom: 1px solid transparent;
   text-align: left;
-  cursor: pointer;
   color: var(--text-soft);
   position: relative;
-  transition: color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 .agent-row:hover {
   background: rgba(var(--accent-rgb), 0.04);
+}
+/* Addable rows (catalog agents not yet configured) — click to add. */
+.agent-row.addable {
+  cursor: pointer;
+  font: inherit;
+}
+.agent-row.addable .agent-row-name {
+  color: var(--muted);
+}
+.agent-row.addable:hover .agent-row-name {
   color: var(--text);
 }
-.agent-row.selected {
-  background: var(--accent-tint);
-  color: var(--text);
+.agent-row-add {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--subtle);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
-.agent-row.selected::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  background: var(--accent);
-  border-radius: 0 2px 2px 0;
+.agent-row.addable:hover .agent-row-add {
+  opacity: 1;
+  color: var(--accent);
+}
+.agent-row-delete {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--subtle);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.agent-row:hover .agent-row-delete {
+  opacity: 1;
+}
+.agent-row-delete:hover {
+  background: rgba(var(--error-rgb), 0.1);
+  color: var(--error);
 }
 .agent-row-icon {
   display: inline-flex;
@@ -2646,132 +2682,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.agent-row-cmd {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--subtle);
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: 0;
-}
-.agents-catalog {
-  border-top: 1px solid var(--rule);
-  padding: 12px;
-  background: var(--panel-sunken);
-}
-.agents-catalog-title {
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  margin: 0 0 8px;
-}
-.agents-catalog-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  max-height: 196px;
-  overflow-y: auto;
-}
-.agent-catalog-tile {
-  display: grid;
-  grid-template-columns: 22px 1fr;
-  grid-template-rows: auto auto;
-  align-items: center;
-  gap: 2px 8px;
-  min-width: 0;
-  padding: 8px;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: 0;
-  color: var(--text-soft);
-  cursor: pointer;
-  text-align: left;
-  transition: color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
-}
-.agent-catalog-tile:hover:not(:disabled) {
-  border-color: rgba(var(--accent-rgb), 0.45);
-  background: rgba(var(--accent-rgb), 0.05);
-  color: var(--text);
-}
-.agent-catalog-tile:disabled {
-  cursor: default;
-  opacity: 0.48;
-}
-.agent-catalog-icon {
-  grid-row: 1 / span 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.agent-catalog-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 14, "SOFT" 100;
-  font-size: 12px;
-  color: inherit;
-}
-.agent-catalog-command {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--subtle);
-  letter-spacing: 0;
-}
-.agents-catalog-empty {
-  margin-top: 8px;
-  font-family: var(--font-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 12, "SOFT" 100;
-  font-size: 12px;
-  color: var(--subtle);
-  line-height: 1.4;
-}
-
-.agent-editor {
-  overflow-y: auto;
-  min-height: 0;
-  background: var(--panel);
-}
-.agent-editor-empty {
-  padding: 60px;
-  text-align: center;
-  font-family: var(--font-display);
-  font-style: italic;
-  font-variation-settings: "opsz" 24, "SOFT" 100;
-  font-size: 15px;
-  color: var(--subtle);
-}
-.agent-editor-form {
-  padding: 24px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-.agent-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule);
-}
-.agent-editor-actions .danger {
-  color: var(--error);
-}
-.agent-editor-actions .danger:hover {
-  background: rgba(var(--error-rgb), 0.1);
-}
-
-/* ── Form primitives shared by the editor ───────────────────────────── */
+/* ── Form primitives shared by other settings panes ─────────────────── */
 
 .field {
   display: flex;
