@@ -5,6 +5,7 @@
 // and lets you add/remove. Holds no IPC state of its own — the parent owns the
 // staged ConfigView and we mutate via `onChange`.
 
+import { useState } from "react";
 import type { AgentLaunchProfileView, ConfigView } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
 
@@ -108,6 +109,50 @@ const KNOWN_AGENTS: AgentLaunchProfileView[] = [
     color: null,
     introspect: null,
   },
+  {
+    id: "aider",
+    display_name: "Aider",
+    command: "aider",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "amp",
+    display_name: "Amp",
+    command: "amp",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "crush",
+    display_name: "Crush",
+    command: "crush",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
+  {
+    id: "plandex",
+    display_name: "Plandex",
+    command: "plandex",
+    args: [],
+    env: {},
+    icon: null,
+    icon_variant: null,
+    color: null,
+    introspect: null,
+  },
 ];
 
 interface Props {
@@ -116,6 +161,12 @@ interface Props {
 }
 
 export function AgentsSettings({ config, onChange }: Props) {
+  // Inline "custom agent" form state. Lets users add any CLI not in the
+  // catalog without re-introducing the full per-agent editor.
+  const [adding, setAdding] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customCommand, setCustomCommand] = useState("");
+
   function addKnownAgent(template: AgentLaunchProfileView) {
     onChange({ ...config, agents: [...config.agents, cloneAgent(template)] });
   }
@@ -127,6 +178,34 @@ export function AgentsSettings({ config, onChange }: Props) {
   }
 
   const configuredIds = new Set(config.agents.map((a) => a.id));
+
+  function confirmCustom() {
+    const command = customCommand.trim();
+    if (!command) return;
+    const name = customName.trim();
+    const id = uniqueId(kebab(name || command), configuredIds);
+    const agent: AgentLaunchProfileView = {
+      id,
+      display_name: name || null,
+      command,
+      args: [],
+      env: {},
+      icon: null,
+      icon_variant: null,
+      color: null,
+      introspect: null,
+    };
+    onChange({ ...config, agents: [...config.agents, agent] });
+    setCustomName("");
+    setCustomCommand("");
+    setAdding(false);
+  }
+
+  function cancelCustom() {
+    setCustomName("");
+    setCustomCommand("");
+    setAdding(false);
+  }
 
   // One flat list: configured agents first (in config order), then the
   // remaining catalog agents you can still add. `addedIdx` is the index into
@@ -192,10 +271,81 @@ export function AgentsSettings({ config, onChange }: Props) {
               </button>
             );
           })}
+
+          {adding ? (
+            <div className="agent-custom-form">
+              <input
+                type="text"
+                className="native-input"
+                placeholder="Display name (optional)"
+                value={customName}
+                autoFocus
+                onChange={(e) => setCustomName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmCustom();
+                  if (e.key === "Escape") cancelCustom();
+                }}
+              />
+              <input
+                type="text"
+                className="native-input mono"
+                placeholder="command (binary on PATH)"
+                value={customCommand}
+                onChange={(e) => setCustomCommand(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmCustom();
+                  if (e.key === "Escape") cancelCustom();
+                }}
+              />
+              <button
+                type="button"
+                className="agent-custom-confirm"
+                onClick={confirmCustom}
+                disabled={!customCommand.trim()}
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                className="agent-custom-cancel"
+                onClick={cancelCustom}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="agent-row addable agent-row-custom"
+              onClick={() => setAdding(true)}
+              title="Add a custom agent CLI"
+            >
+              <span className="agent-row-icon agent-row-custom-icon">+</span>
+              <span className="agent-row-name">Custom agent…</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+/** kebab-case an arbitrary string for use as an agent id. */
+function kebab(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "agent"
+  );
+}
+
+/** Ensure `base` doesn't collide with an existing id; suffix -2, -3, … */
+function uniqueId(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
 }
 
 function cloneAgent(agent: AgentLaunchProfileView): AgentLaunchProfileView {

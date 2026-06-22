@@ -2643,6 +2643,61 @@ body {
   opacity: 1;
   color: var(--accent);
 }
+
+/* "Custom agent…" trigger row + its inline form. */
+.agent-row-custom-icon {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-row-custom:hover .agent-row-custom-icon {
+  color: var(--accent);
+}
+.agent-custom-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+}
+.agent-custom-form .native-input {
+  flex: 1;
+  min-width: 0;
+}
+.agent-custom-confirm,
+.agent-custom-cancel {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.agent-custom-confirm {
+  color: var(--accent);
+}
+.agent-custom-confirm:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+.agent-custom-confirm:disabled {
+  color: var(--subtle);
+  cursor: default;
+}
+.agent-custom-cancel {
+  color: var(--muted);
+}
+.agent-custom-cancel:hover {
+  color: var(--text);
+  background: rgba(var(--highlight-rgb), 0.08);
+}
 .agent-row-delete {
   width: 22px;
   height: 22px;
