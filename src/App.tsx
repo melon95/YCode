@@ -11,6 +11,7 @@ import {
   listAgents,
   listProjects,
   listSessions,
+  listTodos,
   listenSessionEvents,
   setActiveTerminal,
   startWorkspaceWatch,
@@ -226,6 +227,16 @@ export function App() {
       }
       if (kind.type === "JsonlChanged") {
         // HistoryTab subscribes directly; nothing to do here.
+        return;
+      }
+      if (kind.type === "TodosChanged") {
+        // `session_id` carries the affected project id. Refresh that
+        // project's list so both UI edits and MCP-driven changes (an AI
+        // agent adding/updating todos) show up live.
+        const projectId = event.session_id;
+        listTodos(projectId)
+          .then((todos) => useStore.getState().setTodos(projectId, todos))
+          .catch((err) => console.error("listTodos failed", err));
         return;
       }
       if (kind.type === "AgentTurnComplete") {

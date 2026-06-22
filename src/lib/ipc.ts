@@ -11,6 +11,7 @@ import type {
   SearchHit,
   SessionView,
   ProjectView,
+  TodoView,
   UnifiedEvent,
   WriteFileRequest,
   CreateProjectRequest,
@@ -49,6 +50,25 @@ export const createProject = (request: CreateProjectRequest): Promise<ProjectVie
 
 export const deleteProject = (projectId: string): Promise<void> =>
   invoke("delete_project", { projectId });
+
+export const listTodos = (projectId: string): Promise<TodoView[]> =>
+  invoke("list_todos", { projectId });
+
+export const createTodo = (projectId: string, title: string): Promise<TodoView> =>
+  invoke("create_todo", { projectId, title });
+
+export const updateTodo = (
+  id: string,
+  patch: { title?: string | null; status?: string | null },
+): Promise<TodoView> =>
+  invoke("update_todo", {
+    id,
+    title: patch.title ?? null,
+    status: patch.status ?? null,
+  });
+
+export const deleteTodo = (id: string): Promise<void> =>
+  invoke("delete_todo", { id });
 
 export const createSession = (
   request: Omit<CreateSessionRequest, "resume"> & { resume?: string | null },
@@ -226,6 +246,21 @@ export const agentInstallCodexChain = (existing: string[]): Promise<AgentPatchSt
   invoke("agent_install_codex_chain", { existing });
 
 export const testNotification = (): Promise<void> => invoke("test_notification");
+
+// ── ycode-todos MCP server registration (opt-in per agent) ──
+
+export type McpStatus = "not_installed" | "installed";
+
+const unwrapMcpStatus = (s: { kind: McpStatus }): McpStatus => s.kind;
+
+export const mcpStatus = (agent: "claude" | "codex"): Promise<McpStatus> =>
+  invoke<{ kind: McpStatus }>("mcp_status", { agent }).then(unwrapMcpStatus);
+
+export const mcpInstall = (agent: "claude" | "codex"): Promise<McpStatus> =>
+  invoke<{ kind: McpStatus }>("mcp_install", { agent }).then(unwrapMcpStatus);
+
+export const mcpUninstall = (agent: "claude" | "codex"): Promise<McpStatus> =>
+  invoke<{ kind: McpStatus }>("mcp_uninstall", { agent }).then(unwrapMcpStatus);
 
 // ── Language servers ───────────────────────────────────────────────────────
 

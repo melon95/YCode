@@ -26,3 +26,21 @@ pub struct ProjectRow {
     pub repo_path: String,
     pub created_at: i64,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TodoRow {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    /// One of `todo` / `doing` / `done`. Validated at the repo layer.
+    pub status: String,
+    pub sort_order: i64,
+    /// When the todo most recently entered the `doing` status. `None` until it
+    /// has ever been `doing`.
+    pub started_at: Option<i64>,
+    /// When the todo most recently entered the `done` status. `None` until it
+    /// has ever been `done`.
+    pub done_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}

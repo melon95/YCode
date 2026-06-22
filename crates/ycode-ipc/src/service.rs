@@ -20,16 +20,17 @@ use ycode_lsp::{
     builtin_manifests, manifest_by_id, path_to_file_uri, InstallSpec, LspManager,
     NotificationSink, ServerNotification,
 };
-use ycode_persist::{Db, NewLspInstallation, NewProject, NewSession, PersistError};
+use ycode_persist::{Db, NewLspInstallation, NewProject, NewSession, NewTodo, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    notify_listener, AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
+    mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
+    CreateSessionRequest,
     DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
     LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
     RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
-    SpawnPtyRequest, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent, WorkspaceUsageView,
-    WriteFileRequest, WritePtyRequest,
+    SpawnPtyRequest, TodoView, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent,
+    WorkspaceUsageView, WriteFileRequest, WritePtyRequest,
 };
 use ycode_introspect::{scanner, usage};
 
@@ -67,6 +68,13 @@ pub struct Service {
     /// `None` when the listener failed to start (Windows v1, or bind error)
     /// — in that case completion notifications are silently disabled.
     notify_sock_path: Option<PathBuf>,
+    /// Stable path of the MCP control socket, injected into every spawned PTY
+    /// as `YCODE_MCP_SOCK` so the `ycode-mcp` sidecar (launched by the agent
+    /// CLI) can connect back. Computed deterministically here; the actual
+    /// listener is bound later from the Tauri shell via
+    /// [`mcp_listener::start`] (it needs an `Arc<Service>`). `None` on
+    /// non-Unix targets.
+    mcp_sock_path: Option<PathBuf>,
 }
 
 impl Service {
@@ -103,6 +111,13 @@ impl Service {
             warn!("Service::new called outside a tokio runtime; notify listener disabled");
             None
         };
+        // Deterministic, stable path. Only meaningful on Unix; the listener
+        // is bound separately by the Tauri shell (it needs `Arc<Service>`).
+        let mcp_sock_path = if cfg!(unix) {
+            Some(mcp_listener::default_socket_path())
+        } else {
+            None
+        };
         Self {
             db,
             terminals: Arc::new(TerminalManager::new()),
@@ -113,7 +128,15 @@ impl Service {
             shutdown,
             workspace_watchers: RwLock::new(std::collections::HashMap::new()),
             notify_sock_path,
+            mcp_sock_path,
         }
+    }
+
+    /// The MCP control socket path to bind/inject. The Tauri shell reads this,
+    /// binds the listener via [`mcp_listener::start`], and the same value is
+    /// injected into PTY children as `YCODE_MCP_SOCK`.
+    pub fn mcp_sock_path(&self) -> Option<PathBuf> {
+        self.mcp_sock_path.clone()
     }
 
     /// Subscribe to the merged UI event stream. The Tauri shell wires this
@@ -452,6 +475,97 @@ impl Service {
         Ok(())
     }
 
+    // ───────────────────────────── Todos ─────────────────────────────
+
+    pub async fn list_todos(&self, project_id: String) -> Result<Vec<TodoView>, IpcError> {
+        let rows = self.db.todos().list_for_project(&project_id).await?;
+        Ok(rows.into_iter().map(TodoView::from_row).collect())
+    }
+
+    pub async fn create_todo(
+        &self,
+        project_id: String,
+        title: String,
+    ) -> Result<TodoView, IpcError> {
+        let title = title.trim().to_string();
+        if title.is_empty() {
+            return Err(IpcError::BadInput("todo title must not be empty".into()));
+        }
+        // Validate the project exists so MCP callers get a clean error rather
+        // than a dangling FK insert failure.
+        self.db.projects().get(&project_id).await?;
+        let id = ulid::Ulid::new().to_string();
+        let row = self
+            .db
+            .todos()
+            .insert(NewTodo {
+                id,
+                project_id: project_id.clone(),
+                title,
+            })
+            .await?;
+        self.emit_todos_changed(&project_id);
+        Ok(TodoView::from_row(row))
+    }
+
+    pub async fn update_todo(
+        &self,
+        id: String,
+        title: Option<String>,
+        status: Option<String>,
+    ) -> Result<TodoView, IpcError> {
+        let title = title.map(|t| t.trim().to_string());
+        if let Some(t) = &title {
+            if t.is_empty() {
+                return Err(IpcError::BadInput("todo title must not be empty".into()));
+            }
+        }
+        let row = self
+            .db
+            .todos()
+            .update(&id, title.as_deref(), status.as_deref())
+            .await?;
+        self.emit_todos_changed(&row.project_id);
+        Ok(TodoView::from_row(row))
+    }
+
+    pub async fn delete_todo(&self, id: String) -> Result<(), IpcError> {
+        // Read first so we know which project to signal after the delete.
+        let row = self.db.todos().get(&id).await?;
+        self.db.todos().delete(&id).await?;
+        self.emit_todos_changed(&row.project_id);
+        Ok(())
+    }
+
+    fn emit_todos_changed(&self, project_id: &str) {
+        let _ = self.ui_bus.send(UiEvent {
+            session_id: project_id.to_string(),
+            kind: UiEventKind::TodosChanged,
+        });
+    }
+
+    /// Resolve a project id from a terminal id (the `YCODE_TERMINAL_ID` we
+    /// inject when spawning a PTY). Used by the MCP control socket so AI tool
+    /// calls operate on the project the agent is running inside, with no
+    /// explicit project argument.
+    pub async fn project_id_for_terminal(&self, terminal_id: &str) -> Result<String, IpcError> {
+        Ok(self.db.sessions().get(terminal_id).await?.project_id)
+    }
+
+    /// Fallback resolution by working directory: match `cwd` against known
+    /// project `repo_path`s. Used when `YCODE_TERMINAL_ID` didn't propagate to
+    /// the MCP server child process. Returns the project whose repo_path is a
+    /// prefix of (or equal to) `cwd`, preferring the longest match.
+    pub async fn project_id_for_cwd(&self, cwd: &str) -> Result<String, IpcError> {
+        let rows = self.db.projects().list().await?;
+        let best = rows
+            .into_iter()
+            .filter(|p| cwd == p.repo_path || cwd.starts_with(&format!("{}/", p.repo_path)))
+            .max_by_key(|p| p.repo_path.len());
+        best.map(|p| p.id)
+            .ok_or_else(|| IpcError::BadInput(format!("no project matches cwd {cwd}")))
+    }
+
     /// Walk a project's repo, honouring `.gitignore` and friends. Returns
     /// every directory and file entry (relative to repo root) so the frontend
     /// can render an expandable tree. The walk runs on a blocking thread to
@@ -727,7 +841,12 @@ impl Service {
             req.command
         };
         let mut env = terminal_env(std::env::vars());
-        inject_notify_env(&mut env, &id, self.notify_sock_path.as_deref());
+        inject_notify_env(
+            &mut env,
+            &id,
+            self.notify_sock_path.as_deref(),
+            self.mcp_sock_path.as_deref(),
+        );
         let spec = SpawnSpec {
             command,
             args: req.args,
@@ -1127,7 +1246,12 @@ impl Service {
         let mut env = terminal_env(
             std::env::vars().chain(profile.env.iter().map(|(k, v)| (k.clone(), v.clone()))),
         );
-        inject_notify_env(&mut env, id, self.notify_sock_path.as_deref());
+        inject_notify_env(
+            &mut env,
+            id,
+            self.notify_sock_path.as_deref(),
+            self.mcp_sock_path.as_deref(),
+        );
         let env_remove = env_keys_to_strip(profile)
             .iter()
             .map(|s| (*s).to_string())
@@ -1633,19 +1757,28 @@ where
     env.into_iter().collect()
 }
 
-/// Inject `YCODE_TERMINAL_ID` (always) and `YCODE_NOTIFY_SOCK` (when the
-/// notify listener bound successfully) into a spawned PTY's environment.
-/// Existing entries for these keys are stripped first so a misbehaving
-/// host shell can't override what the helper expects.
+/// Inject `YCODE_TERMINAL_ID` (always), `YCODE_NOTIFY_SOCK` (when the notify
+/// listener bound) and `YCODE_MCP_SOCK` (the MCP control socket) into a
+/// spawned PTY's environment. These flow down to the agent CLI and, in turn,
+/// to any MCP server child it spawns — that's how `ycode-mcp` learns which
+/// terminal/project it's running inside and where to connect back. Existing
+/// entries for these keys are stripped first so a misbehaving host shell can't
+/// override what the helpers expect.
 fn inject_notify_env(
     env: &mut Vec<(String, String)>,
     terminal_id: &str,
     sock_path: Option<&std::path::Path>,
+    mcp_sock_path: Option<&std::path::Path>,
 ) {
-    env.retain(|(k, _)| k != "YCODE_TERMINAL_ID" && k != "YCODE_NOTIFY_SOCK");
+    env.retain(|(k, _)| {
+        k != "YCODE_TERMINAL_ID" && k != "YCODE_NOTIFY_SOCK" && k != "YCODE_MCP_SOCK"
+    });
     env.push(("YCODE_TERMINAL_ID".into(), terminal_id.to_string()));
     if let Some(p) = sock_path {
         env.push(("YCODE_NOTIFY_SOCK".into(), p.to_string_lossy().into_owned()));
+    }
+    if let Some(p) = mcp_sock_path {
+        env.push(("YCODE_MCP_SOCK".into(), p.to_string_lossy().into_owned()));
     }
 }
 

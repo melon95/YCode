@@ -32,6 +32,11 @@ pub enum UiEventKind {
     ProjectAppeared,
     /// Project row went away.
     ProjectRemoved,
+    /// The todo list for a project changed (added / edited / status-flipped /
+    /// deleted) — either from the UI or via the MCP control socket.
+    /// `session_id` carries the affected project id; the webview re-fetches
+    /// via `list_todos` when the project is the active one.
+    TodosChanged,
     /// One chunk of PTY output. `data` is base64-encoded raw bytes from the
     /// child — pass through to xterm.js after decoding.
     PtyOutput { data: String },

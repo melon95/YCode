@@ -19,8 +19,12 @@ import {
   agentInstallCodexChain,
   agentInstallHook,
   agentUninstallHook,
+  mcpInstall,
+  mcpStatus,
+  mcpUninstall,
   testNotification,
   type AgentPatchStatus,
+  type McpStatus,
 } from "../lib/ipc";
 import type { ConfigView } from "../lib/types";
 
@@ -113,6 +117,85 @@ export function NotificationsSettings({ config, onChange }: Props) {
       <AgentRow agent="claude" />
       <AgentRow agent="codex" />
       <AgentRow agent="gemini" />
+
+      <hr style={{ border: "none", borderTop: "1px solid var(--rule)", margin: "8px 0" }} />
+
+      <p className="settings-section-blurb">
+        Project todo list over MCP. Registers the bundled <code>ycode-mcp</code>{" "}
+        server in the agent's config (Claude <code>~/.claude.json</code>, Codex{" "}
+        <code>~/.codex/config.toml</code>) so the model can read and edit the
+        current project's todos via <code>list_todos</code> / <code>add_todo</code>{" "}
+        / <code>update_todo</code> / <code>delete_todo</code>. The project is
+        inferred from the terminal — no project id needed.
+      </p>
+
+      <McpAgentRow agent="claude" />
+      <McpAgentRow agent="codex" />
+    </div>
+  );
+}
+
+interface McpAgentRowProps {
+  agent: "claude" | "codex";
+}
+
+function McpAgentRow({ agent }: McpAgentRowProps) {
+  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(() => {
+    mcpStatus(agent)
+      .then(setStatus)
+      .catch((err) => toast.danger(`${AGENT_LABEL[agent]} MCP status: ${err}`));
+  }, [agent]);
+
+  useEffect(refresh, [refresh]);
+
+  async function onInstall() {
+    setBusy(true);
+    try {
+      setStatus(await mcpInstall(agent));
+      toast.success(`${AGENT_LABEL[agent]} todo MCP registered`);
+    } catch (err) {
+      toast.danger(`Install failed: ${err}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUninstall() {
+    setBusy(true);
+    try {
+      setStatus(await mcpUninstall(agent));
+      toast.success(`${AGENT_LABEL[agent]} todo MCP removed`);
+    } catch (err) {
+      toast.danger(`Uninstall failed: ${err}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="field">
+      <label className="field-label">
+        {AGENT_LABEL[agent]}
+        {status === "installed" && (
+          <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
+            registered
+          </span>
+        )}
+      </label>
+      {status === null ? (
+        <div className="field-hint">Checking…</div>
+      ) : status === "installed" ? (
+        <Button size="sm" variant="ghost" onPress={onUninstall} isDisabled={busy}>
+          {busy ? "Removing…" : "Remove todo MCP"}
+        </Button>
+      ) : (
+        <Button size="sm" variant="primary" onPress={onInstall} isDisabled={busy}>
+          {busy ? "Registering…" : "Register todo MCP"}
+        </Button>
+      )}
     </div>
   );
 }

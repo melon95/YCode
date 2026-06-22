@@ -414,6 +414,27 @@ pub fn run() {
                 .build(app);
 
 
+            // Bind the MCP control socket now that we have an `Arc<Service>`.
+            // The sidecar (`ycode-mcp`) connects here for every todo tool
+            // call. Bind failure is non-fatal — todo MCP tools just won't
+            // work until the next launch. The path matches what `Service`
+            // injects into PTY children as `YCODE_MCP_SOCK`.
+            //
+            // Must run inside a Tokio runtime context: `mcp_listener::start`
+            // binds a `tokio::net::UnixListener` and `tokio::spawn`s the accept
+            // loop, both of which panic outside a runtime. The Tauri `setup`
+            // closure runs on the main thread in the AppKit `didFinishLaunching`
+            // callback — NOT a Tokio context — so wrap the call in `block_on`
+            // (which enters the global runtime). `start` returns immediately;
+            // the spawned accept loop detaches and keeps running on the runtime.
+            if let Some(mcp_sock) = state.service.mcp_sock_path() {
+                let svc = state.service.clone();
+                let token = state.service.shutdown_token();
+                tauri::async_runtime::block_on(async move {
+                    ycode_ipc::mcp_listener::start(svc, token, mcp_sock);
+                });
+            }
+
             let service = state.service.clone();
             let active_terminal_for_pump = state.active_terminal.clone();
             let handle = app.handle().clone();
@@ -464,6 +485,10 @@ pub fn run() {
             commands::list_projects,
             commands::create_project,
             commands::delete_project,
+            commands::list_todos,
+            commands::create_todo,
+            commands::update_todo,
+            commands::delete_todo,
             commands::create_session,
             commands::write_pty,
             commands::read_pty_backlog,
@@ -498,6 +523,9 @@ pub fn run() {
             commands::agent_install_hook,
             commands::agent_install_codex_chain,
             commands::agent_uninstall_hook,
+            commands::mcp_status,
+            commands::mcp_install,
+            commands::mcp_uninstall,
             commands::set_active_terminal,
             commands::test_notification,
             commands::lsp_list_manifests,

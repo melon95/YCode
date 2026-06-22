@@ -95,6 +95,12 @@ pub fn codex_config_path() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex/config.toml"))
 }
 
+/// `$HOME/.claude.json` — Claude Code's user-scope config, where `mcpServers`
+/// lives (distinct from `~/.claude/settings.json`, which holds hooks).
+pub fn claude_json_path() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude.json"))
+}
+
 fn backup_path(path: &Path) -> PathBuf {
     let mut s = path.as_os_str().to_owned();
     s.push(".ycode.bak");
@@ -736,6 +742,192 @@ fn strip_codex_managed_block(raw: &str) -> String {
     out
 }
 
+// ──────────────────────── ycode-todos MCP server ────────────────────────
+//
+// Registers the `ycode-mcp` sidecar as an MCP server in the agent CLIs so the
+// model can read/write the project's todo list. Manual/opt-in: nothing here
+// runs unless the user flips the toggle in Settings.
+//
+// The server name `ycode-todos` doubles as our marker — its presence means
+// "installed", its absence "not". Claude reads `mcpServers` from
+// `~/.claude.json`; Codex reads `[mcp_servers.*]` from `~/.codex/config.toml`.
+
+/// Stable server key, also used as the install marker.
+pub const YCODE_MCP_SERVER_NAME: &str = "ycode-todos";
+
+/// Whether the ycode-todos MCP server is registered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum McpStatus {
+    NotInstalled,
+    Installed,
+}
+
+// ── Claude (`~/.claude.json` → `mcpServers`) ──
+
+pub fn claude_mcp_status(path: &Path) -> Result<McpStatus, PatchError> {
+    if !path.exists() {
+        return Ok(McpStatus::NotInstalled);
+    }
+    let raw = std::fs::read_to_string(path)?;
+    if raw.trim().is_empty() {
+        return Ok(McpStatus::NotInstalled);
+    }
+    let value: serde_json::Value = serde_json::from_str(&raw)?;
+    let present = value
+        .get("mcpServers")
+        .and_then(|m| m.get(YCODE_MCP_SERVER_NAME))
+        .is_some();
+    Ok(if present {
+        McpStatus::Installed
+    } else {
+        McpStatus::NotInstalled
+    })
+}
+
+pub fn install_claude_mcp(path: &Path, mcp_bin: &Path) -> Result<McpStatus, PatchError> {
+    backup_once(path)?;
+
+    let mut root: serde_json::Value = if path.exists() {
+        let raw = std::fs::read_to_string(path)?;
+        if raw.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&raw)?
+        }
+    } else {
+        serde_json::json!({})
+    };
+
+    if !root.is_object() {
+        return Err(PatchError::Schema {
+            file: "claude .claude.json",
+            msg: "top-level value must be an object".into(),
+        });
+    }
+
+    let obj = root.as_object_mut().unwrap();
+    let servers = obj
+        .entry("mcpServers".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if !servers.is_object() {
+        return Err(PatchError::Schema {
+            file: "claude .claude.json",
+            msg: format!("`mcpServers` must be an object, got {servers}"),
+        });
+    }
+    servers.as_object_mut().unwrap().insert(
+        YCODE_MCP_SERVER_NAME.to_string(),
+        serde_json::json!({
+            "type": "stdio",
+            "command": mcp_bin.to_string_lossy(),
+            "args": [],
+        }),
+    );
+
+    let body = serde_json::to_string_pretty(&root)?;
+    write_atomically(path, &body)?;
+    Ok(McpStatus::Installed)
+}
+
+pub fn uninstall_claude_mcp(path: &Path) -> Result<(), PatchError> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(path)?;
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let mut root: serde_json::Value = serde_json::from_str(&raw)?;
+    if let Some(servers) = root.get_mut("mcpServers").and_then(|m| m.as_object_mut()) {
+        servers.remove(YCODE_MCP_SERVER_NAME);
+        let empty = servers.is_empty();
+        if empty {
+            if let Some(obj) = root.as_object_mut() {
+                obj.remove("mcpServers");
+            }
+        }
+    }
+    let body = serde_json::to_string_pretty(&root)?;
+    write_atomically(path, &body)
+}
+
+// ── Codex (`~/.codex/config.toml` → `[mcp_servers.ycode-todos]`) ──
+
+pub fn codex_mcp_status(path: &Path) -> Result<McpStatus, PatchError> {
+    if !path.exists() {
+        return Ok(McpStatus::NotInstalled);
+    }
+    let raw = std::fs::read_to_string(path)?;
+    if raw.trim().is_empty() {
+        return Ok(McpStatus::NotInstalled);
+    }
+    let doc: toml_edit::DocumentMut = raw.parse()?;
+    let present = doc
+        .get("mcp_servers")
+        .and_then(|m| m.get(YCODE_MCP_SERVER_NAME))
+        .is_some();
+    Ok(if present {
+        McpStatus::Installed
+    } else {
+        McpStatus::NotInstalled
+    })
+}
+
+pub fn install_codex_mcp(path: &Path, mcp_bin: &Path) -> Result<McpStatus, PatchError> {
+    backup_once(path)?;
+
+    let raw = if path.exists() {
+        std::fs::read_to_string(path)?
+    } else {
+        String::new()
+    };
+    let mut doc: toml_edit::DocumentMut = if raw.trim().is_empty() {
+        toml_edit::DocumentMut::new()
+    } else {
+        raw.parse()?
+    };
+
+    // `[mcp_servers.ycode-todos]` with a single `command` key. Build an
+    // explicit table so toml_edit emits a real `[mcp_servers.ycode-todos]`
+    // header rather than an inline table.
+    let mut entry = toml_edit::Table::new();
+    entry.insert("command", toml_edit::value(mcp_bin.to_string_lossy().as_ref()));
+
+    let servers = doc
+        .entry("mcp_servers")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+    let servers_tbl = servers.as_table_mut().ok_or_else(|| PatchError::Schema {
+        file: "codex config.toml",
+        msg: "`mcp_servers` must be a table".into(),
+    })?;
+    // Keep the parent header out of the way; child tables get their own
+    // `[mcp_servers.ycode-todos]` line.
+    servers_tbl.set_implicit(true);
+    servers_tbl.insert(YCODE_MCP_SERVER_NAME, toml_edit::Item::Table(entry));
+
+    write_atomically(path, &doc.to_string())?;
+    Ok(McpStatus::Installed)
+}
+
+pub fn uninstall_codex_mcp(path: &Path) -> Result<(), PatchError> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(path)?;
+    if raw.trim().is_empty() {
+        return Ok(());
+    }
+    let mut doc: toml_edit::DocumentMut = raw.parse()?;
+    if let Some(servers) = doc.get_mut("mcp_servers").and_then(|m| m.as_table_mut()) {
+        servers.remove(YCODE_MCP_SERVER_NAME);
+        if servers.is_empty() {
+            doc.as_table_mut().remove("mcp_servers");
+        }
+    }
+    write_atomically(path, &doc.to_string())
+}
+
 // ───────────────────────────── tests ─────────────────────────────
 
 #[cfg(test)]
@@ -1282,5 +1474,83 @@ api_key = "sk-xxx"
         let body = std::fs::read_to_string(&path).unwrap();
         assert!(!body.contains(CODEX_MARKER_COMMENT));
         assert!(!body.contains("--next"));
+    }
+
+    // ── ycode-todos MCP ──
+
+    fn mcp_bin() -> PathBuf {
+        PathBuf::from("/opt/ycode/bin/ycode-mcp")
+    }
+
+    #[test]
+    fn claude_mcp_install_status_uninstall_roundtrip() {
+        let (_d, path) = tmp_file(".claude.json");
+        // Pre-existing user content must survive.
+        std::fs::write(&path, r#"{"model":"claude-opus","mcpServers":{"other":{"command":"x"}}}"#)
+            .unwrap();
+        assert_eq!(claude_mcp_status(&path).unwrap(), McpStatus::NotInstalled);
+
+        install_claude_mcp(&path, &mcp_bin()).unwrap();
+        assert_eq!(claude_mcp_status(&path).unwrap(), McpStatus::Installed);
+
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(v["model"], "claude-opus");
+        assert_eq!(v["mcpServers"]["other"]["command"], "x");
+        assert!(v["mcpServers"][YCODE_MCP_SERVER_NAME]["command"]
+            .as_str()
+            .unwrap()
+            .contains("ycode-mcp"));
+
+        uninstall_claude_mcp(&path).unwrap();
+        assert_eq!(claude_mcp_status(&path).unwrap(), McpStatus::NotInstalled);
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        // Ours gone, user's kept.
+        assert!(v["mcpServers"].get(YCODE_MCP_SERVER_NAME).is_none());
+        assert_eq!(v["mcpServers"]["other"]["command"], "x");
+    }
+
+    #[test]
+    fn claude_mcp_install_idempotent_and_creates_file() {
+        let (_d, path) = tmp_file(".claude.json");
+        install_claude_mcp(&path, &mcp_bin()).unwrap();
+        install_claude_mcp(&path, &mcp_bin()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(v["mcpServers"][YCODE_MCP_SERVER_NAME].is_object());
+    }
+
+    #[test]
+    fn codex_mcp_install_status_uninstall_roundtrip() {
+        let (_d, path) = tmp_file("config.toml");
+        let user = "model = \"gpt-5\"\n\n[providers.openai]\napi_key = \"sk\"\n";
+        std::fs::write(&path, user).unwrap();
+        assert_eq!(codex_mcp_status(&path).unwrap(), McpStatus::NotInstalled);
+
+        install_codex_mcp(&path, &mcp_bin()).unwrap();
+        assert_eq!(codex_mcp_status(&path).unwrap(), McpStatus::Installed);
+
+        let body = std::fs::read_to_string(&path).unwrap();
+        let doc: toml_edit::DocumentMut = body.parse().expect("valid TOML");
+        // User content intact.
+        assert_eq!(doc["model"].as_str(), Some("gpt-5"));
+        assert_eq!(doc["providers"]["openai"]["api_key"].as_str(), Some("sk"));
+        // Our server present with the right command.
+        let cmd = doc["mcp_servers"][YCODE_MCP_SERVER_NAME]["command"]
+            .as_str()
+            .unwrap();
+        assert!(cmd.contains("ycode-mcp"));
+
+        // Idempotent.
+        install_codex_mcp(&path, &mcp_bin()).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(body.matches("[mcp_servers.ycode-todos]").count(), 1);
+
+        uninstall_codex_mcp(&path).unwrap();
+        assert_eq!(codex_mcp_status(&path).unwrap(), McpStatus::NotInstalled);
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(body.contains("model = \"gpt-5\""));
+        assert!(!body.contains("ycode-todos"));
     }
 }

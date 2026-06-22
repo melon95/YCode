@@ -3,6 +3,7 @@ import { useStore } from "../lib/store";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
 import { ChangesPanel } from "./ChangesPanel";
+import { TodoPanel } from "./TodoPanel";
 import {
   RightTerminalSplit,
   closePane,
@@ -252,6 +253,17 @@ export function RightPane() {
         >
           <ChangesIcon />
         </button>
+        <button
+          type="button"
+          className={"right-pane-tab" + (rightTab === "todos" ? " active" : "")}
+          onClick={() => setRightTab("todos")}
+          aria-label="Todos"
+          aria-selected={rightTab === "todos"}
+          role="tab"
+          title="Todos"
+        >
+          <TodosIcon />
+        </button>
         {openFiles.length > 0 && <div className="right-pane-tab-separator" />}
         {openFiles.map((path) => {
           const active = rightTab === "editor" && path === selectedFilePath;
@@ -385,6 +397,9 @@ export function RightPane() {
         {rightTab === "changes" && activeProject && (
           <ChangesPanel projectId={activeProject.id} />
         )}
+        {rightTab === "todos" && activeProject && (
+          <TodoPanel projectId={activeProject.id} />
+        )}
         {/* One split tree per visited project, stacked + hidden via
             display:none for the inactive ones. Switching projects flips
             visibility instead of unmounting, so every pane's shell keeps
@@ -463,6 +478,29 @@ function ChangesIcon() {
       <circle cx="18" cy="12" r="2.5" />
       <path d="M6 8.5v7" />
       <path d="M8.5 6h4.5a3 3 0 0 1 3 3v.5" />
+    </svg>
+  );
+}
+
+function TodosIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6h11" />
+      <path d="M9 12h11" />
+      <path d="M9 18h11" />
+      <path d="M4 6l1 1 1.5-1.5" />
+      <path d="M4 12l1 1 1.5-1.5" />
+      <path d="M4 17.5h1.5" />
     </svg>
   );
 }

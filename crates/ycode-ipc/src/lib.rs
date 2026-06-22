@@ -19,6 +19,7 @@
 //! Events flow back through [`UiEvent`] on the channel `"ycode://session"`.
 
 pub mod events;
+pub mod mcp_listener;
 pub mod notify_listener;
 pub mod service;
 
@@ -41,7 +42,7 @@ pub use ycode_lsp::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use ycode_config::{AgentLaunchProfile, FontSizes, NotificationSettings};
-use ycode_persist::{ProjectRow, SessionRow};
+use ycode_persist::{ProjectRow, SessionRow, TodoRow};
 use ycode_terminal::TerminalStatus;
 
 /// Wire-format mirror of [`TerminalStatus`]. Kept here (rather than deriving
@@ -339,6 +340,40 @@ impl ProjectView {
             repo_path: row.repo_path,
             created_at_ms: row.created_at,
             session_count,
+        }
+    }
+}
+
+/// Frontend-facing snapshot of a single todo item.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TodoView {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    /// One of `todo` / `doing` / `done`.
+    pub status: String,
+    pub sort_order: i64,
+    /// When the todo most recently entered `doing` (unix ms), or `None`.
+    pub started_at_ms: Option<i64>,
+    /// When the todo most recently entered `done` (unix ms), or `None`.
+    pub done_at_ms: Option<i64>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+impl TodoView {
+    pub fn from_row(row: TodoRow) -> Self {
+        Self {
+            id: row.id,
+            project_id: row.project_id,
+            title: row.title,
+            status: row.status,
+            sort_order: row.sort_order,
+            started_at_ms: row.started_at,
+            done_at_ms: row.done_at,
+            created_at_ms: row.created_at,
+            updated_at_ms: row.updated_at,
         }
     }
 }

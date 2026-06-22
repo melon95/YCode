@@ -8,6 +8,7 @@ import type {
   FontSizesView,
   ProjectView,
   SessionView,
+  TodoView,
 } from "./types";
 import { DEFAULT_THEME_ID } from "./themes";
 
@@ -21,7 +22,7 @@ export const DEFAULT_FONT_SIZES: FontSizesView = {
 export const FONT_SIZE_MIN = 8;
 export const FONT_SIZE_MAX = 32;
 
-export type RightTab = "files" | "editor" | "terminal" | "changes";
+export type RightTab = "files" | "editor" | "terminal" | "changes" | "todos";
 
 // Middle-pane layout. `visibleIds` is the ordered slot list (0..N-1 where
 // N = visibleIds.length); `focusSlot` indexes which one owns keyboard
@@ -161,6 +162,10 @@ interface AppState {
   /// In-memory only — re-emitted by the CLI on the next event after a
   /// reload.
   attentionBySession: Record<string, true>;
+  /// Per-project todo lists, keyed by project id. Fetched lazily when the
+  /// Todo tab is opened and refreshed on every `TodosChanged` event (which
+  /// fires for both UI edits and MCP-driven changes from an AI agent).
+  todos: Record<string, TodoView[]>;
 
   setAgents: (list: AgentProfileView[]) => void;
   setProjects: (list: ProjectView[]) => void;
@@ -178,6 +183,7 @@ interface AppState {
   /// Release a project that a peer window just closed.
   removeLockedByOther: (id: string) => void;
   setRightTab: (tab: RightTab) => void;
+  setTodos: (projectId: string, list: TodoView[]) => void;
   setSessions: (list: SessionView[]) => void;
   upsertSession: (s: SessionView) => void;
   removeSession: (id: string) => void;
@@ -251,6 +257,10 @@ export const useStore = create<AppState>((set) => ({
   theme: DEFAULT_THEME_ID,
   activeSidebarAgentId: null,
   attentionBySession: {},
+  todos: {},
+
+  setTodos: (projectId, list) =>
+    set((state) => ({ todos: { ...state.todos, [projectId]: list } })),
 
   markAttention: (sessionId) =>
     set((state) => {

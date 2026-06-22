@@ -25,6 +25,19 @@ export type ProjectView = Omit<
   session_count: number;
 };
 
+import type { TodoView as RawTodoView } from "@bindings/TodoView";
+
+export type TodoView = Omit<
+  RawTodoView,
+  "sort_order" | "started_at_ms" | "done_at_ms" | "created_at_ms" | "updated_at_ms"
+> & {
+  sort_order: number;
+  started_at_ms: number | null;
+  done_at_ms: number | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+};
+
 export type { SessionStatus } from "@bindings/SessionStatus";
 export type { AgentProfileView } from "@bindings/AgentProfileView";
 export type { AgentLaunchProfileView } from "@bindings/AgentLaunchProfileView";

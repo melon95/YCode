@@ -7,13 +7,14 @@ use std::path::PathBuf;
 use tauri::{Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use ycode_config::agent_patcher::{
-    self, claude_settings_path, codex_config_path, HookStatus, NotifyStatus,
+    self, claude_json_path, claude_settings_path, codex_config_path, HookStatus, McpStatus,
+    NotifyStatus,
 };
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitFileChange, LspManifestView,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
-    SessionView, SpawnPtyRequest, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
+    SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
     WritePtyRequest,
 };
 
@@ -102,6 +103,54 @@ pub async fn delete_project(state: State<'_, AppState>, project_id: String) -> R
     state
         .service
         .delete_project(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_todos(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<TodoView>, String> {
+    state
+        .service
+        .list_todos(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_todo(
+    state: State<'_, AppState>,
+    project_id: String,
+    title: String,
+) -> Result<TodoView, String> {
+    state
+        .service
+        .create_todo(project_id, title)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_todo(
+    state: State<'_, AppState>,
+    id: String,
+    title: Option<String>,
+    status: Option<String>,
+) -> Result<TodoView, String> {
+    state
+        .service
+        .update_todo(id, title, status)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_todo(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state
+        .service
+        .delete_todo(id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -489,6 +538,89 @@ pub(crate) fn resolve_helper_bin(app: &tauri::AppHandle) -> Result<PathBuf, Stri
     }
 
     Err("ycode-notify binary not found — looked next to YCode and in bundled resources".into())
+}
+
+/// Locate the `ycode-mcp` sidecar binary. Same resolution strategy as
+/// [`resolve_helper_bin`]: adjacent to the running exe in dev, bundled
+/// resources in a packaged app.
+pub(crate) fn resolve_mcp_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let bin_name = if cfg!(windows) {
+        "ycode-mcp.exe"
+    } else {
+        "ycode-mcp"
+    };
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let adjacent = dir.join(bin_name);
+            if adjacent.exists() {
+                return Ok(adjacent);
+            }
+        }
+    }
+
+    if let Ok(p) = app.path().resolve(
+        format!("binaries/{bin_name}"),
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    Err("ycode-mcp binary not found — looked next to YCode and in bundled resources".into())
+}
+
+/// Inspect whether the ycode-todos MCP server is registered for `agent`
+/// (`"claude"` or `"codex"`).
+#[tauri::command]
+pub fn mcp_status(agent: String) -> Result<McpStatus, String> {
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_json_path().ok_or("HOME unset")?;
+            agent_patcher::claude_mcp_status(&path).map_err(|e| e.to_string())
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            agent_patcher::codex_mcp_status(&path).map_err(|e| e.to_string())
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
+}
+
+/// Register the ycode-todos MCP server for `agent`. Idempotent.
+#[tauri::command]
+pub fn mcp_install(app: tauri::AppHandle, agent: String) -> Result<McpStatus, String> {
+    let mcp_bin = resolve_mcp_bin(&app)?;
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_json_path().ok_or("HOME unset")?;
+            agent_patcher::install_claude_mcp(&path, &mcp_bin).map_err(|e| e.to_string())
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            agent_patcher::install_codex_mcp(&path, &mcp_bin).map_err(|e| e.to_string())
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
+}
+
+/// Unregister the ycode-todos MCP server for `agent`. No-op when absent.
+#[tauri::command]
+pub fn mcp_uninstall(agent: String) -> Result<McpStatus, String> {
+    match agent.as_str() {
+        "claude" => {
+            let path = claude_json_path().ok_or("HOME unset")?;
+            agent_patcher::uninstall_claude_mcp(&path).map_err(|e| e.to_string())?;
+            Ok(McpStatus::NotInstalled)
+        }
+        "codex" => {
+            let path = codex_config_path().ok_or("HOME unset")?;
+            agent_patcher::uninstall_codex_mcp(&path).map_err(|e| e.to_string())?;
+            Ok(McpStatus::NotInstalled)
+        }
+        other => Err(format!("unsupported agent: {other}")),
+    }
 }
 
 /// Inspect the current state of the per-agent hook config without modifying

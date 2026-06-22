@@ -19,4 +19,10 @@ pub enum PersistError {
 
     #[error("project `{0}` still has {1} live session(s)")]
     ProjectNotEmpty(String, i64),
+
+    #[error("todo not found: {0}")]
+    TodoNotFound(String),
+
+    #[error("invalid todo status: {0} (expected todo|doing|done)")]
+    InvalidTodoStatus(String),
 }

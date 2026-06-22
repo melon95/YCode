@@ -12,12 +12,14 @@ pub mod lsp_repo;
 mod models;
 pub mod project_repo;
 pub mod session_repo;
+pub mod todo_repo;
 
 pub use error::PersistError;
 pub use lsp_repo::{LspInstallationRepo, LspInstallationRow, NewLspInstallation};
-pub use models::{ProjectRow, SessionRow};
+pub use models::{ProjectRow, SessionRow, TodoRow};
 pub use project_repo::{NewProject, ProjectRepo};
 pub use session_repo::{NewSession, SessionRepo};
+pub use todo_repo::{NewTodo, TodoRepo, TODO_STATUSES};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -73,6 +75,10 @@ impl Db {
 
     pub fn projects(&self) -> ProjectRepo<'_> {
         ProjectRepo::new(&self.pool)
+    }
+
+    pub fn todos(&self) -> TodoRepo<'_> {
+        TodoRepo::new(&self.pool)
     }
 
     pub fn lsp_installations(&self) -> LspInstallationRepo<'_> {

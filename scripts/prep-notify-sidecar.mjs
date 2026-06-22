@@ -13,22 +13,24 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const isWindows = process.platform === "win32";
-const srcName = isWindows ? "ycode-notify.exe" : "ycode-notify";
+const ext = isWindows ? ".exe" : "";
 
-execSync("cargo build --release -p ycode-notify", {
-  cwd: repoRoot,
-  stdio: "inherit",
-});
+// Both helper binaries are staged under src-tauri/binaries/<name> (no .exe
+// suffix) so the single `resources` entry per binary in tauri.conf.json
+// resolves on every platform. ycode-mcp/ycode-notify are Unix-socket only
+// today (no-op on Windows), but shipping the bytes keeps the bundle uniform.
+const crates = ["ycode-notify", "ycode-mcp"];
 
 const dstDir = join(repoRoot, "src-tauri", "binaries");
 mkdirSync(dstDir, { recursive: true });
 
-const src = join(repoRoot, "target", "release", srcName);
-// Stage without the .exe extension so the single `resources` entry in
-// tauri.conf.json (`binaries/ycode-notify`) resolves on every platform.
-// ycode-notify is a no-op on Windows today (Unix-socket only); shipping
-// the bytes keeps the bundle layout uniform until a Windows transport lands.
-const dst = join(dstDir, "ycode-notify");
-copyFileSync(src, dst);
-
-console.log(`prep-notify-sidecar: ${src} → ${dst}`);
+for (const crate of crates) {
+  execSync(`cargo build --release -p ${crate}`, {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  const src = join(repoRoot, "target", "release", `${crate}${ext}`);
+  const dst = join(dstDir, crate);
+  copyFileSync(src, dst);
+  console.log(`prep-notify-sidecar: ${src} → ${dst}`);
+}
