@@ -2,6 +2,13 @@ name = "ycode-updater"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# Custom domain. `custom_domain = true` makes wrangler create the DNS record
+# and managed TLS cert automatically (the zone agentscience.com.cn must live
+# in this same Cloudflare account). Replaces the *.workers.dev URL.
+routes = [
+  { pattern = "updater.agentscience.com.cn", custom_domain = true }
+]
+
 # Upstream manifest the Worker proxies for the Tauri updater. Keep this in
 # sync with the GitHub fallback endpoint in src-tauri/tauri.conf.json.
 [vars]

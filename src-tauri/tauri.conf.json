@@ -50,7 +50,7 @@
       "active": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIzQ0UxOUQzNjkzQURGMDcKUldRSDN6cHAweG5Pc3pleG5IMDl3QVJoUzNTMW5zQXhxREpOYThmcFdRdE5RbG9FYnFJUklWeDQK",
       "endpoints": [
-        "https://ycode-updater.lijunwork95.workers.dev/releases/latest.json",
+        "https://updater.agentscience.com.cn/releases/latest.json",
         "https://github.com/melon95/YCode/releases/latest/download/latest.json"
       ]
     }
