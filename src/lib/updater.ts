@@ -7,11 +7,46 @@
 
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
+import { arch, platform } from "@tauri-apps/plugin-os";
+import { getInstanceId } from "./instanceId";
+
+/// Builds the anonymous active-user headers that ride along on the update
+/// check. The proxy endpoint (see `analytics/`) records one ping per
+/// instance per day from these; nothing here is identifying. Best-effort —
+/// a failure to read any field must never block the update check.
+async function telemetryHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "x-ycode-instance": getInstanceId(),
+  };
+  try {
+    headers["x-ycode-version"] = await getVersion();
+  } catch {
+    /* ignore — version is best-effort */
+  }
+  try {
+    headers["x-ycode-os"] = platform();
+  } catch {
+    /* ignore */
+  }
+  try {
+    headers["x-ycode-arch"] = arch();
+  } catch {
+    /* ignore */
+  }
+  return headers;
+}
 
 /// Hits the configured endpoint and returns the pending update, or `null`
 /// when the user is already on the latest version.
 export async function checkForUpdate(): Promise<Update | null> {
-  return await check();
+  let headers: Record<string, string> = {};
+  try {
+    headers = await telemetryHeaders();
+  } catch {
+    /* ignore — telemetry is never allowed to break the update check */
+  }
+  return await check({ headers });
 }
 
 export type InstallPhase = "downloading" | "installing" | "done";

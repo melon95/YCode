@@ -1,0 +1,19 @@
+name = "ycode-updater"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Upstream manifest the Worker proxies for the Tauri updater. Keep this in
+# sync with the GitHub fallback endpoint in src-tauri/tauri.conf.json.
+[vars]
+UPSTREAM_LATEST_JSON = "https://github.com/melon95/YCode/releases/latest/download/latest.json"
+
+# Anonymous active-user store. Create it once with:
+#   wrangler d1 create ycode-analytics
+# then paste the printed database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "ycode-analytics"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# STATS_TOKEN guards the /stats endpoint. It is a secret, not a var:
+#   wrangler secret put STATS_TOKEN
