@@ -13,7 +13,7 @@ UPSTREAM_LATEST_JSON = "https://github.com/melon95/YCode/releases/latest/downloa
 [[d1_databases]]
 binding = "DB"
 database_name = "ycode-analytics"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "9370848a-dff9-440d-8844-280d66266be9"
 
 # STATS_TOKEN guards the /stats endpoint. It is a secret, not a var:
 #   wrangler secret put STATS_TOKEN
