@@ -10,7 +10,15 @@
 
 import type { ConfigView, FontSizesView } from "../lib/types";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN, useStore } from "../lib/store";
-import { THEMES, type Theme } from "../lib/themes";
+import { THEMES, type Theme, type ThemeMode } from "../lib/themes";
+
+// Themes split into Light / Dark lanes (Light first) so the picker reads as
+// two short lists instead of one long mixed grid. Order within each lane
+// follows the registry's declaration order.
+const THEME_GROUPS: Array<{ mode: ThemeMode; label: string }> = [
+  { mode: "light", label: "Light" },
+  { mode: "dark", label: "Dark" },
+];
 
 interface Props {
   config: ConfigView;
@@ -70,16 +78,25 @@ export function AppearanceSettings({ config, onChange }: Props) {
           Switches the chrome palette and the xterm color table in one move.
           Selection is previewed live; close without saving to revert.
         </p>
-        <div className="theme-grid">
-          {THEMES.map((theme) => (
-            <ThemeCard
-              key={theme.id}
-              theme={theme}
-              selected={config.theme === theme.id}
-              onSelect={() => pickTheme(theme)}
-            />
-          ))}
-        </div>
+        {THEME_GROUPS.map((group) => {
+          const themes = THEMES.filter((t) => t.mode === group.mode);
+          if (themes.length === 0) return null;
+          return (
+            <div className="theme-group" key={group.mode}>
+              <div className="theme-group-label">{group.label}</div>
+              <div className="theme-grid">
+                {themes.map((theme) => (
+                  <ThemeCard
+                    key={theme.id}
+                    theme={theme}
+                    selected={config.theme === theme.id}
+                    onSelect={() => pickTheme(theme)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </section>
 
       <section className="appearance-section">

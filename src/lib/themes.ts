@@ -831,12 +831,97 @@ const glacier: Theme = {
   },
 };
 
+// "Snow" — the purest light theme. A true-white canvas (#ffffff) with neutral
+// grey chrome and a single confident blue accent, in the spirit of Codex's
+// light mode. No paper grain, no warmth — maximum contrast and calm for users
+// who just want a clean white editor.
+const snow: Theme = {
+  id: "snow",
+  label: "Snow",
+  mode: "light",
+  chrome: {
+    "--bg": "#ffffff",
+    "--surface": "#f7f8fa",
+    "--panel": "#f2f3f5",
+    "--panel-raised": "#ffffff",
+    "--panel-sunken": "#ebedf0",
+
+    "--rule": "#e3e5e9",
+    "--rule-strong": "#c4c8cf",
+    "--rule-accent": "rgba(1, 105, 204, 0.34)",
+
+    "--text": "#0d0d0d",
+    "--text-soft": "#2b2f36",
+    "--muted": "#5a6068",
+    "--subtle": "#868d96",
+    "--whisper": "#c0c5cc",
+
+    "--accent": "#0169cc",
+    "--accent-soft": "#015bb0",
+    "--accent-strong": "#014f99",
+    "--accent-rgb": "1, 105, 204",
+    "--accent-tint": "rgba(1, 105, 204, 0.08)",
+    "--accent-tint-hover": "rgba(1, 105, 204, 0.14)",
+
+    "--idle": "#868d96",
+    "--running": "#1f7a3e",
+    "--running-rgb": "31, 122, 62",
+    "--error": "#c0322b",
+    "--error-rgb": "192, 50, 43",
+    "--warning": "#8a5a00",
+    "--warning-rgb": "138, 90, 0",
+
+    "--diff-add-rgb": "31, 122, 62",
+    "--diff-del-rgb": "192, 50, 43",
+
+    "--role-user": "#0f6e6a",
+    "--role-thinking": "#8a2da8",
+    "--role-tool": "#2c5fa8",
+    "--role-plan": "#8a5a00",
+
+    "--shadow-rgb": "20, 22, 26",
+    "--highlight-rgb": "255, 255, 255",
+    "--grain-opacity": "0",
+    "--grain-blend-mode": "normal",
+    "--vignette-warm": "rgba(1, 105, 204, 0.03)",
+    "--vignette-cool": "rgba(1, 105, 204, 0.02)",
+    "--selection-bg": "rgba(1, 105, 204, 0.18)",
+    "--accent-glow":
+      "0 0 0 1px rgba(1, 105, 204, 0.28), 0 0 20px -8px rgba(1, 105, 204, 0.45)",
+    "--text-on-accent": "#ffffff",
+  },
+  xterm: {
+    background: "#ffffff",
+    foreground: "#0d0d0d",
+    cursor: "#0169cc",
+    cursorAccent: "#ffffff",
+    selectionBackground: "rgba(1, 105, 204, 0.22)",
+    black: "#0d0d0d",
+    red: "#c0322b",
+    green: "#1f7a3e",
+    yellow: "#8a5a00",
+    blue: "#0169cc",
+    magenta: "#8a2da8",
+    cyan: "#0f6e6a",
+    white: "#5a6068",
+    brightBlack: "#868d96",
+    brightRed: "#d23b30",
+    brightGreen: "#258049",
+    brightYellow: "#9a6500",
+    brightBlue: "#2a7fd6",
+    brightMagenta: "#9a3ab8",
+    brightCyan: "#168078",
+    brightWhite: "#0d0d0d",
+  },
+};
+
 export const THEMES: readonly Theme[] = [
   foundry,
   midnight,
   forest,
   synapse,
   lagoon,
+  snow,
   parchment,
   daylight,
   linen,
