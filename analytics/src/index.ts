@@ -28,7 +28,7 @@ export default {
       return handleUpdate(req, env, ctx);
     }
     if (req.method === "GET" && url.pathname === "/stats") {
-      return handleStats(url, env);
+      return handleStats(url, req, env);
     }
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response("ok", { status: 200 });
@@ -91,11 +91,26 @@ async function handleUpdate(
 
 /// Aggregated, anonymous usage numbers. Distinct-instance counts over rolling
 /// windows give DAU/MAU; raw row counts would over-count multi-launch days.
-async function handleStats(url: URL, env: Env): Promise<Response> {
-  if (env.STATS_TOKEN) {
-    if (url.searchParams.get("token") !== env.STATS_TOKEN) {
-      return new Response("unauthorized", { status: 401 });
-    }
+async function handleStats(
+  url: URL,
+  req: Request,
+  env: Env,
+): Promise<Response> {
+  // Fail closed: without a configured token the stats endpoint stays private
+  // rather than silently leaking aggregate numbers.
+  if (!env.STATS_TOKEN) {
+    return new Response("stats disabled: STATS_TOKEN not configured", {
+      status: 503,
+    });
+  }
+  // Accept the token via `Authorization: Bearer …` (keeps it out of URLs and
+  // access logs) or, for convenience, a `?token=` query param.
+  const bearer = req.headers
+    .get("authorization")
+    ?.replace(/^Bearer\s+/i, "");
+  const provided = bearer || url.searchParams.get("token");
+  if (provided !== env.STATS_TOKEN) {
+    return new Response("unauthorized", { status: 401 });
   }
 
   const today = new Date().toISOString().slice(0, 10);
