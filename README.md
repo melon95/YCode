@@ -37,8 +37,11 @@ state. Single static binary.
 - **Persistent agent history** — scan and search past Claude and Codex
   transcripts, then reopen historical conversations from the sidebar.
 - **Built-in project tools** — manage projects, browse files, edit code, use
-  the right-side shell terminal, and review Git changes without leaving the
-  app.
+  the right-side shell terminal, review Git changes, and maintain per-project
+  todos without leaving the app.
+- **Todo MCP for agents** — register the bundled `ycode-mcp` sidecar with
+  Claude Code or Codex so agents can read and update the current project's
+  todo list through MCP tools.
 - **Editor and language support** — CodeMirror editing, syntax highlighting,
   preview tabs, LSP installation, semantic tokens, and goto-definition.
 - **Configurable agents** — manage agent commands, args, environment
@@ -59,7 +62,7 @@ Three columns:
   arranged in `single` / `stack` / `columns` / `2×2` / `main+side` grids.
   Each session is one PTY, restartable, archivable, with title + status
   badges. Close a pane and the agent keeps running in the background.
-- **Right pane** — three tabs:
+- **Right pane** — project tools:
   - **Terminal** — a raw `$SHELL` in the project root. Right-click any pane
     to **Split Right / Left / Up / Down**, drag the divider to resize,
     close panes without killing the others. Layout persists across project
@@ -70,6 +73,9 @@ Three columns:
     semantic highlighting and goto-definition; install and manage them from
     the **Languages** settings panel.
   - **Changes** — `git status` view with side-by-side diffs.
+  - **Todos** — per-project todo list with `todo` / `doing` / `done` status
+    cycling, inline rename, delete, and live refresh when an agent edits the
+    same list through MCP.
 
 A command palette (`Cmd-K`) jumps to any project or session.
 
@@ -173,6 +179,7 @@ ycode/
 │       ├── EditorPanel.tsx       # CodeMirror editor
 │       ├── FileTreePanel.tsx     # react-arborist tree
 │       ├── ChangesPanel.tsx      # git status + diffs
+│       ├── TodoPanel.tsx         # per-project todos
 │       ├── HistoryTab.tsx        # jsonl transcript viewer
 │       ├── CommandPalette.tsx    # Cmd-K palette
 │       └── SettingsModal.tsx     # Agent profile editor
@@ -187,6 +194,7 @@ ycode/
     ├── ycode-config/             # config.json schema + $VAR expansion
     ├── ycode-introspect/         # claude/codex jsonl scanners + parsers
     ├── ycode-lsp/                # language-server install + LSP client
+    ├── ycode-mcp/                # stdio MCP sidecar exposing project todos
     ├── ycode-notify/             # desktop notifications
     └── ycode-ipc/                # Service facade, DTOs, ts-rs bindings
 ```
