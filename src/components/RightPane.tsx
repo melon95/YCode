@@ -275,7 +275,8 @@ export function RightPane() {
               className={
                 "right-file-tab" +
                 (active ? " active" : "") +
-                (isPreview ? " preview" : "")
+                (isPreview ? " preview" : "") +
+                (openFiles.length === 1 ? " single" : "")
               }
               onClick={() => showFile(path)}
               // Double-click pins a preview tab — same semantics as the

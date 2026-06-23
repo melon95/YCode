@@ -514,20 +514,28 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         </div>
       )}
       {showPreviewTabs && selectedFilePath && (
-        <div className="preview-tabs">
+        <div className="preview-tabs" role="tablist" aria-label="Preview mode">
           <button
             type="button"
             className={previewMode === "preview" ? "active" : ""}
             onClick={() => setPreviewMode(selectedFilePath, "preview")}
+            role="tab"
+            aria-selected={previewMode === "preview"}
+            aria-label="Preview"
+            title="Preview"
           >
-            Preview
+            <PreviewIcon />
           </button>
           <button
             type="button"
             className={previewMode === "raw" ? "active" : ""}
             onClick={() => setPreviewMode(selectedFilePath, "raw")}
+            role="tab"
+            aria-selected={previewMode === "raw"}
+            aria-label="Raw"
+            title="Raw"
           >
-            Raw
+            <RawIcon />
           </button>
         </div>
       )}
@@ -580,6 +588,46 @@ export function EditorPanel({ projectId }: { projectId: string }) {
 function basename(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+/// Eye icon for the rendered "Preview" mode.
+function PreviewIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+/// Angle-brackets icon for the editable "Raw" (source) mode.
+function RawIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M8 8l-4 4 4 4" />
+      <path d="M16 8l4 4-4 4" />
+    </svg>
+  );
 }
 
 // Raster images are binary — preview only, no source to edit. SVG and Markdown

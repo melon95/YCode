@@ -622,6 +622,13 @@ body {
   min-width: 112px;
 }
 
+/* A lone open tab has the whole strip to itself — let it grow to fit the
+   full filename instead of clamping at 220px and ellipsizing. */
+.right-file-tab.single {
+  max-width: none;
+  flex: 0 1 auto;
+}
+
 .right-file-tab:hover {
   background: rgba(var(--highlight-rgb), 0.05);
   color: var(--text);
@@ -638,6 +645,10 @@ body {
    on the file in the tree pins it (removes italic). */
 .right-file-tab.preview .right-file-tab-name {
   font-style: italic;
+  /* Italic glyphs lean right and overflow the box — `overflow: hidden`
+     would clip the last letter's tail. A sliver of right padding gives it
+     room. */
+  padding-right: 2px;
 }
 
 .right-file-tab-name {
@@ -3321,12 +3332,16 @@ textarea.native-input {
 }
 
 .preview-tabs button {
-  padding: 3px 12px;
-  font-size: 11px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
