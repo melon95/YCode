@@ -21,8 +21,6 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AddTodoArgs {
@@ -53,8 +51,12 @@ struct TodoServer {
     // Used by the `#[tool_handler]` macro; dead-code analysis can't see that.
     #[allow(dead_code)]
     tool_router: ToolRouter<TodoServer>,
+    // Only read by the Unix `call` impl; unused on non-Unix targets.
+    #[cfg_attr(not(unix), allow(dead_code))]
     sock_path: PathBuf,
+    #[cfg_attr(not(unix), allow(dead_code))]
     terminal_id: Option<String>,
+    #[cfg_attr(not(unix), allow(dead_code))]
     cwd: Option<String>,
 }
 
@@ -86,11 +88,20 @@ impl TodoServer {
     }
 
     /// Round-trip one request through the ycode control socket.
+    ///
+    /// Unix-only: the control socket is a Unix domain socket. On Windows this
+    /// sidecar still builds and serves MCP (so the bundle resource exists), but
+    /// every tool call reports it's unsupported — matching the main app, which
+    /// doesn't even bind the socket or inject `YCODE_MCP_SOCK` on non-Unix.
+    #[cfg(unix)]
     async fn call(
         &self,
         action: &str,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::UnixStream;
+
         let req = serde_json::json!({
             "terminal_id": self.terminal_id,
             "cwd": self.cwd,
@@ -129,6 +140,15 @@ impl TodoServer {
                 .unwrap_or("unknown error")
                 .to_string())
         }
+    }
+
+    #[cfg(not(unix))]
+    async fn call(
+        &self,
+        _action: &str,
+        _payload: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        Err("ycode todo tools require a Unix domain socket; not supported on this platform".into())
     }
 
     /// Turn a `call` outcome into an MCP tool result, JSON-stringifying the
