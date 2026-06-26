@@ -159,6 +159,25 @@ export function App() {
   const openCommandPalette = useCallback(() => setPaletteOpen(true), []);
   useHotkeys({ sidebarRef, rightPaneRef, openCommandPalette });
 
+  // Suppress the WebView's native right-click menu (its lone "Reload" entry
+  // would let users blow away app state). Editable surfaces keep their menu so
+  // native cut/copy/paste/spellcheck still works in text fields and the editor.
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (
+        target?.closest(
+          "input, textarea, [contenteditable=''], [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => window.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   // Lets non-hook callers (TopBar button, future Dock-menu deep links) open
   // the palette without prop-drilling. Mirrors `ycode:close-file` pattern.
   useEffect(() => {
