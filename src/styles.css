@@ -942,13 +942,16 @@ body {
   border: 1px solid currentColor;
   opacity: 0.7;
 }
-/* Per-pane liveness indicator next to the title. Always present for running
-   sessions so a glance at any pane in a multi-agent layout shows its state.
-   Default state ("idle"): muted, no animation — agent is at rest, no recent
-   turn-complete signal. "ringing" modifier (set when `attentionBySession[id]`
-   is truthy): switches to the accent colour and gently pulses. The store
-   clears the attention flag on focus / activeId change, so the focused pane
-   naturally drops back to Idle the moment the user reads it. */
+/* Per-session status light next to the pane title — always present so a
+   glance across a multi-agent layout shows every session's state. The
+   `light-*` modifier is driven by `sessionLight()`, which folds the PTY
+   lifecycle together with the agent's turn signal:
+     running — green, steady: the agent is working (or just launched).
+     waiting — amber, pulsing: the agent finished its turn, your move. This
+               is the only animated state, so the eye is drawn only to the
+               session that actually needs the user.
+     done    — muted grey: the process exited cleanly.
+     error   — red: the process exited with an error. */
 .pane-status-dot {
   flex: 0 0 auto;
   width: 8px;
@@ -958,11 +961,22 @@ body {
   opacity: 0.55;
   transition: background 160ms ease, opacity 160ms ease;
 }
-.pane-status-dot.ringing {
-  background: var(--accent, #d97757);
+.pane-status-dot.light-running {
+  background: var(--running, #8aaa6f);
+  opacity: 0.9;
+}
+.pane-status-dot.light-waiting {
+  background: var(--warning, #d6a95c);
   opacity: 1;
-  box-shadow: 0 0 0 0 currentColor;
   animation: pane-attention-pulse 1.6s ease-in-out infinite;
+}
+.pane-status-dot.light-done {
+  background: var(--idle, #756d61);
+  opacity: 0.5;
+}
+.pane-status-dot.light-error {
+  background: var(--error, #d46a5f);
+  opacity: 1;
 }
 @keyframes pane-attention-pulse {
   0%, 100% { opacity: 0.9; transform: scale(1); }

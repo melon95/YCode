@@ -50,6 +50,7 @@
 //           the window still go through `bridge.onInput`.
 
 import { writePty } from "./ipc";
+import { useStore } from "./store";
 import type { Terminal } from "@xterm/xterm";
 
 export function utf8ToBase64(s: string): string {
@@ -136,6 +137,24 @@ export function attachImeInputBridge(
     lastWriteAt = now;
     const id = getSessionId();
     if (!id) return;
+    // Typed text into a session that was waiting on the agent means the turn is
+    // resuming — flip its status light back to "running". We trigger on real
+    // input here rather than on PtyOutput, because agents print trailing
+    // redraws (prompt box, plugin notices) *after* their turn-complete hook
+    // fires, which would false-flip the light immediately.
+    //
+    // Crucially, only data that does NOT begin with ESC counts: typed
+    // characters and Enter are bare bytes, whereas terminal-generated reports
+    // (focus in/out from DECSET 1004, cursor-position / device-attribute
+    // replies) and navigation keys are all ESC-prefixed. Without this guard,
+    // clicking back into an unfocused window makes xterm emit a focus-in report
+    // (`ESC [ I`) that would clear the amber "waiting" light before the user
+    // ever reads it. The report is still forwarded to the PTY below — we just
+    // don't treat it as the user answering.
+    if (!data.startsWith("\x1b")) {
+      const { activityBySession, setActivity } = useStore.getState();
+      if (activityBySession[id] === "waiting") setActivity(id, "running");
+    }
     void writePty({ session_id: id, data: utf8ToBase64(data) }).catch(() => {
       // PTY is gone (process exited). Drop keystroke silently.
     });

@@ -44,6 +44,7 @@ import {
   isPrintableCharEvent,
 } from "../lib/terminalInput";
 import { getTheme } from "../lib/themes";
+import { sessionLight, SESSION_LIGHT_LABEL } from "../lib/types";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
 
@@ -199,7 +200,7 @@ export function TerminalPane() {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const agents = useStore((s) => s.agents);
   const terminalFontSize = useStore((s) => s.fontSizes.terminal);
-  const attentionBySession = useStore((s) => s.attentionBySession);
+  const activityBySession = useStore((s) => s.activityBySession);
   // Pane-header icon lookup. Sessions carry `agent_profile` (the launch
   // profile id), so we index by id here.
   const agentByProfileId = useMemo(() => {
@@ -620,8 +621,12 @@ export function TerminalPane() {
             const title = session
               ? displaySessionTitle(session, liveTitles)
               : "(loading…)";
-            const ended =
-              session !== undefined && session.status.type !== "Running";
+            // 4-state status light: folds the PTY lifecycle (running / done /
+            // error) together with the agent's turn signal (waiting). Null
+            // only while the session row hasn't loaded yet.
+            const light = session
+              ? sessionLight(session.status, activityBySession[id])
+              : null;
             const focused = slot === focusSlot;
             return (
               <div
@@ -667,23 +672,13 @@ export function TerminalPane() {
                   <span className="pane-title" title={title}>
                     {title}
                   </span>
-                  {!ended && (
+                  {light && (
                     <span
-                      className={
-                        "pane-status-dot" +
-                        (attentionBySession[id] ? " ringing" : "")
-                      }
-                      title={
-                        attentionBySession[id]
-                          ? "Agent finished — your turn"
-                          : "Idle"
-                      }
-                      aria-label={
-                        attentionBySession[id] ? "ready for input" : "idle"
-                      }
+                      className={`pane-status-dot light-${light}`}
+                      title={SESSION_LIGHT_LABEL[light]}
+                      aria-label={SESSION_LIGHT_LABEL[light]}
                     />
                   )}
-                  {ended && <span className="pane-status">ended</span>}
                   <button
                     type="button"
                     className="pane-close"

@@ -121,3 +121,34 @@ export function statusLabel(s: { type: string }): StatusLabel {
 export function isRestartable(status: { type: string }): boolean {
   return status.type === "Exited" || status.type === "Error";
 }
+
+/// Per-session "status light" — a glanceable 4-state liveness indicator that
+/// folds the PTY process status together with the agent's turn signal:
+///   running — process alive and the agent is working (or just launched)
+///   waiting — process alive but the agent finished its turn (your move)
+///   done    — process exited cleanly
+///   error   — process exited with an error
+export type SessionLight = "running" | "waiting" | "done" | "error";
+
+/// Volatile per-session activity, tracked in the store independent of focus:
+/// `AgentTurnComplete` sets "waiting", the next `PtyOutput` flips back to
+/// "running". `undefined` (no signal yet) is treated as "running".
+export type SessionActivity = "running" | "waiting";
+
+export function sessionLight(
+  status: { type: string },
+  activity: SessionActivity | undefined,
+): SessionLight {
+  // Process lifecycle wins over the turn signal: an exited session is
+  // done/error no matter what its last activity was.
+  if (status.type === "Error") return "error";
+  if (status.type === "Exited") return "done";
+  return activity === "waiting" ? "waiting" : "running";
+}
+
+export const SESSION_LIGHT_LABEL: Record<SessionLight, string> = {
+  running: "Running",
+  waiting: "Waiting for input",
+  done: "Done",
+  error: "Error",
+};

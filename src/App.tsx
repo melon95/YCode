@@ -237,6 +237,8 @@ export function App() {
     listenSessionEvents((event) => {
       const kind = event.kind;
       if (kind.type === "PtyOutput" || kind.type === "PtyExit") {
+        // Output never moves the status light (the waiting→running flip is
+        // driven by user input in terminalInput.ts — see the note there).
         if (kind.type === "PtyExit") refresh();
         return;
       }
@@ -264,7 +266,11 @@ export function App() {
         // screen. Backend applies the same gate to the OS notification.
         // Read from the store imperatively to dodge the stale closure that
         // a captured `activeId` dep would produce.
-        const { activeId: focusedId, markAttention } = useStore.getState();
+        const { activeId: focusedId, markAttention, setActivity } =
+          useStore.getState();
+        // The status light is focus-independent: the agent is waiting for the
+        // user regardless of which pane they're looking at, so always set it.
+        setActivity(event.session_id, "waiting");
         const windowFocused =
           typeof document !== "undefined" && document.hasFocus();
         if (!(windowFocused && focusedId === event.session_id)) {

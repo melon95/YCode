@@ -7,6 +7,7 @@ import type {
   AgentProfileView,
   FontSizesView,
   ProjectView,
+  SessionActivity,
   SessionView,
   TodoView,
 } from "./types";
@@ -208,6 +209,13 @@ interface AppState {
   /// In-memory only — re-emitted by the CLI on the next event after a
   /// reload.
   attentionBySession: Record<string, true>;
+  /// Focus-independent per-session activity backing the status light. Unlike
+  /// `attentionBySession` (an unread badge that clears on focus), this stays
+  /// "waiting" until the agent actually resumes — `AgentTurnComplete` sets
+  /// "waiting", the next `PtyOutput` flips it back to "running". A session
+  /// with no entry yet is rendered as "running" by `sessionLight`. In-memory
+  /// only; reconstructed from live events after a reload.
+  activityBySession: Record<string, SessionActivity>;
   /// Per-project todo lists, keyed by project id. Fetched lazily when the
   /// Todo tab is opened and refreshed on every `TodosChanged` event (which
   /// fires for both UI edits and MCP-driven changes from an AI agent).
@@ -285,6 +293,9 @@ interface AppState {
   /// Clear the attention badge for a session. Called when the session becomes
   /// active or when the user otherwise acknowledges the event.
   clearAttention: (sessionId: string) => void;
+  /// Set a session's activity for the status light. No-op when unchanged so
+  /// the high-frequency `PtyOutput` stream doesn't thrash subscribers.
+  setActivity: (sessionId: string, activity: SessionActivity) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -307,6 +318,7 @@ export const useStore = create<AppState>((set) => ({
   theme: DEFAULT_THEME_ID,
   activeSidebarAgentId: null,
   attentionBySession: {},
+  activityBySession: {},
   todos: {},
 
   setTodos: (projectId, list) =>
@@ -329,6 +341,17 @@ export const useStore = create<AppState>((set) => ({
       const next = { ...state.attentionBySession };
       delete next[sessionId];
       return { attentionBySession: next };
+    }),
+
+  setActivity: (sessionId, activity) =>
+    set((state) => {
+      if (state.activityBySession[sessionId] === activity) return state;
+      return {
+        activityBySession: {
+          ...state.activityBySession,
+          [sessionId]: activity,
+        },
+      };
     }),
 
   setAgents: (list) => set({ agents: list }),
@@ -483,6 +506,13 @@ export const useStore = create<AppState>((set) => ({
             return next;
           })()
         : state.attentionBySession;
+      const activityBySession = state.activityBySession[id]
+        ? (() => {
+            const next = { ...state.activityBySession };
+            delete next[id];
+            return next;
+          })()
+        : state.activityBySession;
       // Drop from the layout too — a slot pointing at a removed session
       // would render a blank pane. Reflow mode if the new count needs it.
       const idx = state.layout.visibleIds.indexOf(id);
@@ -504,7 +534,14 @@ export const useStore = create<AppState>((set) => ({
           activeId = visibleIds[focusSlot];
         }
       }
-      return { sessions, liveTitles, layout, activeId, attentionBySession };
+      return {
+        sessions,
+        liveTitles,
+        layout,
+        activeId,
+        attentionBySession,
+        activityBySession,
+      };
     }),
 
   // Legacy alias. `null` clears the layout; a string id swaps the session
