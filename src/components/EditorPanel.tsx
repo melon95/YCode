@@ -4,13 +4,47 @@
 // either an auto-reload (clean buffer) or a conflict banner (dirty buffer).
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { watch } from "@tauri-apps/plugin-fs";
 import { toast } from "@heroui/react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  runScopeHandlers,
+  type Panel,
+  type ViewUpdate,
+} from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
+import {
+  ArrowDown,
+  ArrowUp,
+  CaseSensitive,
+  ChevronRight,
+  List,
+  Regex,
+  Replace,
+  ReplaceAll,
+  WholeWord,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { indentWithTab } from "@codemirror/commands";
 import { indentUnit, StreamLanguage } from "@codemirror/language";
+import {
+  SearchQuery,
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  getSearchQuery,
+  highlightSelectionMatches,
+  replaceAll,
+  replaceNext,
+  search,
+  searchKeymap,
+  selectMatches,
+  setSearchQuery,
+} from "@codemirror/search";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
@@ -354,6 +388,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     const lang = languageFor(selectedFilePath);
     return [
       keymap.of([
+        ...searchKeymap,
         {
           key: "Mod-s",
           preventDefault: true,
@@ -373,6 +408,8 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       // everything.
       indentUnit.of(indentUnitFor(selectedFilePath)),
       fontTheme,
+      search({ top: true, createPanel: (view) => new YCodeSearchPanel(view) }),
+      highlightSelectionMatches(),
       ...(lang ? [lang] : []),
       ...createLspExtension({
         onGotoDef: (line, ch) => handleGotoDefRef.current(line, ch),
@@ -576,6 +613,8 @@ export function EditorPanel({ projectId }: { projectId: string }) {
             foldGutter: true,
             lineNumbers: true,
             indentOnInput: true,
+            searchKeymap: false,
+            highlightSelectionMatches: false,
           }}
           height="100%"
           style={{ flex: 1, minHeight: 0 }}
@@ -588,6 +627,261 @@ export function EditorPanel({ projectId }: { projectId: string }) {
 function basename(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+class YCodeSearchPanel implements Panel {
+  readonly dom: HTMLElement;
+  private query: SearchQuery;
+  private searchField: HTMLInputElement;
+  private replaceField: HTMLInputElement;
+  private caseField: HTMLInputElement;
+  private reField: HTMLInputElement;
+  private wordField: HTMLInputElement;
+  private toggle: HTMLButtonElement;
+  private status: HTMLSpanElement;
+  private iconRoots: Root[] = [];
+
+  constructor(private view: EditorView) {
+    this.query = getSearchQuery(view.state);
+    this.dom = element("div", {
+      className: "ycode-search-panel replace-collapsed",
+    });
+    this.dom.addEventListener("keydown", (event) => this.keydown(event));
+
+    this.toggle = this.iconButton("toggle-replace", "Toggle replace", ChevronRight, () => {
+      const collapsed = this.dom.classList.toggle("replace-collapsed");
+      this.toggle.setAttribute("aria-expanded", String(!collapsed));
+    });
+    this.toggle.classList.add("cm-search-replace-toggle");
+    this.toggle.setAttribute("aria-expanded", "false");
+
+    this.searchField = this.textField("search", "Find", this.query.search);
+    this.searchField.setAttribute("main-field", "true");
+    this.replaceField = this.textField("replace", "Replace", this.query.replace);
+
+    this.caseField = this.optionField("case", this.query.caseSensitive);
+    this.reField = this.optionField("re", this.query.regexp);
+    this.wordField = this.optionField("word", this.query.wholeWord);
+
+    const searchOptions = element("div", { className: "cm-search-options" }, [
+      this.optionButton(this.caseField, "Match case", CaseSensitive),
+      this.optionButton(this.wordField, "Match whole word", WholeWord),
+      this.optionButton(this.reField, "Use regular expression", Regex),
+    ]);
+
+    this.status = element("span", { className: "cm-search-status" });
+    this.status.setAttribute("aria-live", "polite");
+
+    const actions = element("div", { className: "cm-search-actions" }, [
+      this.iconButton("prev", "Previous match", ArrowUp, () => findPrevious(this.view)),
+      this.iconButton("next", "Next match", ArrowDown, () => findNext(this.view)),
+      this.iconButton("select", "Select all matches", List, () => selectMatches(this.view)),
+      this.iconButton("close", "Close search", X, () => closeSearchPanel(this.view)),
+    ]);
+
+    const replaceActions = element("div", { className: "cm-search-replace-actions" }, [
+      this.iconButton("replace", "Replace", Replace, () => replaceNext(this.view)),
+      this.iconButton("replaceAll", "Replace all", ReplaceAll, () => replaceAll(this.view)),
+    ]);
+
+    // Four cells laid out by a 2-column grid in CSS: [find field | find
+    // controls] over [replace field | replace actions]. The two fields share
+    // the grid's 1fr column so they stay equal width with aligned edges.
+    const findField = element("div", { className: "cm-search-field-wrap cm-search-find-field" }, [
+      this.searchField,
+      searchOptions,
+    ]);
+    const findControls = element("div", { className: "cm-search-controls" }, [
+      this.status,
+      actions,
+    ]);
+    const replaceField = element(
+      "div",
+      { className: "cm-search-field-wrap cm-search-replace-cell" },
+      [this.replaceField],
+    );
+    replaceActions.classList.add("cm-search-replace-cell");
+
+    this.dom.append(
+      this.toggle,
+      element("div", { className: "cm-search-body" }, [
+        findField,
+        findControls,
+        replaceField,
+        replaceActions,
+      ]),
+    );
+
+    this.updateStatus();
+  }
+
+  mount() {
+    this.searchField.select();
+  }
+
+  update(update: ViewUpdate) {
+    for (const tr of update.transactions) {
+      for (const effect of tr.effects) {
+        if (effect.is(setSearchQuery) && !effect.value.eq(this.query)) {
+          this.setQuery(effect.value);
+        }
+      }
+    }
+    if (update.docChanged || update.selectionSet || update.transactions.length) {
+      this.updateStatus();
+    }
+  }
+
+  destroy() {
+    for (const root of this.iconRoots) root.unmount();
+  }
+
+  get pos() {
+    return 80;
+  }
+
+  get top() {
+    return true;
+  }
+
+  private commit() {
+    const query = new SearchQuery({
+      search: this.searchField.value,
+      replace: this.replaceField.value,
+      caseSensitive: this.caseField.checked,
+      regexp: this.reField.checked,
+      wholeWord: this.wordField.checked,
+    });
+    if (!query.eq(this.query)) {
+      this.query = query;
+      this.view.dispatch({ effects: setSearchQuery.of(query) });
+      this.updateStatus();
+    }
+  }
+
+  private keydown(event: KeyboardEvent) {
+    if (runScopeHandlers(this.view, event, "search-panel")) {
+      event.preventDefault();
+    } else if (event.key === "Enter" && event.target === this.searchField) {
+      event.preventDefault();
+      (event.shiftKey ? findPrevious : findNext)(this.view);
+    } else if (event.key === "Enter" && event.target === this.replaceField) {
+      event.preventDefault();
+      replaceNext(this.view);
+    }
+  }
+
+  private setQuery(query: SearchQuery) {
+    this.query = query;
+    this.searchField.value = query.search;
+    this.replaceField.value = query.replace;
+    this.caseField.checked = query.caseSensitive;
+    this.reField.checked = query.regexp;
+    this.wordField.checked = query.wholeWord;
+    this.updateStatus();
+  }
+
+  private updateStatus() {
+    const query = getSearchQuery(this.view.state);
+    if (!query.search || !query.valid) {
+      this.status.textContent = "";
+      return;
+    }
+
+    let total = 0;
+    let active = 0;
+    const head = this.view.state.selection.main.head;
+    const cursor = query.getCursor(this.view.state);
+    for (let next = cursor.next(); !next.done; next = cursor.next()) {
+      total += 1;
+      const match = next.value;
+      if (match.from <= head && head <= match.to) active = total;
+      if (total > 999) break;
+    }
+
+    if (total === 0) {
+      this.status.textContent = "No results";
+    } else if (total > 999) {
+      this.status.textContent = "999+ results";
+    } else {
+      this.status.textContent = `${active || 1} / ${total}`;
+    }
+  }
+
+  private textField(name: string, placeholder: string, value: string) {
+    const input = element("input", {
+      className: "cm-textfield",
+      name,
+      value,
+      placeholder,
+    }) as HTMLInputElement;
+    input.type = "text";
+    input.setAttribute("aria-label", placeholder);
+    input.autocomplete = "off";
+    input.addEventListener("input", () => this.commit());
+    input.addEventListener("change", () => this.commit());
+    return input;
+  }
+
+  private optionField(name: string, checked: boolean) {
+    const input = element("input", { name }) as HTMLInputElement;
+    input.type = "checkbox";
+    input.checked = checked;
+    input.addEventListener("change", () => this.commit());
+    return input;
+  }
+
+  private optionButton(input: HTMLInputElement, label: string, Icon: LucideIcon) {
+    const option = element("label", {
+      className: "cm-search-option",
+      title: label,
+    });
+    option.dataset.tooltip = label;
+    option.setAttribute("aria-label", label);
+    const icon = element("span", { className: "cm-search-option-icon" });
+    this.renderIcon(icon, Icon);
+    option.append(input, icon);
+    return option;
+  }
+
+  private iconButton(
+    name: string,
+    label: string,
+    Icon: LucideIcon,
+    onClick: () => void,
+  ) {
+    const button = element("button", { name, title: label }) as HTMLButtonElement;
+    button.type = "button";
+    button.dataset.ycodeIcon = "true";
+    button.dataset.tooltip = label;
+    button.setAttribute("aria-label", label);
+    button.addEventListener("click", onClick);
+    this.renderIcon(button, Icon);
+    return button;
+  }
+
+  private renderIcon(target: HTMLElement, Icon: LucideIcon) {
+    const root = createRoot(target);
+    this.iconRoots.push(root);
+    root.render(
+      <Icon aria-hidden="true" focusable="false" size={16} strokeWidth={2} />,
+    );
+  }
+}
+
+function element<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props: Record<string, string> = {},
+  children: Array<Node | string> = [],
+): HTMLElementTagNameMap[K] {
+  const dom = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "className") dom.className = value;
+    else if (key === "value" && dom instanceof HTMLInputElement) dom.value = value;
+    else dom.setAttribute(key, value);
+  }
+  dom.append(...children);
+  return dom;
 }
 
 /// Eye icon for the rendered "Preview" mode.
