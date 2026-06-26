@@ -79,6 +79,27 @@ Three columns:
 
 A command palette (`Cmd-K`) jumps to any project or session.
 
+## Keyboard Shortcuts
+
+Use `Cmd` on macOS and `Ctrl` on Linux/Windows.
+
+| Shortcut | Action |
+| --- | --- |
+| `Cmd-K` | Open the command palette for files and session search |
+| `Cmd-,` | Open Settings |
+| `Cmd-O` | Add/open a project folder |
+| `Shift-Cmd-[` / `Shift-Cmd-]` | Switch to the previous / next project |
+| `Cmd-N` | Create a session with the current sidebar agent |
+| `Shift-Cmd-N` | Open the agent picker for a new session |
+| `Cmd-T` | Create a session with the first available AI agent |
+| `Cmd-W` | Archive the focused session, after confirmation |
+| `Cmd-[` / `Cmd-]` | Switch to the previous / next session in the active project |
+| `Shift-Cmd-1` … `Shift-Cmd-4` | Focus visible agent pane 1-4 |
+| `Cmd-1` … `Cmd-5` | Switch the right pane to Files, Editor, Terminal, Changes, or Todos |
+| `Cmd-B` | Toggle the left sidebar |
+| `Shift-Cmd-B` | Toggle the right pane |
+| `Cmd-J` | Toggle/focus the right-pane terminal |
+
 ## Codex support
 
 Codex is treated as a first-class agent throughout ycode:
@@ -167,7 +188,7 @@ ycode/
 │   ├── lib/
 │   │   ├── ipc.ts                # Tauri command wrappers
 │   │   ├── store.ts              # Zustand store
-│   │   ├── hotkeys.tsx           # Cmd-K, layout cycle, pane focus
+│   │   ├── hotkeys.tsx           # App-wide keyboard shortcuts
 │   │   └── types.ts
 │   └── components/
 │       ├── TopBar.tsx            # Project picker + agent launcher

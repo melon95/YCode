@@ -39,12 +39,19 @@ export function TopBar() {
   const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
   const detached = lockedProjectId !== null;
 
-  // Listen for the ⌘, hotkey (dispatched from `useHotkeys`).
+  // Listen for global hotkeys dispatched from `useHotkeys`.
   useEffect(() => {
-    const onOpen = () => setSettingsOpen(true);
-    window.addEventListener("ycode:open-settings", onOpen);
-    return () => window.removeEventListener("ycode:open-settings", onOpen);
-  }, []);
+    const onOpenSettings = () => setSettingsOpen(true);
+    const onNewProject = () => {
+      if (!detached) void onAddProject();
+    };
+    window.addEventListener("ycode:open-settings", onOpenSettings);
+    window.addEventListener("ycode:new-project", onNewProject);
+    return () => {
+      window.removeEventListener("ycode:open-settings", onOpenSettings);
+      window.removeEventListener("ycode:new-project", onNewProject);
+    };
+  }, [detached, creatingProject]);
 
   // In a detached window only the locked project shows. In the main window
   // peers' projects are hidden so the same id never appears twice.

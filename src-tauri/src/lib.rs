@@ -142,16 +142,12 @@ fn maybe_show_agent_notification(
 fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     use tauri::menu::{AboutMetadataBuilder, PredefinedMenuItem, Submenu};
 
-    // ⌘⇧N matches Chrome / VS Code / Safari's "New Window" convention.
-    // Plain ⌘N is intentionally left free for a future "new session" action
-    // (semantically the dominant "new" verb inside ycode).
-    let new_window = MenuItem::with_id(
-        app,
-        "menu-new-window",
-        "New Window",
-        true,
-        Some("CmdOrCtrl+Shift+N"),
-    )?;
+    // New Window is intentionally accelerator-free: inside ycode the dominant
+    // "new" verbs belong to sessions — ⌘N creates a session and ⇧⌘N opens the
+    // agent picker (both handled in the webview, see lib/hotkeys.tsx). A menu
+    // accelerator would be checked before the webview keydown and swallow
+    // ⇧⌘N, so New Window stays click-only from the File menu.
+    let new_window = MenuItem::with_id(app, "menu-new-window", "New Window", true, None::<&str>)?;
 
     let app_submenu = Submenu::with_items(
         app,

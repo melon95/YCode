@@ -69,6 +69,49 @@ function reflowMode(current: LayoutMode, newCount: number): LayoutMode {
 
 const EMPTY_LAYOUT: Layout = { mode: "single", visibleIds: [], focusSlot: 0 };
 
+function latestSessionIdForProject(
+  sessions: Record<string, SessionView>,
+  projectId: string | null,
+): string | null {
+  if (!projectId) return null;
+  return (
+    Object.values(sessions)
+      .filter((s) => s.project_id === projectId)
+      .sort((a, b) => b.updated_at_ms - a.updated_at_ms)[0]?.id ?? null
+  );
+}
+
+function layoutForProject(
+  sessions: Record<string, SessionView>,
+  projectId: string | null,
+  cached: Layout | undefined,
+): Layout {
+  if (!projectId) return EMPTY_LAYOUT;
+
+  if (cached) {
+    const visibleIds = cached.visibleIds.filter(
+      (id) => sessions[id]?.project_id === projectId,
+    );
+    if (visibleIds.length > 0) {
+      const focusSlot = Math.min(cached.focusSlot, visibleIds.length - 1);
+      return {
+        mode: reflowMode(cached.mode, visibleIds.length),
+        visibleIds,
+        focusSlot,
+      };
+    }
+  }
+
+  const nextActiveId = latestSessionIdForProject(sessions, projectId);
+  return nextActiveId
+    ? { mode: "single", visibleIds: [nextActiveId], focusSlot: 0 }
+    : EMPTY_LAYOUT;
+}
+
+function activeIdFromLayout(layout: Layout): string | null {
+  return layout.visibleIds[layout.focusSlot] ?? null;
+}
+
 // Persist the active project so reopening the app restores the user's last
 // pick instead of jumping to whichever project happens to be first in the
 // backend list (currently the newest by `created_at`).
@@ -125,6 +168,9 @@ interface AppState {
   /// and which one has keyboard focus. Hidden sessions stay alive in
   /// `sessions{}` — closing a slot does NOT kill the PTY.
   layout: Layout;
+  /// Last visible terminal layout per project tab. Switching projects restores
+  /// the project's prior panes instead of collapsing to one session.
+  layoutsByProject: Record<string, Layout>;
   /// The project currently scoped for new-session creation. Top-bar project
   /// tabs select this.
   activeProjectId: string | null;
@@ -197,6 +243,9 @@ interface AppState {
   /// the focused slot even when its session is dead. Always grows the pane
   /// count unless we're already at [`LAYOUT_CAP`].
   appendSessionToLayout: (id: string) => void;
+  /// Show the new-session picker by hiding visible panes without killing
+  /// their PTYs. The sessions stay in `sessions{}` and can be reopened.
+  showNewSessionPicker: () => void;
   /// Sidebar/hotkey-driven swap: replace the currently focused slot with
   /// this session (or just focus it if it's already visible). Never grows
   /// the pane count.
@@ -247,6 +296,7 @@ export const useStore = create<AppState>((set) => ({
   liveTitles: {},
   activeId: null,
   layout: EMPTY_LAYOUT,
+  layoutsByProject: {},
   activeProjectId: null,
   rightTab: "files",
   openFiles: [],
@@ -326,8 +376,11 @@ export const useStore = create<AppState>((set) => ({
       delete projects[id];
       const wasActive = state.activeProjectId === id;
       if (wasActive) writeStoredActiveProjectId(null);
+      const layoutsByProject = { ...state.layoutsByProject };
+      delete layoutsByProject[id];
       return {
         projects,
+        layoutsByProject,
         activeProjectId: wasActive ? null : state.activeProjectId,
         // The terminal id would point at a now-orphaned session if its project
         // was the one we just removed.
@@ -338,28 +391,20 @@ export const useStore = create<AppState>((set) => ({
 
   setActiveProjectId: (id) =>
     set((state) => {
-      // Pick the new project's most-recent session as the active terminal so
-      // switching projects actually moves the middle pane (otherwise it keeps
-      // showing the previous project's CLI). Null when there are no sessions
-      // yet — TerminalPane falls back to the new-session picker.
-      const nextActiveId = id
-        ? (Object.values(state.sessions)
-            .filter((s) => s.project_id === id)
-            .sort((a, b) => b.updated_at_ms - a.updated_at_ms)[0]?.id ?? null)
-        : null;
       const same = state.activeProjectId === id;
       if (!same) writeStoredActiveProjectId(id);
-      // Project switch resets the layout: previous panes were scoped to the
-      // old project's sessions, which the user probably no longer wants to
-      // see. The most-recent session of the new project (if any) seeds a
-      // fresh single-pane layout.
-      const layout: Layout = nextActiveId
-        ? { mode: "single", visibleIds: [nextActiveId], focusSlot: 0 }
-        : EMPTY_LAYOUT;
+      const layoutsByProject =
+        !same && state.activeProjectId
+          ? { ...state.layoutsByProject, [state.activeProjectId]: state.layout }
+          : state.layoutsByProject;
+      const layout = same
+        ? state.layout
+        : layoutForProject(state.sessions, id, layoutsByProject[id ?? ""]);
       return {
         activeProjectId: id,
-        activeId: nextActiveId,
-        layout: same ? state.layout : layout,
+        activeId: activeIdFromLayout(layout),
+        layout,
+        layoutsByProject,
         // File selection + open editor tabs are project-scoped — paths from
         // project A don't make sense in project B.
         selectedFilePath: same ? state.selectedFilePath : null,
@@ -388,11 +433,16 @@ export const useStore = create<AppState>((set) => ({
             .map((p) => p.id)
             .find((pid) => pid !== id && !lockedByOtherWindows[pid]) ?? null;
         writeStoredActiveProjectId(nextActive);
+        const layout = layoutForProject(
+          state.sessions,
+          nextActive,
+          state.layoutsByProject[nextActive ?? ""],
+        );
         return {
           lockedByOtherWindows,
           activeProjectId: nextActive,
-          activeId: null,
-          layout: EMPTY_LAYOUT,
+          activeId: activeIdFromLayout(layout),
+          layout,
           selectedFilePath: null,
           openFiles: [],
           dirtyFiles: {},
@@ -511,6 +561,12 @@ export const useStore = create<AppState>((set) => ({
       const visibleIds = layout.visibleIds.slice();
       visibleIds[layout.focusSlot] = id;
       return { activeId: id, layout: { ...layout, visibleIds } };
+    }),
+
+  showNewSessionPicker: () =>
+    set((state) => {
+      if (state.layout.visibleIds.length === 0) return state;
+      return { activeId: null, layout: EMPTY_LAYOUT };
     }),
 
   openSessionInLayout: (id) =>

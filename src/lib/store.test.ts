@@ -65,6 +65,18 @@ describe("layout store", () => {
     expect(state().activeId).toBe("replacement");
   });
 
+  it("shows the new-session picker without removing sessions", () => {
+    state().setSessions([session("s1"), session("s2")]);
+    state().appendSessionToLayout("s1");
+    state().appendSessionToLayout("s2");
+
+    state().showNewSessionPicker();
+
+    expect(state().layout.visibleIds).toEqual([]);
+    expect(state().activeId).toBeNull();
+    expect(Object.keys(state().sessions).sort()).toEqual(["s1", "s2"]);
+  });
+
   it("resets editor and layout state when switching projects", () => {
     state().setSessions([
       { ...session("a1", "project-a"), updated_at_ms: 10 },
@@ -81,6 +93,30 @@ describe("layout store", () => {
     expect(state().openFiles).toEqual([]);
     expect(state().dirtyFiles).toEqual({});
     expect(state().previewFilePath).toBeNull();
+  });
+
+  it("restores each project's terminal layout when switching back", () => {
+    state().setSessions([
+      { ...session("a1", "project-a"), updated_at_ms: 10 },
+      { ...session("a2", "project-a"), updated_at_ms: 20 },
+      { ...session("b1", "project-b"), updated_at_ms: 30 },
+    ]);
+
+    state().setActiveProjectId("project-a");
+    state().appendSessionToLayout("a1");
+    state().appendSessionToLayout("a2");
+    state().setLayoutMode("columns");
+    const projectALayout = state().layout;
+    const projectAActiveId = state().activeId;
+
+    state().setActiveProjectId("project-b");
+
+    expect(state().layout.visibleIds).toEqual(["b1"]);
+
+    state().setActiveProjectId("project-a");
+
+    expect(state().layout).toEqual(projectALayout);
+    expect(state().activeId).toBe(projectAActiveId);
   });
 });
 

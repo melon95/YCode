@@ -4,20 +4,25 @@
 // so plain typing in inputs/xterm stays untouched):
 //   ⌘K              → open cross-session command palette
 //   ⌘,              → open Settings
-//   ⌘1 / ⌘2 / ⌘3   → switch right column to Files / Editor / Terminal
+//   ⌘O              → open/add a project folder
+//   ⌘1-5            → switch right column to Files / Editor / Terminal / Changes / Todos
+//   ⇧⌘1-4           → focus visible agent pane 1-4
 //   ⌘[  / ⌘]        → previous / next session in the active project
+//   ⇧⌘[ / ⇧⌘]       → previous / next project
 //   ⌘W              → archive the current session (with confirm)
-//   ⌘N              → open the new-session picker (UI to choose an agent)
+//   ⌘N              → create a session with the current sidebar agent
+//   ⇧⌘N             → open the new-session picker (UI to choose an agent)
 //   ⌘T              → create a session with the first available AI agent
 //   ⌘B              → toggle the left sidebar
 //   ⌘J              → toggle the right pane on the terminal tab
 //   ⇧⌘B             → toggle the right pane
 //
 // Session-lifecycle shortcuts (⌘N, ⌘W) plus the toggle/palette ones (⌘K,
-// ⌘B, ⌘J, ⇧⌘B) and the numeric tab switches all fire even when an input
-// has focus — xterm holds focus once a session is running, so gating them
-// would turn each into a one-shot. The remaining shortcuts (⌘[/⌘], ⌘T) are
-// suppressed inside text inputs, the CM6 editor, or the xterm terminals.
+// ⌘B, ⌘J, ⇧⌘B), the numeric tab switches, and pane-focus shortcuts all fire
+// even when an input has focus — xterm holds focus once a session is running,
+// so gating them would turn each into a one-shot. The remaining shortcuts
+// (⌘[/⌘], ⌘T) are suppressed inside text inputs, the CM6 editor, or the xterm
+// terminals.
 
 import { useEffect } from "react";
 import type { RefObject } from "react";
@@ -26,6 +31,14 @@ import { toast } from "@heroui/react";
 import { LAYOUT_CAP, useStore, type RightTab } from "./store";
 import { archiveSession, createSession, listAgents } from "./ipc";
 import { confirmDialog } from "./confirm";
+
+const RIGHT_TAB_BY_KEY: Record<string, RightTab> = {
+  "1": "files",
+  "2": "editor",
+  "3": "terminal",
+  "4": "changes",
+  "5": "todos",
+};
 
 interface HotkeyDeps {
   sidebarRef: RefObject<PanelImperativeHandle | null>;
@@ -40,7 +53,8 @@ export function useHotkeys({
 }: HotkeyDeps) {
   useEffect(() => {
     function shouldSkip(e: KeyboardEvent): boolean {
-      const target = e.target as HTMLElement | null;
+      const target =
+        e.target instanceof HTMLElement ? e.target : null;
       if (!target) return false;
       const tag = target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
@@ -71,13 +85,27 @@ export function useHotkeys({
         return;
       }
 
-      // ⌘1/2/3: numeric tab switch. Fire regardless of focus so the user can
-      // jump back from the terminal to the editor without first clicking out.
-      if (e.key === "1" || e.key === "2" || e.key === "3") {
+      // ⌘O: open/add a project folder. Routed through TopBar so the dialog
+      // flow stays in one place.
+      if (e.key.toLowerCase() === "o" && !e.shiftKey) {
         e.preventDefault();
-        const tab: RightTab =
-          e.key === "1" ? "files" : e.key === "2" ? "editor" : "terminal";
-        useStore.getState().setRightTab(tab);
+        window.dispatchEvent(new CustomEvent("ycode:new-project"));
+        return;
+      }
+
+      // ⌘1-5: right-pane tab switch. ⇧⌘1-4 instead focuses the matching
+      // visible agent pane. Fire regardless of focus so the user can jump
+      // between terminals and side tools without first clicking out of xterm.
+      if (e.key in RIGHT_TAB_BY_KEY) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          const slotIdx = Number(e.key) - 1;
+          if (slotIdx < LAYOUT_CAP) {
+            useStore.getState().focusLayoutSlot(slotIdx);
+          }
+        } else {
+          useStore.getState().setRightTab(RIGHT_TAB_BY_KEY[e.key]);
+        }
         return;
       }
 
@@ -117,11 +145,23 @@ export function useHotkeys({
         return;
       }
 
+      // ⇧⌘N: open the agent picker by hiding visible panes without killing
+      // their PTYs. It must fire from xterm focus for the same reason ⌘N does.
+      if (key === "n" && e.shiftKey) {
+        e.preventDefault();
+        const s = useStore.getState();
+        if (!s.activeProjectId) {
+          toast.warning("Pick a project first");
+          return;
+        }
+        s.showNewSessionPicker();
+        return;
+      }
+
       // ⌘N (above the shouldSkip gate): create a new session with the
       // sidebar's current agent. Must fire regardless of focus — once a
       // session is open, xterm holds focus, and gating on shouldSkip would
-      // turn this into a one-shot. ⇧⌘N is the OS "new window" shortcut and
-      // is handled by the macOS menu, not here.
+      // turn this into a one-shot.
       if (key === "n" && !e.shiftKey) {
         e.preventDefault();
         const s = useStore.getState();
@@ -179,6 +219,12 @@ export function useHotkeys({
         } catch (err) {
           toast.danger(`Archive failed: ${err}`);
         }
+        return;
+      }
+
+      if ((key === "[" || key === "]") && e.shiftKey) {
+        e.preventDefault();
+        switchProject(key === "]" ? 1 : -1);
         return;
       }
 
@@ -249,4 +295,17 @@ function togglePanel(ref: RefObject<PanelImperativeHandle | null>) {
   if (!panel) return;
   if (panel.isCollapsed()) panel.expand();
   else panel.collapse();
+}
+
+function switchProject(delta: 1 | -1) {
+  const s = useStore.getState();
+  if (s.lockedProjectId) return;
+  const list = Object.values(s.projects)
+    .filter((p) => !s.lockedByOtherWindows[p.id])
+    .sort((a, b) => a.created_at_ms - b.created_at_ms);
+  if (list.length <= 1) return;
+  const idx = list.findIndex((p) => p.id === s.activeProjectId);
+  const base = idx >= 0 ? idx : 0;
+  const next = (base + delta + list.length) % list.length;
+  s.setActiveProjectId(list[next].id);
 }
