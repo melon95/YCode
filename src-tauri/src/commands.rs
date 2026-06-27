@@ -669,21 +669,6 @@ pub fn agent_install_hook(
     }
 }
 
-/// Frontend tells us which PTY pane is currently focused so the
-/// `AgentTurnComplete` notification path can suppress redundant alerts (the
-/// user is already watching this pane). Pass `None` to clear (e.g. when the
-/// layout collapses to zero panes or the user switches away to a non-terminal
-/// column entirely).
-///
-/// Always succeeds — a poisoned mutex (impossible in practice, the
-/// only writer is this command) just silently no-ops.
-#[tauri::command]
-pub fn set_active_terminal(state: State<'_, AppState>, session_id: Option<String>) {
-    if let Ok(mut guard) = state.active_terminal.lock() {
-        *guard = session_id;
-    }
-}
-
 /// Fire a one-off OS notification so the user can confirm the system
 /// notification channel works (and, on macOS, get the first-launch permission
 /// prompt out of the way before relying on real agent events).

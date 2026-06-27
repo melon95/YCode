@@ -13,7 +13,6 @@ import {
   listSessions,
   listTodos,
   listenSessionEvents,
-  setActiveTerminal,
   startWorkspaceWatch,
   stopWorkspaceWatch,
 } from "./lib/ipc";
@@ -324,16 +323,10 @@ export function App() {
     });
   }, []);
 
-  // Mirror the focused pane to the backend so the agent-event pump can skip
-  // OS notifications when the user is already looking at the firing pane.
-  // Also drop any attention badge on the now-active session — the user is
-  // visibly acknowledging it.
+  // Drop any attention badge on the now-active session — the user is visibly
+  // acknowledging it by focusing the pane.
   useEffect(() => {
     if (activeId) clearAttention(activeId);
-    void setActiveTerminal(activeId).catch(() => {
-      // Best-effort: a missed update just means an extra notification, not
-      // a correctness issue. Don't surface noise here.
-    });
   }, [activeId, clearAttention]);
 
   // Coming back to the window while looking at a flagged pane shouldn't keep
