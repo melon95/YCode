@@ -47,6 +47,19 @@ export function readLockedProjectIdFromUrl(): string | null {
   }
 }
 
+/// Opaque per-project UI snapshot (see `captureProjectUiSnapshot`) handed to
+/// this window at spawn time via `?ui=…`. Null for the main window or any
+/// detached window opened before this feature existed. Consumed once at
+/// startup and never read again.
+export function readUiStateFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return new URLSearchParams(window.location.search).get("ui");
+  } catch {
+    return null;
+  }
+}
+
 /// Project ids currently owned by *other* live windows. The caller is
 /// responsible for filtering out its own locked project id.
 export async function snapshotPeerLockedProjects(): Promise<Set<string>> {
@@ -67,6 +80,7 @@ export async function snapshotPeerLockedProjects(): Promise<Set<string>> {
 export async function openProjectInNewWindow(
   projectId: string,
   title: string,
+  uiState?: string,
 ): Promise<void> {
   const label = projectLabel(projectId);
   const existing = await getAllWebviewWindows();
@@ -76,9 +90,13 @@ export async function openProjectInNewWindow(
     return;
   }
   // Relative URL — resolved against the frontend dist root, identical for
-  // dev (vite) and prod (custom protocol).
+  // dev (vite) and prod (custom protocol). The optional `ui` payload carries
+  // the source window's pane/editor layout so the new window opens looking
+  // the same instead of dropping the user back at the session picker.
+  const params = new URLSearchParams({ project: projectId });
+  if (uiState) params.set("ui", uiState);
   new WebviewWindow(label, {
-    url: `index.html?project=${encodeURIComponent(projectId)}`,
+    url: `index.html?${params.toString()}`,
     title,
     width: 1100,
     height: 800,

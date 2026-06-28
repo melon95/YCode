@@ -14,7 +14,7 @@ import {
   toast,
 } from "@heroui/react";
 import { listAgents, createSession, createProject, deleteProject } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { captureProjectUiSnapshot, useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView, SessionView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
 import { openProjectInNewWindow } from "../lib/multiWindow";
@@ -111,7 +111,10 @@ export function TopBar() {
         {
           label: "Open in New Window",
           onSelect: () => {
-            openProjectInNewWindow(p.id, p.name).catch((err) =>
+            // Snapshot this project's current panes / editor tabs so the new
+            // window inherits the layout instead of resetting to the picker.
+            const ui = captureProjectUiSnapshot(p.id) ?? undefined;
+            openProjectInNewWindow(p.id, p.name, ui).catch((err) =>
               toast.danger(`Open in new window failed: ${err}`),
             );
           },

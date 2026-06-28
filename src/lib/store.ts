@@ -43,6 +43,18 @@ export interface Layout {
 }
 export const LAYOUT_CAP = 4;
 
+// Serializable snapshot of one project's volatile UI state. Handed to a
+// freshly-detached window (via its URL) so it opens with the same panes and
+// editor tabs the user had set up, instead of resetting to the picker. See
+// `captureProjectUiSnapshot` / `hydrateLockedWindow`.
+export interface ProjectUiSnapshot {
+  layout: Layout;
+  rightTab: RightTab;
+  openFiles: string[];
+  selectedFilePath: string | null;
+  previewFilePath: string | null;
+}
+
 // What modes are visually defined for N visible panes. Used by the layout
 // switcher to grey out invalid choices and by reducers to fall back when
 // the user shrinks the pane count below the current mode's minimum.
@@ -229,6 +241,12 @@ interface AppState {
   /// One-shot at startup. Locks this window to a single project and forces
   /// the active selection to it.
   setLockedProjectId: (id: string | null) => void;
+  /// One-shot at startup for a detached window: replay the per-project UI
+  /// snapshot carried in this window's URL so it opens with the same panes /
+  /// editor tabs as the source window instead of the bare picker. No-op in
+  /// the main window (no lock) or when the payload is missing/invalid. Must
+  /// run *after* sessions are loaded so visible panes can be re-validated.
+  hydrateLockedWindow: (rawSnapshot: string | null) => void;
   /// Seed the peer-owned set from a snapshot.
   setLockedByOtherWindows: (ids: string[]) => void;
   /// Mark a project as taken by a peer window. Auto-switches the active
@@ -438,6 +456,27 @@ export const useStore = create<AppState>((set) => ({
     }),
 
   setLockedProjectId: (id) => set({ lockedProjectId: id }),
+
+  hydrateLockedWindow: (rawSnapshot) =>
+    set((state) => {
+      const pid = state.lockedProjectId;
+      if (!pid) return state;
+      const snap = parseProjectUiSnapshot(rawSnapshot);
+      if (!snap) return state;
+      // Re-validate the snapshot's panes against the sessions actually present
+      // in this window — one could have been archived between detach and the
+      // new window finishing its load. `layoutForProject` filters orphaned
+      // ids, clamps the focus slot, and reflows the mode for the new count.
+      const layout = layoutForProject(state.sessions, pid, snap.layout);
+      return {
+        layout,
+        activeId: activeIdFromLayout(layout),
+        rightTab: snap.rightTab,
+        openFiles: snap.openFiles,
+        selectedFilePath: snap.selectedFilePath,
+        previewFilePath: snap.previewFilePath,
+      };
+    }),
 
   setLockedByOtherWindows: (ids) =>
     set(() => ({
@@ -790,6 +829,49 @@ export const useStore = create<AppState>((set) => ({
 
   setActiveSidebarAgentId: (id) => set({ activeSidebarAgentId: id }),
 }));
+
+/// Build the live UI snapshot for one project. Editor + right-tab state is
+/// only tracked for the *active* project (switching tabs clears it), so a
+/// non-active project contributes its cached layout alone. Returns null when
+/// there's nothing worth restoring (the project was sitting at the picker).
+function buildProjectUiSnapshot(projectId: string): ProjectUiSnapshot | null {
+  const s = useStore.getState();
+  const isActive = s.activeProjectId === projectId;
+  const layout = isActive ? s.layout : s.layoutsByProject[projectId];
+  if (!layout || layout.visibleIds.length === 0) return null;
+  return {
+    layout,
+    rightTab: isActive ? s.rightTab : "files",
+    openFiles: isActive ? s.openFiles : [],
+    selectedFilePath: isActive ? s.selectedFilePath : null,
+    previewFilePath: isActive ? s.previewFilePath : null,
+  };
+}
+
+/// Serialize one project's UI snapshot for the detached-window URL handoff.
+export function captureProjectUiSnapshot(projectId: string): string | null {
+  const snap = buildProjectUiSnapshot(projectId);
+  if (!snap) return null;
+  try {
+    return JSON.stringify(snap);
+  } catch {
+    return null;
+  }
+}
+
+function parseProjectUiSnapshot(raw: string | null): ProjectUiSnapshot | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as ProjectUiSnapshot;
+    // Defensive shape check — the payload rode in on a URL and a future
+    // version could change it. `layoutForProject` does the deeper validation.
+    if (!v || typeof v !== "object") return null;
+    if (!v.layout || !Array.isArray(v.layout.visibleIds)) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
 
 function clampFontSize(n: number): number {
   if (!Number.isFinite(n)) return 13;

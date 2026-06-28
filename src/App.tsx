@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Group,
   Panel,
@@ -31,6 +31,7 @@ import {
   bindUnlockOnClose,
   listenPeerLockEvents,
   readLockedProjectIdFromUrl,
+  readUiStateFromUrl,
   snapshotPeerLockedProjects,
 } from "./lib/multiWindow";
 import type { SearchHit } from "./lib/types";
@@ -209,6 +210,9 @@ export function App() {
     };
   }, [activeProjectId]);
 
+  // One-shot guard for the detached-window UI hydration: `refresh` re-runs on
+  // every PtyExit, but the snapshot must replay exactly once, on first load.
+  const hydratedRef = useRef(false);
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -222,6 +226,17 @@ export function App() {
           setAgents(agents);
           setFontSizes(config.font_sizes);
           setTheme(config.theme);
+          // Detached windows replay the layout snapshot carried in their URL
+          // (so "Open in New Window" keeps the panes the user had). The main
+          // window deliberately does NOT restore on plain relaunch. Guarded so
+          // a later PtyExit-driven refresh can't stomp the live layout.
+          if (!hydratedRef.current) {
+            hydratedRef.current = true;
+            const store = useStore.getState();
+            if (store.lockedProjectId) {
+              store.hydrateLockedWindow(readUiStateFromUrl());
+            }
+          }
           setFetched(true);
         })
         .catch((err) => {

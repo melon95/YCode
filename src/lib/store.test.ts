@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  captureProjectUiSnapshot,
   DEFAULT_FONT_SIZES,
   displaySessionTitle,
   useStore,
@@ -117,6 +118,81 @@ describe("layout store", () => {
 
     expect(state().layout).toEqual(projectALayout);
     expect(state().activeId).toBe(projectAActiveId);
+  });
+});
+
+describe("detached-window UI snapshot", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it("round-trips panes and editor tabs into a fresh detached window", () => {
+    // Source window: project-a active with a two-pane columns layout, the
+    // Changes tab open, and a file in the editor.
+    state().setSessions([session("s1"), session("s2")]);
+    useStore.setState({ activeProjectId: "project-a" });
+    state().appendSessionToLayout("s1");
+    state().appendSessionToLayout("s2");
+    state().setLayoutMode("columns");
+    state().setRightTab("changes");
+    state().openFile("src/a.ts");
+
+    const snap = captureProjectUiSnapshot("project-a");
+    expect(snap).toBeTruthy();
+
+    // Fresh detached window: same sessions on disk, locked to project-a.
+    useStore.setState(initialState, true);
+    state().setSessions([session("s1"), session("s2")]);
+    state().setLockedProjectId("project-a");
+    state().hydrateLockedWindow(snap);
+
+    expect(state().layout.visibleIds).toEqual(["s1", "s2"]);
+    expect(state().layout.mode).toBe("columns");
+    expect(state().activeId).toBe("s2");
+    expect(state().rightTab).toBe("changes");
+    expect(state().openFiles).toEqual(["src/a.ts"]);
+    expect(state().selectedFilePath).toBe("src/a.ts");
+  });
+
+  it("drops panes whose session no longer exists in the new window", () => {
+    state().setSessions([session("s1"), session("s2")]);
+    useStore.setState({ activeProjectId: "project-a" });
+    state().appendSessionToLayout("s1");
+    state().appendSessionToLayout("s2");
+    const snap = captureProjectUiSnapshot("project-a");
+
+    // s2 was archived between detach and load — only s1 remains.
+    useStore.setState(initialState, true);
+    state().setSessions([session("s1")]);
+    state().setLockedProjectId("project-a");
+    state().hydrateLockedWindow(snap);
+
+    expect(state().layout.visibleIds).toEqual(["s1"]);
+    expect(state().activeId).toBe("s1");
+  });
+
+  it("returns null when the project is sitting at the picker", () => {
+    state().setSessions([session("s1")]);
+    useStore.setState({ activeProjectId: "project-a" });
+    // No panes opened — nothing worth handing off.
+    expect(captureProjectUiSnapshot("project-a")).toBeNull();
+  });
+
+  it("is a no-op in the main window and on malformed payloads", () => {
+    state().setSessions([session("s1")]);
+    useStore.setState({ activeProjectId: "project-a" });
+    state().appendSessionToLayout("s1");
+    const before = state().layout;
+
+    // No lock → main window: hydration must not touch the layout.
+    state().hydrateLockedWindow('{"layout":{"mode":"single","visibleIds":["s1"],"focusSlot":0}}');
+    expect(state().layout).toBe(before);
+
+    // Locked but the payload is garbage → still a no-op.
+    state().setLockedProjectId("project-a");
+    state().hydrateLockedWindow("not json");
+    expect(state().layout).toBe(before);
   });
 });
 
