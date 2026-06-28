@@ -928,6 +928,28 @@ body {
   font-style: normal;
   color: var(--text);
 }
+/* Inline rename field — sits where `.pane-title` would, borderless so it reads
+   as the title turning editable rather than a popped-in form control. */
+.pane-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  padding: 0;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: none;
+}
+.pane-title-input:focus,
+.pane-title-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 .pane-status {
   flex: 0 0 auto;
   font-family: var(--font-ui);

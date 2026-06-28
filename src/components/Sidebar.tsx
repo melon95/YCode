@@ -287,6 +287,19 @@ function DiscoveredSessionsPanel({
     return map;
   }, [agents]);
 
+  // The discovered rows carry the title baked into the jsonl on disk, which
+  // doesn't change when the user renames a live session (that only updates the
+  // DB row). Index any live session's user-set title by its CLI session id so a
+  // rename is reflected here too, keeping this list in sync with the pane header.
+  const sessions = useStore((s) => s.sessions);
+  const titleByAgentSession = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of Object.values(sessions)) {
+      if (s.agent_session_id && s.title.trim()) map[s.agent_session_id] = s.title;
+    }
+    return map;
+  }, [sessions]);
+
   // Only profiles bound to a jsonl parser have a meaningful history list;
   // PTY-only agents (Cursor, Aider, etc.) show an explanatory empty state.
   const introspectId = profile?.introspect ?? null;
@@ -312,7 +325,12 @@ function DiscoveredSessionsPanel({
         </div>
       )}
       {filtered.map((d) => {
-        const label = d.title?.trim() || (d.session_id ? shortId(d.session_id) : "(no id)");
+        // A live rename (DB title) wins over the jsonl's baked-in title.
+        const renamed = d.session_id ? titleByAgentSession[d.session_id] : undefined;
+        const label =
+          renamed?.trim() ||
+          d.title?.trim() ||
+          (d.session_id ? shortId(d.session_id) : "(no id)");
         const tooltip = d.title
           ? `Resume: ${d.title}\n${d.jsonl_path}`
           : `Resume\n${d.jsonl_path}`;

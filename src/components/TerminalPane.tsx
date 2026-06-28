@@ -30,10 +30,12 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import { toast } from "@heroui/react";
 import {
   listenSessionEvents,
   openUrl,
   readPtyBacklog,
+  renameSession,
   resizePty,
   writePty,
 } from "../lib/ipc";
@@ -211,6 +213,13 @@ export function TerminalPane() {
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const focusLayoutSlot = useStore((s) => s.focusLayoutSlot);
   const closeLayoutSlot = useStore((s) => s.closeLayoutSlot);
+  const upsertSession = useStore((s) => s.upsertSession);
+
+  // Inline pane-title rename. `editingId` is the session whose header title is
+  // being edited (at most one); `editingText` is the working draft. Double-
+  // click a title to start; Enter / blur commits, Escape cancels.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
 
   const { visibleIds, focusSlot, mode } = layout;
 
@@ -515,13 +524,33 @@ export function TerminalPane() {
   }, [visibleIds, mode]);
 
   // Push keyboard focus into the focused slot's xterm whenever it changes.
+  // Suppressed while a title is being edited so the rename input keeps the
+  // caret; clearing `editingId` re-runs this and hands focus back to the term.
   useEffect(() => {
+    if (editingId) return;
     if (!focusedId) return;
     const inst = terminalsRef.current.get(focusedId);
     if (!inst) return;
     const raf = requestAnimationFrame(() => inst.term.focus());
     return () => cancelAnimationFrame(raf);
-  }, [focusedId]);
+  }, [focusedId, editingId]);
+
+  // Persist a renamed pane title. No-op when the trimmed draft matches the
+  // current display title (e.g. the user opened the editor but didn't change
+  // anything). An empty title is allowed — it clears the manual name so the
+  // CLI's live OSC title (or "New session") takes over again.
+  const commitRename = () => {
+    if (editingId === null) return;
+    const id = editingId;
+    const next = editingText.trim();
+    setEditingId(null);
+    const session = sessions[id];
+    if (!session) return;
+    if (next === displaySessionTitle(session, liveTitles)) return;
+    renameSession({ session_id: id, title: next })
+      .then((view) => upsertSession(view))
+      .catch((err) => toast.danger(`Rename failed: ${err}`));
+  };
 
   // Apply terminal font size to every live xterm whenever the setting
   // changes. Only visible cells re-fit (hidden ones have zero size and
@@ -669,9 +698,36 @@ export function TerminalPane() {
                       size={14}
                     />
                   </span>
-                  <span className="pane-title" title={title}>
-                    {title}
-                  </span>
+                  {editingId === id ? (
+                    <input
+                      className="pane-title-input"
+                      value={editingText}
+                      autoFocus
+                      onChange={(e) => setEditingText(e.target.value)}
+                      onBlur={commitRename}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        // Keep keystrokes out of the global hotkey handler
+                        // (and the underlying xterm) while editing.
+                        e.stopPropagation();
+                        if (e.key === "Enter") commitRename();
+                        else if (e.key === "Escape") setEditingId(null);
+                      }}
+                      aria-label="Rename session"
+                    />
+                  ) : (
+                    <span
+                      className="pane-title"
+                      title={`${title} — double-click to rename`}
+                      onDoubleClick={() => {
+                        if (!session) return;
+                        setEditingId(id);
+                        setEditingText(title);
+                      }}
+                    >
+                      {title}
+                    </span>
+                  )}
                   {light && (
                     <span
                       className={`pane-status-dot light-${light}`}
