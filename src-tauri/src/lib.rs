@@ -177,6 +177,35 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
+    // Dev builds get a "Toggle Developer Tools" (⌥⌘I) entry so the WKWebView
+    // inspector is reachable even when the UI white-screens. Release builds
+    // ship without it (no devtools API compiled in).
+    #[cfg(debug_assertions)]
+    let view_submenu = {
+        let fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
+        let separator = PredefinedMenuItem::separator(app)?;
+        let reload = MenuItem::with_id(
+            app,
+            "menu-reload",
+            "Reload",
+            true,
+            Some("CmdOrCtrl+R"),
+        )?;
+        let devtools = MenuItem::with_id(
+            app,
+            "menu-toggle-devtools",
+            "Toggle Developer Tools",
+            true,
+            Some("CmdOrCtrl+Alt+I"),
+        )?;
+        Submenu::with_items(
+            app,
+            "View",
+            true,
+            &[&fullscreen, &separator, &reload, &devtools],
+        )?
+    };
+    #[cfg(not(debug_assertions))]
     let view_submenu = Submenu::with_items(
         app,
         "View",
@@ -223,6 +252,43 @@ fn ensure_main_window(app: &tauri::AppHandle) {
             .resizable(true);
     if let Err(e) = build.build() {
         tracing::warn!(error = %e, "failed to recreate main window");
+    }
+}
+
+/// The window the user is currently looking at, falling back to the main
+/// window. Backs the dev-only View-menu actions below.
+#[cfg(debug_assertions)]
+fn focused_or_main(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    app.webview_windows()
+        .into_values()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .or_else(|| app.get_webview_window("main"))
+}
+
+/// Dev-only: pop (or dismiss) WKWebView's inspector on whichever window has
+/// focus. Gated to debug builds because `open_devtools`/`close_devtools`/
+/// `is_devtools_open` only compile in debug or with the `devtools` feature —
+/// matching the menu entry that drives it.
+#[cfg(debug_assertions)]
+fn toggle_devtools(app: &tauri::AppHandle) {
+    if let Some(win) = focused_or_main(app) {
+        if win.is_devtools_open() {
+            win.close_devtools();
+        } else {
+            win.open_devtools();
+        }
+    }
+}
+
+/// Dev-only: hard-reload the focused window's webview. The native reload
+/// context-menu entry is intentionally suppressed in the UI (it blows away
+/// in-memory state), but during development a reload is the quickest way to
+/// recover from a white-screen or pick up a frontend change, so we expose it
+/// as an explicit, debug-only menu action.
+#[cfg(debug_assertions)]
+fn reload_focused(app: &tauri::AppHandle) {
+    if let Some(win) = focused_or_main(app) {
+        let _ = win.eval("window.location.reload()");
     }
 }
 
@@ -276,10 +342,13 @@ pub fn run() {
     tauri::Builder::default()
         // App-level menu event sink. Items on the macOS menu bar route their
         // clicks here; the tray menu items keep their own handler below.
-        .on_menu_event(|app, ev| {
-            if ev.id().as_ref() == "menu-new-window" {
-                ensure_main_window(app);
-            }
+        .on_menu_event(|app, ev| match ev.id().as_ref() {
+            "menu-new-window" => ensure_main_window(app),
+            #[cfg(debug_assertions)]
+            "menu-reload" => reload_focused(app),
+            #[cfg(debug_assertions)]
+            "menu-toggle-devtools" => toggle_devtools(app),
+            _ => {}
         })
         // Per plan §8.22: single-instance must be the first plugin so a
         // second `ycode` launch (or a `ycode://` deep-link) just refocuses
