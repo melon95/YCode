@@ -152,3 +152,46 @@ export const SESSION_LIGHT_LABEL: Record<SessionLight, string> = {
   done: "Done",
   error: "Error",
 };
+
+/// Project-level rollup of every live (non-archived) session's light, so the
+/// top bar can answer "are this project's agents still working, or have they
+/// all finished?" at a glance.
+export interface ProjectActivity {
+  /// Aggregate light. Priority surfaces the most "active" state so a single
+  /// busy agent keeps the project marked running:
+  ///   running — at least one agent is still working
+  ///   error   — none running, but a session ended in error
+  ///   waiting — none running, at least one finished its turn (your move)
+  ///   done    — every session's process has exited
+  light: SessionLight;
+  counts: Record<SessionLight, number>;
+  /// Number of live (non-archived) sessions folded into this rollup.
+  total: number;
+}
+
+export function projectActivity(
+  sessions: SessionView[],
+  activityBySession: Record<string, SessionActivity>,
+): ProjectActivity | null {
+  const counts: Record<SessionLight, number> = {
+    running: 0,
+    waiting: 0,
+    done: 0,
+    error: 0,
+  };
+  let total = 0;
+  for (const s of sessions) {
+    if (s.archived_at_ms != null) continue;
+    total += 1;
+    counts[sessionLight(s.status, activityBySession[s.id])] += 1;
+  }
+  if (total === 0) return null;
+  const light: SessionLight = counts.running
+    ? "running"
+    : counts.error
+      ? "error"
+      : counts.waiting
+        ? "waiting"
+        : "done";
+  return { light, counts, total };
+}

@@ -15,7 +15,14 @@ import {
 } from "@heroui/react";
 import { listAgents, createSession, createProject, deleteProject } from "../lib/ipc";
 import { captureProjectUiSnapshot, useStore } from "../lib/store";
-import type { AgentProfileView, ProjectView, SessionView } from "../lib/types";
+import {
+  projectActivity,
+  SESSION_LIGHT_LABEL,
+  type AgentProfileView,
+  type ProjectActivity,
+  type ProjectView,
+  type SessionView,
+} from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
 import { openProjectInNewWindow } from "../lib/multiWindow";
 import { LayoutSwitcher } from "./LayoutSwitcher";
@@ -37,7 +44,23 @@ export function TopBar() {
   const projects = useStore((s) => s.projects);
   const lockedProjectId = useStore((s) => s.lockedProjectId);
   const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
+  const sessions = useStore((s) => s.sessions);
+  const activityBySession = useStore((s) => s.activityBySession);
   const detached = lockedProjectId !== null;
+
+  // Per-project agent-activity rollup, so each tab shows a status dot telling
+  // you whether that project's agents are still working or have all finished.
+  const activityByProject = useMemo(() => {
+    const byProject: Record<string, SessionView[]> = {};
+    for (const s of Object.values(sessions)) {
+      (byProject[s.project_id] ??= []).push(s);
+    }
+    const out: Record<string, ProjectActivity | null> = {};
+    for (const [pid, list] of Object.entries(byProject)) {
+      out[pid] = projectActivity(list, activityBySession);
+    }
+    return out;
+  }, [sessions, activityBySession]);
 
   // Listen for global hotkeys dispatched from `useHotkeys`.
   useEffect(() => {
@@ -132,6 +155,7 @@ export function TopBar() {
         <div className="project-tabs">
           {projectList.map((p) => {
             const active = p.id === activeProjectId;
+            const activity = activityByProject[p.id] ?? null;
             return (
               <div
                 key={p.id}
@@ -140,6 +164,13 @@ export function TopBar() {
                 onContextMenu={(e) => onProjectContextMenu(e, p)}
                 title={p.repo_path}
               >
+                {activity && (
+                  <span
+                    className={`pane-status-dot light-${activity.light}`}
+                    title={activityTooltip(activity)}
+                    aria-label={activityTooltip(activity)}
+                  />
+                )}
                 <span className="project-tab-name">{p.name}</span>
                 <span
                   className="project-tab-close"
@@ -197,6 +228,27 @@ export function TopBar() {
       )}
     </header>
   );
+}
+
+/// Human-readable summary for a project tab's status dot, e.g.
+/// "Agents running · 1 running, 2 waiting". The headline reflects the
+/// aggregate light; the breakdown lists the non-zero per-state counts.
+function activityTooltip(a: ProjectActivity): string {
+  const headline =
+    a.light === "running"
+      ? "Agents still running"
+      : a.light === "error"
+        ? "An agent ended in error"
+        : a.light === "waiting"
+          ? "Agents waiting for input"
+          : "All agents finished";
+  const parts: string[] = [];
+  for (const light of ["running", "waiting", "done", "error"] as const) {
+    if (a.counts[light]) {
+      parts.push(`${a.counts[light]} ${SESSION_LIGHT_LABEL[light].toLowerCase()}`);
+    }
+  }
+  return `${headline} · ${parts.join(", ")}`;
 }
 
 function GearIcon() {
