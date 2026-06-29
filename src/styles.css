@@ -5057,13 +5057,6 @@ textarea.native-input {
   color: var(--text);
 }
 
-.todo-empty {
-  padding: 18px 12px;
-  color: var(--subtle);
-  font-size: 12px;
-  text-align: center;
-}
-
 /* Collapsible "Completed" group at the bottom of the list. */
 .todo-done-section {
   margin-top: 10px;

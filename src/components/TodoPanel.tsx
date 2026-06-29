@@ -217,9 +217,6 @@ export function TodoPanel({ projectId }: { projectId: string }) {
           {showDone && <ul className="todo-list">{done.map(renderTodo)}</ul>}
         </div>
       )}
-      {list.length === 0 && (
-        <div className="todo-empty">No todos yet — add one below or ask your agent.</div>
-      )}
     </div>
   );
 }
