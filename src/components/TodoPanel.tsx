@@ -26,6 +26,9 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  // Completed todos live in a collapsed section at the bottom so the active
+  // list stays focused. Collapsed by default; persists for the panel's life.
+  const [showDone, setShowDone] = useState(false);
 
   const refresh = () => {
     listTodos(projectId)
@@ -109,77 +112,83 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       .catch((e) => setError(String(e)));
   };
 
+  const renderTodo = (todo: TodoView) => {
+    const status = (todo.status as Status) ?? "todo";
+    const done = status === "done";
+    const editing = editingId === todo.id;
+    return (
+      <li
+        key={todo.id}
+        className={
+          "todo-item status-" + status + (done || editing ? "" : " clickable")
+        }
+        onClick={() => handleRowClick(todo)}
+      >
+        <button
+          type="button"
+          className={"todo-check" + (done ? " checked" : "")}
+          onClick={(e) => {
+            e.stopPropagation();
+            cycleStatus(todo);
+          }}
+          aria-label={`Status: ${status} (click to change)`}
+          title={`${status} — click to cycle`}
+        >
+          {done ? <CheckIcon /> : null}
+        </button>
+        {!done && (
+          <span className={"todo-tag tag-" + status}>
+            {status.toUpperCase()}
+          </span>
+        )}
+        {editing ? (
+          <input
+            className="todo-edit-input"
+            value={editingText}
+            autoFocus
+            onChange={(e) => setEditingText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") setEditingId(null);
+            }}
+          />
+        ) : (
+          <span
+            className="todo-title"
+            onDoubleClick={() => beginEdit(todo)}
+            title={statusDatesTooltip(todo)}
+          >
+            {todo.title}
+          </span>
+        )}
+        <button
+          type="button"
+          className="todo-delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            removeTodo(todo.id);
+          }}
+          aria-label="Delete todo"
+          title="Delete"
+        >
+          ×
+        </button>
+      </li>
+    );
+  };
+
   const list = todos ?? [];
+  // Completed todos sink to a collapsible group at the bottom; everything else
+  // (todo / doing) stays in the active list above the add-row.
+  const active = list.filter((t) => (t.status as Status) !== "done");
+  const done = list.filter((t) => (t.status as Status) === "done");
 
   return (
     <div className="todo-panel">
       {error && <div className="todo-panel-error">{error}</div>}
       <ul className="todo-list">
-        {list.map((todo) => {
-          const status = (todo.status as Status) ?? "todo";
-          const done = status === "done";
-          const editing = editingId === todo.id;
-          return (
-            <li
-              key={todo.id}
-              className={
-                "todo-item status-" + status + (done || editing ? "" : " clickable")
-              }
-              onClick={() => handleRowClick(todo)}
-            >
-              <button
-                type="button"
-                className={"todo-check" + (done ? " checked" : "")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  cycleStatus(todo);
-                }}
-                aria-label={`Status: ${status} (click to change)`}
-                title={`${status} — click to cycle`}
-              >
-                {done ? <CheckIcon /> : null}
-              </button>
-              {!done && (
-                <span className={"todo-tag tag-" + status}>
-                  {status.toUpperCase()}
-                </span>
-              )}
-              {editing ? (
-                <input
-                  className="todo-edit-input"
-                  value={editingText}
-                  autoFocus
-                  onChange={(e) => setEditingText(e.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") setEditingId(null);
-                  }}
-                />
-              ) : (
-                <span
-                  className="todo-title"
-                  onDoubleClick={() => beginEdit(todo)}
-                  title={statusDatesTooltip(todo)}
-                >
-                  {todo.title}
-                </span>
-              )}
-              <button
-                type="button"
-                className="todo-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeTodo(todo.id);
-                }}
-                aria-label="Delete todo"
-                title="Delete"
-              >
-                ×
-              </button>
-            </li>
-          );
-        })}
+        {active.map(renderTodo)}
         <li className="todo-item todo-add-row">
           <span className="todo-check todo-add-bullet" aria-hidden />
           <input
@@ -193,6 +202,21 @@ export function TodoPanel({ projectId }: { projectId: string }) {
           />
         </li>
       </ul>
+      {done.length > 0 && (
+        <div className="todo-done-section">
+          <button
+            type="button"
+            className={"todo-done-toggle" + (showDone ? " open" : "")}
+            onClick={() => setShowDone((v) => !v)}
+            aria-expanded={showDone}
+          >
+            <ChevronIcon />
+            <span className="todo-done-label">Completed</span>
+            <span className="todo-done-count">{done.length}</span>
+          </button>
+          {showDone && <ul className="todo-list">{done.map(renderTodo)}</ul>}
+        </div>
+      )}
       {list.length === 0 && (
         <div className="todo-empty">No todos yet — add one below or ask your agent.</div>
       )}
@@ -218,6 +242,25 @@ function statusDatesTooltip(todo: TodoView): string {
   if (done) lines.push(`Done: ${done}`);
   lines.push("", "Double-click to edit");
   return lines.join("\n");
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      className="todo-done-chevron"
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
 }
 
 function CheckIcon() {
