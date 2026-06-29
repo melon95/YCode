@@ -40,6 +40,69 @@ pub fn default_socket_path() -> PathBuf {
 ///
 /// Bind failure is non-fatal — we log and return `None`. The app continues
 /// without completion notifications instead of refusing to start.
+/// Whether a process is still alive, via `kill(pid, 0)` (sends no signal, just
+/// probes). `Ok` → alive; `ESRCH` → gone; `EPERM` → alive but owned by another
+/// user (treated as alive, conservatively). Used to tell an orphaned socket
+/// (owner crashed/killed) from one a live ycode still owns.
+#[cfg(unix)]
+fn process_alive(pid: i32) -> bool {
+    // SAFETY: `kill` with signal 0 performs only error checking and never
+    // delivers a signal; it has no memory-safety preconditions.
+    let rc = unsafe { libc::kill(pid, 0) };
+    if rc == 0 {
+        return true;
+    }
+    // errno == ESRCH means no such process; anything else (e.g. EPERM) implies
+    // the pid is in use, so err on the side of keeping the socket.
+    std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+/// Remove `ycode-notify-<pid>.sock` files in `$TMPDIR` whose owning process is
+/// no longer running. Per-pid notify sockets are normally unlinked when the
+/// listener stops, but a crash or `SIGKILL` skips that cleanup, so they pile up
+/// over time. This sweeps the leftovers at startup. Our own current socket is
+/// left untouched (it's about to be re-bound by [`start`]); a socket still
+/// owned by a live process is left alone too.
+#[cfg(unix)]
+pub fn cleanup_orphaned_sockets(dir: &Path) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            debug!(dir = %dir.display(), error = %e, "notify socket sweep: cannot read tmp dir");
+            return;
+        }
+    };
+    let mut removed = 0u32;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // Match `ycode-notify-<pid>.sock` and pull out the pid.
+        let Some(pid_str) = name
+            .strip_prefix("ycode-notify-")
+            .and_then(|s| s.strip_suffix(".sock"))
+        else {
+            continue;
+        };
+        let Ok(pid) = pid_str.parse::<i32>() else {
+            continue;
+        };
+        if process_alive(pid) {
+            continue;
+        }
+        let path = entry.path();
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                removed += 1;
+                debug!(path = %path.display(), pid, "removed orphaned notify socket");
+            }
+            Err(e) => warn!(path = %path.display(), error = %e, "could not remove orphaned notify socket"),
+        }
+    }
+    if removed > 0 {
+        info!(removed, "swept orphaned notify sockets");
+    }
+}
+
 #[cfg(unix)]
 pub fn start(
     bus: broadcast::Sender<UiEvent>,
@@ -47,6 +110,12 @@ pub fn start(
     sock_path: PathBuf,
 ) -> Option<PathBuf> {
     use tokio::net::UnixListener;
+
+    // Sweep leftovers from previous crashed/killed runs before binding ours,
+    // so `$TMPDIR` doesn't accumulate dead `ycode-notify-*.sock` files.
+    if let Some(parent) = sock_path.parent() {
+        cleanup_orphaned_sockets(parent);
+    }
 
     // Stale-file cleanup. `bind` will return EADDRINUSE if the file exists
     // even when no one is listening on it — common after a crash.
@@ -774,5 +843,42 @@ mod tests {
         let bound = start(tx, cancel.clone(), path.clone());
         assert!(bound.is_some(), "should overwrite stale socket file");
         cancel.cancel();
+    }
+
+    #[test]
+    fn cleanup_removes_dead_pid_keeps_live_and_self() {
+        let dir = tempfile::Builder::new()
+            .prefix("ycode-sweep")
+            .tempdir()
+            .unwrap();
+        let p = dir.path();
+
+        // A dead pid: 0x7FFF_FFFE is far above any real pid and won't exist.
+        let dead = p.join("ycode-notify-2147483646.sock");
+        // Our own live pid — must be preserved (about to be re-bound).
+        let live = p.join(format!("ycode-notify-{}.sock", std::process::id()));
+        // An unrelated file that merely shares the dir — must be ignored.
+        let other = p.join("not-ours.sock");
+        for f in [&dead, &live, &other] {
+            std::fs::write(f, b"x").unwrap();
+        }
+
+        cleanup_orphaned_sockets(p);
+
+        assert!(!dead.exists(), "dead-pid socket should be swept");
+        assert!(live.exists(), "live-pid socket must be kept");
+        assert!(other.exists(), "non-ycode file must be left alone");
+    }
+
+    #[test]
+    fn cleanup_ignores_non_numeric_pid() {
+        let dir = tempfile::Builder::new()
+            .prefix("ycode-sweep2")
+            .tempdir()
+            .unwrap();
+        let weird = dir.path().join("ycode-notify-abc.sock");
+        std::fs::write(&weird, b"x").unwrap();
+        cleanup_orphaned_sockets(dir.path());
+        assert!(weird.exists(), "unparseable pid must not be removed");
     }
 }
