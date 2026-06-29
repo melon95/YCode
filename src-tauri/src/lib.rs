@@ -292,6 +292,41 @@ fn reload_focused(app: &tauri::AppHandle) {
     }
 }
 
+/// Install a process-wide panic hook that records the panic message, location
+/// and backtrace to stderr *and* to `<data_dir>/last-panic.log` before the
+/// default hook runs.
+///
+/// Why this matters: Tauri turns a failed `setup` hook into
+/// `panic!("Failed to setup app: …")` (see tauri `app.rs`), and that panic
+/// fires inside AppKit's `applicationDidFinishLaunching` Objective-C callback.
+/// Unwinding across that C frame is undefined, so the Rust runtime `abort()`s —
+/// which is exactly the SIGABRT crash report users see, with no clue as to the
+/// cause because release builds are stripped. Capturing the message here means
+/// the next occurrence leaves a readable trail instead of an opaque crash dump.
+fn install_panic_logger() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // `force_capture` ignores RUST_BACKTRACE so we always get frames, even
+        // for a double-clicked .app launched with no environment.
+        let bt = std::backtrace::Backtrace::force_capture();
+        let msg = format!("YCode panic: {info}\n{bt}");
+        eprintln!("{msg}");
+        if let Some(dirs) = directories::ProjectDirs::from("dev", "ycode", "ycode") {
+            let dir = dirs.data_dir();
+            let _ = std::fs::create_dir_all(dir);
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("last-panic.log"))
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "{msg}\n----");
+            }
+        }
+        prev(info);
+    }));
+}
+
 /// Render a string as an AppleScript string literal: wrap in quotes, escape
 /// backslashes/quotes, and turn newlines into `return` so multi-line messages
 /// display on separate lines.
@@ -331,6 +366,7 @@ fn show_fatal_dialog(msg: &str) {
 
 pub fn run() {
     augment_path();
+    install_panic_logger();
 
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -395,10 +431,25 @@ pub fn run() {
             // main window after the user has closed it while a detached
             // project window still survives. On Windows/Linux the menu is
             // skipped to avoid drawing a chrome strip our UI doesn't expect.
+            // Menu setup is best-effort: a `?` here would bubble up as a setup
+            // error, which Tauri converts into `panic!("Failed to setup app")`
+            // *inside* AppKit's didFinishLaunching callback — an unwind across
+            // that Objective-C frame aborts the process (SIGABRT crash report)
+            // rather than failing gracefully. The custom menu is a convenience
+            // (File → New Window, dev devtools), so on the rare OS-side failure
+            // we log and keep going with the system default menu.
             #[cfg(target_os = "macos")]
             {
-                let menu = build_app_menu(app.handle())?;
-                app.set_menu(menu)?;
+                match build_app_menu(app.handle()) {
+                    Ok(menu) => {
+                        if let Err(e) = app.set_menu(menu) {
+                            tracing::warn!(error = %e, "set_menu failed; using default menu");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "build_app_menu failed; using default menu")
+                    }
+                }
             }
 
             // A failed backend init used to `.expect()` here, which aborts the
@@ -407,9 +458,16 @@ pub fn run() {
             // opening a DB a newer build already migrated (migration mismatch),
             // or two instances racing the DB at first launch. Surface a readable
             // dialog and exit cleanly instead of crashing.
-            let state = match tauri::async_runtime::block_on(AppState::initialize()) {
-                Ok(state) => state,
-                Err(e) => {
+            // `catch_unwind` so an *internal* panic (e.g. a sqlite/sqlx
+            // assertion, or a corrupt-DB edge case) lands in the same readable
+            // dialog as a returned `Err` instead of unwinding out of this
+            // didFinishLaunching callback and aborting with a crash report.
+            let init = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                tauri::async_runtime::block_on(AppState::initialize())
+            }));
+            let state = match init {
+                Ok(Ok(state)) => state,
+                Ok(Err(e)) => {
                     tracing::error!(error = ?e, "backend init failed");
                     let detail = format!("{e:#}");
                     let mut msg = format!("YCode couldn't start its backend.\n\n{detail}");
@@ -420,6 +478,19 @@ pub fn run() {
                         );
                     }
                     show_fatal_dialog(&msg);
+                    std::process::exit(1);
+                }
+                Err(panic) => {
+                    let detail = panic
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    tracing::error!(detail, "backend init panicked");
+                    show_fatal_dialog(&format!(
+                        "YCode couldn't start its backend.\n\n{detail}\n\n\
+                         See last-panic.log in the app data folder for details."
+                    ));
                     std::process::exit(1);
                 }
             };
@@ -450,20 +521,32 @@ pub fn run() {
             // "Show / Quit" menu — the live session count is updated via
             // `set_tray_tooltip` from the frontend (TODO once sessions
             // multi-window lands).
-            let show_item = MenuItem::with_id(app, "tray-show", "Show YCode", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-            let _ = TrayIconBuilder::with_id("ycode-tray")
-                .tooltip("YCode")
-                .menu(&tray_menu)
-                .on_menu_event(|app, ev| match ev.id.as_ref() {
-                    "tray-show" => ensure_main_window(app),
-                    "tray-quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .build(app);
+            //
+            // Best-effort, for the same reason as the app menu above: a `?` on
+            // any of these tray/menu builders would surface as a setup error
+            // and abort the whole app inside didFinishLaunching. The tray is
+            // non-essential, so we log and continue if the OS rejects it.
+            let tray_result = (|| -> tauri::Result<()> {
+                let show_item =
+                    MenuItem::with_id(app, "tray-show", "Show YCode", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
+                let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+                TrayIconBuilder::with_id("ycode-tray")
+                    .tooltip("YCode")
+                    .menu(&tray_menu)
+                    .on_menu_event(|app, ev| match ev.id.as_ref() {
+                        "tray-show" => ensure_main_window(app),
+                        "tray-quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .build(app)?;
+                Ok(())
+            })();
+            if let Err(e) = tray_result {
+                tracing::warn!(error = %e, "tray setup failed; continuing without tray icon");
+            }
 
 
             // Bind the MCP control socket now that we have an `Arc<Service>`.
