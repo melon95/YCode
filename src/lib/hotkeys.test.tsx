@@ -78,19 +78,47 @@ describe("useHotkeys", () => {
     render(<HotkeyHost />);
 
     press("1");
+    expect(useStore.getState().rightTab).toBe("terminal");
+
+    press("2");
     expect(useStore.getState().rightTab).toBe("files");
+
+    press("3");
+    expect(useStore.getState().rightTab).toBe("changes");
+
+    press("4");
+    expect(useStore.getState().rightTab).toBe("todos");
+  });
+
+  it("routes command 2 to the editor when a file is open", () => {
+    useStore.setState({ openFiles: ["src/main.ts"] });
+    render(<HotkeyHost />);
 
     press("2");
     expect(useStore.getState().rightTab).toBe("editor");
+  });
 
-    press("3");
-    expect(useStore.getState().rightTab).toBe("terminal");
+  it("switches projects with shift command brackets (braces when shifted)", () => {
+    const project = (id: string, createdAt: number) => ({
+      id,
+      name: id,
+      repo_path: `/repo/${id}`,
+      created_at_ms: createdAt,
+      session_count: 0,
+    });
+    useStore.setState({
+      projects: { a: project("a", 1), b: project("b", 2) },
+      activeProjectId: "a",
+    });
+    render(<HotkeyHost />);
 
-    press("4");
-    expect(useStore.getState().rightTab).toBe("changes");
+    // Shift+] arrives as "}" on macOS/US layouts — next project.
+    press("}", { shiftKey: true });
+    expect(useStore.getState().activeProjectId).toBe("b");
 
-    press("5");
-    expect(useStore.getState().rightTab).toBe("todos");
+    // Shift+[ arrives as "{" — previous project (wraps back to a).
+    press("{", { shiftKey: true });
+    expect(useStore.getState().activeProjectId).toBe("a");
   });
 
   it("focuses visible agent panes with shift command number shortcuts", () => {

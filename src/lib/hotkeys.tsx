@@ -5,7 +5,8 @@
 //   ⌘K              → open cross-session command palette
 //   ⌘,              → open Settings
 //   ⌘O              → open/add a project folder
-//   ⌘1-5            → switch right column to Files / Editor / Terminal / Changes / Todos
+//   ⌘1-4            → switch right column to Terminal / Files / Changes / Todos
+//                     (⌘2 lands on the editor when a file is open)
 //   ⇧⌘1-4           → focus visible agent pane 1-4
 //   ⌘[  / ⌘]        → previous / next session in the active project
 //   ⇧⌘[ / ⇧⌘]       → previous / next project
@@ -32,12 +33,15 @@ import { LAYOUT_CAP, useStore, type RightTab } from "./store";
 import { archiveSession, createSession, listAgents } from "./ipc";
 import { confirmDialog } from "./confirm";
 
+// Numeric right-pane tab switches, matching the visible left-to-right order of
+// the tab strip: Terminal · Files · Changes · Todos. The "files" slot is shared
+// with the editor — when files are open the Files tab is hidden and ⌘2 jumps to
+// the editor instead (see the handler below).
 const RIGHT_TAB_BY_KEY: Record<string, RightTab> = {
-  "1": "files",
-  "2": "editor",
-  "3": "terminal",
-  "4": "changes",
-  "5": "todos",
+  "1": "terminal",
+  "2": "files",
+  "3": "changes",
+  "4": "todos",
 };
 
 interface HotkeyDeps {
@@ -93,7 +97,7 @@ export function useHotkeys({
         return;
       }
 
-      // ⌘1-5: right-pane tab switch. ⇧⌘1-4 instead focuses the matching
+      // ⌘1-4: right-pane tab switch. ⇧⌘1-4 instead focuses the matching
       // visible agent pane. Fire regardless of focus so the user can jump
       // between terminals and side tools without first clicking out of xterm.
       if (e.key in RIGHT_TAB_BY_KEY) {
@@ -104,7 +108,13 @@ export function useHotkeys({
             useStore.getState().focusLayoutSlot(slotIdx);
           }
         } else {
-          useStore.getState().setRightTab(RIGHT_TAB_BY_KEY[e.key]);
+          let tab = RIGHT_TAB_BY_KEY[e.key];
+          // The Files tab and the editor share a slot: once a file is open the
+          // Files browser tab is hidden, so ⌘2 lands on the editor instead.
+          if (tab === "files" && useStore.getState().openFiles.length > 0) {
+            tab = "editor";
+          }
+          useStore.getState().setRightTab(tab);
         }
         return;
       }
@@ -222,9 +232,12 @@ export function useHotkeys({
         return;
       }
 
-      if ((key === "[" || key === "]") && e.shiftKey) {
+      // ⇧⌘[ / ⇧⌘] — previous / next project. Holding Shift turns the bracket
+      // glyphs into braces (Shift+[ → "{", Shift+] → "}") on macOS/US layouts,
+      // so match both pairs or this never fires.
+      if (e.shiftKey && (key === "[" || key === "]" || key === "{" || key === "}")) {
         e.preventDefault();
-        switchProject(key === "]" ? 1 : -1);
+        switchProject(key === "]" || key === "}" ? 1 : -1);
         return;
       }
 
