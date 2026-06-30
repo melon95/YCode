@@ -55,6 +55,25 @@ export interface ProjectUiSnapshot {
   previewFilePath: string | null;
 }
 
+// Per-project right-column state, stashed on project switch and restored when
+// the user comes back, so each project remembers its own tab + open editor
+// tabs instead of bleeding state across projects. Mirrors `layoutsByProject`.
+export interface RightPaneUi {
+  rightTab: RightTab;
+  openFiles: string[];
+  selectedFilePath: string | null;
+  previewFilePath: string | null;
+  dirtyFiles: Record<string, true>;
+}
+
+const DEFAULT_RIGHT_UI: RightPaneUi = {
+  rightTab: "files",
+  openFiles: [],
+  selectedFilePath: null,
+  previewFilePath: null,
+  dirtyFiles: {},
+};
+
 // What modes are visually defined for N visible panes. Used by the layout
 // switcher to grey out invalid choices and by reducers to fall back when
 // the user shrinks the pane count below the current mode's minimum.
@@ -184,6 +203,9 @@ interface AppState {
   /// Last visible terminal layout per project tab. Switching projects restores
   /// the project's prior panes instead of collapsing to one session.
   layoutsByProject: Record<string, Layout>;
+  /// Right-column UI (tab + open editor tabs) remembered per project, so
+  /// switching projects restores each one's own state. See `setActiveProjectId`.
+  rightUiByProject: Record<string, RightPaneUi>;
   /// The project currently scoped for new-session creation. Top-bar project
   /// tabs select this.
   activeProjectId: string | null;
@@ -326,6 +348,7 @@ export const useStore = create<AppState>((set) => ({
   activeId: null,
   layout: EMPTY_LAYOUT,
   layoutsByProject: {},
+  rightUiByProject: {},
   activeProjectId: null,
   rightTab: "files",
   openFiles: [],
@@ -419,9 +442,12 @@ export const useStore = create<AppState>((set) => ({
       if (wasActive) writeStoredActiveProjectId(null);
       const layoutsByProject = { ...state.layoutsByProject };
       delete layoutsByProject[id];
+      const rightUiByProject = { ...state.rightUiByProject };
+      delete rightUiByProject[id];
       return {
         projects,
         layoutsByProject,
+        rightUiByProject,
         activeProjectId: wasActive ? null : state.activeProjectId,
         // The terminal id would point at a now-orphaned session if its project
         // was the one we just removed.
@@ -433,25 +459,40 @@ export const useStore = create<AppState>((set) => ({
   setActiveProjectId: (id) =>
     set((state) => {
       const same = state.activeProjectId === id;
-      if (!same) writeStoredActiveProjectId(id);
-      const layoutsByProject =
-        !same && state.activeProjectId
-          ? { ...state.layoutsByProject, [state.activeProjectId]: state.layout }
-          : state.layoutsByProject;
-      const layout = same
-        ? state.layout
-        : layoutForProject(state.sessions, id, layoutsByProject[id ?? ""]);
+      if (same) return state;
+      writeStoredActiveProjectId(id);
+      const layoutsByProject = state.activeProjectId
+        ? { ...state.layoutsByProject, [state.activeProjectId]: state.layout }
+        : state.layoutsByProject;
+      const layout = layoutForProject(state.sessions, id, layoutsByProject[id ?? ""]);
+      // Stash the outgoing project's right-column UI, then restore the
+      // incoming project's (or defaults if it's never been visited). Without
+      // this the tab + open editor tabs bleed across projects — switching to
+      // project B and back would show B's tab on project A.
+      const rightUiByProject = state.activeProjectId
+        ? {
+            ...state.rightUiByProject,
+            [state.activeProjectId]: {
+              rightTab: state.rightTab,
+              openFiles: state.openFiles,
+              selectedFilePath: state.selectedFilePath,
+              previewFilePath: state.previewFilePath,
+              dirtyFiles: state.dirtyFiles,
+            },
+          }
+        : state.rightUiByProject;
+      const restored = (id && rightUiByProject[id]) || DEFAULT_RIGHT_UI;
       return {
         activeProjectId: id,
         activeId: activeIdFromLayout(layout),
         layout,
         layoutsByProject,
-        // File selection + open editor tabs are project-scoped — paths from
-        // project A don't make sense in project B.
-        selectedFilePath: same ? state.selectedFilePath : null,
-        openFiles: same ? state.openFiles : [],
-        dirtyFiles: same ? state.dirtyFiles : {},
-        previewFilePath: same ? state.previewFilePath : null,
+        rightUiByProject,
+        rightTab: restored.rightTab,
+        openFiles: restored.openFiles,
+        selectedFilePath: restored.selectedFilePath,
+        previewFilePath: restored.previewFilePath,
+        dirtyFiles: restored.dirtyFiles,
       };
     }),
 
@@ -500,15 +541,19 @@ export const useStore = create<AppState>((set) => ({
           nextActive,
           state.layoutsByProject[nextActive ?? ""],
         );
+        // Restore the project we're jumping to, same as a manual tab switch.
+        const restored =
+          (nextActive && state.rightUiByProject[nextActive]) || DEFAULT_RIGHT_UI;
         return {
           lockedByOtherWindows,
           activeProjectId: nextActive,
           activeId: activeIdFromLayout(layout),
           layout,
-          selectedFilePath: null,
-          openFiles: [],
-          dirtyFiles: {},
-          previewFilePath: null,
+          rightTab: restored.rightTab,
+          selectedFilePath: restored.selectedFilePath,
+          openFiles: restored.openFiles,
+          dirtyFiles: restored.dirtyFiles,
+          previewFilePath: restored.previewFilePath,
         };
       }
       return { lockedByOtherWindows };
@@ -839,12 +884,24 @@ function buildProjectUiSnapshot(projectId: string): ProjectUiSnapshot | null {
   const isActive = s.activeProjectId === projectId;
   const layout = isActive ? s.layout : s.layoutsByProject[projectId];
   if (!layout || layout.visibleIds.length === 0) return null;
+  // The active project's freshest right-pane state lives in the top-level
+  // fields; a backgrounded project's was stashed into `rightUiByProject` when
+  // the user switched away. Either way the detached window should inherit it
+  // rather than resetting to the Files tab.
+  const ui = isActive
+    ? {
+        rightTab: s.rightTab,
+        openFiles: s.openFiles,
+        selectedFilePath: s.selectedFilePath,
+        previewFilePath: s.previewFilePath,
+      }
+    : s.rightUiByProject[projectId];
   return {
     layout,
-    rightTab: isActive ? s.rightTab : "files",
-    openFiles: isActive ? s.openFiles : [],
-    selectedFilePath: isActive ? s.selectedFilePath : null,
-    previewFilePath: isActive ? s.previewFilePath : null,
+    rightTab: ui?.rightTab ?? "files",
+    openFiles: ui?.openFiles ?? [],
+    selectedFilePath: ui?.selectedFilePath ?? null,
+    previewFilePath: ui?.previewFilePath ?? null,
   };
 }
 

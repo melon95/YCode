@@ -96,6 +96,34 @@ describe("layout store", () => {
     expect(state().previewFilePath).toBeNull();
   });
 
+  it("remembers each project's right-pane tab and open files across switches", () => {
+    state().setSessions([
+      { ...session("a1", "project-a"), updated_at_ms: 10 },
+      { ...session("b1", "project-b"), updated_at_ms: 20 },
+    ]);
+
+    // Project A: terminal tab + an open file.
+    state().setActiveProjectId("project-a");
+    state().setRightTab("terminal");
+    state().openFile("src/a.ts");
+
+    // Switch to B — it starts on defaults, not A's state.
+    state().setActiveProjectId("project-b");
+    expect(state().rightTab).toBe("files");
+    expect(state().openFiles).toEqual([]);
+    state().setRightTab("changes");
+
+    // Back to A — its tab and open file return.
+    state().setActiveProjectId("project-a");
+    expect(state().rightTab).toBe("terminal");
+    expect(state().openFiles).toEqual(["src/a.ts"]);
+
+    // B kept its own tab independently.
+    state().setActiveProjectId("project-b");
+    expect(state().rightTab).toBe("changes");
+    expect(state().openFiles).toEqual([]);
+  });
+
   it("restores each project's terminal layout when switching back", () => {
     state().setSessions([
       { ...session("a1", "project-a"), updated_at_ms: 10 },
@@ -153,6 +181,28 @@ describe("detached-window UI snapshot", () => {
     expect(state().rightTab).toBe("changes");
     expect(state().openFiles).toEqual(["src/a.ts"]);
     expect(state().selectedFilePath).toBe("src/a.ts");
+  });
+
+  it("captures a backgrounded project's stashed right-pane state on detach", () => {
+    state().setSessions([
+      { ...session("a1", "project-a"), updated_at_ms: 10 },
+      { ...session("b1", "project-b"), updated_at_ms: 20 },
+    ]);
+    state().setActiveProjectId("project-a");
+    state().appendSessionToLayout("a1");
+    state().setRightTab("terminal");
+    state().openFile("src/a.ts");
+
+    // Switch away: project-a is now backgrounded, its right-pane UI stashed.
+    state().setActiveProjectId("project-b");
+
+    // Detaching the backgrounded project must carry its own state, not the
+    // active project's nor a reset-to-Files default.
+    const snap = captureProjectUiSnapshot("project-a");
+    expect(snap).toBeTruthy();
+    const parsed = JSON.parse(snap!);
+    expect(parsed.rightTab).toBe("terminal");
+    expect(parsed.openFiles).toEqual(["src/a.ts"]);
   });
 
   it("drops panes whose session no longer exists in the new window", () => {
