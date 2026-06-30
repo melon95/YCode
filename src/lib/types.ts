@@ -56,6 +56,7 @@ export type { FileEntry } from "@bindings/FileEntry";
 export type { FileContents } from "@bindings/FileContents";
 export type { GitFileChange } from "@bindings/GitFileChange";
 export type { GitFileStatus } from "@bindings/GitFileStatus";
+export type { GitBranchInfo } from "@bindings/GitBranchInfo";
 export type { OpenInExternalEditorRequest } from "@bindings/OpenInExternalEditorRequest";
 export type { WriteFileRequest } from "@bindings/WriteFileRequest";
 import type { DiscoveredSessionView as RawDiscoveredSessionView } from "@bindings/DiscoveredSessionView";

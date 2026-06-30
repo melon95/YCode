@@ -8,13 +8,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
 import "react-diff-view/style/index.css";
-import { gitDiffFile, gitStatus } from "../lib/ipc";
-import type { GitFileChange, GitFileStatus } from "../lib/types";
+import { gitBranch, gitDiffFile, gitStatus } from "../lib/ipc";
+import type { GitBranchInfo, GitFileChange, GitFileStatus } from "../lib/types";
 
 type ViewMode = "list" | "tree";
 
 export function ChangesPanel({ projectId }: { projectId: string }) {
   const [changes, setChanges] = useState<GitFileChange[]>([]);
+  const [branch, setBranch] = useState<GitBranchInfo | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [diffText, setDiffText] = useState<string>("");
   const [loadingList, setLoadingList] = useState(false);
@@ -38,6 +39,11 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
         })
         .catch((e) => setError(String(e)))
         .finally(() => setLoadingList(false));
+      // Branch context is independent of the file list — fetch it alongside,
+      // and don't let its failure (e.g. not a git repo) clobber the file view.
+      gitBranch(projectId)
+        .then(setBranch)
+        .catch(() => setBranch(null));
     };
   }, [projectId]);
 
@@ -100,6 +106,29 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
+        <span
+          className="changes-panel-branch"
+          title={
+            branch
+              ? branch.detached
+                ? `Detached HEAD at ${branch.head}`
+                : branch.upstream
+                  ? `${branch.head} → ${branch.upstream}`
+                  : `${branch.head} (no upstream)`
+              : undefined
+          }
+        >
+          <BranchIcon />
+          <span className="changes-panel-branch-name">
+            {branch ? branch.head : "—"}
+          </span>
+          {branch && (branch.ahead > 0 || branch.behind > 0) && (
+            <span className="changes-panel-branch-track">
+              {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
+              {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+            </span>
+          )}
+        </span>
         <span className="changes-panel-count">
           {changes.length === 0
             ? "No changes"
@@ -424,6 +453,30 @@ function basename(path: string): string {
 function dirname(path: string): string {
   const i = path.lastIndexOf("/");
   return i >= 0 ? path.slice(0, i) : "";
+}
+
+// Git branch glyph: two commit dots on a line with a fork — mirrors the
+// Changes tab icon in the right-pane strip.
+function BranchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="13"
+      height="13"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="6" cy="6" r="2.4" />
+      <circle cx="6" cy="18" r="2.4" />
+      <circle cx="18" cy="7" r="2.4" />
+      <path d="M6 8.4v7.2" />
+      <path d="M18 9.4a6 6 0 0 1-6 6h-1.6" />
+    </svg>
+  );
 }
 
 function RefreshIcon() {

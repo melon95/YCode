@@ -637,6 +637,7 @@ pub fn run() {
             commands::rename_path,
             commands::create_path,
             commands::git_status,
+            commands::git_branch,
             commands::git_diff_file,
             commands::start_workspace_watch,
             commands::stop_workspace_watch,

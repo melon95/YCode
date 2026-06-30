@@ -489,6 +489,23 @@ pub struct GitFileChange {
     pub deletions: u32,
 }
 
+/// HEAD context for the "Changes" panel header — the current branch (or a
+/// short SHA when detached) plus how far ahead/behind its upstream it sits.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct GitBranchInfo {
+    /// Branch name, or an abbreviated commit SHA when in detached-HEAD state.
+    pub head: String,
+    /// True when HEAD points at a commit rather than a branch.
+    pub detached: bool,
+    /// Tracking branch (e.g. `origin/main`), if one is configured.
+    pub upstream: Option<String>,
+    /// Commits on HEAD not yet on the upstream.
+    pub ahead: u32,
+    /// Commits on the upstream not yet on HEAD.
+    pub behind: u32,
+}
+
 /// One row in the "Sessions" sidebar — describes a session jsonl that the
 /// introspect scanner found on disk. Per plan §9.1.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

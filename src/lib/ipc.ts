@@ -23,6 +23,7 @@ import type {
   FileEntry,
   FileContents,
   GitFileChange,
+  GitBranchInfo,
   LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
@@ -142,6 +143,9 @@ export const createPath = (
 
 export const gitStatus = (projectId: string): Promise<GitFileChange[]> =>
   invoke("git_status", { projectId });
+
+export const gitBranch = (projectId: string): Promise<GitBranchInfo> =>
+  invoke("git_branch", { projectId });
 
 export const gitDiffFile = (projectId: string, filePath: string): Promise<string> =>
   invoke("git_diff_file", { projectId, filePath });

@@ -12,7 +12,7 @@ use ycode_config::agent_patcher::{
 };
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, GitFileChange, LspManifestView,
+    DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitFileChange, LspManifestView,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
     SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
     WritePtyRequest,
@@ -350,6 +350,18 @@ pub async fn git_status(
     state
         .service
         .git_status(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_branch(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<GitBranchInfo, String> {
+    state
+        .service
+        .git_branch(project_id)
         .await
         .map_err(|e| e.to_string())
 }

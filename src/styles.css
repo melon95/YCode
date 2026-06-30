@@ -4231,16 +4231,41 @@ textarea.native-input {
   position: relative;
 }
 
-.changes-panel-header::before {
-  content: "Working Tree";
+/* Live branch label — replaces the old static "Working Tree" title with the
+   real HEAD: branch name (or short SHA when detached) + ahead/behind. */
+.changes-panel-branch {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  color: var(--text);
+}
+
+.changes-panel-branch > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.changes-panel-branch-name {
   font-family: var(--font-display);
   font-variation-settings: "opsz" 36, "SOFT" 50;
   font-weight: 500;
   font-size: 17px;
   letter-spacing: -0.01em;
-  color: var(--text);
   font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.changes-panel-branch-track {
+  display: inline-flex;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
 .changes-panel-count {

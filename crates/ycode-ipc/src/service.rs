@@ -26,7 +26,8 @@ use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, T
 use crate::{
     mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
     CreateSessionRequest,
-    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitFileChange, GitFileStatus,
+    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitFileChange,
+    GitFileStatus,
     LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
     RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
     SpawnPtyRequest, TodoView, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent,
@@ -673,6 +674,16 @@ impl Service {
         tokio::task::spawn_blocking(move || git_status_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_status task: {e}")))?
+    }
+
+    /// Current HEAD context (branch / detached SHA + ahead/behind upstream)
+    /// for the Changes panel header.
+    pub async fn git_branch(&self, project_id: String) -> Result<GitBranchInfo, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_branch_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_branch task: {e}")))?
     }
 
     /// Unified-diff text for one file vs its index entry (unstaged). For
@@ -1865,6 +1876,68 @@ fn resolve_under_repo(repo: &Utf8Path, rel: &str) -> Result<std::path::PathBuf, 
 /// individually (`docs/assets/logo.png`) instead of collapsing to a single
 /// `docs/assets/` entry — the latter has an empty basename and renders as a
 /// nameless row in the panel. Ignored files are still excluded.
+fn git_branch_blocking(repo: &Utf8Path) -> Result<GitBranchInfo, IpcError> {
+    use std::process::Command;
+
+    let git = |args: &[&str]| -> Option<String> {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(args)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
+    };
+
+    // Branch name when on one; otherwise we're detached and fall back to a
+    // short SHA (or the literal "HEAD" if even that fails, e.g. an empty repo).
+    let (head, detached) = match git(&["symbolic-ref", "--quiet", "--short", "HEAD"]) {
+        Some(branch) => (branch, false),
+        None => (
+            git(&["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "HEAD".to_string()),
+            true,
+        ),
+    };
+
+    // Upstream + ahead/behind only make sense on a branch with a tracking ref.
+    let upstream = if detached {
+        None
+    } else {
+        git(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    };
+
+    let (ahead, behind) = if upstream.is_some() {
+        // `--count` prints "<behind>\t<ahead>" for `@{u}...HEAD` (left = commits
+        // only on the upstream, right = commits only on HEAD).
+        git(&["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+            .and_then(|s| {
+                let mut it = s.split_whitespace();
+                let behind = it.next()?.parse().ok()?;
+                let ahead = it.next()?.parse().ok()?;
+                Some((ahead, behind))
+            })
+            .unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
+
+    Ok(GitBranchInfo {
+        head,
+        detached,
+        upstream,
+        ahead,
+        behind,
+    })
+}
+
 fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> {
     use std::process::Command;
 
