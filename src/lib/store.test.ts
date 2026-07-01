@@ -3,6 +3,7 @@ import {
   captureProjectUiSnapshot,
   DEFAULT_FONT_SIZES,
   displaySessionTitle,
+  PICKER_SLOT,
   useStore,
 } from "./store";
 import type { SessionView } from "./types";
@@ -66,16 +67,44 @@ describe("layout store", () => {
     expect(state().activeId).toBe("replacement");
   });
 
-  it("shows the new-session picker without removing sessions", () => {
+  it("adds the picker as a new pane beside existing sessions", () => {
     state().setSessions([session("s1"), session("s2")]);
     state().appendSessionToLayout("s1");
     state().appendSessionToLayout("s2");
 
     state().showNewSessionPicker();
 
-    expect(state().layout.visibleIds).toEqual([]);
+    // Existing panes stay; the picker is appended as a focused extra slot.
+    expect(state().layout.visibleIds).toEqual(["s1", "s2", PICKER_SLOT]);
+    expect(state().layout.focusSlot).toBe(2);
+    // The picker slot isn't a session, so nothing is "active".
     expect(state().activeId).toBeNull();
     expect(Object.keys(state().sessions).sort()).toEqual(["s1", "s2"]);
+  });
+
+  it("fills the picker slot in place when an agent is chosen", () => {
+    state().setSessions([session("s1"), session("s2")]);
+    state().appendSessionToLayout("s1");
+    state().appendSessionToLayout("s2");
+    state().showNewSessionPicker();
+
+    // Simulate the picker creating + opening a session.
+    state().openSessionInLayout("s3");
+
+    expect(state().layout.visibleIds).toEqual(["s1", "s2", "s3"]);
+    expect(state().layout.focusSlot).toBe(2);
+    expect(state().activeId).toBe("s3");
+  });
+
+  it("re-focuses an open picker instead of adding a second one", () => {
+    state().setSessions([session("s1")]);
+    state().appendSessionToLayout("s1");
+    state().showNewSessionPicker();
+    state().focusLayoutSlot(0);
+    state().showNewSessionPicker();
+
+    expect(state().layout.visibleIds).toEqual(["s1", PICKER_SLOT]);
+    expect(state().layout.focusSlot).toBe(1);
   });
 
   it("resets editor and layout state when switching projects", () => {

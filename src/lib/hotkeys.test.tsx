@@ -3,7 +3,8 @@ import { cleanup, render } from "@testing-library/react";
 import { useRef } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useHotkeys } from "./hotkeys";
-import { useStore } from "./store";
+import { createSession } from "./ipc";
+import { PICKER_SLOT, useStore } from "./store";
 import type { ProjectView } from "./types";
 
 vi.mock("@heroui/react", () => ({
@@ -138,7 +139,7 @@ describe("useHotkeys", () => {
     expect(useStore.getState().activeId).toBe("s3");
   });
 
-  it("opens the new-session picker with shift command n", () => {
+  it("opens the agent picker as a new pane with shift command n", () => {
     useStore.setState({
       activeProjectId: "project-a",
       activeId: "s1",
@@ -152,8 +153,29 @@ describe("useHotkeys", () => {
 
     press("n", { shiftKey: true });
 
-    expect(useStore.getState().layout.visibleIds).toEqual([]);
+    // Existing panes stay; the picker is appended as a new focused slot.
+    expect(useStore.getState().layout.visibleIds).toEqual(["s1", "s2", PICKER_SLOT]);
+    expect(useStore.getState().layout.focusSlot).toBe(2);
     expect(useStore.getState().activeId).toBeNull();
+  });
+
+  it("ignores command n while the agent picker is on screen", () => {
+    // Empty project → the fullscreen picker is showing.
+    useStore.setState({
+      activeProjectId: "project-a",
+      layout: { mode: "single", visibleIds: [], focusSlot: 0 },
+    });
+    render(<HotkeyHost />);
+
+    press("n");
+    expect(createSession).not.toHaveBeenCalled();
+
+    // An open ⇧⌘N picker pane should block ⌘N too.
+    useStore.setState({
+      layout: { mode: "columns", visibleIds: ["s1", PICKER_SLOT], focusSlot: 1 },
+    });
+    press("n");
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it("switches projects with shift command brackets", () => {

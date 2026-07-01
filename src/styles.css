@@ -1225,6 +1225,21 @@ body {
   border-radius: 12px;
 }
 
+/* The same picker rendered inside a layout slot (⇧⌘N "new pane") rather than
+   fullscreen: let it scroll within the cell and tighten the spacing so it
+   reads well even in a narrow quarter-pane. */
+.pane-body-picker {
+  overflow: auto;
+  display: flex;
+}
+.pane-body-picker .new-session-picker-host {
+  margin: auto;
+  padding: 14px 10px;
+}
+.pane-body-picker .new-session-picker {
+  padding: 20px 18px;
+}
+
 .picker-icon {
   display: flex;
   justify-content: center;

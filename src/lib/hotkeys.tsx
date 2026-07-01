@@ -29,7 +29,7 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { toast } from "@heroui/react";
-import { LAYOUT_CAP, useStore, type RightTab } from "./store";
+import { LAYOUT_CAP, PICKER_SLOT, useStore, type RightTab } from "./store";
 import { archiveSession, createSession, listAgents } from "./ipc";
 import { confirmDialog } from "./confirm";
 
@@ -155,13 +155,23 @@ export function useHotkeys({
         return;
       }
 
-      // ⇧⌘N: open the agent picker by hiding visible panes without killing
-      // their PTYs. It must fire from xterm focus for the same reason ⌘N does.
+      // ⇧⌘N: open the agent picker as a NEW pane beside the existing ones
+      // (not a fullscreen takeover) — pick an agent and it becomes a session
+      // in that slot. Must fire from xterm focus for the same reason ⌘N does.
       if (key === "n" && e.shiftKey) {
         e.preventDefault();
         const s = useStore.getState();
         if (!s.activeProjectId) {
           toast.warning("Pick a project first");
+          return;
+        }
+        // Already at the pane cap (and not just re-focusing an open picker) —
+        // there's no room for another pane.
+        if (
+          s.layout.visibleIds.length >= LAYOUT_CAP &&
+          !s.layout.visibleIds.includes(PICKER_SLOT)
+        ) {
+          toast.warning(`Close a pane first — at the ${LAYOUT_CAP}-pane limit.`);
           return;
         }
         s.showNewSessionPicker();
@@ -179,6 +189,18 @@ export function useHotkeys({
           toast.warning("Pick a project first");
           return;
         }
+        // The agent picker is already on screen — empty project (fullscreen
+        // picker), a lone exited pane (picker takes over), or an open ⇧⌘N
+        // picker pane. The picker IS the "new session" UI, so ⌘N would just
+        // bypass the user's pending choice. No-op and let them pick from it.
+        const { visibleIds } = s.layout;
+        const lone =
+          visibleIds.length === 1 ? s.sessions[visibleIds[0]] : undefined;
+        const pickerVisible =
+          visibleIds.includes(PICKER_SLOT) ||
+          visibleIds.length === 0 ||
+          (!!lone && lone.status.type !== "Running");
+        if (pickerVisible) return;
         if (s.layout.visibleIds.length >= LAYOUT_CAP) {
           toast.warning(
             `Close a pane first — at the ${LAYOUT_CAP}-pane limit.`,

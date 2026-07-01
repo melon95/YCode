@@ -101,6 +101,15 @@ function reflowMode(current: LayoutMode, newCount: number): LayoutMode {
 
 const EMPTY_LAYOUT: Layout = { mode: "single", visibleIds: [], focusSlot: 0 };
 
+// Sentinel occupying a layout slot that shows the agent picker (⇧⌘N) instead
+// of a terminal. It lives in `visibleIds` like a real pane so the grid lays it
+// out alongside running sessions, but it's not a session id — `realId` strips
+// it anywhere we'd otherwise treat a slot as the active session.
+export const PICKER_SLOT = "__picker__";
+
+const realId = (id: string | undefined): string | null =>
+  id && id !== PICKER_SLOT ? id : null;
+
 function latestSessionIdForProject(
   sessions: Record<string, SessionView>,
   projectId: string | null,
@@ -141,7 +150,7 @@ function layoutForProject(
 }
 
 function activeIdFromLayout(layout: Layout): string | null {
-  return layout.visibleIds[layout.focusSlot] ?? null;
+  return realId(layout.visibleIds[layout.focusSlot]);
 }
 
 // Persist the active project so reopening the app restores the user's last
@@ -686,13 +695,41 @@ export const useStore = create<AppState>((set) => ({
 
   showNewSessionPicker: () =>
     set((state) => {
-      if (state.layout.visibleIds.length === 0) return state;
-      return { activeId: null, layout: EMPTY_LAYOUT };
+      const layout = state.layout;
+      // Already showing a picker pane → just focus it.
+      const existing = layout.visibleIds.indexOf(PICKER_SLOT);
+      if (existing >= 0) {
+        return { activeId: null, layout: { ...layout, focusSlot: existing } };
+      }
+      // No panes at all → the empty-state fullscreen picker already covers it.
+      if (layout.visibleIds.length === 0) return state;
+      // At the pane cap → can't add another. (The hotkey toasts before we get
+      // here; this just keeps the reducer a no-op as a safety net.)
+      if (layout.visibleIds.length >= LAYOUT_CAP) return state;
+      // Add the picker as a new slot next to the existing panes, focused —
+      // it replaces itself with the real session once the user picks an agent.
+      const visibleIds = [...layout.visibleIds, PICKER_SLOT];
+      return {
+        activeId: null,
+        layout: {
+          mode: reflowMode(layout.mode, visibleIds.length),
+          visibleIds,
+          focusSlot: visibleIds.length - 1,
+        },
+      };
     }),
 
   openSessionInLayout: (id) =>
     set((state) => {
       const layout = state.layout;
+      // A picker pane is open → the chosen session fills that exact slot,
+      // turning the picker into the running session in place.
+      const pickerIdx = layout.visibleIds.indexOf(PICKER_SLOT);
+      if (pickerIdx >= 0) {
+        const visibleIds = layout.visibleIds.slice();
+        visibleIds[pickerIdx] = id;
+        return { activeId: id, layout: { ...layout, visibleIds, focusSlot: pickerIdx } };
+      }
       const existingIdx = layout.visibleIds.indexOf(id);
       if (existingIdx >= 0) {
         return {
@@ -762,7 +799,7 @@ export const useStore = create<AppState>((set) => ({
       }
       const focusSlot = Math.min(slotIdx, visibleIds.length - 1);
       return {
-        activeId: visibleIds[focusSlot],
+        activeId: realId(visibleIds[focusSlot]),
         layout: {
           mode: reflowMode(layout.mode, visibleIds.length),
           visibleIds,
@@ -776,7 +813,7 @@ export const useStore = create<AppState>((set) => ({
       const layout = state.layout;
       if (slotIdx < 0 || slotIdx >= layout.visibleIds.length) return state;
       return {
-        activeId: layout.visibleIds[slotIdx],
+        activeId: realId(layout.visibleIds[slotIdx]),
         layout: { ...layout, focusSlot: slotIdx },
       };
     }),

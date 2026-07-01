@@ -39,7 +39,7 @@ import {
   resizePty,
   writePty,
 } from "../lib/ipc";
-import { displaySessionTitle, useStore, type LayoutMode } from "../lib/store";
+import { displaySessionTitle, PICKER_SLOT, useStore, type LayoutMode } from "../lib/store";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import {
   attachImeInputBridge,
@@ -646,6 +646,43 @@ export function TerminalPane() {
           style={{ gridTemplateColumns, gridTemplateRows }}
         >
           {visibleIds.map((id, slot) => {
+            const focusedPick = slot === focusSlot;
+            // Picker pane: a slot that shows the agent chooser instead of a
+            // terminal. Picking an agent replaces this slot with the new
+            // session in place (see `openSessionInLayout`).
+            if (id === PICKER_SLOT) {
+              return (
+                <div
+                  key={PICKER_SLOT}
+                  className={"pane-cell pane-cell-picker" + (focusedPick ? " focused" : "")}
+                  style={{ gridArea: `s${slot}` }}
+                  onMouseDownCapture={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("button")) return;
+                    if (!focusedPick) focusLayoutSlot(slot);
+                  }}
+                >
+                  <header className="pane-header">
+                    <span className="pane-title">New Session</span>
+                    <button
+                      type="button"
+                      className="pane-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeLayoutSlot(slot);
+                      }}
+                      aria-label="Close picker"
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                  </header>
+                  <div className="pane-body pane-body-picker">
+                    {activeProject && <NewSessionPicker project={activeProject} />}
+                  </div>
+                </div>
+              );
+            }
             const session = sessions[id];
             const title = session
               ? displaySessionTitle(session, liveTitles)
