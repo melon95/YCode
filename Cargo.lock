@@ -7369,7 +7369,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-config"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "camino",
  "directories",
@@ -7383,7 +7383,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-introspect"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "camino",
  "serde",
@@ -7397,7 +7397,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-ipc"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "base64 0.22.1",
  "camino",
@@ -7423,7 +7423,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-lsp"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "camino",
  "directories",
@@ -7442,7 +7442,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-mcp"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "rmcp",
@@ -7456,14 +7456,14 @@ dependencies = [
 
 [[package]]
 name = "ycode-notify"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "ycode-persist"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "camino",
  "serde",
@@ -7476,7 +7476,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-tauri"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "camino",
@@ -7505,7 +7505,7 @@ dependencies = [
 
 [[package]]
 name = "ycode-terminal"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "camino",
  "portable-pty",
