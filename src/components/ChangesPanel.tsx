@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
 import "react-diff-view/style/index.css";
-import { gitBranch, gitDiffFile, gitStatus } from "../lib/ipc";
+import { gitBranch, gitCommit, gitDiffFile, gitStatus } from "../lib/ipc";
 import type { GitBranchInfo, GitFileChange, GitFileStatus } from "../lib/types";
 
 type ViewMode = "list" | "tree";
@@ -24,6 +24,8 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   const [viewMode, setViewMode] = useState<ViewMode>("tree");
   // Set of directory paths that are *collapsed*. Default empty = all expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [commitMsg, setCommitMsg] = useState("");
+  const [committing, setCommitting] = useState(false);
 
   const refresh = useMemo(() => {
     return () => {
@@ -103,6 +105,24 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       return next;
     });
 
+  const trimmedMsg = commitMsg.trim();
+  // Disabled unless there's something staged-able AND a non-empty message,
+  // and we're not mid-commit.
+  const canCommit = changes.length > 0 && trimmedMsg.length > 0 && !committing;
+
+  const doCommit = () => {
+    if (!canCommit) return;
+    setCommitting(true);
+    setError(null);
+    gitCommit(projectId, trimmedMsg)
+      .then(() => {
+        setCommitMsg("");
+        refresh();
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setCommitting(false));
+  };
+
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
@@ -170,6 +190,43 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           title="Refresh"
         >
           <RefreshIcon />
+        </button>
+      </div>
+      <div className="changes-commit-box">
+        <textarea
+          className="changes-commit-input"
+          value={commitMsg}
+          onChange={(e) => setCommitMsg(e.target.value)}
+          onKeyDown={(e) => {
+            // ⌘/Ctrl+Enter commits, matching the VS Code affordance.
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              doCommit();
+            }
+          }}
+          placeholder={
+            branch && !branch.detached
+              ? `Message (⌘⏎ to commit on "${branch.head}")`
+              : "Message (⌘⏎ to commit)"
+          }
+          rows={1}
+          aria-label="Commit message"
+        />
+        <button
+          type="button"
+          className="changes-commit-btn"
+          onClick={doCommit}
+          disabled={!canCommit}
+          title={
+            changes.length === 0
+              ? "Nothing to commit"
+              : trimmedMsg.length === 0
+                ? "Enter a commit message"
+                : "Commit all changes"
+          }
+        >
+          <CommitIcon />
+          <span>{committing ? "Committing…" : "Commit"}</span>
         </button>
       </div>
       <div className="changes-panel-body">
@@ -475,6 +532,27 @@ function BranchIcon() {
       <circle cx="18" cy="7" r="2.4" />
       <path d="M6 8.4v7.2" />
       <path d="M18 9.4a6 6 0 0 1-6 6h-1.6" />
+    </svg>
+  );
+}
+
+// Commit glyph: a commit dot on a line — the classic git-commit mark.
+function CommitIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M3 12h5.8" />
+      <path d="M15.2 12H21" />
     </svg>
   );
 }

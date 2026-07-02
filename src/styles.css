@@ -4358,6 +4358,77 @@ textarea.native-input {
   color: var(--accent);
 }
 
+/* Manual commit box — VS Code-style message input + commit button. Sits
+   between the header and the file/diff split. The button is disabled (no
+   accent, no pointer) whenever the tree is clean or the message is blank. */
+.changes-commit-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.changes-commit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  min-height: 34px;
+  max-height: 160px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui, inherit);
+  font-size: 13px;
+  line-height: 1.4;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.changes-commit-input::placeholder {
+  color: var(--muted);
+}
+
+.changes-commit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+}
+
+.changes-commit-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-ui, inherit);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+}
+
+.changes-commit-btn:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.changes-commit-btn:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .changes-panel-body {
   flex: 1 1 auto;
   display: grid;

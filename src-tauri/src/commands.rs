@@ -380,6 +380,19 @@ pub async fn git_diff_file(
 }
 
 #[tauri::command]
+pub async fn git_commit(
+    state: State<'_, AppState>,
+    project_id: String,
+    message: String,
+) -> Result<(), String> {
+    state
+        .service
+        .git_commit(project_id, message)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn start_workspace_watch(
     state: State<'_, AppState>,
     project_id: String,

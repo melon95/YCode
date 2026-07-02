@@ -150,6 +150,9 @@ export const gitBranch = (projectId: string): Promise<GitBranchInfo> =>
 export const gitDiffFile = (projectId: string, filePath: string): Promise<string> =>
   invoke("git_diff_file", { projectId, filePath });
 
+export const gitCommit = (projectId: string, message: string): Promise<void> =>
+  invoke("git_commit", { projectId, message });
+
 export const scanWorkspaceSessions = (
   projectId: string,
 ): Promise<DiscoveredSessionView[]> =>

@@ -701,6 +701,22 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("git_diff task: {e}")))?
     }
 
+    /// Stage every working-tree change (`git add -A`) and commit it with
+    /// `message` on the current branch. Mirrors the VS Code "Changes" box:
+    /// the user types a message and the whole working tree is committed. Errors
+    /// if the message is blank or there's nothing to commit.
+    pub async fn git_commit(
+        &self,
+        project_id: String,
+        message: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_commit_blocking(&repo, message))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_commit task: {e}")))?
+    }
+
     /// Hand a file off to the user's preferred GUI editor. Resolution order:
     /// explicit `editor` arg → `$VISUAL` → `$EDITOR` → platform default
     /// (`Visual Studio Code` on macOS). On macOS we spawn `open -a <editor>
@@ -2153,6 +2169,43 @@ fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, 
         }
     }
     Ok(body)
+}
+
+fn git_commit_blocking(repo: &Utf8Path, message: String) -> Result<(), IpcError> {
+    use std::process::Command;
+
+    let message = message.trim();
+    if message.is_empty() {
+        return Err(IpcError::BadInput("commit message is empty".into()));
+    }
+
+    // Stage the entire working tree (new, modified, deleted) so the commit
+    // matches what the Changes panel shows.
+    let add = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["add", "-A"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git add: {e}")))?;
+    if !add.status.success() {
+        let stderr = String::from_utf8_lossy(&add.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git add failed: {stderr}")));
+    }
+
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["commit", "-m"])
+        .arg(message)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git commit: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        let detail = if stderr.trim().is_empty() { stdout } else { stderr };
+        return Err(IpcError::BadInput(format!("git commit failed: {detail}")));
+    }
+    Ok(())
 }
 
 fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {

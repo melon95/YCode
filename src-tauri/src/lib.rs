@@ -639,6 +639,7 @@ pub fn run() {
             commands::git_status,
             commands::git_branch,
             commands::git_diff_file,
+            commands::git_commit,
             commands::start_workspace_watch,
             commands::stop_workspace_watch,
             commands::scan_workspace_sessions,
