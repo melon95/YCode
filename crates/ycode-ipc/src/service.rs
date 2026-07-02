@@ -717,6 +717,48 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("git_commit task: {e}")))?
     }
 
+    /// Stage one file into the index (`git add -- <path>`).
+    pub async fn git_stage_file(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_stage_file_blocking(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_stage task: {e}")))?
+    }
+
+    /// Unstage one file, leaving its working-tree edits intact
+    /// (`git reset -q HEAD -- <path>`).
+    pub async fn git_unstage_file(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_unstage_file_blocking(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_unstage task: {e}")))?
+    }
+
+    /// Discard all changes to one file — index *and* working tree — restoring
+    /// it to HEAD. Untracked files are deleted outright. Destructive; the
+    /// frontend confirms before calling.
+    pub async fn git_discard_file(
+        &self,
+        project_id: String,
+        file_path: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_discard_file_blocking(&repo, file_path))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_discard task: {e}")))?
+    }
+
     /// Hand a file off to the user's preferred GUI editor. Resolution order:
     /// explicit `editor` arg → `$VISUAL` → `$EDITOR` → platform default
     /// (`Visual Studio Code` on macOS). On macOS we spawn `open -a <editor>
@@ -1982,12 +2024,15 @@ fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> 
         return Err(IpcError::BadInput(format!("git status failed: {stderr}")));
     }
 
-    // numstat is cheap and lets us avoid per-file `git diff --numstat` calls.
-    // It only covers tracked changes; untracked files we count separately.
+    // numstat vs HEAD covers a file's *total* change (staged + unstaged
+    // merged), which is what the panel's per-row and aggregate counts show.
+    // Untracked files aren't in HEAD, so we count their lines separately.
+    // On an empty repo (no HEAD) this errors — we tolerate that and fall back
+    // to zero counts via the empty map.
     let numstat_out = Command::new("git")
         .arg("-C")
         .arg(repo.as_std_path())
-        .args(["diff", "--numstat", "-z"])
+        .args(["diff", "HEAD", "--numstat", "-z"])
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git diff: {e}")))?;
     let numstat = parse_numstat_z(&numstat_out.stdout);
@@ -1998,22 +2043,29 @@ fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> 
             continue;
         }
         let xy = &entry[..2];
-        let path_part = &entry[3..];
-        // Working-tree side only — skip staged-only changes (Y = ' ').
-        let y = xy.as_bytes()[1];
+        let path = entry[3..].to_string();
+        // X = index (staged) side, Y = working-tree (unstaged) side.
         let x = xy.as_bytes()[0];
+        let y = xy.as_bytes()[1];
 
-        let (status, path) = if x == b'?' && y == b'?' {
-            (GitFileStatus::Untracked, path_part.to_string())
-        } else if y == b'M' {
-            (GitFileStatus::Modified, path_part.to_string())
-        } else if y == b'D' {
-            (GitFileStatus::Deleted, path_part.to_string())
-        } else if y == b' ' {
-            // staged-only — skip
-            continue;
+        // Untracked files have no index entry; everything else with a
+        // non-space X is (at least partially) staged.
+        let (status, staged) = if x == b'?' && y == b'?' {
+            (GitFileStatus::Untracked, false)
         } else {
-            (GitFileStatus::Other, path_part.to_string())
+            let staged = x != b' ';
+            // Collapse the X/Y pair into one glyph. A staged new file (`A`)
+            // reads as an addition; deletions win over modifications.
+            let status = if x == b'A' {
+                GitFileStatus::Added
+            } else if y == b'D' || x == b'D' {
+                GitFileStatus::Deleted
+            } else if y == b'M' || x == b'M' {
+                GitFileStatus::Modified
+            } else {
+                GitFileStatus::Other
+            };
+            (status, staged)
         };
 
         let (additions, deletions) = match status {
@@ -2026,6 +2078,7 @@ fn git_status_blocking(repo: &Utf8Path) -> Result<Vec<GitFileChange>, IpcError> 
             status,
             additions,
             deletions,
+            staged,
         });
     }
     changes.sort_by(|a, b| a.path.cmp(&b.path));
@@ -2179,17 +2232,28 @@ fn git_commit_blocking(repo: &Utf8Path, message: String) -> Result<(), IpcError>
         return Err(IpcError::BadInput("commit message is empty".into()));
     }
 
-    // Stage the entire working tree (new, modified, deleted) so the commit
-    // matches what the Changes panel shows.
-    let add = Command::new("git")
+    // If the user staged specific files, honor that selection and commit only
+    // the index. If nothing is staged, fall back to committing the whole
+    // working tree (`git add -A`) — the one-click "commit everything" flow.
+    let has_staged = !Command::new("git")
         .arg("-C")
         .arg(repo.as_std_path())
-        .args(["add", "-A"])
-        .output()
-        .map_err(|e| IpcError::BadInput(format!("spawn git add: {e}")))?;
-    if !add.status.success() {
-        let stderr = String::from_utf8_lossy(&add.stderr).into_owned();
-        return Err(IpcError::BadInput(format!("git add failed: {stderr}")));
+        .args(["diff", "--cached", "--quiet"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(true);
+
+    if !has_staged {
+        let add = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["add", "-A"])
+            .output()
+            .map_err(|e| IpcError::BadInput(format!("spawn git add: {e}")))?;
+        if !add.status.success() {
+            let stderr = String::from_utf8_lossy(&add.stderr).into_owned();
+            return Err(IpcError::BadInput(format!("git add failed: {stderr}")));
+        }
     }
 
     let out = Command::new("git")
@@ -2206,6 +2270,98 @@ fn git_commit_blocking(repo: &Utf8Path, message: String) -> Result<(), IpcError>
         return Err(IpcError::BadInput(format!("git commit failed: {detail}")));
     }
     Ok(())
+}
+
+fn git_stage_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), IpcError> {
+    use std::process::Command;
+
+    // Reject path traversal, matching the diff/read commands.
+    let _ = resolve_under_repo(repo, &file_path)?;
+
+    // `git add` handles new, modified, and deleted paths uniformly.
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["add", "--"])
+        .arg(&file_path)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git add: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git add failed: {stderr}")));
+    }
+    Ok(())
+}
+
+fn git_unstage_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), IpcError> {
+    use std::process::Command;
+
+    let _ = resolve_under_repo(repo, &file_path)?;
+
+    // `reset HEAD <path>` moves the index entry back to HEAD without touching
+    // the working tree. Suppress the summary it prints on stdout.
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["reset", "-q", "HEAD", "--"])
+        .arg(&file_path)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git reset: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git reset failed: {stderr}")));
+    }
+    Ok(())
+}
+
+fn git_discard_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), IpcError> {
+    use std::process::Command;
+
+    let abs = resolve_under_repo(repo, &file_path)?;
+
+    // Does this path exist in HEAD? That — not "is it tracked" — decides how to
+    // discard. A newly-`git add`ed file IS tracked (in the index) but has no
+    // HEAD blob, so `git restore --source=HEAD` would fail on it. Files in HEAD
+    // get restored; everything else (untracked or staged-new) is removed.
+    let in_head = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["cat-file", "-e"])
+        .arg(format!("HEAD:{file_path}"))
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if in_head {
+        // Restore both the index and working tree to HEAD in one shot.
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["restore", "--source=HEAD", "--staged", "--worktree", "--"])
+            .arg(&file_path)
+            .output()
+            .map_err(|e| IpcError::BadInput(format!("spawn git restore: {e}")))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            return Err(IpcError::BadInput(format!("git restore failed: {stderr}")));
+        }
+        Ok(())
+    } else {
+        // New file (untracked or staged-as-new). Drop any index entry so it
+        // fully disappears from git, then delete it from disk.
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["rm", "-q", "--cached", "--ignore-unmatch", "--"])
+            .arg(&file_path)
+            .status();
+        match std::fs::remove_file(&abs) {
+            Ok(()) => Ok(()),
+            // Already gone is fine — the desired end state is "no such file".
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(IpcError::BadInput(format!("delete {file_path}: {e}"))),
+        }
+    }
 }
 
 fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {

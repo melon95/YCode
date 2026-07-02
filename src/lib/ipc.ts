@@ -153,6 +153,15 @@ export const gitDiffFile = (projectId: string, filePath: string): Promise<string
 export const gitCommit = (projectId: string, message: string): Promise<void> =>
   invoke("git_commit", { projectId, message });
 
+export const gitStageFile = (projectId: string, filePath: string): Promise<void> =>
+  invoke("git_stage_file", { projectId, filePath });
+
+export const gitUnstageFile = (projectId: string, filePath: string): Promise<void> =>
+  invoke("git_unstage_file", { projectId, filePath });
+
+export const gitDiscardFile = (projectId: string, filePath: string): Promise<void> =>
+  invoke("git_discard_file", { projectId, filePath });
+
 export const scanWorkspaceSessions = (
   projectId: string,
 ): Promise<DiscoveredSessionView[]> =>

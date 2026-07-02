@@ -393,6 +393,45 @@ pub async fn git_commit(
 }
 
 #[tauri::command]
+pub async fn git_stage_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .git_stage_file(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_unstage_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .git_unstage_file(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_discard_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    file_path: String,
+) -> Result<(), String> {
+    state
+        .service
+        .git_discard_file(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn start_workspace_watch(
     state: State<'_, AppState>,
     project_id: String,

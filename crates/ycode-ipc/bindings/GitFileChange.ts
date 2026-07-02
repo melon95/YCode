@@ -10,4 +10,10 @@ export type GitFileChange = {
 /**
  * Repo-relative path, forward-slash separated.
  */
-path: string, status: GitFileStatus, additions: number, deletions: number, };
+path: string, status: GitFileStatus, additions: number, deletions: number, 
+/**
+ * True when the file has changes in the index (staged) — drives the
+ * per-row stage checkbox in the Changes panel. A file partially staged
+ * (both index and worktree edits) still reads as `true`.
+ */
+staged: boolean, };

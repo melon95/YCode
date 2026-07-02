@@ -461,10 +461,11 @@ pub struct WriteFileRequest {
     pub contents: String,
 }
 
-/// Working-tree status of a file relative to its index entry. We only surface
-/// the unstaged side here — staged changes are deliberately ignored by the
-/// "Changes" panel per product decision. `Renamed` only fires when the rename
-/// happens in the working tree (rare; typical rename is index-side).
+/// Status of an uncommitted file (relative to HEAD). The Changes panel shows
+/// both staged and unstaged files — the `GitFileChange.staged` flag records
+/// which side an entry sits on so the panel can render a stage checkbox. The
+/// glyph here reflects the kind of change (add/modify/delete), collapsing the
+/// porcelain X/Y pair into a single classification.
 #[derive(Clone, Debug, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
@@ -472,6 +473,9 @@ pub enum GitFileStatus {
     Modified,
     Deleted,
     Untracked,
+    /// A previously-untracked file that has been staged (`git add`) — index
+    /// status `A`. Displayed like an addition rather than a modification.
+    Added,
     /// Catch-all for status codes we don't classify (`T` type-change, etc).
     Other,
 }
@@ -487,6 +491,10 @@ pub struct GitFileChange {
     pub status: GitFileStatus,
     pub additions: u32,
     pub deletions: u32,
+    /// True when the file has changes in the index (staged) — drives the
+    /// per-row stage checkbox in the Changes panel. A file partially staged
+    /// (both index and worktree edits) still reads as `true`.
+    pub staged: bool,
 }
 
 /// HEAD context for the "Changes" panel header — the current branch (or a

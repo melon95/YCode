@@ -4312,6 +4312,15 @@ textarea.native-input {
   background: var(--rule);
 }
 
+/* Aggregate +/− next to the file count — total added/removed lines across
+   every change, mirroring the reference design's header. */
+.changes-panel-totals {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
 .changes-panel-refresh,
 .changes-panel-mode-btn {
   display: inline-flex;
@@ -4457,21 +4466,15 @@ textarea.native-input {
   padding: 4px 0;
 }
 
+/* Row is a flex container holding the selectable body, a discard button, and
+   a stage checkbox. Hover/active styling lives on the container so the whole
+   row highlights, but only the body drives file selection. */
 .changes-file-row {
   width: 100%;
-  display: grid;
-  grid-template-columns: 14px minmax(0, auto) 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 5px 14px 5px 12px;
-  border: 0;
-  background: transparent;
+  padding-right: 10px;
   color: var(--text-soft);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 0;
   position: relative;
   transition: color var(--duration-fast) var(--ease-out),
     background var(--duration-fast) var(--ease-out);
@@ -4500,6 +4503,96 @@ textarea.native-input {
   border-radius: 0 2px 2px 0;
 }
 
+/* The selectable body: everything except the trailing controls. */
+.changes-file-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 14px minmax(0, auto) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px 5px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Discard (↩) — muted by default, only tinting on row hover so it doesn't
+   compete with the filename. Turns to the error color on its own hover. */
+.changes-file-discard {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.changes-file-row:hover .changes-file-discard {
+  opacity: 1;
+}
+
+.changes-file-discard:hover {
+  color: var(--error);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+/* Stage checkbox — fully custom-drawn (appearance: none) rather than the
+   native control. macOS renders native checkboxes gray while their window is
+   inactive and only restores accent-color on refocus, which flashes the check
+   from gray→blue when you switch back to the window. Drawing it ourselves
+   keeps the accent color stable regardless of window focus. */
+.changes-file-stage {
+  flex: 0 0 auto;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.changes-file-stage:hover {
+  border-color: var(--accent);
+}
+
+.changes-file-stage:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* The check mark: a rotated open-bottom-right rectangle drawn in white. */
+.changes-file-stage:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .changes-file-status {
   font-family: var(--font-mono);
   font-weight: 600;
@@ -4525,6 +4618,9 @@ textarea.native-input {
   color: var(--error);
 }
 .changes-file-status.status-untracked {
+  color: var(--running);
+}
+.changes-file-status.status-added {
   color: var(--running);
 }
 .changes-file-status.status-other {

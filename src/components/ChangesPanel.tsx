@@ -8,7 +8,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
 import "react-diff-view/style/index.css";
-import { gitBranch, gitCommit, gitDiffFile, gitStatus } from "../lib/ipc";
+import {
+  gitBranch,
+  gitCommit,
+  gitDiffFile,
+  gitDiscardFile,
+  gitStageFile,
+  gitStatus,
+  gitUnstageFile,
+} from "../lib/ipc";
+import { confirmDialog } from "../lib/confirm";
 import type { GitBranchInfo, GitFileChange, GitFileStatus } from "../lib/types";
 
 type ViewMode = "list" | "tree";
@@ -123,6 +132,62 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       .finally(() => setCommitting(false));
   };
 
+  // Aggregate +/− across every change — mirrors the header total in the
+  // reference design.
+  const totals = useMemo(
+    () =>
+      changes.reduce(
+        (acc, c) => {
+          acc.additions += c.additions;
+          acc.deletions += c.deletions;
+          return acc;
+        },
+        { additions: 0, deletions: 0 },
+      ),
+    [changes],
+  );
+
+  // Stage/unstage flip the index for one file. The checkbox is controlled by
+  // `change.staged`, so we optimistically flip it locally *before* the async
+  // git call — otherwise React snaps the box back to its old value until the
+  // refresh lands, which reads as a flicker. On success we refresh to reconcile
+  // counts; on failure we roll the flag back and surface the error.
+  const toggleStage = (change: GitFileChange) => {
+    const nextStaged = !change.staged;
+    setChanges((prev) =>
+      prev.map((c) =>
+        c.path === change.path ? { ...c, staged: nextStaged } : c,
+      ),
+    );
+    const op = nextStaged
+      ? gitStageFile(projectId, change.path)
+      : gitUnstageFile(projectId, change.path);
+    op.then(refresh).catch((e) => {
+      setChanges((prev) =>
+        prev.map((c) =>
+          c.path === change.path ? { ...c, staged: change.staged } : c,
+        ),
+      );
+      setError(String(e));
+    });
+  };
+
+  const discardFile = async (change: GitFileChange) => {
+    const ok = await confirmDialog({
+      title: `Discard changes to ${basename(change.path)}?`,
+      message:
+        change.status === "untracked" || change.status === "added"
+          ? "This deletes the file. This cannot be undone."
+          : "This reverts the file to its last committed state. This cannot be undone.",
+      confirmLabel: "Discard",
+      destructive: true,
+    });
+    if (!ok) return;
+    gitDiscardFile(projectId, change.path)
+      .then(refresh)
+      .catch((e) => setError(String(e)));
+  };
+
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
@@ -153,6 +218,17 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           {changes.length === 0
             ? "No changes"
             : `${changes.length} file${changes.length === 1 ? "" : "s"}`}
+          {changes.length > 0 &&
+            (totals.additions > 0 || totals.deletions > 0) && (
+              <span className="changes-panel-totals">
+                {totals.additions > 0 && (
+                  <span className="diff-add">+{totals.additions}</span>
+                )}
+                {totals.deletions > 0 && (
+                  <span className="diff-del">−{totals.deletions}</span>
+                )}
+              </span>
+            )}
         </span>
         <div className="changes-panel-mode" role="tablist" aria-label="View mode">
           <button
@@ -238,7 +314,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
             <div className="changes-empty">Working tree clean.</div>
           )}
           {error && <div className="changes-empty error">{error}</div>}
-          {!loadingList && changes.length > 0 && viewMode === "list" && (
+          {changes.length > 0 && viewMode === "list" && (
             <ul className="changes-file-list" role="listbox" aria-label="Changed files">
               {changes.map((c) => (
                 <li key={c.path}>
@@ -246,6 +322,8 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
                     change={c}
                     active={c.path === selected}
                     onClick={() => setSelected(c.path)}
+                    onToggleStage={() => toggleStage(c)}
+                    onDiscard={() => discardFile(c)}
                     showDir
                     indent={0}
                   />
@@ -253,7 +331,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
               ))}
             </ul>
           )}
-          {!loadingList && changes.length > 0 && viewMode === "tree" && (
+          {changes.length > 0 && viewMode === "tree" && (
             <ul className="changes-file-tree" role="tree" aria-label="Changed files">
               {tree.map((node) => (
                 <TreeRow
@@ -264,6 +342,8 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
                   collapsed={collapsed}
                   onToggleDir={toggleDir}
                   onSelectFile={setSelected}
+                  onToggleStage={toggleStage}
+                  onDiscard={discardFile}
                 />
               ))}
             </ul>
@@ -388,6 +468,8 @@ function TreeRow({
   collapsed,
   onToggleDir,
   onSelectFile,
+  onToggleStage,
+  onDiscard,
 }: {
   node: TreeNode;
   depth: number;
@@ -395,6 +477,8 @@ function TreeRow({
   collapsed: Set<string>;
   onToggleDir: (path: string) => void;
   onSelectFile: (path: string) => void;
+  onToggleStage: (change: GitFileChange) => void;
+  onDiscard: (change: GitFileChange) => void;
 }) {
   if (node.kind === "file") {
     return (
@@ -403,6 +487,8 @@ function TreeRow({
           change={node.change}
           active={node.change.path === selected}
           onClick={() => onSelectFile(node.change.path)}
+          onToggleStage={() => onToggleStage(node.change)}
+          onDiscard={() => onDiscard(node.change)}
           showDir={false}
           indent={depth}
         />
@@ -439,6 +525,8 @@ function TreeRow({
               collapsed={collapsed}
               onToggleDir={onToggleDir}
               onSelectFile={onSelectFile}
+              onToggleStage={onToggleStage}
+              onDiscard={onDiscard}
             />
           ))}
         </ul>
@@ -451,41 +539,74 @@ function FileRow({
   change,
   active,
   onClick,
+  onToggleStage,
+  onDiscard,
   showDir,
   indent,
 }: {
   change: GitFileChange;
   active: boolean;
   onClick: () => void;
+  onToggleStage: () => void;
+  onDiscard: () => void;
   showDir: boolean;
   indent: number;
 }) {
+  // The row is a container (not a <button>) so it can hold three independent
+  // targets: the main body selects the file for the diff view, the ↩ discards,
+  // and the checkbox stages/unstages. Nesting buttons inside a button is
+  // invalid HTML, hence the div wrapper.
   return (
-    <button
-      type="button"
+    <div
       className={"changes-file-row" + (active ? " active" : "")}
-      onClick={onClick}
       role="option"
       aria-selected={active}
-      title={change.path}
-      style={indent > 0 ? { paddingLeft: 10 + indent * 12 } : undefined}
     >
-      <span className={`changes-file-status status-${change.status}`}>
-        {statusGlyph(change.status)}
-      </span>
-      <span className="changes-file-name">{basename(change.path)}</span>
-      {showDir && (
-        <span className="changes-file-dir">{dirname(change.path)}</span>
-      )}
-      <span className="changes-file-counts">
-        {change.additions > 0 && (
-          <span className="diff-add">+{change.additions}</span>
+      <button
+        type="button"
+        className="changes-file-main"
+        onClick={onClick}
+        title={change.path}
+        style={indent > 0 ? { paddingLeft: 10 + indent * 12 } : undefined}
+      >
+        <span className={`changes-file-status status-${change.status}`}>
+          {statusGlyph(change.status)}
+        </span>
+        <span className="changes-file-name">{basename(change.path)}</span>
+        {showDir && (
+          <span className="changes-file-dir">{dirname(change.path)}</span>
         )}
-        {change.deletions > 0 && (
-          <span className="diff-del">−{change.deletions}</span>
-        )}
-      </span>
-    </button>
+        <span className="changes-file-counts">
+          {change.additions > 0 && (
+            <span className="diff-add">+{change.additions}</span>
+          )}
+          {change.deletions > 0 && (
+            <span className="diff-del">−{change.deletions}</span>
+          )}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="changes-file-discard"
+        onClick={onDiscard}
+        aria-label={`Discard changes to ${basename(change.path)}`}
+        title="Discard changes"
+      >
+        <DiscardIcon />
+      </button>
+      <input
+        type="checkbox"
+        className="changes-file-stage"
+        checked={change.staged}
+        onChange={onToggleStage}
+        aria-label={
+          change.staged
+            ? `Unstage ${basename(change.path)}`
+            : `Stage ${basename(change.path)}`
+        }
+        title={change.staged ? "Unstage" : "Stage"}
+      />
+    </div>
   );
 }
 
@@ -497,6 +618,8 @@ function statusGlyph(s: GitFileStatus): string {
       return "D";
     case "untracked":
       return "U";
+    case "added":
+      return "A";
     default:
       return "?";
   }
@@ -553,6 +676,26 @@ function CommitIcon() {
       <circle cx="12" cy="12" r="3.2" />
       <path d="M3 12h5.8" />
       <path d="M15.2 12H21" />
+    </svg>
+  );
+}
+
+// Discard glyph: a curved undo arrow — reverts a file to its committed state.
+function DiscardIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
     </svg>
   );
 }
