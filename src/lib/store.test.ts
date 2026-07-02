@@ -176,6 +176,29 @@ describe("layout store", () => {
     expect(state().layout).toEqual(projectALayout);
     expect(state().activeId).toBe(projectAActiveId);
   });
+
+  it("keeps the picker (does not revive a session) after the user closes every pane and switches back", () => {
+    state().setSessions([
+      { ...session("a1", "project-a"), updated_at_ms: 10 },
+      { ...session("b1", "project-b"), updated_at_ms: 20 },
+    ]);
+
+    // Project A auto-opens its latest session on first visit.
+    state().setActiveProjectId("project-a");
+    expect(state().layout.visibleIds).toEqual(["a1"]);
+
+    // User closes the only pane (× keeps the PTY alive) → sitting on the picker.
+    state().closeLayoutSlot(0);
+    expect(state().layout.visibleIds).toEqual([]);
+    expect(state().activeId).toBeNull();
+
+    // Round-trip through another project and back must NOT re-open a1.
+    state().setActiveProjectId("project-b");
+    state().setActiveProjectId("project-a");
+
+    expect(state().layout.visibleIds).toEqual([]);
+    expect(state().activeId).toBeNull();
+  });
 });
 
 describe("detached-window UI snapshot", () => {

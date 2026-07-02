@@ -40,6 +40,7 @@ import {
   writePty,
 } from "../lib/ipc";
 import { displaySessionTitle, PICKER_SLOT, useStore, type LayoutMode } from "../lib/store";
+import { closeSessionNow } from "../lib/sessionActions";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import {
   attachImeInputBridge,
@@ -777,10 +778,10 @@ export function TerminalPane() {
                     className="pane-close"
                     onClick={(e) => {
                       e.stopPropagation();
-                      closeLayoutSlot(slot);
+                      void closeSessionNow(id);
                     }}
-                    aria-label="Close pane"
-                    title="Close pane (session keeps running)"
+                    aria-label="Close session"
+                    title="Close session (kills the process)"
                   >
                     ×
                   </button>

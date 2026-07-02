@@ -1000,6 +1000,12 @@ body {
   background: var(--error, #d46a5f);
   opacity: 1;
 }
+/* No live sessions at all (e.g. every session archived/closed). A dimmer
+   grey than `done` so the tab keeps a dot without implying finished work. */
+.pane-status-dot.light-idle {
+  background: var(--idle, #756d61);
+  opacity: 0.3;
+}
 @keyframes pane-attention-pulse {
   0%, 100% { opacity: 0.9; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.82); }

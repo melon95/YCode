@@ -30,8 +30,8 @@ import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { toast } from "@heroui/react";
 import { LAYOUT_CAP, PICKER_SLOT, useStore, type RightTab } from "./store";
-import { archiveSession, createSession, listAgents } from "./ipc";
-import { confirmDialog } from "./confirm";
+import { createSession, listAgents } from "./ipc";
+import { archiveSessionWithConfirm } from "./sessionActions";
 
 // Numeric right-pane tab switches, matching the visible left-to-right order of
 // the tab strip: Terminal · Files · Changes · Todos. The "files" slot is shared
@@ -229,28 +229,15 @@ export function useHotkeys({
         return;
       }
 
-      // ⌘W (above the shouldSkip gate): archive the currently active
-      // session. xterm typically holds focus once a session is live, so
-      // gating on shouldSkip would silently drop this — same trap ⌘N hit.
+      // ⌘W (above the shouldSkip gate): close the currently active session —
+      // kill its process + archive it. Shared with the pane `×` button so both
+      // do the same thing. xterm typically holds focus once a session is live,
+      // so gating on shouldSkip would silently drop this — same trap ⌘N hit.
       if (key === "w") {
         e.preventDefault();
-        const s = useStore.getState();
-        if (!s.activeId) return;
-        const sess = s.sessions[s.activeId];
-        if (!sess) return;
-        const ok = await confirmDialog({
-          title: `Archive "${sess.title || "this session"}"?`,
-          message: "Live processes will be killed.",
-          confirmLabel: "Archive",
-          destructive: true,
-        });
-        if (!ok) return;
-        try {
-          await archiveSession(sess.id);
-          s.removeSession(sess.id);
-        } catch (err) {
-          toast.danger(`Archive failed: ${err}`);
-        }
+        const { activeId } = useStore.getState();
+        if (!activeId) return;
+        await archiveSessionWithConfirm(activeId);
         return;
       }
 

@@ -133,14 +133,21 @@ function layoutForProject(
     const visibleIds = cached.visibleIds.filter(
       (id) => sessions[id]?.project_id === projectId,
     );
-    if (visibleIds.length > 0) {
-      const focusSlot = Math.min(cached.focusSlot, visibleIds.length - 1);
-      return {
-        mode: reflowMode(cached.mode, visibleIds.length),
-        visibleIds,
-        focusSlot,
-      };
-    }
+    // Honor the cached layout even once it's empty. An empty cache means the
+    // user deliberately closed every pane for this project and is sitting on
+    // the picker — falling through to `latestSessionIdForProject` below would
+    // revive the session they just dismissed (which, since closing a pane
+    // doesn't kill its PTY, is usually still running) the moment they switch
+    // tabs and back. We only auto-open a session when there's no cache at all.
+    const focusSlot =
+      visibleIds.length > 0
+        ? Math.min(cached.focusSlot, visibleIds.length - 1)
+        : 0;
+    return {
+      mode: reflowMode(cached.mode, visibleIds.length),
+      visibleIds,
+      focusSlot,
+    };
   }
 
   const nextActiveId = latestSessionIdForProject(sessions, projectId);

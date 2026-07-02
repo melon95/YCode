@@ -164,13 +164,14 @@ export function TopBar() {
                 onContextMenu={(e) => onProjectContextMenu(e, p)}
                 title={p.repo_path}
               >
-                {activity && (
-                  <span
-                    className={`pane-status-dot light-${activity.light}`}
-                    title={activityTooltip(activity)}
-                    aria-label={activityTooltip(activity)}
-                  />
-                )}
+                {/* Always render a dot so tabs stay visually consistent even
+                    with no live sessions (e.g. right after ⌘W closes the last
+                    one). `null` activity → a neutral "idle" dot. */}
+                <span
+                  className={`pane-status-dot light-${activity ? activity.light : "idle"}`}
+                  title={activity ? activityTooltip(activity) : "No active sessions"}
+                  aria-label={activity ? activityTooltip(activity) : "No active sessions"}
+                />
                 <span className="project-tab-name">{p.name}</span>
                 <span
                   className="project-tab-close"
