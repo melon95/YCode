@@ -1793,21 +1793,35 @@ fn inject_notify_env(
     }
 }
 
-/// Walk `root` honouring `.gitignore` / `.git/info/exclude` / global gitignore
-/// and the `.git` directory exclusion. Returns entries sorted by path so the
-/// frontend's tree-build can rely on parents arriving before children.
+/// Directory names skipped by `walk_repo` regardless of `.gitignore`: `.git`
+/// internals plus heavy build/dependency dirs. Matched by exact name at any
+/// depth, and only when the entry is a directory.
+const WALK_SKIP_DIRS: &[&str] = &[".git", "node_modules", "target"];
+
+/// Walk `root` showing every entry except the directories in `WALK_SKIP_DIRS`.
+/// Returns entries sorted by path so the frontend's tree-build can rely on
+/// parents arriving before children.
 fn walk_repo(root: &Utf8Path) -> Result<Vec<FileEntry>, IpcError> {
     use ignore::WalkBuilder;
     let mut out = Vec::new();
     let walker = WalkBuilder::new(root.as_std_path())
-        // Dotfiles can be useful (`.github/`, `.gitignore`, `.env.example`),
-        // so we keep them visible by default. `.git` is the one exception —
-        // the bare repo internals are never something the user wants to
-        // browse, and `ignore` doesn't filter it out unless `hidden(true)`.
-        // We strip it explicitly via `filter_entry` so the rest of the
-        // dotfile policy stays unchanged.
+        // Show everything the user has on disk — dotfiles AND files that are
+        // gitignored (e.g. `.env`, local config). We deliberately turn off
+        // every ignore source so the tree mirrors the filesystem. The only
+        // exceptions are a few directories stripped explicitly via
+        // `filter_entry` (see `WALK_SKIP_DIRS`): `.git`'s bare-repo internals
+        // plus heavy build/dependency dirs whose tens of thousands of files
+        // would bloat the tree and stall the walk.
         .hidden(false)
-        .filter_entry(|entry| entry.file_name() != ".git")
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .ignore(false)
+        .parents(false)
+        .filter_entry(|entry| {
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            !(is_dir && WALK_SKIP_DIRS.iter().any(|d| entry.file_name() == *d))
+        })
         .build();
     for result in walker {
         let entry = match result {
