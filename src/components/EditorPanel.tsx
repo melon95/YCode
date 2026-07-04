@@ -15,7 +15,7 @@ import {
   type Panel,
   type ViewUpdate,
 } from "@codemirror/view";
-import type { Extension } from "@codemirror/state";
+import { Prec, type Extension } from "@codemirror/state";
 import {
   ArrowDown,
   ArrowUp,
@@ -30,7 +30,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { indentWithTab } from "@codemirror/commands";
-import { indentUnit, StreamLanguage } from "@codemirror/language";
+import { indentUnit, StreamLanguage, foldService } from "@codemirror/language";
 import {
   SearchQuery,
   closeSearchPanel,
@@ -58,6 +58,28 @@ import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { java } from "@codemirror/lang-java";
+import { csharp } from "@replit/codemirror-lang-csharp";
+import { sql } from "@codemirror/lang-sql";
+import { go } from "@codemirror/lang-go";
+import { cpp } from "@codemirror/lang-cpp";
+import { php } from "@codemirror/lang-php";
+import { kotlin, scala, dart, objectiveC } from "@codemirror/legacy-modes/mode/clike";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { perl } from "@codemirror/legacy-modes/mode/perl";
+import { r } from "@codemirror/legacy-modes/mode/r";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+import { haskell } from "@codemirror/legacy-modes/mode/haskell";
+import { clojure } from "@codemirror/legacy-modes/mode/clojure";
+import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
+import { groovy } from "@codemirror/legacy-modes/mode/groovy";
+import { julia } from "@codemirror/legacy-modes/mode/julia";
+import { diff } from "@codemirror/legacy-modes/mode/diff";
+import { protobuf } from "@codemirror/legacy-modes/mode/protobuf";
+import { elm } from "@codemirror/legacy-modes/mode/elm";
+import { erlang } from "@codemirror/legacy-modes/mode/erlang";
+import { scheme } from "@codemirror/legacy-modes/mode/scheme";
 import {
   lspDefinition,
   lspDidChange,
@@ -410,6 +432,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       fontTheme,
       search({ top: true, createPanel: (view) => new YCodeSearchPanel(view) }),
       highlightSelectionMatches(),
+      indentFoldService,
       ...(lang ? [lang] : []),
       ...createLspExtension({
         onGotoDef: (line, ch) => handleGotoDefRef.current(line, ch),
@@ -1103,11 +1126,46 @@ function indentUnitFor(path: string | null): string {
   switch (ext) {
     case "rs":
     case "py":
+    case "java":
+    case "cs":
+    case "csx":
       return "    ";
     default:
       return "  ";
   }
 }
+
+/// Leading-whitespace width of a line, or -1 for blank/whitespace-only lines.
+/// Tabs count as one column each — good enough for deciding nesting depth.
+function measureIndent(text: string): number {
+  let i = 0;
+  while (i < text.length && (text[i] === " " || text[i] === "\t")) i++;
+  return i === text.length ? -1 : i;
+}
+
+/// Indentation-based folding fallback. CodeMirror's Lezer-backed languages
+/// (JS/TS/JSON/Python/Rust/…) ship syntax-tree folding, but the legacy
+/// `StreamLanguage` modes (Java, C#, TOML, shell, Dockerfile, …) provide none,
+/// so their fold gutter is dead. This folds any line whose following lines are
+/// more indented. Registered at lowest precedence so real language folding
+/// wins wherever it exists.
+const indentFoldService = Prec.lowest(
+  foldService.of((state, lineStart, lineEnd) => {
+    const first = state.doc.lineAt(lineStart);
+    const baseIndent = measureIndent(first.text);
+    if (baseIndent < 0) return null;
+    let lastLine = -1;
+    for (let n = first.number + 1; n <= state.doc.lines; n++) {
+      const line = state.doc.line(n);
+      const indent = measureIndent(line.text);
+      if (indent < 0) continue; // ignore blank lines, don't extend on them
+      if (indent > baseIndent) lastLine = n;
+      else break;
+    }
+    if (lastLine < 0) return null;
+    return { from: lineEnd, to: state.doc.line(lastLine).to };
+  }),
+);
 
 function languageFor(path: string | null): Extension | null {
   if (!path) return null;
@@ -1115,6 +1173,17 @@ function languageFor(path: string | null): Extension | null {
   // Special-name config files that carry no (useful) extension.
   if (name === "dockerfile" || name.startsWith("dockerfile.")) {
     return StreamLanguage.define(dockerFile);
+  }
+  // Extensionless Ruby project files (Gemfile, Rakefile, Podfile, …).
+  if (
+    name === "gemfile" ||
+    name === "rakefile" ||
+    name === "podfile" ||
+    name === "brewfile" ||
+    name === "vagrantfile" ||
+    name === "guardfile"
+  ) {
+    return StreamLanguage.define(ruby);
   }
   // Dotfiles like `.env` / `.bashrc` keep their "extension" after the dot;
   // extensionless names (e.g. `Makefile`) fall through as the whole name.
@@ -1139,6 +1208,84 @@ function languageFor(path: string | null): Extension | null {
       return rust();
     case "py":
       return python();
+    case "java":
+      return java();
+    case "cs":
+    case "csx":
+      return csharp();
+    case "sql":
+    case "ddl":
+    case "dml":
+      return sql();
+    case "go":
+      return go();
+    case "c":
+    case "h":
+    case "cc":
+    case "cpp":
+    case "cxx":
+    case "c++":
+    case "hpp":
+    case "hh":
+    case "hxx":
+      return cpp();
+    case "php":
+    case "phtml":
+      return php();
+    case "rb":
+    case "rake":
+    case "gemspec":
+    case "podspec":
+      return StreamLanguage.define(ruby);
+    case "kt":
+    case "kts":
+      return StreamLanguage.define(kotlin);
+    case "scala":
+    case "sc":
+      return StreamLanguage.define(scala);
+    case "dart":
+      return StreamLanguage.define(dart);
+    case "m":
+    case "mm":
+      return StreamLanguage.define(objectiveC);
+    case "swift":
+      return StreamLanguage.define(swift);
+    case "lua":
+      return StreamLanguage.define(lua);
+    case "pl":
+    case "pm":
+      return StreamLanguage.define(perl);
+    case "r":
+      return StreamLanguage.define(r);
+    case "hs":
+      return StreamLanguage.define(haskell);
+    case "clj":
+    case "cljs":
+    case "cljc":
+    case "edn":
+      return StreamLanguage.define(clojure);
+    case "ps1":
+    case "psm1":
+    case "psd1":
+      return StreamLanguage.define(powerShell);
+    case "groovy":
+    case "gradle":
+      return StreamLanguage.define(groovy);
+    case "jl":
+      return StreamLanguage.define(julia);
+    case "elm":
+      return StreamLanguage.define(elm);
+    case "erl":
+    case "hrl":
+      return StreamLanguage.define(erlang);
+    case "scm":
+    case "ss":
+      return StreamLanguage.define(scheme);
+    case "proto":
+      return StreamLanguage.define(protobuf);
+    case "diff":
+    case "patch":
+      return StreamLanguage.define(diff);
     case "css":
     case "scss":
     case "less":
