@@ -102,16 +102,19 @@ impl LspSession {
     ) -> Result<Arc<Self>, LspError> {
         let server_dir = server_root(&manifest.id)?;
         let server_dir_str = server_dir.as_str().to_string();
-        let binary = manifest
-            .command
-            .binary
-            .replace("${SERVER_DIR}", &server_dir_str);
-        let args: Vec<String> = manifest
-            .command
-            .args
-            .iter()
-            .map(|a| a.replace("${SERVER_DIR}", &server_dir_str))
+        // Filesystem-safe project id for per-project paths (e.g. jdtls's
+        // `-data` workspace must not be shared across projects, or concurrent
+        // instances corrupt each other's metadata).
+        let project_slug: String = project_id
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
             .collect();
+        let expand = |s: &str| {
+            s.replace("${SERVER_DIR}", &server_dir_str)
+                .replace("${PROJECT_ID}", &project_slug)
+        };
+        let binary = expand(&manifest.command.binary);
+        let args: Vec<String> = manifest.command.args.iter().map(|a| expand(a)).collect();
 
         let mut cmd = Command::new(&binary);
         cmd.args(&args)
@@ -123,6 +126,12 @@ impl LspSession {
             // to resolve `node`, and GitHub-release binaries are self-contained
             // so extra env entries are harmless.
             .kill_on_drop(true);
+
+        // Manifest-declared env overrides (e.g. DOTNET_ROLL_FORWARD for
+        // OmniSharp), on top of the inherited parent env.
+        for (key, value) in &manifest.command.env {
+            cmd.env(key, expand(value));
+        }
 
         let mut child: Child = cmd
             .spawn()

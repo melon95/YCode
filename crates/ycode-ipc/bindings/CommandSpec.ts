@@ -4,4 +4,11 @@ export type CommandSpec = {
 /**
  * Binary path, may include `${SERVER_DIR}`.
  */
-binary: string, args: Array<string>, };
+binary: string, args: Array<string>, 
+/**
+ * Extra environment variables to set when spawning the server, as
+ * `(name, value)` pairs. Values may contain `${SERVER_DIR}`. Used e.g. to
+ * force `DOTNET_ROLL_FORWARD=Major` so OmniSharp's net6.0 build runs on a
+ * newer .NET runtime.
+ */
+env: Array<[string, string]>, };

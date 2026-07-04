@@ -18,7 +18,7 @@ use tracing::{info, warn};
 use ycode_config::{AgentLaunchProfile, Config};
 use ycode_lsp::{
     builtin_manifests, manifest_by_id, path_to_file_uri, InstallSpec, LspManager,
-    NotificationSink, ServerNotification,
+    NotificationSink, ServerManifest, ServerNotification,
 };
 use ycode_persist::{Db, NewLspInstallation, NewProject, NewSession, NewTodo, PersistError};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
@@ -1082,15 +1082,19 @@ impl Service {
         let mut out = Vec::new();
         for manifest in builtin_manifests() {
             let platform_supported = match &manifest.install {
-                InstallSpec::GithubReleaseGzip { assets, .. } => {
+                InstallSpec::GithubReleaseGzip { assets, .. }
+                | InstallSpec::GithubReleaseArchive { assets, .. } => {
                     assets.for_current_platform().is_some()
                 }
-                // npm-based installers are portable across all platforms we
-                // build for — the requirement check (`npm` on PATH) is what
-                // gates them, not the platform itself.
-                InstallSpec::Npm { .. } => true,
+                // Tool-based installers (npm, go install) and the Java tarball
+                // are portable across every platform we build for — the
+                // requirement check (the tool on PATH) is what gates them, not
+                // the platform itself.
+                InstallSpec::Npm { .. }
+                | InstallSpec::ArchiveUrl { .. }
+                | InstallSpec::GoInstall { .. } => true,
             };
-            let requirement_message = lsp_requirement_message(&manifest.install);
+            let requirement_message = lsp_requirement_message(&manifest);
             let installation = installed_by_id.get(&manifest.id).cloned().map(Into::into);
             out.push(LspManifestView {
                 manifest,
@@ -3157,26 +3161,59 @@ mod tests {
 /// External-tool gating message for an `InstallSpec`. `None` means "no
 /// prerequisites the user needs to install themselves" — the UI shows the
 /// install button as fully enabled.
-fn lsp_requirement_message(spec: &InstallSpec) -> Option<String> {
-    match spec {
+fn lsp_requirement_message(manifest: &ServerManifest) -> Option<String> {
+    match &manifest.install {
+        // A single gzipped binary is self-contained — nothing extra needed.
         InstallSpec::GithubReleaseGzip { .. } => None,
-        InstallSpec::Npm { .. } => {
-            if std::env::var_os("PATH")
-                .map(|paths| {
-                    std::env::split_paths(&paths).any(|d| {
-                        d.join("npm").is_file()
-                            || d.join("npm.cmd").is_file()
-                            || d.join("npm.exe").is_file()
-                    })
-                })
-                .unwrap_or(false)
-            {
-                None
+        // The only archive server today is OmniSharp, whose net6.0 build is
+        // framework-dependent and needs a matching .NET runtime present.
+        InstallSpec::GithubReleaseArchive { .. } => (!tool_on_path("dotnet"))
+            .then(|| "Requires a .NET 6+ runtime on PATH. Install .NET first.".to_string()),
+        InstallSpec::Npm { .. } => (!tool_on_path("npm"))
+            .then(|| "Requires npm on PATH. Install Node.js first.".to_string()),
+        InstallSpec::GoInstall { .. } => (!tool_on_path("go"))
+            .then(|| "Requires the Go toolchain on PATH. Install Go first.".to_string()),
+        // The Java tarball (JDT LS) is launched with `java` via a Python
+        // wrapper, so both runtimes must be present.
+        InstallSpec::ArchiveUrl { .. } => {
+            if !java_runtime_ok() {
+                // On macOS `/usr/bin/java` is a stub that always exists but
+                // exits non-zero until a real JDK is installed, so a plain
+                // PATH check gives a false positive — actually run it.
+                Some("Requires a Java 17+ runtime on PATH.".into())
+            } else if !tool_on_path("python3") && !tool_on_path("python") {
+                Some("Requires Python 3 on PATH (used by the jdtls launcher).".into())
             } else {
-                Some("Requires npm on PATH. Install Node.js first.".into())
+                None
             }
         }
     }
+}
+
+/// Whether a real Java runtime is present. `java -version` exits 0 on a genuine
+/// JDK/JRE but non-zero on the macOS `/usr/bin/java` stub, so this distinguishes
+/// the two where a plain PATH check can't.
+fn java_runtime_ok() -> bool {
+    std::process::Command::new("java")
+        .arg("-version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Whether `tool` (or its Windows `.cmd`/`.exe` shims) resolves on PATH.
+fn tool_on_path(tool: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| {
+            std::env::split_paths(&paths).any(|d| {
+                d.join(tool).is_file()
+                    || d.join(format!("{tool}.cmd")).is_file()
+                    || d.join(format!("{tool}.exe")).is_file()
+            })
+        })
+        .unwrap_or(false)
 }
 
 #[derive(Error, Debug)]

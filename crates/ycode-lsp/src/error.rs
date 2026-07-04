@@ -29,6 +29,9 @@ pub enum LspError {
     #[error("missing tool `{0}` — install it and retry")]
     MissingTool(String),
 
+    #[error("archive extraction failed: {0}")]
+    Extract(String),
+
     #[error("could not determine ycode data dir")]
     NoDataDir,
 }

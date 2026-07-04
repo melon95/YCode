@@ -52,6 +52,17 @@ pub enum InstallSpec {
     /// Install one or more npm packages into the per-server install dir
     /// using a local `node_modules`. Requires `npm` on PATH.
     Npm { packages: Vec<String> },
+    /// Download a `.tar.gz`/`.zip` asset from the latest GitHub release of
+    /// `repo` and extract it into the server install dir. The archive format
+    /// is inferred from the asset filename.
+    GithubReleaseArchive { repo: String, assets: AssetPattern },
+    /// Download a `.tar.gz`/`.zip` from a fixed URL and extract it into the
+    /// server install dir. Used for servers published outside GitHub releases
+    /// (e.g. Eclipse JDT LS on eclipse.org).
+    ArchiveUrl { url: String },
+    /// Build a server with `go install <package>` into the install dir
+    /// (`GOBIN=<server_dir>`). Requires the Go toolchain on PATH.
+    GoInstall { package: String },
 }
 
 /// Per-platform GitHub release asset names. `None` for a platform means we
@@ -89,6 +100,12 @@ pub struct CommandSpec {
     pub binary: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Extra environment variables to set when spawning the server, as
+    /// `(name, value)` pairs. Values may contain `${SERVER_DIR}`. Used e.g. to
+    /// force `DOTNET_ROLL_FORWARD=Major` so OmniSharp's net6.0 build runs on a
+    /// newer .NET runtime.
+    #[serde(default)]
+    pub env: Vec<(String, String)>,
 }
 
 /// `<os>-<arch>` slug used by the asset matcher. Returns `None` for platforms
@@ -101,6 +118,48 @@ pub fn current_platform_key() -> Option<&'static str> {
         ("linux", "aarch64") => Some("linux-aarch64"),
         ("windows", "x86_64") => Some("windows-x86_64"),
         _ => None,
+    }
+}
+
+/// Path to an npm-installed CLI shim inside a server dir. npm writes a `.cmd`
+/// wrapper on Windows and an extensionless shell shim elsewhere, both under
+/// `node_modules/.bin`. `${SERVER_DIR}` is expanded at spawn time.
+fn npm_bin(name: &str) -> String {
+    if cfg!(windows) {
+        format!("${{SERVER_DIR}}/node_modules/.bin/{name}.cmd")
+    } else {
+        format!("${{SERVER_DIR}}/node_modules/.bin/{name}")
+    }
+}
+
+/// Convenience for the many npm-installed servers that share the same shape:
+/// `npm install <packages>`, then launch a `.bin` shim over stdio.
+fn npm_server(
+    id: &str,
+    display_name: &str,
+    description: &str,
+    language_ids: &[&str],
+    file_extensions: &[&str],
+    homepage: &str,
+    packages: &[&str],
+    bin: &str,
+    args: &[&str],
+) -> ServerManifest {
+    ServerManifest {
+        id: id.into(),
+        display_name: display_name.into(),
+        description: description.into(),
+        language_ids: language_ids.iter().map(|s| (*s).into()).collect(),
+        file_extensions: file_extensions.iter().map(|s| (*s).into()).collect(),
+        homepage: Some(homepage.into()),
+        install: InstallSpec::Npm {
+            packages: packages.iter().map(|s| (*s).into()).collect(),
+        },
+        command: CommandSpec {
+            binary: npm_bin(bin),
+            args: args.iter().map(|s| (*s).into()).collect(),
+            env: vec![],
+        },
     }
 }
 
@@ -138,6 +197,7 @@ pub fn builtin_manifests() -> Vec<ServerManifest> {
                     "${SERVER_DIR}/rust-analyzer".into()
                 },
                 args: vec![],
+                env: vec![],
             },
         },
         ServerManifest {
@@ -168,12 +228,108 @@ pub fn builtin_manifests() -> Vec<ServerManifest> {
                 ],
             },
             command: CommandSpec {
-                binary: if cfg!(windows) {
-                    "${SERVER_DIR}/node_modules/.bin/typescript-language-server.cmd".into()
-                } else {
-                    "${SERVER_DIR}/node_modules/.bin/typescript-language-server".into()
-                },
+                binary: npm_bin("typescript-language-server"),
                 args: vec!["--stdio".into()],
+                env: vec![],
+            },
+        },
+        // ── Python (npm-based, like the TypeScript server above) ────────────
+        npm_server(
+            "pyright",
+            "Python (Pyright)",
+            "Microsoft's Pyright language server. Type checking, completion, go-to-definition. Requires npm.",
+            &["python"],
+            &[".py", ".pyi"],
+            "https://github.com/microsoft/pyright",
+            &["pyright"],
+            "pyright-langserver",
+            &["--stdio"],
+        ),
+        // ── Go — `go install golang.org/x/tools/gopls` ──────────────────────
+        ServerManifest {
+            id: "gopls".into(),
+            display_name: "Go (gopls)".into(),
+            description:
+                "Official Go language server. Built with `go install`; requires the Go toolchain on PATH."
+                    .into(),
+            language_ids: vec!["go".into()],
+            file_extensions: vec![".go".into()],
+            homepage: Some("https://pkg.go.dev/golang.org/x/tools/gopls".into()),
+            install: InstallSpec::GoInstall {
+                package: "golang.org/x/tools/gopls@latest".into(),
+            },
+            command: CommandSpec {
+                binary: if cfg!(windows) {
+                    "${SERVER_DIR}/gopls.exe".into()
+                } else {
+                    "${SERVER_DIR}/gopls".into()
+                },
+                args: vec![],
+                env: vec![],
+            },
+        },
+        // ── Java — Eclipse JDT Language Server (tarball) ────────────────────
+        ServerManifest {
+            id: "jdtls".into(),
+            display_name: "Java (Eclipse JDT LS)".into(),
+            description:
+                "Eclipse JDT Language Server. Requires a Java 17+ runtime and Python 3 on PATH."
+                    .into(),
+            language_ids: vec!["java".into()],
+            file_extensions: vec![".java".into()],
+            homepage: Some("https://github.com/eclipse-jdtls/eclipse.jdt.ls".into()),
+            install: InstallSpec::ArchiveUrl {
+                url: "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
+                    .into(),
+            },
+            command: CommandSpec {
+                binary: if cfg!(windows) {
+                    "${SERVER_DIR}/bin/jdtls.bat".into()
+                } else {
+                    "${SERVER_DIR}/bin/jdtls".into()
+                },
+                // Per-project `-data` workspace — jdtls corrupts its metadata
+                // if two projects share one. `${PROJECT_ID}` is expanded at
+                // spawn time (see client.rs).
+                args: vec![
+                    "-data".into(),
+                    "${SERVER_DIR}/workspace/${PROJECT_ID}".into(),
+                ],
+                env: vec![],
+            },
+        },
+        // ── C# / .NET — OmniSharp (self-contained net6.0 build) ─────────────
+        ServerManifest {
+            id: "omnisharp".into(),
+            display_name: "C# / .NET (OmniSharp)".into(),
+            description:
+                "OmniSharp Roslyn language server (net6.0 build). Requires a .NET 6+ runtime on PATH."
+                    .into(),
+            language_ids: vec!["csharp".into()],
+            file_extensions: vec![".cs".into(), ".csx".into()],
+            homepage: Some("https://github.com/OmniSharp/omnisharp-roslyn".into()),
+            install: InstallSpec::GithubReleaseArchive {
+                repo: "OmniSharp/omnisharp-roslyn".into(),
+                assets: AssetPattern {
+                    darwin_aarch64: Some("omnisharp-osx-arm64-net6.0.tar.gz".into()),
+                    darwin_x86_64: Some("omnisharp-osx-x64-net6.0.tar.gz".into()),
+                    linux_x86_64: Some("omnisharp-linux-x64-net6.0.tar.gz".into()),
+                    linux_aarch64: Some("omnisharp-linux-arm64-net6.0.tar.gz".into()),
+                    windows_x86_64: Some("omnisharp-win-x64-net6.0.zip".into()),
+                },
+            },
+            command: CommandSpec {
+                binary: if cfg!(windows) {
+                    "${SERVER_DIR}/OmniSharp.exe".into()
+                } else {
+                    "${SERVER_DIR}/OmniSharp".into()
+                },
+                args: vec!["-lsp".into()],
+                // The net6.0 build is framework-dependent; without this it
+                // fails to start on machines that only have a newer .NET major
+                // (e.g. .NET 9), because the default roll-forward policy won't
+                // cross major versions. Verified against .NET 9 on macOS.
+                env: vec![("DOTNET_ROLL_FORWARD".into(), "Major".into())],
             },
         },
     ]
@@ -213,5 +369,34 @@ mod tests {
     fn typescript_uses_npm() {
         let manifest = manifest_by_id("typescript-language-server").unwrap();
         assert!(matches!(manifest.install, InstallSpec::Npm { .. }));
+    }
+
+    #[test]
+    fn pyright_uses_npm() {
+        let manifest = manifest_by_id("pyright").unwrap();
+        assert!(matches!(manifest.install, InstallSpec::Npm { .. }));
+    }
+
+    #[test]
+    fn manifest_ids_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for m in builtin_manifests() {
+            assert!(seen.insert(m.id.clone()), "duplicate manifest id: {}", m.id);
+        }
+    }
+
+    /// Routing (`manifest_for_file`) returns the first manifest that claims an
+    /// extension, so two manifests must never claim the same one — otherwise
+    /// the second is unreachable.
+    #[test]
+    fn file_extensions_do_not_collide() {
+        let mut seen = std::collections::HashMap::new();
+        for m in builtin_manifests() {
+            for ext in &m.file_extensions {
+                if let Some(other) = seen.insert(ext.to_lowercase(), m.id.clone()) {
+                    panic!("extension {ext} claimed by both {other} and {}", m.id);
+                }
+            }
+        }
     }
 }

@@ -6,4 +6,4 @@ export type InstallSpec = { "type": "github_release_gzip", repo: string, assets:
  * Filename to write the gunzipped binary as, relative to the server
  * install dir.
  */
-binary_name: string, } | { "type": "npm", packages: Array<string>, };
+binary_name: string, } | { "type": "npm", packages: Array<string>, } | { "type": "github_release_archive", repo: string, assets: AssetPattern, } | { "type": "archive_url", url: string, } | { "type": "go_install", package: string, };

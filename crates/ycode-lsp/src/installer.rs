@@ -108,6 +108,15 @@ pub async fn install(
         InstallSpec::Npm { packages } => {
             install_npm(&manifest.id, packages, root.as_std_path(), &progress).await?
         }
+        InstallSpec::GithubReleaseArchive { repo, assets } => {
+            install_github_archive(&manifest.id, repo, assets, root.as_std_path(), &progress).await?
+        }
+        InstallSpec::ArchiveUrl { url } => {
+            install_archive_url(&manifest.id, url, root.as_std_path(), &progress).await?
+        }
+        InstallSpec::GoInstall { package } => {
+            install_go(&manifest.id, package, root.as_std_path(), &progress).await?
+        }
     };
 
     let _ = progress
@@ -300,6 +309,224 @@ async fn decompress_gzip(src: &Path, dest: &Path) -> Result<(), LspError> {
     })
     .await
     .map_err(|e| LspError::GithubRelease(format!("decompress task: {e}")))?
+}
+
+// ── Archive installers (tar.gz / zip) ──────────────────────────────────────
+
+/// Download a per-platform `.tar.gz`/`.zip` asset from the latest GitHub
+/// release and extract it into the server dir (used for OmniSharp).
+async fn install_github_archive(
+    server_id: &str,
+    repo: &str,
+    assets: &crate::manifest::AssetPattern,
+    root: &Path,
+    progress: &mpsc::Sender<InstallProgress>,
+) -> Result<InstallOutcome, LspError> {
+    let asset_name = assets
+        .for_current_platform()
+        .ok_or_else(|| LspError::NoMatchingAsset(server_id.to_string()))?;
+
+    let client = http_client()?;
+    let release = fetch_latest_release(&client, repo).await?;
+    let download_url = release
+        .assets
+        .iter()
+        .find(|a| a.name == asset_name)
+        .map(|a| a.browser_download_url.clone())
+        .ok_or_else(|| LspError::NoMatchingAsset(server_id.to_string()))?;
+
+    let _ = progress
+        .send(InstallProgress::new(
+            server_id,
+            InstallStage::Downloading,
+            Some(0),
+            &format!("Downloading {} {}", server_id, release.tag_name),
+        ))
+        .await;
+
+    let tmp_path = root.join(format!("{server_id}-archive.part"));
+    stream_download(&client, &download_url, &tmp_path, server_id, progress).await?;
+    extract_archive(&tmp_path, asset_name, root, server_id, progress).await?;
+    tokio::fs::remove_file(&tmp_path).await.ok();
+
+    Ok(InstallOutcome {
+        server_id: server_id.to_string(),
+        version: release.tag_name,
+        binary_path: root.to_string_lossy().into_owned(),
+    })
+}
+
+/// Download a `.tar.gz`/`.zip` from a fixed URL and extract it (used for the
+/// Eclipse JDT LS tarball, which lives on eclipse.org, not GitHub).
+async fn install_archive_url(
+    server_id: &str,
+    url: &str,
+    root: &Path,
+    progress: &mpsc::Sender<InstallProgress>,
+) -> Result<InstallOutcome, LspError> {
+    let client = http_client()?;
+
+    let _ = progress
+        .send(InstallProgress::new(
+            server_id,
+            InstallStage::Downloading,
+            Some(0),
+            &format!("Downloading {server_id}"),
+        ))
+        .await;
+
+    let tmp_path = root.join(format!("{server_id}-archive.part"));
+    stream_download(&client, url, &tmp_path, server_id, progress).await?;
+    extract_archive(&tmp_path, url, root, server_id, progress).await?;
+    tokio::fs::remove_file(&tmp_path).await.ok();
+
+    Ok(InstallOutcome {
+        server_id: server_id.to_string(),
+        version: "latest".into(),
+        binary_path: root.to_string_lossy().into_owned(),
+    })
+}
+
+/// Extract `archive` into `dest`, choosing tar.gz vs zip from `name_hint`
+/// (an asset filename or a download URL). Runs on a blocking thread since the
+/// `tar`/`zip` crates are synchronous.
+async fn extract_archive(
+    archive: &Path,
+    name_hint: &str,
+    dest: &Path,
+    server_id: &str,
+    progress: &mpsc::Sender<InstallProgress>,
+) -> Result<(), LspError> {
+    let _ = progress
+        .send(InstallProgress::new(
+            server_id,
+            InstallStage::Extracting,
+            None,
+            "Extracting archive",
+        ))
+        .await;
+
+    let archive = archive.to_path_buf();
+    let dest = dest.to_path_buf();
+    let hint = name_hint.to_lowercase();
+    tokio::task::spawn_blocking(move || -> Result<(), LspError> {
+        if hint.ends_with(".zip") {
+            extract_zip(&archive, &dest)
+        } else if hint.ends_with(".tar.gz") || hint.ends_with(".tgz") {
+            extract_tar_gz(&archive, &dest)
+        } else {
+            Err(LspError::Extract(format!("unknown archive format: {hint}")))
+        }
+    })
+    .await
+    .map_err(|e| LspError::Extract(format!("extract task: {e}")))?
+}
+
+fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), LspError> {
+    let file = std::fs::File::open(archive)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut tar = tar::Archive::new(decoder);
+    tar.set_preserve_permissions(true);
+    tar.unpack(dest).map_err(|e| LspError::Extract(e.to_string()))?;
+    Ok(())
+}
+
+fn extract_zip(archive: &Path, dest: &Path) -> Result<(), LspError> {
+    let file = std::fs::File::open(archive)?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| LspError::Extract(e.to_string()))?;
+    for i in 0..zip.len() {
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| LspError::Extract(e.to_string()))?;
+        // Skip entries with absolute paths or `..` traversal.
+        let Some(rel) = entry.enclosed_name() else {
+            continue;
+        };
+        let out_path = dest.join(rel);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut out = std::fs::File::create(&out_path)?;
+        std::io::copy(&mut entry, &mut out)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = entry.unix_mode() {
+                std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(mode)).ok();
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Go toolchain installer ─────────────────────────────────────────────────
+
+/// `go install <package>` with `GOBIN` pointed at the server dir, producing a
+/// single binary there (used for gopls). Requires `go` on PATH.
+async fn install_go(
+    server_id: &str,
+    package: &str,
+    root: &Path,
+    progress: &mpsc::Sender<InstallProgress>,
+) -> Result<InstallOutcome, LspError> {
+    if !command_on_path("go") {
+        return Err(LspError::MissingTool("go".into()));
+    }
+
+    let _ = progress
+        .send(InstallProgress::new(
+            server_id,
+            // No byte-level progress from a build; reuse the indeterminate
+            // "running a package tool" stage.
+            InstallStage::RunningNpm,
+            None,
+            &format!("Running go install {package}"),
+        ))
+        .await;
+
+    let mut cmd = tokio::process::Command::new("go");
+    cmd.arg("install")
+        .arg(package)
+        .env("GOBIN", root)
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| LspError::InstallCommand("go install".into(), e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        warn!(server_id = %server_id, stderr = %stderr, "go install failed");
+        return Err(LspError::InstallCommand("go install".into(), stderr));
+    }
+
+    // Binary name = last path segment of the package, minus any `@version`.
+    let base = package
+        .split('@')
+        .next()
+        .unwrap_or(package)
+        .rsplit('/')
+        .next()
+        .unwrap_or("server");
+    let binary_name = if cfg!(windows) {
+        format!("{base}.exe")
+    } else {
+        base.to_string()
+    };
+    let binary_path = root.join(binary_name);
+
+    Ok(InstallOutcome {
+        server_id: server_id.to_string(),
+        version: "latest".into(),
+        binary_path: binary_path.to_string_lossy().into_owned(),
+    })
 }
 
 fn http_client() -> Result<reqwest::Client, LspError> {
