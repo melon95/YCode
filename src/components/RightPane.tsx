@@ -396,7 +396,11 @@ export function RightPane() {
           <div className="empty">Select a project first.</div>
         )}
         {rightTab === "changes" && activeProject && (
-          <ChangesPanel projectId={activeProject.id} />
+          // Key by project so switching projects remounts the panel: its branch
+          // menu, remote-op flags, and any in-flight git requests all belong to
+          // one repo and must not leak into the next (a stale checkout would run
+          // against the wrong repo otherwise).
+          <ChangesPanel key={activeProject.id} projectId={activeProject.id} />
         )}
         {rightTab === "todos" && activeProject && (
           <TodoPanel projectId={activeProject.id} />
