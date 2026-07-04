@@ -514,6 +514,18 @@ pub struct GitBranchInfo {
     pub behind: u32,
 }
 
+/// Local branches for the Changes-panel branch switcher, with the checked-out
+/// one flagged. Remote-tracking branches are intentionally excluded — this
+/// drives a "switch to a local branch" menu, not a full ref browser.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct GitBranchListView {
+    /// The currently checked-out branch, or `None` when HEAD is detached.
+    pub current: Option<String>,
+    /// Every local branch name, in `git for-each-ref` order (alphabetical).
+    pub branches: Vec<String>,
+}
+
 /// One row in the "Sessions" sidebar — describes a session jsonl that the
 /// introspect scanner found on disk. Per plan §9.1.
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

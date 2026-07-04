@@ -10,15 +10,25 @@ import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
 import "react-diff-view/style/index.css";
 import {
   gitBranch,
+  gitCheckoutBranch,
   gitCommit,
   gitDiffFile,
   gitDiscardFile,
+  gitFetch,
+  gitListBranches,
+  gitPull,
+  gitPush,
   gitStageFile,
   gitStatus,
   gitUnstageFile,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
-import type { GitBranchInfo, GitFileChange, GitFileStatus } from "../lib/types";
+import type {
+  GitBranchInfo,
+  GitBranchListView,
+  GitFileChange,
+  GitFileStatus,
+} from "../lib/types";
 
 type ViewMode = "list" | "tree";
 
@@ -35,6 +45,14 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [commitMsg, setCommitMsg] = useState("");
   const [committing, setCommitting] = useState(false);
+  // Remote/branch state. `remoteOp` gates the Fetch/Pull/Push cluster so only
+  // one network op runs at a time; the branch menu lazy-loads its list on open.
+  const [remoteOp, setRemoteOp] = useState<null | "fetch" | "pull" | "push">(
+    null,
+  );
+  const [branchList, setBranchList] = useState<GitBranchListView | null>(null);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [checkingOut, setCheckingOut] = useState<string | null>(null);
 
   const refresh = useMemo(() => {
     return () => {
@@ -132,6 +150,57 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       .finally(() => setCommitting(false));
   };
 
+  // Run one remote op (fetch/pull/push), refreshing the panel on success so the
+  // header's ahead/behind counts reflect the new state. `remoteOp` blocks the
+  // whole cluster meanwhile.
+  const runRemote = (op: "fetch" | "pull" | "push", fn: () => Promise<void>) => {
+    if (remoteOp) return;
+    setRemoteOp(op);
+    setError(null);
+    fn()
+      .then(refresh)
+      .catch((e) => setError(String(e)))
+      .finally(() => setRemoteOp(null));
+  };
+
+  const openBranchMenu = () => {
+    // Lazy-load the branch list each time the menu opens so it stays fresh
+    // after a fetch/checkout, without polling on every refresh.
+    setBranchList(null);
+    gitListBranches(projectId)
+      .then(setBranchList)
+      .catch(() => setBranchList({ current: null, branches: [] }));
+    setBranchMenuOpen(true);
+  };
+
+  const doCheckout = (name: string) => {
+    if (branchList?.current === name) {
+      setBranchMenuOpen(false);
+      return;
+    }
+    setCheckingOut(name);
+    setError(null);
+    gitCheckoutBranch(projectId, name)
+      .then(() => {
+        setBranchMenuOpen(false);
+        refresh();
+      })
+      .catch((e) => {
+        const msg = String(e);
+        // git refuses to switch when uncommitted changes would be clobbered.
+        // Swap its multi-line stderr for a one-line, actionable hint; keep the
+        // raw message for other failures (unknown branch, etc.).
+        const dirtyTree =
+          /would be overwritten|commit your changes or stash/i.test(msg);
+        setError(
+          dirtyTree
+            ? `Commit or stash your changes before switching to “${name}”.`
+            : msg,
+        );
+      })
+      .finally(() => setCheckingOut(null));
+  };
+
   // Aggregate +/− across every change — mirrors the header total in the
   // reference design.
   const totals = useMemo(
@@ -191,29 +260,78 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
-        <span
-          className="changes-panel-branch"
-          title={
-            branch
-              ? branch.detached
-                ? `Detached HEAD at ${branch.head}`
-                : branch.upstream
-                  ? `${branch.head} → ${branch.upstream}`
-                  : `${branch.head} (no upstream)`
-              : undefined
-          }
-        >
-          <BranchIcon />
-          <span className="changes-panel-branch-name">
-            {branch ? branch.head : "—"}
-          </span>
-          {branch && (branch.ahead > 0 || branch.behind > 0) && (
-            <span className="changes-panel-branch-track">
-              {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
-              {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+        <div className="changes-panel-branch-wrap">
+          <button
+            type="button"
+            className="changes-panel-branch"
+            disabled={!branch}
+            onClick={() =>
+              branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu()
+            }
+            aria-haspopup="menu"
+            aria-expanded={branchMenuOpen}
+            title={
+              branch
+                ? branch.detached
+                  ? `Detached HEAD at ${branch.head}`
+                  : branch.upstream
+                    ? `${branch.head} → ${branch.upstream}`
+                    : `${branch.head} (no upstream)`
+                : undefined
+            }
+          >
+            <BranchIcon />
+            <span className="changes-panel-branch-name">
+              {branch ? branch.head : "—"}
             </span>
+            {branch && (branch.ahead > 0 || branch.behind > 0) && (
+              <span className="changes-panel-branch-track">
+                {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
+                {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+              </span>
+            )}
+            <span className="changes-panel-branch-caret">
+              <ChevronIcon />
+            </span>
+          </button>
+          {branchMenuOpen && (
+            <>
+              <div
+                className="changes-panel-branch-backdrop"
+                onClick={() => setBranchMenuOpen(false)}
+              />
+              <div className="changes-panel-branch-menu" role="menu">
+                {branchList === null ? (
+                  <div className="changes-panel-branch-empty">Loading…</div>
+                ) : branchList.branches.length === 0 ? (
+                  <div className="changes-panel-branch-empty">No local branches</div>
+                ) : (
+                  branchList.branches.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      role="menuitem"
+                      className={
+                        "changes-panel-branch-item" +
+                        (name === branchList.current ? " current" : "")
+                      }
+                      disabled={checkingOut !== null}
+                      onClick={() => doCheckout(name)}
+                    >
+                      <span className="changes-panel-branch-check">
+                        {name === branchList.current ? "✓" : ""}
+                      </span>
+                      <span className="changes-panel-branch-item-name">{name}</span>
+                      {checkingOut === name && (
+                        <span className="changes-panel-branch-item-spin">…</span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
           )}
-        </span>
+        </div>
         <span className="changes-panel-count">
           {changes.length === 0
             ? "No changes"
@@ -230,6 +348,60 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
               </span>
             )}
         </span>
+        <div className="changes-panel-remote" role="group" aria-label="Remote">
+          <button
+            type="button"
+            className="changes-panel-remote-btn"
+            onClick={() => runRemote("fetch", () => gitFetch(projectId))}
+            disabled={!branch || remoteOp !== null}
+            aria-label="Fetch"
+            title="Fetch from remote"
+          >
+            <span className={remoteOp === "fetch" ? "spin" : undefined}>
+              <FetchIcon />
+            </span>
+          </button>
+          <button
+            type="button"
+            className="changes-panel-remote-btn"
+            onClick={() => runRemote("pull", () => gitPull(projectId))}
+            disabled={
+              !branch || branch.detached || !branch.upstream || remoteOp !== null
+            }
+            aria-label="Pull"
+            title={
+              branch && !branch.detached && !branch.upstream
+                ? "No upstream to pull from"
+                : "Pull (fast-forward only)"
+            }
+          >
+            <span className={remoteOp === "pull" ? "spin" : undefined}>
+              <PullIcon />
+            </span>
+            {branch && branch.behind > 0 && (
+              <span className="changes-panel-remote-badge">{branch.behind}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className="changes-panel-remote-btn"
+            onClick={() => runRemote("push", () => gitPush(projectId))}
+            disabled={!branch || branch.detached || remoteOp !== null}
+            aria-label="Push"
+            title={
+              branch && !branch.detached && !branch.upstream
+                ? "Publish branch to origin"
+                : "Push to remote"
+            }
+          >
+            <span className={remoteOp === "push" ? "spin" : undefined}>
+              <PushIcon />
+            </span>
+            {branch && branch.ahead > 0 && (
+              <span className="changes-panel-remote-badge">{branch.ahead}</span>
+            )}
+          </button>
+        </div>
         <div className="changes-panel-mode" role="tablist" aria-label="View mode">
           <button
             type="button"
@@ -715,6 +887,71 @@ function RefreshIcon() {
     >
       <path d="M21 12a9 9 0 1 1-3-6.7" />
       <path d="M21 4v5h-5" />
+    </svg>
+  );
+}
+
+// Fetch: two arrows chasing each other (sync), distinct from the plain Refresh
+// glyph so "update remote refs" reads differently from "reload the panel".
+function FetchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M21 12a9 9 0 0 0-15-6.7L3 8" />
+      <path d="M3 4v4h4" />
+      <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7" />
+      <path d="M21 20v-4h-4" />
+    </svg>
+  );
+}
+
+// Pull: an arrow coming down into a tray (incoming commits).
+function PullIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 3v11" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M5 20h14" />
+    </svg>
+  );
+}
+
+// Push: an arrow going up out of a tray (outgoing commits).
+function PushIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 21V10" />
+      <path d="M7 14l5-5 5 5" />
+      <path d="M5 4h14" />
     </svg>
   );
 }

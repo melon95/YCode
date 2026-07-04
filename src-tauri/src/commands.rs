@@ -12,7 +12,8 @@ use ycode_config::agent_patcher::{
 };
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
-    DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitFileChange, LspManifestView,
+    DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
+    GitFileChange, LspManifestView,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
     SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
     WritePtyRequest,
@@ -427,6 +428,58 @@ pub async fn git_discard_file(
     state
         .service
         .git_discard_file(project_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_fetch(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+    state
+        .service
+        .git_fetch(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_pull(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+    state
+        .service
+        .git_pull(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_push(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+    state
+        .service
+        .git_push(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_list_branches(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<GitBranchListView, String> {
+    state
+        .service
+        .git_list_branches(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_checkout_branch(
+    state: State<'_, AppState>,
+    project_id: String,
+    name: String,
+) -> Result<(), String> {
+    state
+        .service
+        .git_checkout_branch(project_id, name)
         .await
         .map_err(|e| e.to_string())
 }

@@ -26,8 +26,8 @@ use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, T
 use crate::{
     mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
     CreateSessionRequest,
-    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitFileChange,
-    GitFileStatus,
+    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo,
+    GitBranchListView, GitFileChange, GitFileStatus,
     LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
     RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
     SpawnPtyRequest, TodoView, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent,
@@ -757,6 +757,63 @@ impl Service {
         tokio::task::spawn_blocking(move || git_discard_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_discard task: {e}")))?
+    }
+
+    /// Update remote-tracking refs (`git fetch --all --prune`) so the header's
+    /// ahead/behind counts reflect the remote. Doesn't touch the working tree.
+    pub async fn git_fetch(&self, project_id: String) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_fetch_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_fetch task: {e}")))?
+    }
+
+    /// Fast-forward the current branch to its upstream (`git pull --ff-only`).
+    /// Errors (without changing anything) when a fast-forward isn't possible —
+    /// we never create a merge commit or leave conflicts behind the user's back.
+    pub async fn git_pull(&self, project_id: String) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_pull_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_pull task: {e}")))?
+    }
+
+    /// Push the current branch to its remote. When the branch has no upstream
+    /// yet, this creates one on `origin` (`git push -u origin <branch>`).
+    pub async fn git_push(&self, project_id: String) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_push_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_push task: {e}")))?
+    }
+
+    /// List local branches for the header's branch-switcher menu.
+    pub async fn git_list_branches(
+        &self,
+        project_id: String,
+    ) -> Result<GitBranchListView, IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_list_branches_blocking(&repo))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_list_branches task: {e}")))?
+    }
+
+    /// Check out an existing local branch (`git checkout <name>`). Fails, with
+    /// git's message surfaced, when the working tree would be clobbered.
+    pub async fn git_checkout_branch(
+        &self,
+        project_id: String,
+        name: String,
+    ) -> Result<(), IpcError> {
+        let project = self.db.projects().get(&project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || git_checkout_branch_blocking(&repo, name))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git_checkout task: {e}")))?
     }
 
     /// Hand a file off to the user's preferred GUI editor. Resolution order:
@@ -2368,6 +2425,164 @@ fn git_discard_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), I
     }
 }
 
+/// Build a `git -C <repo> …` command for an operation that may hit the network,
+/// wired to fail fast instead of hanging on an interactive prompt inside the
+/// GUI (which has no controlling terminal to answer it). `GIT_TERMINAL_PROMPT=0`
+/// blocks HTTPS username/password prompts; the SSH `BatchMode` option blocks
+/// key-passphrase/host-key prompts. Cached credentials, credential helpers, and
+/// ssh-agent still work — only *interactive* auth is disabled. We leave a
+/// user-provided `GIT_SSH_COMMAND` untouched.
+fn git_net_command(repo: &Utf8Path) -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(repo.as_std_path());
+    cmd.env("GIT_TERMINAL_PROMPT", "0");
+    if std::env::var_os("GIT_SSH_COMMAND").is_none() {
+        cmd.env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes");
+    }
+    cmd
+}
+
+/// The currently checked-out branch, or an error when HEAD is detached (the
+/// remote/push operations all need a branch to reason about).
+fn current_branch(repo: &Utf8Path) -> Result<String, IpcError> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git symbolic-ref: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(
+            "HEAD is detached — check out a branch first".into(),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Combine a failed command's stderr (preferred) or stdout into one message.
+fn git_failure_detail(out: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn git_fetch_blocking(repo: &Utf8Path) -> Result<(), IpcError> {
+    let out = git_net_command(repo)
+        .args(["fetch", "--all", "--prune"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git fetch: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git fetch failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
+fn git_pull_blocking(repo: &Utf8Path) -> Result<(), IpcError> {
+    let out = git_net_command(repo)
+        .args(["pull", "--ff-only"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git pull: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git pull failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
+fn git_push_blocking(repo: &Utf8Path) -> Result<(), IpcError> {
+    let branch = current_branch(repo)?;
+
+    // Does the branch already track an upstream? `@{u}` resolves only when one
+    // is configured, so a non-zero exit means "no upstream yet".
+    let has_upstream = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let mut cmd = git_net_command(repo);
+    if has_upstream {
+        cmd.arg("push");
+    } else {
+        // First push of a new branch — publish it and set the upstream so
+        // subsequent pushes/pulls are argument-free.
+        cmd.args(["push", "-u", "origin"]).arg(&branch);
+    }
+    let out = cmd
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git push: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git push failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
+fn git_list_branches_blocking(repo: &Utf8Path) -> Result<GitBranchListView, IpcError> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git for-each-ref: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git for-each-ref failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    let branches = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // `current_branch` errors on detached HEAD; here that's not an error, just
+    // "no current branch", so map the failure to `None`.
+    let current = current_branch(repo).ok();
+
+    Ok(GitBranchListView { current, branches })
+}
+
+fn git_checkout_branch_blocking(repo: &Utf8Path, name: String) -> Result<(), IpcError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(IpcError::BadInput("branch name is empty".into()));
+    }
+    // A leading dash would be parsed as an option; reject it so `name` can't
+    // smuggle flags into `git checkout`.
+    if name.starts_with('-') {
+        return Err(IpcError::BadInput(format!("invalid branch name: {name}")));
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .arg("checkout")
+        .arg(name)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git checkout: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git checkout failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
 fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {
     let abs = resolve_under_repo(repo, &file_path)?;
     let bytes =
@@ -3155,6 +3370,104 @@ mod tests {
             find_latest_gemini_session_id_in(tmp.path(), cutoff).as_deref(),
             Some("new")
         );
+    }
+
+    // --- git remote/branch helpers ---------------------------------------
+    //
+    // These shell out to the real `git`, but stay hermetic: global/system
+    // config is nulled out and identity is injected via env, so a commit works
+    // on any dev/CI box regardless of the user's gitconfig (gpg signing, etc.).
+    // The push/pull test uses a local bare repo as the "remote" — no network.
+
+    /// Run `git -C dir <args>`, asserting success, with a deterministic env.
+    fn git_in(dir: &std::path::Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[test]
+    fn list_branches_reports_current_and_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        git_in(repo, &["init", "-q"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git_in(repo, &["add", "-A"]);
+        git_in(repo, &["commit", "-q", "-m", "init"]);
+        git_in(repo, &["branch", "feature"]);
+
+        let utf8 = Utf8Path::from_path(repo).unwrap();
+        let list = git_list_branches_blocking(utf8).unwrap();
+        assert!(list.branches.contains(&"feature".to_string()));
+        let current = list.current.expect("a branch is checked out");
+        assert!(list.branches.contains(&current));
+    }
+
+    #[test]
+    fn checkout_switches_branch_and_rejects_flags() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        git_in(repo, &["init", "-q"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git_in(repo, &["add", "-A"]);
+        git_in(repo, &["commit", "-q", "-m", "init"]);
+        git_in(repo, &["branch", "feature"]);
+
+        let utf8 = Utf8Path::from_path(repo).unwrap();
+        git_checkout_branch_blocking(utf8, "feature".into()).unwrap();
+        assert_eq!(current_branch(utf8).unwrap(), "feature");
+
+        // A leading dash must never reach `git checkout` as a flag.
+        assert!(git_checkout_branch_blocking(utf8, "-x".into()).is_err());
+        assert!(git_checkout_branch_blocking(utf8, "  ".into()).is_err());
+    }
+
+    #[test]
+    fn push_pull_fetch_roundtrip_via_local_bare_remote() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bare = tmp.path().join("remote.git");
+        std::fs::create_dir_all(&bare).unwrap();
+        git_in(&bare, &["init", "--bare", "-q"]);
+        let bare_url = bare.to_str().unwrap();
+
+        // Clone A, make a commit, and publish it (no upstream yet → -u origin).
+        git_in(tmp.path(), &["clone", "-q", bare_url, "a"]);
+        let a = tmp.path().join("a");
+        std::fs::write(a.join("f.txt"), "1").unwrap();
+        git_in(&a, &["add", "-A"]);
+        git_in(&a, &["commit", "-q", "-m", "c1"]);
+        let a8 = Utf8Path::from_path(&a).unwrap();
+        git_push_blocking(a8).unwrap();
+
+        // Clone B sees the published commit.
+        git_in(tmp.path(), &["clone", "-q", bare_url, "b"]);
+        let b = tmp.path().join("b");
+        assert!(b.join("f.txt").exists());
+
+        // A commits again and pushes; B fetches then fast-forwards.
+        std::fs::write(a.join("f.txt"), "2").unwrap();
+        git_in(&a, &["add", "-A"]);
+        git_in(&a, &["commit", "-q", "-m", "c2"]);
+        git_push_blocking(a8).unwrap();
+
+        let b8 = Utf8Path::from_path(&b).unwrap();
+        git_fetch_blocking(b8).unwrap();
+        git_pull_blocking(b8).unwrap();
+        assert_eq!(std::fs::read_to_string(b.join("f.txt")).unwrap(), "2");
     }
 }
 

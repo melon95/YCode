@@ -24,6 +24,7 @@ import type {
   FileContents,
   GitFileChange,
   GitBranchInfo,
+  GitBranchListView,
   LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
@@ -161,6 +162,21 @@ export const gitUnstageFile = (projectId: string, filePath: string): Promise<voi
 
 export const gitDiscardFile = (projectId: string, filePath: string): Promise<void> =>
   invoke("git_discard_file", { projectId, filePath });
+
+export const gitFetch = (projectId: string): Promise<void> =>
+  invoke("git_fetch", { projectId });
+
+export const gitPull = (projectId: string): Promise<void> =>
+  invoke("git_pull", { projectId });
+
+export const gitPush = (projectId: string): Promise<void> =>
+  invoke("git_push", { projectId });
+
+export const gitListBranches = (projectId: string): Promise<GitBranchListView> =>
+  invoke("git_list_branches", { projectId });
+
+export const gitCheckoutBranch = (projectId: string, name: string): Promise<void> =>
+  invoke("git_checkout_branch", { projectId, name });
 
 export const scanWorkspaceSessions = (
   projectId: string,
