@@ -21,11 +21,11 @@ state. Single static binary.
 
 ## Screenshots
 
-![ycode three-column workspace with agent launcher and terminal](docs/assets/overview.png)
+![ycode three-column workspace with agent launcher and terminal](https://raw.githubusercontent.com/melon95/YCode/main/docs/assets/overview.png)
 
 |  |  |
 | --- | --- |
-| ![Files panel with repository tree](docs/assets/files.png) | ![Changes panel with working tree diff](docs/assets/changes.png) |
+| ![Files panel with repository tree](https://raw.githubusercontent.com/melon95/YCode/main/docs/assets/files.png) | ![Changes panel with working tree diff](https://raw.githubusercontent.com/melon95/YCode/main/docs/assets/changes.png) |
 | Repository file tree + editor entry point | Working tree review with side-by-side diffs |
 
 ## Features
