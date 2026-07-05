@@ -29,6 +29,7 @@ import type {
   OpenInExternalEditorRequest,
   UiEvent,
   WorkspaceUsageView,
+  WorktreeCloseState,
 } from "./types";
 
 export const listAgents = (): Promise<AgentProfileView[]> => invoke("list_agents");
@@ -111,13 +112,10 @@ export const setProjectIsolateSessions = (
 ): Promise<void> =>
   invoke("set_project_isolate_sessions", { projectId, isolate });
 
-export const sessionWorktreeDirty = (sessionId: string): Promise<boolean> =>
-  invoke("session_worktree_dirty", { sessionId });
-
-export const sessionWorktreeUnmergedCommits = (
+export const stopSessionForClose = (
   sessionId: string,
-): Promise<number> =>
-  invoke("session_worktree_unmerged_commits", { sessionId });
+): Promise<WorktreeCloseState> =>
+  invoke("stop_session_for_close", { sessionId });
 
 export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
   invoke("rename_session", { request });

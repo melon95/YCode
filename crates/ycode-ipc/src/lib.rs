@@ -130,6 +130,19 @@ impl SessionView {
     }
 }
 
+/// What closing a session's worktree would put at risk. Computed *after* the
+/// agent's PTY is killed, so the numbers are final — the agent can no longer
+/// write. The UI confirms before archiving when either field is set.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WorktreeCloseState {
+    /// Uncommitted or untracked changes in the worktree — lost when it's removed.
+    pub uncommitted: bool,
+    /// Commits on the session branch not yet in its base branch. The branch is
+    /// kept on close, but goes orphan (no worktree, not surfaced in the UI).
+    pub unmerged_commits: u32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AgentProfileView {

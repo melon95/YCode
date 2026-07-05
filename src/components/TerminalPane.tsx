@@ -795,10 +795,10 @@ export function TerminalPane() {
                     <span
                       className="pane-branch"
                       title={`Running in an isolated worktree on ${
-                        session.branch ?? `ycode/${id.slice(0, 8)}`
+                        session.branch ?? `ycode/${id}`
                       }`}
                     >
-                      {session.branch ?? `ycode/${id.slice(0, 8)}`}
+                      {session.branch ?? `ycode/${id}`}
                     </span>
                   )}
                   {light && (

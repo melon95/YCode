@@ -15,8 +15,8 @@ use ycode_ipc::{
     DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
     GitFileChange, LspManifestView,
     OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
-    SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WriteFileRequest,
-    WritePtyRequest,
+    SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WorktreeCloseState,
+    WriteFileRequest, WritePtyRequest,
 };
 
 use crate::state::AppState;
@@ -278,25 +278,13 @@ pub async fn set_project_isolate_sessions(
 }
 
 #[tauri::command]
-pub async fn session_worktree_dirty(
+pub async fn stop_session_for_close(
     state: State<'_, AppState>,
     session_id: String,
-) -> Result<bool, String> {
+) -> Result<WorktreeCloseState, String> {
     state
         .service
-        .session_worktree_dirty(session_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn session_worktree_unmerged_commits(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<u32, String> {
-    state
-        .service
-        .session_worktree_unmerged_commits(session_id)
+        .stop_session_for_close(session_id)
         .await
         .map_err(|e| e.to_string())
 }

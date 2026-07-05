@@ -49,7 +49,7 @@ function cleanError(e: unknown): string {
 // back to reconstructing it from the id for rows created before `branch` was
 // persisted on the view.
 function treeBranch(s: SessionView): string {
-  return s.branch ?? `ycode/${s.id.slice(0, 8)}`;
+  return s.branch ?? `ycode/${s.id}`;
 }
 
 export function ChangesPanel({ projectId }: { projectId: string }) {

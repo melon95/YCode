@@ -3,67 +3,75 @@
 // of drifting into two subtly different "close" behaviours.
 
 import { toast } from "@heroui/react";
-import {
-  archiveSession,
-  sessionWorktreeDirty,
-  sessionWorktreeUnmergedCommits,
-} from "./ipc";
+import { archiveSession, stopSessionForClose } from "./ipc";
+import type { WorktreeCloseState } from "./types";
 import { confirmDialog } from "./confirm";
 import { displaySessionTitle, useStore } from "./store";
 
 /// End a session immediately: kill its live process, archive the row, and drop
-/// it from the store (which reflows the layout). One-click for the pane `×`,
-/// EXCEPT when the session runs in an isolated worktree with uncommitted
-/// changes — closing force-removes the worktree, so we confirm first to avoid
-/// silently discarding the agent's work. No-op if the id isn't a known session.
+/// it from the store (which reflows the layout). One-click for the pane `×`.
+///
+/// For an isolated worktree we stop the agent FIRST (backend kills the PTY
+/// before it inspects), then confirm removal based on that final state — never
+/// while the agent is still running. Otherwise the check would be racy: the
+/// agent could commit or edit during the confirm, and archival force-removes
+/// the worktree, silently dropping the post-check work. If the user cancels the
+/// removal, the agent stays stopped and the worktree is kept (the session
+/// lingers as an exited pane they can merge or reopen). No-op for unknown ids.
 export async function closeSessionNow(sessionId: string): Promise<void> {
   const sess = useStore.getState().sessions[sessionId];
   if (!sess) return;
-  if (sess.worktree_path) {
-    // Two independent ways closing can lose sight of an agent's work:
-    //  - uncommitted changes: removed together with the worktree, gone.
-    //  - committed-but-unmerged commits: the branch is kept, but goes orphan
-    //    (no worktree, not surfaced anywhere in the UI) — a plain dirty check
-    //    misses this entirely, which is how "where did my agent's work go?"
-    //    happens. Check both and tailor the warning to what's actually at risk.
-    let dirty = false;
-    let unmerged = 0;
+
+  // Shared-mode session (no worktree): nothing to lose, archive straight away.
+  if (!sess.worktree_path) {
     try {
-      [dirty, unmerged] = await Promise.all([
-        sessionWorktreeDirty(sessionId),
-        sessionWorktreeUnmergedCommits(sessionId),
-      ]);
-    } catch {
-      // If we can't determine either, don't block the close.
+      await archiveSession(sessionId);
+      useStore.getState().removeSession(sessionId);
+    } catch (err) {
+      toast.danger(`Close failed: ${err}`);
     }
-    if (dirty || unmerged > 0) {
-      const branch = sess.branch ?? "its branch";
-      const commits = `${unmerged} commit${unmerged === 1 ? "" : "s"}`;
-      let message: string;
-      if (dirty && unmerged > 0) {
-        message =
-          `This agent has uncommitted changes and ${commits} not merged into ${sess.base_branch ?? "its base"}. ` +
-          `Closing removes the worktree: the uncommitted changes are discarded, and while the branch "${branch}" is kept, ` +
-          `it goes orphan (no worktree, hidden from the UI). Commit and merge first to keep everything.`;
-      } else if (dirty) {
-        message =
-          "This agent has uncommitted changes in its worktree. Closing removes the worktree and discards them — " +
-          "commit or merge first to keep them.";
-      } else {
-        message =
-          `This agent has ${commits} not yet merged into ${sess.base_branch ?? "its base"}. ` +
-          `Closing removes the worktree; the branch "${branch}" is kept but goes orphan (hidden from the UI) — ` +
-          "merge first to keep the work in view.";
-      }
-      const ok = await confirmDialog({
-        title: "Close this agent's worktree?",
-        message,
-        confirmLabel: "Close anyway",
-        destructive: true,
-      });
-      if (!ok) return;
-    }
+    return;
   }
+
+  // Stop the agent and take a final snapshot of what removal would risk.
+  let state: WorktreeCloseState;
+  try {
+    state = await stopSessionForClose(sessionId);
+  } catch (err) {
+    toast.danger(`Close failed: ${err}`);
+    return;
+  }
+
+  if (state.uncommitted || state.unmerged_commits > 0) {
+    const branch = sess.branch ?? "its branch";
+    const base = sess.base_branch ?? "its base";
+    const n = state.unmerged_commits;
+    const commits = `${n} commit${n === 1 ? "" : "s"}`;
+    let message: string;
+    if (state.uncommitted && n > 0) {
+      message =
+        `The agent is stopped. Its worktree has uncommitted changes and ${commits} not merged into ${base}. ` +
+        `Removing the worktree discards the uncommitted changes; the branch "${branch}" is kept but goes orphan ` +
+        `(no worktree, hidden from the UI). Merge first to keep everything.`;
+    } else if (state.uncommitted) {
+      message =
+        "The agent is stopped. Its worktree has uncommitted changes. Removing the worktree discards them — " +
+        "commit or merge first to keep them.";
+    } else {
+      message =
+        `The agent is stopped. Its branch "${branch}" has ${commits} not merged into ${base}. ` +
+        `Removing the worktree keeps the branch but orphans it (hidden from the UI) — merge first to keep the work in view.`;
+    }
+    const ok = await confirmDialog({
+      title: "Remove this agent's worktree?",
+      message,
+      confirmLabel: "Remove worktree",
+      destructive: true,
+    });
+    // Agent's already stopped; cancelling just keeps the worktree.
+    if (!ok) return;
+  }
+
   try {
     await archiveSession(sessionId);
     useStore.getState().removeSession(sessionId);

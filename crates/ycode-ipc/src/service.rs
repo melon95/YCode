@@ -31,7 +31,7 @@ use crate::{
     LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
     RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
     SpawnPtyRequest, TodoView, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent,
-    WorkspaceUsageView, WriteFileRequest, WritePtyRequest,
+    WorkspaceUsageView, WorktreeCloseState, WriteFileRequest, WritePtyRequest,
 };
 use ycode_introspect::{scanner, usage};
 
@@ -987,7 +987,13 @@ impl Service {
                 .map_err(|e| IpcError::BadInput(format!("worktree base task: {e}")))?;
             match base {
                 Some((base_sha, base_branch)) => {
-                    let branch = format!("ycode/{}", &id[..id.len().min(8)]);
+                    // Full ULID, not a prefix: the first 8 chars are all
+                    // timestamp, so two sessions created within the same ~second
+                    // (e.g. two windows at once) would collide on the branch name
+                    // and the second `git worktree add -b` would fail with
+                    // "branch already exists". The full id includes the random
+                    // tail, so it's unique.
+                    let branch = format!("ycode/{id}");
                     let wt = self.worktree_root.join(&project_id).join(&id);
                     let (repo_c, wt_c, branch_c) = (repo.clone(), wt.clone(), branch.clone());
                     tokio::task::spawn_blocking(move || {
@@ -1315,40 +1321,53 @@ impl Service {
         .map_err(|e| IpcError::BadInput(format!("merge task: {e}")))?
     }
 
-    /// Whether a session's isolated worktree has uncommitted changes. `false`
-    /// for shared-mode sessions (no worktree). The UI uses this to warn before
-    /// closing a session — closing force-removes the worktree.
-    pub async fn session_worktree_dirty(&self, session_id: String) -> Result<bool, IpcError> {
-        let row = self.db.sessions().get(&session_id).await?;
-        match row.worktree_path {
-            Some(wt) => tokio::task::spawn_blocking(move || worktree_is_dirty(Utf8Path::new(&wt)))
-                .await
-                .map_err(|e| IpcError::BadInput(format!("dirty task: {e}"))),
-            None => Ok(false),
-        }
-    }
-
-    /// How many commits on the session's worktree branch are not yet in its
-    /// base branch (`base..branch`). `0` for shared-mode sessions or a
-    /// fully-merged branch. The UI warns before closing a session with unmerged
-    /// commits: closing removes the worktree, and while the branch itself is
-    /// kept, it's no longer surfaced anywhere in the UI — so that committed work
-    /// would silently drop out of view. A count of committed-but-unmerged work
-    /// that a plain dirty check (`session_worktree_dirty`) misses entirely.
-    pub async fn session_worktree_unmerged_commits(
+    /// Stop a session's live agent and report what closing its worktree would
+    /// risk. Kills the PTY FIRST, *then* inspects the worktree — so the counts
+    /// are a final snapshot the agent can no longer change. This is what the
+    /// close flow calls before archiving: checking while the agent still runs
+    /// (or during the user's confirm) is racy, and archival force-removes the
+    /// worktree, so post-check writes would be lost silently.
+    ///
+    /// Does NOT archive or remove anything — the caller confirms (when either
+    /// field is set) and then calls `archive_session` to actually tear down.
+    /// For shared-mode sessions both fields are `false`/`0`.
+    pub async fn stop_session_for_close(
         &self,
         session_id: String,
-    ) -> Result<u32, IpcError> {
+    ) -> Result<WorktreeCloseState, IpcError> {
+        // Kill first: no more writes while we inspect or the user decides.
+        if let Some(s) = self.terminals.remove(&session_id).await {
+            let _ = s.kill().await;
+            let _ = self.ui_bus.send(UiEvent {
+                session_id: session_id.clone(),
+                kind: UiEventKind::SessionTouched,
+            });
+        }
         let row = self.db.sessions().get(&session_id).await?;
-        let (branch, base) = match (row.branch, row.base_branch) {
-            (Some(b), Some(base)) => (b, base),
-            _ => return Ok(0),
-        };
-        let project = self.db.projects().get(&row.project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
-        tokio::task::spawn_blocking(move || unmerged_commit_count_blocking(&repo, &base, &branch))
+        let uncommitted = match row.worktree_path.clone() {
+            Some(wt) => tokio::task::spawn_blocking(move || {
+                worktree_is_dirty(Utf8Path::new(&wt))
+            })
             .await
-            .map_err(|e| IpcError::BadInput(format!("unmerged count task: {e}")))
+            .map_err(|e| IpcError::BadInput(format!("dirty task: {e}")))?,
+            None => false,
+        };
+        let unmerged_commits = match (row.branch, row.base_branch) {
+            (Some(branch), Some(base)) => {
+                let project = self.db.projects().get(&row.project_id).await?;
+                let repo = Utf8PathBuf::from(project.repo_path);
+                tokio::task::spawn_blocking(move || {
+                    unmerged_commit_count_blocking(&repo, &base, &branch)
+                })
+                .await
+                .map_err(|e| IpcError::BadInput(format!("unmerged count task: {e}")))?
+            }
+            _ => 0,
+        };
+        Ok(WorktreeCloseState {
+            uncommitted,
+            unmerged_commits,
+        })
     }
 
     /// Toggle whether new sessions in a project run in isolated worktrees.
