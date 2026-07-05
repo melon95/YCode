@@ -91,6 +91,10 @@ pub struct SessionView {
     /// `None` for shared-mode sessions — the UI shows the Merge affordance
     /// only when this is set.
     pub worktree_path: Option<String>,
+    /// The branch this session's isolated worktree is checked out on
+    /// (e.g. `ycode/<id8>`). `None` for shared-mode sessions. Used by the UI
+    /// to disambiguate same-named sessions in the tree picker and pane header.
+    pub branch: Option<String>,
     /// The branch this session's worktree merges back into (label for the
     /// Merge button).
     pub base_branch: Option<String>,
@@ -120,6 +124,7 @@ impl SessionView {
             updated_at_ms: row.updated_at,
             archived_at_ms: row.archived_at,
             worktree_path: row.worktree_path,
+            branch: row.branch,
             base_branch: row.base_branch,
         }
     }

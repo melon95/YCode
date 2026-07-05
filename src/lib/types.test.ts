@@ -18,6 +18,7 @@ function session(
     updated_at_ms: 1,
     archived_at_ms: archived ? 1 : null,
     worktree_path: null,
+    branch: null,
     base_branch: null,
   };
 }

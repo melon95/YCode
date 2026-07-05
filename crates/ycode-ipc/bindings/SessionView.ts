@@ -33,6 +33,12 @@ updated_at_ms: bigint, archived_at_ms: bigint | null,
  */
 worktree_path: string | null, 
 /**
+ * The branch this session's isolated worktree is checked out on
+ * (e.g. `ycode/<id8>`). `None` for shared-mode sessions. Used by the UI
+ * to disambiguate same-named sessions in the tree picker and pane header.
+ */
+branch: string | null, 
+/**
  * The branch this session's worktree merges back into (label for the
  * Merge button).
  */
