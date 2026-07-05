@@ -5,7 +5,7 @@
 // change yet — git index churn during a `npm install` could re-render dozens
 // of times a second.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
 import "react-diff-view/style/index.css";
 import {
@@ -23,7 +23,7 @@ import {
   gitUnstageFile,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
-import { displaySessionTitle, useStore } from "../lib/store";
+import { useStore } from "../lib/store";
 import type {
   GitBranchInfo,
   GitBranchListView,
@@ -40,13 +40,15 @@ function cleanError(e: unknown): string {
   return String(e).replace(/^bad input:\s*/i, "");
 }
 
-// Label for a session in the tree picker: the agent's session name when it has
-// one, otherwise its worktree branch (`ycode/<short-id>`) — accurate for an
-// unnamed session and distinct from the main tree. The id slice matches the
-// backend's `ycode/<id[..8]>` branch naming.
-function treeLabel(s: SessionView, liveTitles: Record<string, string>): string {
-  const name = displaySessionTitle(s, liveTitles);
-  return name === "New session" ? `ycode/${s.id.slice(0, 8)}` : name;
+// Label for a worktree in the tree picker: its branch name (`ycode/<short-id>`).
+// We deliberately do NOT use the session's display title here — that comes from
+// the CLI's terminal title, which varies per agent (Claude Code sets a friendly
+// name, Codex sets its working dir = the session id), so it's neither stable nor
+// reliably unique. The branch is always unique per worktree and stable. Falls
+// back to reconstructing it from the id for rows created before `branch` was
+// persisted on the view.
+function treeBranch(s: SessionView): string {
+  return s.branch ?? `ycode/${s.id.slice(0, 8)}`;
 }
 
 export function ChangesPanel({ projectId }: { projectId: string }) {
@@ -76,7 +78,6 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     null,
   );
   const sessions = useStore((s) => s.sessions);
-  const liveTitles = useStore((s) => s.liveTitles);
   // Sessions in THIS project running in their own worktree — the extra trees
   // the user can point the panel at besides the main one.
   const isolatedSessions = useMemo(
@@ -94,26 +95,49 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     isolatedSessions.some((s) => s.id === selectedSessionId)
       ? selectedSessionId
       : undefined;
+  // True when the panel targets an agent's isolated worktree (not the main
+  // tree). Such a worktree is pinned to its own `ycode/*` branch, so the branch
+  // switcher is meaningless — worse, since worktrees share one ref DB it would
+  // list the *main tree's* branches. We render the branch read-only instead.
+  const onWorktree = treeSid !== undefined;
+
+  // Monotonic id for the in-flight refresh. Switching trees fires a new refresh
+  // before the previous one's async git calls resolve; without this guard a
+  // slower earlier response (e.g. a worktree under Application Support, which is
+  // slower than the main repo) can land *after* the newer one and clobber it —
+  // showing the old tree's branch/files. Each result checks it's still current.
+  const reqSeq = useRef(0);
 
   const refresh = useMemo(() => {
     return () => {
+      const my = ++reqSeq.current;
+      const fresh = () => my === reqSeq.current;
       setLoadingList(true);
       setError(null);
       gitStatus(projectId, treeSid)
         .then((rows) => {
+          if (!fresh()) return;
           setChanges(rows);
           setSelected((cur) => {
             if (cur && rows.some((r) => r.path === cur)) return cur;
             return rows[0]?.path ?? null;
           });
         })
-        .catch((e) => setError(cleanError(e)))
-        .finally(() => setLoadingList(false));
+        .catch((e) => {
+          if (fresh()) setError(cleanError(e));
+        })
+        .finally(() => {
+          if (fresh()) setLoadingList(false);
+        });
       // Branch context is independent of the file list — fetch it alongside,
       // and don't let its failure (e.g. not a git repo) clobber the file view.
       gitBranch(projectId, treeSid)
-        .then(setBranch)
-        .catch(() => setBranch(null));
+        .then((b) => {
+          if (fresh()) setBranch(b);
+        })
+        .catch(() => {
+          if (fresh()) setBranch(null);
+        });
     };
   }, [projectId, treeSid]);
 
@@ -305,89 +329,99 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <select
             className="changes-panel-tree"
             value={selectedSessionId ?? ""}
-            onChange={(e) => setSelectedSessionId(e.target.value || null)}
+            onChange={(e) => {
+              setBranchMenuOpen(false);
+              setSelectedSessionId(e.target.value || null);
+            }}
             title="Which working tree to show — the project's main tree or an agent's isolated worktree"
           >
             <option value="">Main tree</option>
             {isolatedSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                {treeLabel(s, liveTitles)}
+                {treeBranch(s)}
               </option>
             ))}
           </select>
         )}
-        <div className="changes-panel-branch-wrap">
-          <button
-            type="button"
-            className="changes-panel-branch"
-            disabled={!branch}
-            onClick={() =>
-              branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu()
-            }
-            aria-haspopup="menu"
-            aria-expanded={branchMenuOpen}
-            title={
-              branch
-                ? branch.detached
-                  ? `Detached HEAD at ${branch.head}`
-                  : branch.upstream
-                    ? `${branch.head} → ${branch.upstream}`
-                    : `${branch.head} (no upstream)`
-                : undefined
-            }
-          >
-            <BranchIcon />
-            <span className="changes-panel-branch-name">
-              {branch ? branch.head : "—"}
-            </span>
-            {branch && (branch.ahead > 0 || branch.behind > 0) && (
-              <span className="changes-panel-branch-track">
-                {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
-                {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+        {/* The branch switcher belongs to the main tree only. An isolated
+            worktree is pinned to its own `ycode/*` branch (already shown as the
+            tree-picker label), so we hide this entirely when one is selected —
+            no redundant branch, no meaningless switch to the main tree's
+            branches. */}
+        {!onWorktree && (
+          <div className="changes-panel-branch-wrap">
+            <button
+              type="button"
+              className="changes-panel-branch"
+              disabled={!branch}
+              onClick={() =>
+                branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu()
+              }
+              aria-haspopup="menu"
+              aria-expanded={branchMenuOpen}
+              title={
+                branch
+                  ? branch.detached
+                    ? `Detached HEAD at ${branch.head}`
+                    : branch.upstream
+                      ? `${branch.head} → ${branch.upstream}`
+                      : `${branch.head} (no upstream)`
+                  : undefined
+              }
+            >
+              <BranchIcon />
+              <span className="changes-panel-branch-name">
+                {branch ? branch.head : "—"}
               </span>
+              {branch && (branch.ahead > 0 || branch.behind > 0) && (
+                <span className="changes-panel-branch-track">
+                  {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
+                  {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+                </span>
+              )}
+              <span className="changes-panel-branch-caret">
+                <ChevronIcon />
+              </span>
+            </button>
+            {branchMenuOpen && (
+              <>
+                <div
+                  className="changes-panel-branch-backdrop"
+                  onClick={() => setBranchMenuOpen(false)}
+                />
+                <div className="changes-panel-branch-menu" role="menu">
+                  {branchList === null ? (
+                    <div className="changes-panel-branch-empty">Loading…</div>
+                  ) : branchList.branches.length === 0 ? (
+                    <div className="changes-panel-branch-empty">No local branches</div>
+                  ) : (
+                    branchList.branches.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        role="menuitem"
+                        className={
+                          "changes-panel-branch-item" +
+                          (name === branchList.current ? " current" : "")
+                        }
+                        disabled={checkingOut !== null}
+                        onClick={() => doCheckout(name)}
+                      >
+                        <span className="changes-panel-branch-check">
+                          {name === branchList.current ? "✓" : ""}
+                        </span>
+                        <span className="changes-panel-branch-item-name">{name}</span>
+                        {checkingOut === name && (
+                          <span className="changes-panel-branch-item-spin">…</span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
             )}
-            <span className="changes-panel-branch-caret">
-              <ChevronIcon />
-            </span>
-          </button>
-          {branchMenuOpen && (
-            <>
-              <div
-                className="changes-panel-branch-backdrop"
-                onClick={() => setBranchMenuOpen(false)}
-              />
-              <div className="changes-panel-branch-menu" role="menu">
-                {branchList === null ? (
-                  <div className="changes-panel-branch-empty">Loading…</div>
-                ) : branchList.branches.length === 0 ? (
-                  <div className="changes-panel-branch-empty">No local branches</div>
-                ) : (
-                  branchList.branches.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      role="menuitem"
-                      className={
-                        "changes-panel-branch-item" +
-                        (name === branchList.current ? " current" : "")
-                      }
-                      disabled={checkingOut !== null}
-                      onClick={() => doCheckout(name)}
-                    >
-                      <span className="changes-panel-branch-check">
-                        {name === branchList.current ? "✓" : ""}
-                      </span>
-                      <span className="changes-panel-branch-item-name">{name}</span>
-                      {checkingOut === name && (
-                        <span className="changes-panel-branch-item-spin">…</span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+          </div>
+        )}
         <span className="changes-panel-count">
           {changes.length === 0
             ? "No changes"
