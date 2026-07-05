@@ -23,7 +23,7 @@ import {
   gitUnstageFile,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
-import { useStore } from "../lib/store";
+import { displaySessionTitle, useStore } from "../lib/store";
 import type {
   GitBranchInfo,
   GitBranchListView,
@@ -40,10 +40,13 @@ function cleanError(e: unknown): string {
   return String(e).replace(/^bad input:\s*/i, "");
 }
 
-// Label for a session in the tree picker — its title, or a short id fallback.
-function treeLabel(s: SessionView): string {
-  const t = s.title.trim();
-  return t.length > 0 ? t : `session ${s.id.slice(0, 6)}`;
+// Label for a session in the tree picker: the agent's session name when it has
+// one, otherwise its worktree branch (`ycode/<short-id>`) — accurate for an
+// unnamed session and distinct from the main tree. The id slice matches the
+// backend's `ycode/<id[..8]>` branch naming.
+function treeLabel(s: SessionView, liveTitles: Record<string, string>): string {
+  const name = displaySessionTitle(s, liveTitles);
+  return name === "New session" ? `ycode/${s.id.slice(0, 8)}` : name;
 }
 
 export function ChangesPanel({ projectId }: { projectId: string }) {
@@ -73,6 +76,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     null,
   );
   const sessions = useStore((s) => s.sessions);
+  const liveTitles = useStore((s) => s.liveTitles);
   // Sessions in THIS project running in their own worktree — the extra trees
   // the user can point the panel at besides the main one.
   const isolatedSessions = useMemo(
@@ -307,7 +311,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
             <option value="">Main tree</option>
             {isolatedSessions.map((s) => (
               <option key={s.id} value={s.id}>
-                {treeLabel(s)}
+                {treeLabel(s, liveTitles)}
               </option>
             ))}
           </select>
