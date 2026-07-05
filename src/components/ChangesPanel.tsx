@@ -32,6 +32,12 @@ import type {
 
 type ViewMode = "list" | "tree";
 
+// Strip the internal "bad input:" prefix that IpcError::BadInput serializes
+// with, so the panel surfaces only the actionable git message.
+function cleanError(e: unknown): string {
+  return String(e).replace(/^bad input:\s*/i, "");
+}
+
 export function ChangesPanel({ projectId }: { projectId: string }) {
   const [changes, setChanges] = useState<GitFileChange[]>([]);
   const [branch, setBranch] = useState<GitBranchInfo | null>(null);
@@ -66,7 +72,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
             return rows[0]?.path ?? null;
           });
         })
-        .catch((e) => setError(String(e)))
+        .catch((e) => setError(cleanError(e)))
         .finally(() => setLoadingList(false));
       // Branch context is independent of the file list — fetch it alongside,
       // and don't let its failure (e.g. not a git repo) clobber the file view.
@@ -94,7 +100,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       .catch((e) => {
         if (!cancelled) {
           setDiffText("");
-          setError(String(e));
+          setError(cleanError(e));
         }
       })
       .finally(() => {
@@ -146,7 +152,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
         setCommitMsg("");
         refresh();
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(cleanError(e)))
       .finally(() => setCommitting(false));
   };
 
@@ -159,7 +165,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     setError(null);
     fn()
       .then(refresh)
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(cleanError(e)))
       .finally(() => setRemoteOp(null));
   };
 
@@ -186,7 +192,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
         refresh();
       })
       .catch((e) => {
-        const msg = String(e);
+        const msg = cleanError(e);
         // git refuses to switch when uncommitted changes would be clobbered.
         // Swap its multi-line stderr for a one-line, actionable hint; keep the
         // raw message for other failures (unknown branch, etc.).
@@ -254,7 +260,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     if (!ok) return;
     gitDiscardFile(projectId, change.path)
       .then(refresh)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(cleanError(e)));
   };
 
   return (
