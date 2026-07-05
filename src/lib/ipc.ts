@@ -154,41 +154,85 @@ export const createPath = (
   isDir: boolean,
 ): Promise<void> => invoke("create_path", { projectId, filePath, isDir });
 
-export const gitStatus = (projectId: string): Promise<GitFileChange[]> =>
-  invoke("git_status", { projectId });
+// `sessionId` optionally targets a session's isolated worktree instead of the
+// project's main working tree — the Changes panel passes it to view/stage/
+// commit an agent's worktree.
+export const gitStatus = (
+  projectId: string,
+  sessionId?: string,
+): Promise<GitFileChange[]> =>
+  invoke("git_status", { projectId, sessionId: sessionId ?? null });
 
-export const gitBranch = (projectId: string): Promise<GitBranchInfo> =>
-  invoke("git_branch", { projectId });
+export const gitBranch = (
+  projectId: string,
+  sessionId?: string,
+): Promise<GitBranchInfo> =>
+  invoke("git_branch", { projectId, sessionId: sessionId ?? null });
 
-export const gitDiffFile = (projectId: string, filePath: string): Promise<string> =>
-  invoke("git_diff_file", { projectId, filePath });
+export const gitDiffFile = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<string> =>
+  invoke("git_diff_file", { projectId, sessionId: sessionId ?? null, filePath });
 
-export const gitCommit = (projectId: string, message: string): Promise<void> =>
-  invoke("git_commit", { projectId, message });
+export const gitCommit = (
+  projectId: string,
+  message: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_commit", { projectId, sessionId: sessionId ?? null, message });
 
-export const gitStageFile = (projectId: string, filePath: string): Promise<void> =>
-  invoke("git_stage_file", { projectId, filePath });
+export const gitStageFile = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_stage_file", { projectId, sessionId: sessionId ?? null, filePath });
 
-export const gitUnstageFile = (projectId: string, filePath: string): Promise<void> =>
-  invoke("git_unstage_file", { projectId, filePath });
+export const gitUnstageFile = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_unstage_file", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+  });
 
-export const gitDiscardFile = (projectId: string, filePath: string): Promise<void> =>
-  invoke("git_discard_file", { projectId, filePath });
+export const gitDiscardFile = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_discard_file", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+  });
 
-export const gitFetch = (projectId: string): Promise<void> =>
-  invoke("git_fetch", { projectId });
+export const gitFetch = (projectId: string, sessionId?: string): Promise<void> =>
+  invoke("git_fetch", { projectId, sessionId: sessionId ?? null });
 
-export const gitPull = (projectId: string): Promise<void> =>
-  invoke("git_pull", { projectId });
+export const gitPull = (projectId: string, sessionId?: string): Promise<void> =>
+  invoke("git_pull", { projectId, sessionId: sessionId ?? null });
 
-export const gitPush = (projectId: string): Promise<void> =>
-  invoke("git_push", { projectId });
+export const gitPush = (projectId: string, sessionId?: string): Promise<void> =>
+  invoke("git_push", { projectId, sessionId: sessionId ?? null });
 
-export const gitListBranches = (projectId: string): Promise<GitBranchListView> =>
-  invoke("git_list_branches", { projectId });
+export const gitListBranches = (
+  projectId: string,
+  sessionId?: string,
+): Promise<GitBranchListView> =>
+  invoke("git_list_branches", { projectId, sessionId: sessionId ?? null });
 
-export const gitCheckoutBranch = (projectId: string, name: string): Promise<void> =>
-  invoke("git_checkout_branch", { projectId, name });
+export const gitCheckoutBranch = (
+  projectId: string,
+  name: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_checkout_branch", { projectId, sessionId: sessionId ?? null, name });
 
 export const scanWorkspaceSessions = (
   projectId: string,

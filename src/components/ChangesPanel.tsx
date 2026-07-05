@@ -23,11 +23,13 @@ import {
   gitUnstageFile,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
+import { useStore } from "../lib/store";
 import type {
   GitBranchInfo,
   GitBranchListView,
   GitFileChange,
   GitFileStatus,
+  SessionView,
 } from "../lib/types";
 
 type ViewMode = "list" | "tree";
@@ -36,6 +38,12 @@ type ViewMode = "list" | "tree";
 // with, so the panel surfaces only the actionable git message.
 function cleanError(e: unknown): string {
   return String(e).replace(/^bad input:\s*/i, "");
+}
+
+// Label for a session in the tree picker — its title, or a short id fallback.
+function treeLabel(s: SessionView): string {
+  const t = s.title.trim();
+  return t.length > 0 ? t : `session ${s.id.slice(0, 6)}`;
 }
 
 export function ChangesPanel({ projectId }: { projectId: string }) {
@@ -59,12 +67,35 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   const [branchList, setBranchList] = useState<GitBranchListView | null>(null);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  // Which tree the panel targets: null = the project's main working tree, or a
+  // session id to target that agent's isolated worktree.
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null,
+  );
+  const sessions = useStore((s) => s.sessions);
+  // Sessions in THIS project running in their own worktree — the extra trees
+  // the user can point the panel at besides the main one.
+  const isolatedSessions = useMemo(
+    () =>
+      Object.values(sessions).filter(
+        (s): s is SessionView =>
+          s.project_id === projectId && !!s.worktree_path,
+      ),
+    [sessions, projectId],
+  );
+  // Resolved target passed to every git call: the selected session id, or
+  // `undefined` (main tree) — including when the selected session has gone away.
+  const treeSid =
+    selectedSessionId &&
+    isolatedSessions.some((s) => s.id === selectedSessionId)
+      ? selectedSessionId
+      : undefined;
 
   const refresh = useMemo(() => {
     return () => {
       setLoadingList(true);
       setError(null);
-      gitStatus(projectId)
+      gitStatus(projectId, treeSid)
         .then((rows) => {
           setChanges(rows);
           setSelected((cur) => {
@@ -76,11 +107,11 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
         .finally(() => setLoadingList(false));
       // Branch context is independent of the file list — fetch it alongside,
       // and don't let its failure (e.g. not a git repo) clobber the file view.
-      gitBranch(projectId)
+      gitBranch(projectId, treeSid)
         .then(setBranch)
         .catch(() => setBranch(null));
     };
-  }, [projectId]);
+  }, [projectId, treeSid]);
 
   useEffect(() => {
     refresh();
@@ -93,7 +124,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     }
     let cancelled = false;
     setLoadingDiff(true);
-    gitDiffFile(projectId, selected)
+    gitDiffFile(projectId, selected, treeSid)
       .then((text) => {
         if (!cancelled) setDiffText(text);
       })
@@ -109,7 +140,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, selected]);
+  }, [projectId, selected, treeSid]);
 
   const files: FileData[] = useMemo(() => {
     if (!diffText) return [];
@@ -147,7 +178,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     if (!canCommit) return;
     setCommitting(true);
     setError(null);
-    gitCommit(projectId, trimmedMsg)
+    gitCommit(projectId, trimmedMsg, treeSid)
       .then(() => {
         setCommitMsg("");
         refresh();
@@ -173,7 +204,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     // Lazy-load the branch list each time the menu opens so it stays fresh
     // after a fetch/checkout, without polling on every refresh.
     setBranchList(null);
-    gitListBranches(projectId)
+    gitListBranches(projectId, treeSid)
       .then(setBranchList)
       .catch(() => setBranchList({ current: null, branches: [] }));
     setBranchMenuOpen(true);
@@ -186,7 +217,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     }
     setCheckingOut(name);
     setError(null);
-    gitCheckoutBranch(projectId, name)
+    gitCheckoutBranch(projectId, name, treeSid)
       .then(() => {
         setBranchMenuOpen(false);
         refresh();
@@ -235,8 +266,8 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       ),
     );
     const op = nextStaged
-      ? gitStageFile(projectId, change.path)
-      : gitUnstageFile(projectId, change.path);
+      ? gitStageFile(projectId, change.path, treeSid)
+      : gitUnstageFile(projectId, change.path, treeSid);
     op.then(refresh).catch((e) => {
       setChanges((prev) =>
         prev.map((c) =>
@@ -258,7 +289,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       destructive: true,
     });
     if (!ok) return;
-    gitDiscardFile(projectId, change.path)
+    gitDiscardFile(projectId, change.path, treeSid)
       .then(refresh)
       .catch((e) => setError(cleanError(e)));
   };
@@ -266,6 +297,21 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
+        {isolatedSessions.length > 0 && (
+          <select
+            className="changes-panel-tree"
+            value={selectedSessionId ?? ""}
+            onChange={(e) => setSelectedSessionId(e.target.value || null)}
+            title="Which working tree to show — the project's main tree or an agent's isolated worktree"
+          >
+            <option value="">Main tree</option>
+            {isolatedSessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {treeLabel(s)}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="changes-panel-branch-wrap">
           <button
             type="button"
@@ -358,7 +404,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             className="changes-panel-remote-btn"
-            onClick={() => runRemote("fetch", () => gitFetch(projectId))}
+            onClick={() => runRemote("fetch", () => gitFetch(projectId, treeSid))}
             disabled={!branch || remoteOp !== null}
             aria-label="Fetch"
             title="Fetch from remote"
@@ -370,7 +416,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             className="changes-panel-remote-btn"
-            onClick={() => runRemote("pull", () => gitPull(projectId))}
+            onClick={() => runRemote("pull", () => gitPull(projectId, treeSid))}
             disabled={
               !branch || branch.detached || !branch.upstream || remoteOp !== null
             }
@@ -391,7 +437,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             className="changes-panel-remote-btn"
-            onClick={() => runRemote("push", () => gitPush(projectId))}
+            onClick={() => runRemote("push", () => gitPush(projectId, treeSid))}
             disabled={!branch || branch.detached || remoteOp !== null}
             aria-label="Push"
             title={

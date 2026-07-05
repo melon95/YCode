@@ -4295,6 +4295,25 @@ textarea.native-input {
   position: relative;
 }
 
+/* Working-tree picker — shown only when the project has isolated session
+   worktrees. Points the panel's git ops at the main tree or an agent's tree. */
+.changes-panel-tree {
+  flex: 0 0 auto;
+  max-width: 130px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.changes-panel-tree:hover {
+  border-color: var(--accent);
+}
+
 /* Live branch label — replaces the old static "Working Tree" title with the
    real HEAD: branch name (or short SHA when detached) + ahead/behind. Doubles
    as the trigger for the branch-switcher menu. */

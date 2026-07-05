@@ -684,12 +684,35 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("create task: {e}")))?
     }
 
+    /// Resolve the working directory a git command runs in: a session's
+    /// isolated worktree when `session_id` names one that has a worktree,
+    /// otherwise the project's main working tree. Lets the Changes panel point
+    /// its git operations at either tree.
+    async fn resolve_git_cwd(
+        &self,
+        project_id: &str,
+        session_id: Option<&str>,
+    ) -> Result<Utf8PathBuf, IpcError> {
+        if let Some(sid) = session_id {
+            if let Some(wt) = self.db.sessions().get(sid).await?.worktree_path {
+                return Ok(Utf8PathBuf::from(wt));
+            }
+        }
+        let project = self.db.projects().get(project_id).await?;
+        Ok(Utf8PathBuf::from(project.repo_path))
+    }
+
     /// List unstaged working-tree changes (modified, deleted, untracked).
     /// Staged-only changes are filtered out — the "Changes" panel reflects
     /// what you'd see in `git diff` without `--cached`.
-    pub async fn git_status(&self, project_id: String) -> Result<Vec<GitFileChange>, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn git_status(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<Vec<GitFileChange>, IpcError> {
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_status_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_status task: {e}")))?
@@ -697,9 +720,14 @@ impl Service {
 
     /// Current HEAD context (branch / detached SHA + ahead/behind upstream)
     /// for the Changes panel header.
-    pub async fn git_branch(&self, project_id: String) -> Result<GitBranchInfo, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn git_branch(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<GitBranchInfo, IpcError> {
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_branch_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_branch task: {e}")))?
@@ -711,10 +739,12 @@ impl Service {
     pub async fn git_diff_file(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<String, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_diff_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_diff task: {e}")))?
@@ -727,10 +757,12 @@ impl Service {
     pub async fn git_commit(
         &self,
         project_id: String,
+        session_id: Option<String>,
         message: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_commit_blocking(&repo, message))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_commit task: {e}")))?
@@ -740,10 +772,12 @@ impl Service {
     pub async fn git_stage_file(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_stage_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_stage task: {e}")))?
@@ -754,10 +788,12 @@ impl Service {
     pub async fn git_unstage_file(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_unstage_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_unstage task: {e}")))?
@@ -769,10 +805,12 @@ impl Service {
     pub async fn git_discard_file(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_discard_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_discard task: {e}")))?
@@ -780,9 +818,14 @@ impl Service {
 
     /// Update remote-tracking refs (`git fetch --all --prune`) so the header's
     /// ahead/behind counts reflect the remote. Doesn't touch the working tree.
-    pub async fn git_fetch(&self, project_id: String) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn git_fetch(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<(), IpcError> {
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_fetch_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_fetch task: {e}")))?
@@ -791,9 +834,14 @@ impl Service {
     /// Fast-forward the current branch to its upstream (`git pull --ff-only`).
     /// Errors (without changing anything) when a fast-forward isn't possible —
     /// we never create a merge commit or leave conflicts behind the user's back.
-    pub async fn git_pull(&self, project_id: String) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn git_pull(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<(), IpcError> {
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_pull_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_pull task: {e}")))?
@@ -801,9 +849,14 @@ impl Service {
 
     /// Push the current branch to its remote. When the branch has no upstream
     /// yet, this creates one on `origin` (`git push -u origin <branch>`).
-    pub async fn git_push(&self, project_id: String) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn git_push(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<(), IpcError> {
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_push_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_push task: {e}")))?
@@ -813,9 +866,11 @@ impl Service {
     pub async fn git_list_branches(
         &self,
         project_id: String,
+        session_id: Option<String>,
     ) -> Result<GitBranchListView, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_list_branches_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_list_branches task: {e}")))?
@@ -826,10 +881,12 @@ impl Service {
     pub async fn git_checkout_branch(
         &self,
         project_id: String,
+        session_id: Option<String>,
         name: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || git_checkout_branch_blocking(&repo, name))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_checkout task: {e}")))?

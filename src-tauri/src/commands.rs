@@ -384,10 +384,11 @@ pub async fn create_path(
 pub async fn git_status(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<Vec<GitFileChange>, String> {
     state
         .service
-        .git_status(project_id)
+        .git_status(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -396,10 +397,11 @@ pub async fn git_status(
 pub async fn git_branch(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<GitBranchInfo, String> {
     state
         .service
-        .git_branch(project_id)
+        .git_branch(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -408,11 +410,12 @@ pub async fn git_branch(
 pub async fn git_diff_file(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<String, String> {
     state
         .service
-        .git_diff_file(project_id, file_path)
+        .git_diff_file(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -421,11 +424,12 @@ pub async fn git_diff_file(
 pub async fn git_commit(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     message: String,
 ) -> Result<(), String> {
     state
         .service
-        .git_commit(project_id, message)
+        .git_commit(project_id, session_id, message)
         .await
         .map_err(|e| e.to_string())
 }
@@ -434,11 +438,12 @@ pub async fn git_commit(
 pub async fn git_stage_file(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .git_stage_file(project_id, file_path)
+        .git_stage_file(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -447,11 +452,12 @@ pub async fn git_stage_file(
 pub async fn git_unstage_file(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .git_unstage_file(project_id, file_path)
+        .git_unstage_file(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -460,38 +466,45 @@ pub async fn git_unstage_file(
 pub async fn git_discard_file(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .git_discard_file(project_id, file_path)
+        .git_discard_file(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn git_fetch(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+pub async fn git_fetch(state: State<'_, AppState>, project_id: String,
+    session_id: Option<String>,
+) -> Result<(), String> {
     state
         .service
-        .git_fetch(project_id)
+        .git_fetch(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn git_pull(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+pub async fn git_pull(state: State<'_, AppState>, project_id: String,
+    session_id: Option<String>,
+) -> Result<(), String> {
     state
         .service
-        .git_pull(project_id)
+        .git_pull(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn git_push(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
+pub async fn git_push(state: State<'_, AppState>, project_id: String,
+    session_id: Option<String>,
+) -> Result<(), String> {
     state
         .service
-        .git_push(project_id)
+        .git_push(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -500,10 +513,11 @@ pub async fn git_push(state: State<'_, AppState>, project_id: String) -> Result<
 pub async fn git_list_branches(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<GitBranchListView, String> {
     state
         .service
-        .git_list_branches(project_id)
+        .git_list_branches(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -512,11 +526,12 @@ pub async fn git_list_branches(
 pub async fn git_checkout_branch(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     name: String,
 ) -> Result<(), String> {
     state
         .service
-        .git_checkout_branch(project_id, name)
+        .git_checkout_branch(project_id, session_id, name)
         .await
         .map_err(|e| e.to_string())
 }
