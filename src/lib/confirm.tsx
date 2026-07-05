@@ -2,6 +2,7 @@
 // a transient root onto document.body, awaits the user's choice, then tears
 // the root down — avoids global state / providers.
 
+import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertDialog,
@@ -51,6 +52,22 @@ function ConfirmInner({
   opts: ConfirmOptions;
   onResult: (ok: boolean) => void;
 }) {
+  // While the dialog is up, Escape must dismiss *it* — not exit fullscreen.
+  // The webview's default action for a bare Escape in fullscreen is to leave
+  // fullscreen; react-aria closes the overlay on Escape but doesn't call
+  // preventDefault, so both happen. Intercept in the capture phase: swallow the
+  // default (and further propagation) and cancel the dialog ourselves.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onResult(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onResult]);
+
   return (
     <AlertDialog isOpen onOpenChange={(open) => !open && onResult(false)}>
       <AlertDialogBackdrop>
