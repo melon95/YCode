@@ -4,6 +4,7 @@
 // only when something actually needs it.
 
 import { useEffect, useRef } from "react";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 
 export interface ContextMenuItem {
   label: string;
@@ -24,22 +25,20 @@ export function ContextMenu({
 }) {
   const ref = useRef<HTMLUListElement>(null);
 
+  // Escape via the shared guard (dismiss-only, no fullscreen exit).
+  useEscapeGuard(onClose);
+
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
     const onAway = () => onClose();
     window.addEventListener("pointerdown", onDown, true);
-    window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onAway, true);
     window.addEventListener("resize", onAway);
     window.addEventListener("blur", onAway);
     return () => {
       window.removeEventListener("pointerdown", onDown, true);
-      window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onAway, true);
       window.removeEventListener("resize", onAway);
       window.removeEventListener("blur", onAway);

@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ManualTerminal } from "./ManualTerminal";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 
 export type SplitOrientation = "horizontal" | "vertical";
 export type SplitDirection = "left" | "right" | "up" | "down";
@@ -389,26 +390,23 @@ interface SplitContextMenuProps {
 }
 
 function SplitContextMenu(props: SplitContextMenuProps) {
+  // Escape via the shared guard (dismiss-only, no fullscreen exit).
+  useEscapeGuard(props.onDismiss);
   // Dismiss on outside click (capture-phase, beats xterm's focus grab on
-  // mousedown), Escape, or window blur.
+  // mousedown) or window blur.
   useEffect(() => {
     function onMouseDown(ev: MouseEvent) {
       const target = ev.target as HTMLElement | null;
       if (target && target.closest(".split-menu")) return;
       props.onDismiss();
     }
-    function onKey(ev: KeyboardEvent) {
-      if (ev.key === "Escape") props.onDismiss();
-    }
     function onBlur() {
       props.onDismiss();
     }
     window.addEventListener("mousedown", onMouseDown, true);
-    window.addEventListener("keydown", onKey);
     window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("mousedown", onMouseDown, true);
-      window.removeEventListener("keydown", onKey);
       window.removeEventListener("blur", onBlur);
     };
   }, [props]);

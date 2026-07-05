@@ -9,6 +9,7 @@ import {
   validLayoutModes,
   type LayoutMode,
 } from "../lib/store";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 
 const LABELS: Record<LayoutMode, string> = {
   single: "Single",
@@ -36,6 +37,9 @@ export function LayoutSwitcher() {
     window.addEventListener("mousedown", onClick);
     return () => window.removeEventListener("mousedown", onClick);
   }, [open]);
+
+  // Escape closes the popover (only while it's open).
+  useEscapeGuard(() => setOpen(false), open);
 
   // Nothing to switch when there's at most one pane.
   if (count <= 1) return null;

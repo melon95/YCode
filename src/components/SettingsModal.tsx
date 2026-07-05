@@ -24,6 +24,7 @@ import { getConfig, resetConfig, saveConfig } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { ConfigView } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { AgentsSettings } from "./AgentsSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { LanguagesSettings } from "./LanguagesSettings";
@@ -101,6 +102,10 @@ export function SettingsModal({ open, onClose }: Props) {
 
   const dirty =
     staged !== null && original !== null && !sameConfig(staged, original);
+
+  // Escape closes Settings through the same guarded path as the ✕/backdrop
+  // (unsaved-changes confirm included), without also dropping out of fullscreen.
+  useEscapeGuard(() => void handleClose(), open);
 
   async function handleClose() {
     if (dirty) {

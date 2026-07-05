@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listFiles, searchSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { iconForFile } from "../lib/fileIcons";
 import type { AgentProfileView, SearchHit } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
@@ -158,11 +159,8 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   }
 
   function onKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
+    // Escape is handled globally by useEscapeGuard (below) so it also works
+    // when focus has left the input, and doesn't drop out of fullscreen.
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusedIdx((i) => Math.min(hits.length - 1, i + 1));
@@ -191,6 +189,8 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
     if (hits.length === 0) return "No matching files.";
     return null;
   }, [sessionMode, loading, trimmedQuery, hits.length]);
+
+  useEscapeGuard(onClose, open);
 
   if (!open) return null;
   return (

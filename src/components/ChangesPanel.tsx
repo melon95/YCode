@@ -24,6 +24,7 @@ import {
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
 import { useStore } from "../lib/store";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 import type {
   GitBranchInfo,
   GitBranchListView,
@@ -100,6 +101,8 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   // switcher is meaningless — worse, since worktrees share one ref DB it would
   // list the *main tree's* branches. We render the branch read-only instead.
   const onWorktree = treeSid !== undefined;
+  // Escape closes the branch switcher (only while it's open).
+  useEscapeGuard(() => setBranchMenuOpen(false), branchMenuOpen);
 
   // Monotonic id for the in-flight refresh. Switching trees fires a new refresh
   // before the previous one's async git calls resolve; without this guard a

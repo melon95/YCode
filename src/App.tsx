@@ -17,6 +17,7 @@ import {
   stopWorkspaceWatch,
 } from "./lib/ipc";
 import { useStore } from "./lib/store";
+import { useEscapeGuard } from "./lib/useEscapeGuard";
 import { applyTheme, getTheme } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
 import { TopBar } from "./components/TopBar";
@@ -94,6 +95,9 @@ export function App() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [history, setHistory] = useState<HistoryView | null>(null);
+  // The session-history overlay had no Escape handling at all — add it, and
+  // like every other modal make it dismiss-only (no fullscreen exit).
+  useEscapeGuard(() => setHistory(null), !!history);
 
   // Persist column widths across reloads. Panel ids must match the literal
   // ids passed to <Panel> below or the restored layout won't apply.

@@ -24,6 +24,7 @@ import {
   type SessionView,
 } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { openProjectInNewWindow } from "../lib/multiWindow";
 import { LayoutSwitcher } from "./LayoutSwitcher";
 import { SettingsModal } from "./SettingsModal";
@@ -289,6 +290,10 @@ export function NewSessionDialog({
   const [agentId, setAgentId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Escape closes the dialog (dismiss-only, no fullscreen exit). Mounted only
+  // while open, so the guard is always active here.
+  useEscapeGuard(onClose);
 
   // Lazy-load the agent list the first time the dialog opens. Hide the
   // `bash` fallback — it's available via the second-terminal panel, not as
