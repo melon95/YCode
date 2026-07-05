@@ -29,16 +29,23 @@ impl<'a> ProjectRepo<'a> {
             name: new.name,
             repo_path: new.repo_path,
             created_at: now_ms(),
-            // New projects isolate by default; the column's DB DEFAULT is 1.
-            isolate_sessions: true,
+            // Worktree isolation is opt-in: new projects start shared, and the
+            // user enables per-agent worktrees per project when they want them.
+            // Written explicitly so this default lives in code, not the (legacy
+            // `DEFAULT 1`) column definition.
+            isolate_sessions: false,
         };
-        sqlx::query("INSERT INTO projects (id, name, repo_path, created_at) VALUES (?, ?, ?, ?)")
-            .bind(&row.id)
-            .bind(&row.name)
-            .bind(&row.repo_path)
-            .bind(row.created_at)
-            .execute(self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT INTO projects (id, name, repo_path, created_at, isolate_sessions) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&row.id)
+        .bind(&row.name)
+        .bind(&row.repo_path)
+        .bind(row.created_at)
+        .bind(row.isolate_sessions)
+        .execute(self.pool)
+        .await?;
         Ok(row)
     }
 
