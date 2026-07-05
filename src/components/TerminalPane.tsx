@@ -791,6 +791,16 @@ export function TerminalPane() {
                       {title}
                     </span>
                   )}
+                  {session?.worktree_path && (
+                    <span
+                      className="pane-branch"
+                      title={`Running in an isolated worktree on ${
+                        session.branch ?? `ycode/${id.slice(0, 8)}`
+                      }`}
+                    >
+                      {session.branch ?? `ycode/${id.slice(0, 8)}`}
+                    </span>
+                  )}
                   {light && (
                     <span
                       className={`pane-status-dot light-${light}`}

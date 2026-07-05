@@ -1058,6 +1058,28 @@ body {
   cursor: default;
 }
 
+/* Worktree branch badge next to the pane title. Same-named agents (e.g. two
+   "Claude Code" sessions) are otherwise indistinguishable in the header; the
+   branch (`ycode/<id8>`) is unique per isolated worktree. Non-interactive, so
+   lighter than `.pane-merge`. */
+.pane-branch {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: rgba(var(--highlight-rgb), 0.06);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
 /* Per-project isolation toggle on the new-session picker. */
 .picker-isolate {
   display: inline-flex;
