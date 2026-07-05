@@ -3,4 +3,8 @@
 /**
  * Frontend-facing snapshot of a project plus the count of its live sessions.
  */
-export type ProjectView = { id: string, name: string, repo_path: string, created_at_ms: bigint, session_count: bigint, };
+export type ProjectView = { id: string, name: string, repo_path: string, created_at_ms: bigint, session_count: bigint, 
+/**
+ * Whether new sessions in this project run in isolated worktrees.
+ */
+isolate_sessions: boolean, };

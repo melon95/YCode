@@ -87,6 +87,13 @@ pub struct SessionView {
     /// Unix milliseconds.
     pub updated_at_ms: i64,
     pub archived_at_ms: Option<i64>,
+    /// Path of the session's isolated git worktree, when it runs in one.
+    /// `None` for shared-mode sessions — the UI shows the Merge affordance
+    /// only when this is set.
+    pub worktree_path: Option<String>,
+    /// The branch this session's worktree merges back into (label for the
+    /// Merge button).
+    pub base_branch: Option<String>,
 }
 
 impl SessionView {
@@ -112,6 +119,8 @@ impl SessionView {
             created_at_ms: row.created_at,
             updated_at_ms: row.updated_at,
             archived_at_ms: row.archived_at,
+            worktree_path: row.worktree_path,
+            base_branch: row.base_branch,
         }
     }
 }
@@ -330,6 +339,8 @@ pub struct ProjectView {
     pub repo_path: String,
     pub created_at_ms: i64,
     pub session_count: i64,
+    /// Whether new sessions in this project run in isolated worktrees.
+    pub isolate_sessions: bool,
 }
 
 impl ProjectView {
@@ -340,6 +351,7 @@ impl ProjectView {
             repo_path: row.repo_path,
             created_at_ms: row.created_at,
             session_count,
+            isolate_sessions: row.isolate_sessions,
         }
     }
 }

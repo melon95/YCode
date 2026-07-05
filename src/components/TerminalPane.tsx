@@ -33,12 +33,14 @@ import "@xterm/xterm/css/xterm.css";
 import { toast } from "@heroui/react";
 import {
   listenSessionEvents,
+  mergeSessionWorktree,
   openUrl,
   readPtyBacklog,
   renameSession,
   resizePty,
   writePty,
 } from "../lib/ipc";
+import { confirmDialog } from "../lib/confirm";
 import { displaySessionTitle, PICKER_SLOT, useStore, type LayoutMode } from "../lib/store";
 import { closeSessionNow } from "../lib/sessionActions";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
@@ -221,6 +223,29 @@ export function TerminalPane() {
   // click a title to start; Enter / blur commits, Escape cancels.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  // Session id whose isolated worktree branch is currently being merged back.
+  const [mergingId, setMergingId] = useState<string | null>(null);
+
+  const doMerge = useCallback(async (sid: string, base: string) => {
+    const ok = await confirmDialog({
+      title: `Merge into ${base}?`,
+      message: `Merge this agent's branch into "${base}" on the project's main working tree. The main tree must be checked out on "${base}" and clean.`,
+      confirmLabel: "Merge",
+    });
+    if (!ok) return;
+    setMergingId(sid);
+    try {
+      await mergeSessionWorktree(sid);
+      toast.success(`Merged into ${base}`);
+    } catch (e) {
+      // Strip the internal "bad input:" prefix so the toast shows only the
+      // actionable message (e.g. "Commit or stash changes…").
+      const msg = String(e).replace(/^bad input:\s*/i, "");
+      toast.danger(`Merge failed: ${msg}`);
+    } finally {
+      setMergingId(null);
+    }
+  }, []);
 
   const { visibleIds, focusSlot, mode } = layout;
 
@@ -772,6 +797,21 @@ export function TerminalPane() {
                       title={SESSION_LIGHT_LABEL[light]}
                       aria-label={SESSION_LIGHT_LABEL[light]}
                     />
+                  )}
+                  {session?.worktree_path && session.base_branch && (
+                    <button
+                      type="button"
+                      className="pane-merge"
+                      disabled={mergingId === id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void doMerge(id, session.base_branch!);
+                      }}
+                      aria-label={`Merge into ${session.base_branch}`}
+                      title={`Merge this agent's branch into ${session.base_branch}`}
+                    >
+                      {mergingId === id ? "Merging…" : "Merge"}
+                    </button>
                   )}
                   <button
                     type="button"

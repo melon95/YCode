@@ -16,6 +16,10 @@ pub struct NewSession {
     pub agent_session_id: Option<String>,
     pub agent_thread_name: Option<String>,
     pub project_id: String,
+    /// Isolated worktree columns — all `None` for shared-mode sessions.
+    pub worktree_path: Option<String>,
+    pub branch: Option<String>,
+    pub base_branch: Option<String>,
 }
 
 impl<'a> SessionRepo<'a> {
@@ -36,11 +40,14 @@ impl<'a> SessionRepo<'a> {
             created_at: now,
             updated_at: now,
             archived_at: None,
+            worktree_path: new.worktree_path,
+            branch: new.branch,
+            base_branch: new.base_branch,
         };
         sqlx::query(
             "INSERT INTO sessions \
-             (id, title, agent_profile, agent_session_id, agent_thread_name, project_id, last_exit_code, created_at, updated_at, archived_at) \
-             VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)",
+             (id, title, agent_profile, agent_session_id, agent_thread_name, project_id, last_exit_code, created_at, updated_at, archived_at, worktree_path, branch, base_branch) \
+             VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?)",
         )
         .bind(&row.id)
         .bind(&row.title)
@@ -50,6 +57,9 @@ impl<'a> SessionRepo<'a> {
         .bind(&row.project_id)
         .bind(row.created_at)
         .bind(row.updated_at)
+        .bind(&row.worktree_path)
+        .bind(&row.branch)
+        .bind(&row.base_branch)
         .execute(self.pool)
         .await?;
         Ok(row)
@@ -194,6 +204,9 @@ mod tests {
             agent_session_id: None,
             agent_thread_name: None,
             project_id: project_id.into(),
+            worktree_path: None,
+            branch: None,
+            base_branch: None,
         }
     }
 
@@ -255,6 +268,9 @@ mod tests {
                 agent_session_id: Some("native-session-id".into()),
                 agent_thread_name: Some("thread name".into()),
                 project_id: "p-test".into(),
+                worktree_path: None,
+                branch: None,
+                base_branch: None,
             })
             .await
             .unwrap();

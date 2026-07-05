@@ -33,9 +33,11 @@ async fn fixture() -> (Service, tempfile::TempDir, Utf8PathBuf) {
     config.agents.clear();
     config.agents.push(shell_profile("shell-test"));
 
-    let service = Service::new(db, config);
     let workdir = tempfile::tempdir().unwrap();
     let repo_path = Utf8PathBuf::from_path_buf(workdir.path().to_path_buf()).unwrap();
+    // Tests use a plain (non-git) temp dir as the repo, so isolation degrades
+    // to shared mode and this root is never actually used.
+    let service = Service::new(db, config, repo_path.join(".ycode-worktrees"));
     (service, workdir, repo_path)
 }
 

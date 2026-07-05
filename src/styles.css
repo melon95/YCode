@@ -1031,6 +1031,49 @@ body {
   color: var(--text);
 }
 
+/* "Merge" affordance shown in the header of an isolated session's pane —
+   merges its worktree branch back into the base branch. */
+.pane-merge {
+  flex: 0 0 auto;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.pane-merge:hover:not(:disabled) {
+  background: rgba(var(--highlight-rgb), 0.08);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.pane-merge:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Per-project isolation toggle on the new-session picker. */
+.picker-isolate {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.picker-isolate input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .pane-body {
   position: relative;
   flex: 1 1 auto;

@@ -33,6 +33,7 @@ function project(id: string, createdAt: number): ProjectView {
     repo_path: `/tmp/${id}`,
     created_at_ms: createdAt,
     session_count: 0,
+    isolate_sessions: true,
   };
 }
 
@@ -106,6 +107,7 @@ describe("useHotkeys", () => {
       repo_path: `/repo/${id}`,
       created_at_ms: createdAt,
       session_count: 0,
+      isolate_sessions: true,
     });
     useStore.setState({
       projects: { a: project("a", 1), b: project("b", 2) },

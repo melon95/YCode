@@ -29,7 +29,10 @@ impl AppState {
             .await
             .with_context(|| format!("opening DB at {db_url}"))?;
 
-        let service = Arc::new(Service::new(db, config));
+        // Isolated session worktrees live alongside the DB, under the app data
+        // dir, so they stay out of every project tree.
+        let worktree_root = data_dir.join("worktrees");
+        let service = Arc::new(Service::new(db, config, worktree_root));
         Ok(Self { service })
     }
 }

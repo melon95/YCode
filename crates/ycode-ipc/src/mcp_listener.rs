@@ -316,7 +316,11 @@ mod tests {
         }
 
         let db = Db::open_in_memory().await.unwrap();
-        let service = Arc::new(Service::new(db, Config::default()));
+        let service = Arc::new(Service::new(
+            db,
+            Config::default(),
+            camino::Utf8PathBuf::from("/tmp/ycode-mcp-test-wt"),
+        ));
 
         // A real directory is required (create_project validates is_dir). Use
         // the temp dir as both the project repo and the request cwd so the
@@ -371,7 +375,11 @@ mod tests {
             return;
         }
         let db = Db::open_in_memory().await.unwrap();
-        let service = Arc::new(Service::new(db, Config::default()));
+        let service = Arc::new(Service::new(
+            db,
+            Config::default(),
+            camino::Utf8PathBuf::from("/tmp/ycode-mcp-test-wt"),
+        ));
         let sock =
             std::env::temp_dir().join(format!("ycode-mcp-test2-{}.sock", std::process::id()));
         let cancel = CancellationToken::new();

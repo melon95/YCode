@@ -17,6 +17,13 @@ pub struct SessionRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub archived_at: Option<i64>,
+    /// Absolute path of this session's isolated git worktree, or `None` when
+    /// the session shares the project's main working tree (isolation off).
+    pub worktree_path: Option<String>,
+    /// The session's dedicated branch (`ycode/<short-id>`) when isolated.
+    pub branch: Option<String>,
+    /// The branch the worktree was forked from, used to merge it back.
+    pub base_branch: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -25,6 +32,9 @@ pub struct ProjectRow {
     pub name: String,
     pub repo_path: String,
     pub created_at: i64,
+    /// When true, each new session in this project runs in its own git
+    /// worktree; when false, sessions share the project's main working tree.
+    pub isolate_sessions: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]

@@ -26,6 +26,8 @@ function session(
     created_at_ms: 1,
     updated_at_ms: 1,
     archived_at_ms: null,
+    worktree_path: null,
+    base_branch: null,
   };
 }
 

@@ -102,6 +102,15 @@ export const archiveSession = (sessionId: string): Promise<void> =>
 export const restartSession = (sessionId: string): Promise<SessionView> =>
   invoke("restart_session", { sessionId });
 
+export const mergeSessionWorktree = (sessionId: string): Promise<void> =>
+  invoke("merge_session_worktree", { sessionId });
+
+export const setProjectIsolateSessions = (
+  projectId: string,
+  isolate: boolean,
+): Promise<void> =>
+  invoke("set_project_isolate_sessions", { projectId, isolate });
+
 export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
   invoke("rename_session", { request });
 

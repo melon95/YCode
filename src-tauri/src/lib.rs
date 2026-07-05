@@ -628,6 +628,8 @@ pub fn run() {
             commands::kill_session,
             commands::archive_session,
             commands::restart_session,
+            commands::merge_session_worktree,
+            commands::set_project_isolate_sessions,
             commands::rename_session,
             commands::list_files,
             commands::read_file,

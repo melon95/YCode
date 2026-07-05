@@ -253,6 +253,31 @@ pub async fn restart_session(
 }
 
 #[tauri::command]
+pub async fn merge_session_worktree(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    state
+        .service
+        .merge_session_worktree(session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_project_isolate_sessions(
+    state: State<'_, AppState>,
+    project_id: String,
+    isolate: bool,
+) -> Result<(), String> {
+    state
+        .service
+        .set_project_isolate_sessions(project_id, isolate)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_files(
     state: State<'_, AppState>,
     project_id: String,

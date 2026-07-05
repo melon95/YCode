@@ -29,6 +29,8 @@ impl<'a> ProjectRepo<'a> {
             name: new.name,
             repo_path: new.repo_path,
             created_at: now_ms(),
+            // New projects isolate by default; the column's DB DEFAULT is 1.
+            isolate_sessions: true,
         };
         sqlx::query("INSERT INTO projects (id, name, repo_path, created_at) VALUES (?, ?, ?, ?)")
             .bind(&row.id)
@@ -38,6 +40,20 @@ impl<'a> ProjectRepo<'a> {
             .execute(self.pool)
             .await?;
         Ok(row)
+    }
+
+    /// Toggle whether new sessions in this project run in isolated worktrees.
+    pub async fn set_isolate_sessions(
+        &self,
+        id: &str,
+        isolate: bool,
+    ) -> Result<(), PersistError> {
+        sqlx::query("UPDATE projects SET isolate_sessions = ? WHERE id = ?")
+            .bind(isolate)
+            .bind(id)
+            .execute(self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn get(&self, id: &str) -> Result<ProjectRow, PersistError> {
@@ -108,6 +124,9 @@ mod tests {
             agent_session_id: None,
             agent_thread_name: None,
             project_id: project_id.into(),
+            worktree_path: None,
+            branch: None,
+            base_branch: None,
         }
     }
 

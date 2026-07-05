@@ -76,10 +76,15 @@ pub struct Service {
     /// [`mcp_listener::start`] (it needs an `Arc<Service>`). `None` on
     /// non-Unix targets.
     mcp_sock_path: Option<PathBuf>,
+    /// Root directory under which per-session isolated worktrees are checked
+    /// out (`<worktree_root>/<project_id>/<session_id>`). Kept outside every
+    /// repo so worktrees don't pollute the project tree or get picked up by
+    /// the file tree / git status. Set from the app data dir by the shell.
+    worktree_root: Utf8PathBuf,
 }
 
 impl Service {
-    pub fn new(db: Db, config: Config) -> Self {
+    pub fn new(db: Db, config: Config, worktree_root: Utf8PathBuf) -> Self {
         let available = compute_available_agents(&config);
         let (tx, _) = broadcast::channel(UI_BUS_CAPACITY);
         let shutdown = CancellationToken::new();
@@ -130,6 +135,7 @@ impl Service {
             workspace_watchers: RwLock::new(std::collections::HashMap::new()),
             notify_sock_path,
             mcp_sock_path,
+            worktree_root,
         }
     }
 
@@ -444,6 +450,15 @@ impl Service {
         // guard passes and orphan PTY children don't keep running after the
         // project row is gone. Mirrors what the user would do by clicking
         // "archive" on each session manually.
+        // Main repo path, needed to tear down each session's worktree. Read
+        // before the project row is deleted below.
+        let repo = self
+            .db
+            .projects()
+            .get(&project_id)
+            .await
+            .ok()
+            .map(|p| Utf8PathBuf::from(p.repo_path));
         let live = self.db.sessions().list_for_project(&project_id).await?;
         for row in live {
             // list_for_project already filters out archived rows.
@@ -452,6 +467,10 @@ impl Service {
             }
             if let Err(e) = self.db.sessions().archive(&row.id).await {
                 warn!(session_id = %row.id, error = %e, "auto-archive on project delete failed");
+            }
+            if let (Some(wt), Some(repo)) = (row.worktree_path.clone(), repo.clone()) {
+                let _ =
+                    tokio::task::spawn_blocking(move || worktree_remove_blocking(&repo, &wt)).await;
             }
             let _ = self.ui_bus.send(UiEvent {
                 session_id: row.id,
@@ -887,7 +906,8 @@ impl Service {
             .ok_or_else(|| IpcError::UnknownAgentProfile(req.agent_profile_id.clone()))?;
 
         let project = self.db.projects().get(&req.project_id).await?;
-        let cwd = Utf8PathBuf::from(project.repo_path);
+        let repo = Utf8PathBuf::from(project.repo_path);
+        let project_id = project.id;
 
         let id = ulid::Ulid::new().to_string();
         // Resume mode: caller (e.g. sidebar History click) already knows the
@@ -898,6 +918,35 @@ impl Service {
             Some(rid) if !rid.trim().is_empty() => (Some(rid.to_string()), LaunchMode::Resume),
             _ => (initial_agent_session_id(&profile), LaunchMode::Create),
         };
+
+        // Isolation: when the project opts in AND the repo has a commit to fork
+        // from, run this session in its own git worktree on a dedicated branch
+        // so concurrent agents can't clobber each other's files or git state.
+        // Non-git / empty repos transparently fall back to the shared repo cwd.
+        let (cwd, worktree_path, branch, base_branch) = if project.isolate_sessions {
+            let repo_c = repo.clone();
+            let base = tokio::task::spawn_blocking(move || worktree_base(&repo_c))
+                .await
+                .map_err(|e| IpcError::BadInput(format!("worktree base task: {e}")))?;
+            match base {
+                Some((base_sha, base_branch)) => {
+                    let branch = format!("ycode/{}", &id[..id.len().min(8)]);
+                    let wt = self.worktree_root.join(&project_id).join(&id);
+                    let (repo_c, wt_c, branch_c) = (repo.clone(), wt.clone(), branch.clone());
+                    tokio::task::spawn_blocking(move || {
+                        worktree_add_blocking(&repo_c, &wt_c, &branch_c, &base_sha)
+                    })
+                    .await
+                    .map_err(|e| IpcError::BadInput(format!("worktree add task: {e}")))??;
+                    (wt.clone(), Some(wt.into_string()), Some(branch), base_branch)
+                }
+                // No commit to branch from → shared mode.
+                None => (repo.clone(), None, None, None),
+            }
+        } else {
+            (repo.clone(), None, None, None)
+        };
+
         let row = self
             .db
             .sessions()
@@ -907,7 +956,10 @@ impl Service {
                 agent_profile: profile.id.clone(),
                 agent_session_id,
                 agent_thread_name: None,
-                project_id: project.id,
+                project_id,
+                worktree_path: worktree_path.clone(),
+                branch,
+                base_branch,
             })
             .await?;
 
@@ -916,12 +968,21 @@ impl Service {
             .spawn_pty(&id, &profile, &row, cwd.clone(), launch_mode)
             .await
             .map_err(|e| {
-                // Roll back the row so a failed spawn doesn't leave a phantom session.
+                // Roll back the row AND the worktree so a failed spawn leaves
+                // nothing behind.
                 let db = self.db.clone();
                 let id_clone = id.clone();
+                let repo_c = repo.clone();
+                let wt_clone = worktree_path.clone();
                 tokio::spawn(async move {
                     if let Err(e) = db.sessions().archive(&id_clone).await {
                         warn!(session_id = %id_clone, error = %e, "rollback archive failed");
+                    }
+                    if let Some(wt) = wt_clone {
+                        let _ = tokio::task::spawn_blocking(move || {
+                            worktree_remove_blocking(&repo_c, &wt)
+                        })
+                        .await;
                     }
                 });
                 e
@@ -1065,6 +1126,18 @@ impl Service {
         if row.archived_at.is_none() {
             self.db.sessions().archive(&session_id).await?;
         }
+        // Tear down the isolated worktree, if any. Best-effort: a failed remove
+        // must not block archival (the row is already flipped).
+        if let Some(wt) = row.worktree_path.clone() {
+            if let Ok(project) = self.db.projects().get(&row.project_id).await {
+                let repo = Utf8PathBuf::from(project.repo_path);
+                if let Err(e) =
+                    tokio::task::spawn_blocking(move || worktree_remove_blocking(&repo, &wt)).await
+                {
+                    warn!(session_id = %session_id, error = %e, "worktree remove task join failed");
+                }
+            }
+        }
         let _ = self.ui_bus.send(UiEvent {
             session_id,
             kind: UiEventKind::SessionRemoved,
@@ -1103,7 +1176,12 @@ impl Service {
             .cloned()
             .ok_or_else(|| IpcError::UnknownAgentProfile(row.agent_profile.clone()))?;
         let project = self.db.projects().get(&row.project_id).await?;
-        let cwd = Utf8PathBuf::from(project.repo_path);
+        // Reuse the session's own worktree if it has one; otherwise the shared
+        // repo. The worktree persists across restarts (only archival removes it).
+        let cwd = match row.worktree_path.as_deref() {
+            Some(wt) => Utf8PathBuf::from(wt),
+            None => Utf8PathBuf::from(project.repo_path),
+        };
 
         // Drop the old PTY if any.
         if let Some(s) = self.terminals.remove(&session_id).await {
@@ -1125,6 +1203,38 @@ impl Service {
             kind: UiEventKind::SessionTouched,
         });
         Ok(view)
+    }
+
+    /// Merge an isolated session's branch back into its base branch, run on the
+    /// project's main working tree. Requires the main tree to be checked out on
+    /// the base branch and clean; git's own message is surfaced on conflict.
+    pub async fn merge_session_worktree(&self, session_id: String) -> Result<(), IpcError> {
+        let row = self.db.sessions().get(&session_id).await?;
+        let branch = row
+            .branch
+            .ok_or_else(|| IpcError::BadInput("session has no worktree branch to merge".into()))?;
+        let base_branch = row
+            .base_branch
+            .ok_or_else(|| IpcError::BadInput("session has no base branch to merge into".into()))?;
+        let project = self.db.projects().get(&row.project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || merge_worktree_blocking(&repo, &branch, &base_branch))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("merge task: {e}")))?
+    }
+
+    /// Toggle whether new sessions in a project run in isolated worktrees.
+    /// Existing sessions are unaffected — the flag is read at session creation.
+    pub async fn set_project_isolate_sessions(
+        &self,
+        project_id: String,
+        isolate: bool,
+    ) -> Result<(), IpcError> {
+        self.db
+            .projects()
+            .set_isolate_sessions(&project_id, isolate)
+            .await?;
+        Ok(())
     }
 
     // ── Language server lifecycle (PR1: install / uninstall) ───────────────
@@ -2583,6 +2693,124 @@ fn git_checkout_branch_blocking(repo: &Utf8Path, name: String) -> Result<(), Ipc
     Ok(())
 }
 
+/// The base a new session worktree forks from: HEAD's SHA plus its branch
+/// name (branch is `None` on detached HEAD). Returns `None` when `repo` isn't a
+/// git work tree or has no commit yet (unborn HEAD) — the caller then falls
+/// back to shared mode, since there's nothing to branch a worktree from.
+fn worktree_base(repo: &Utf8Path) -> Option<(String, Option<String>)> {
+    let git = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(args)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (!s.is_empty()).then_some(s)
+    };
+    // rev-parse HEAD fails on a non-git dir and on an empty repo — exactly the
+    // two cases where isolation can't apply.
+    let sha = git(&["rev-parse", "HEAD"])?;
+    let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    Some((sha, branch))
+}
+
+/// Check out a fresh worktree at `worktree_path` on a new `branch` forked from
+/// `base_sha` (`git worktree add -b <branch> <path> <base_sha>`). Creates the
+/// parent directory first so the app-data worktree root need not pre-exist.
+fn worktree_add_blocking(
+    repo: &Utf8Path,
+    worktree_path: &Utf8Path,
+    branch: &str,
+    base_sha: &str,
+) -> Result<(), IpcError> {
+    if let Some(parent) = worktree_path.parent() {
+        std::fs::create_dir_all(parent.as_std_path())
+            .map_err(|e| IpcError::BadInput(format!("create worktree dir: {e}")))?;
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["worktree", "add", "-b", branch, worktree_path.as_str(), base_sha])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git worktree add: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git worktree add failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
+/// Tear down a session's worktree (`git worktree remove --force <path>`).
+/// `--force` because the session is being closed — we discard any uncommitted
+/// state in the worktree rather than leaving an orphan checkout behind. The
+/// session's branch is intentionally kept so unmerged work can still be found.
+fn worktree_remove_blocking(repo: &Utf8Path, worktree_path: &str) -> Result<(), IpcError> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["worktree", "remove", "--force", worktree_path])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git worktree remove: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git worktree remove failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
+/// Merge `branch` into `base_branch` on the main working tree at `repo`.
+/// Preconditions (each with a friendly, actionable error): the main tree is on
+/// `base_branch`, and it's clean. Merge conflicts surface git's own message.
+fn merge_worktree_blocking(
+    repo: &Utf8Path,
+    branch: &str,
+    base_branch: &str,
+) -> Result<(), IpcError> {
+    // The merge lands on whatever the main tree currently has checked out, so
+    // it must be the intended base.
+    let current = current_branch(repo)?;
+    if current != base_branch {
+        return Err(IpcError::BadInput(format!(
+            "Check out \"{base_branch}\" in the main working tree before merging (it's on \"{current}\")."
+        )));
+    }
+
+    // A dirty tree would make the merge ambiguous / could be clobbered.
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["status", "--porcelain"])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git status: {e}")))?;
+    if !String::from_utf8_lossy(&status.stdout).trim().is_empty() {
+        return Err(IpcError::BadInput(
+            "Commit or stash changes in the main working tree before merging.".into(),
+        ));
+    }
+
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["merge", "--no-ff", branch])
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git merge: {e}")))?;
+    if !out.status.success() {
+        return Err(IpcError::BadInput(format!(
+            "git merge failed: {}",
+            git_failure_detail(&out)
+        )));
+    }
+    Ok(())
+}
+
 fn read_repo_file(repo: &Utf8Path, file_path: String) -> Result<FileContents, IpcError> {
     let abs = resolve_under_repo(repo, &file_path)?;
     let bytes =
@@ -3165,6 +3393,9 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             archived_at: None,
+            worktree_path: None,
+            branch: None,
+            base_branch: None,
         }
     }
 
@@ -3468,6 +3699,75 @@ mod tests {
         git_fetch_blocking(b8).unwrap();
         git_pull_blocking(b8).unwrap();
         assert_eq!(std::fs::read_to_string(b.join("f.txt")).unwrap(), "2");
+    }
+
+    // --- session worktree isolation --------------------------------------
+
+    /// Build a one-commit repo under `dir/repo` and return its Utf8 path.
+    fn init_repo_with_commit(dir: &std::path::Path) -> Utf8PathBuf {
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q"]);
+        std::fs::write(repo.join("f.txt"), "base").unwrap();
+        git_in(&repo, &["add", "-A"]);
+        git_in(&repo, &["commit", "-q", "-m", "base"]);
+        Utf8PathBuf::from_path_buf(repo).unwrap()
+    }
+
+    #[test]
+    fn worktree_base_is_none_on_non_git_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = Utf8Path::from_path(tmp.path()).unwrap();
+        assert!(worktree_base(dir).is_none());
+    }
+
+    #[test]
+    fn worktree_add_isolates_and_remove_cleans_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let (base_sha, base_branch) = worktree_base(&repo).expect("a commit exists");
+        assert!(base_branch.is_some());
+
+        let wt = Utf8PathBuf::from_path_buf(tmp.path().join("wt")).unwrap();
+        worktree_add_blocking(&repo, &wt, "ycode/test", &base_sha).unwrap();
+        assert!(wt.join("f.txt").exists(), "worktree checked out the base");
+
+        // A write in the worktree is a physically different file — the main
+        // repo's copy is untouched.
+        std::fs::write(wt.join("f.txt"), "changed-in-worktree").unwrap();
+        assert_eq!(std::fs::read_to_string(repo.join("f.txt")).unwrap(), "base");
+
+        worktree_remove_blocking(&repo, wt.as_str()).unwrap();
+        assert!(!wt.exists(), "worktree dir removed");
+    }
+
+    #[test]
+    fn merge_worktree_brings_branch_back_and_guards_preconditions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let (base_sha, base_branch) = worktree_base(&repo).unwrap();
+        let base_branch = base_branch.unwrap();
+
+        let wt = Utf8PathBuf::from_path_buf(tmp.path().join("wt")).unwrap();
+        worktree_add_blocking(&repo, &wt, "ycode/feat", &base_sha).unwrap();
+
+        // Commit new work inside the worktree.
+        std::fs::write(wt.join("new.txt"), "from worktree").unwrap();
+        git_in(wt.as_std_path(), &["add", "-A"]);
+        git_in(wt.as_std_path(), &["commit", "-q", "-m", "feat"]);
+
+        // Merge succeeds: the file lands in the main tree (on base_branch, clean).
+        merge_worktree_blocking(&repo, "ycode/feat", &base_branch).unwrap();
+        assert!(repo.join("new.txt").exists(), "merge landed the new file");
+
+        // Wrong base branch → refused.
+        let err = merge_worktree_blocking(&repo, "ycode/feat", "no-such-branch").unwrap_err();
+        assert!(format!("{err}").contains("Check out"));
+
+        // Dirty main tree → refused.
+        std::fs::write(repo.join("dirty.txt"), "x").unwrap();
+        let err = merge_worktree_blocking(&repo, "ycode/feat", &base_branch).unwrap_err();
+        assert!(format!("{err}").contains("Commit or stash"));
     }
 }
 

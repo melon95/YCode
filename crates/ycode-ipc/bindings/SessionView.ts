@@ -25,4 +25,15 @@ created_at_ms: bigint,
 /**
  * Unix milliseconds.
  */
-updated_at_ms: bigint, archived_at_ms: bigint | null, };
+updated_at_ms: bigint, archived_at_ms: bigint | null, 
+/**
+ * Path of the session's isolated git worktree, when it runs in one.
+ * `None` for shared-mode sessions — the UI shows the Merge affordance
+ * only when this is set.
+ */
+worktree_path: string | null, 
+/**
+ * The branch this session's worktree merges back into (label for the
+ * Merge button).
+ */
+base_branch: string | null, };

@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { Card } from "@heroui/react";
-import { createSession } from "../lib/ipc";
+import { createSession, setProjectIsolateSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
 import ycodeLogoUrl from "../assets/ycode-logo.svg";
@@ -20,7 +20,21 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const upsertSession = useStore((s) => s.upsertSession);
+  const upsertProject = useStore((s) => s.upsertProject);
   const openSessionInLayout = useStore((s) => s.openSessionInLayout);
+
+  // Toggle per-project worktree isolation. Optimistic: flip the store copy
+  // first (so the checkbox responds instantly), roll back on failure.
+  async function toggleIsolate() {
+    const next = !project.isolate_sessions;
+    upsertProject({ ...project, isolate_sessions: next });
+    try {
+      await setProjectIsolateSessions(project.id, next);
+    } catch (err) {
+      upsertProject({ ...project, isolate_sessions: !next });
+      setError(String(err));
+    }
+  }
 
   // Show only agents whose command resolved on PATH (per user request —
   // unavailable agents are noise in the picker; Settings is where they
@@ -65,6 +79,14 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
         <p className="picker-subtitle">
           Pick an agent to start a new session in {project.name}
         </p>
+        <label className="picker-isolate" title="Each agent gets its own git worktree and branch, so parallel agents don't clobber each other's files.">
+          <input
+            type="checkbox"
+            checked={project.isolate_sessions}
+            onChange={toggleIsolate}
+          />
+          <span>Isolate each agent in its own worktree</span>
+        </label>
         {error && <div className="form-error">{error}</div>}
         <div className="picker-agents">
           {sorted.length === 0 && !error && (
