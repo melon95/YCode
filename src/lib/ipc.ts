@@ -111,6 +111,9 @@ export const setProjectIsolateSessions = (
 ): Promise<void> =>
   invoke("set_project_isolate_sessions", { projectId, isolate });
 
+export const sessionWorktreeDirty = (sessionId: string): Promise<boolean> =>
+  invoke("session_worktree_dirty", { sessionId });
+
 export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
   invoke("rename_session", { request });
 

@@ -947,7 +947,9 @@ impl Service {
             (repo.clone(), None, None, None)
         };
 
-        let row = self
+        // Keep a copy of the branch for rollback — the insert below moves it.
+        let cleanup_branch = branch.clone();
+        let row = match self
             .db
             .sessions()
             .insert(NewSession {
@@ -961,26 +963,43 @@ impl Service {
                 branch,
                 base_branch,
             })
-            .await?;
+            .await
+        {
+            Ok(row) => row,
+            Err(e) => {
+                // The worktree exists but the row doesn't — tear it down so a
+                // failed insert leaves no orphan worktree/branch.
+                if let Some(wt) = worktree_path.clone() {
+                    let repo_c = repo.clone();
+                    let br = cleanup_branch.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        worktree_cleanup_blocking(&repo_c, &wt, br.as_deref());
+                    })
+                    .await;
+                }
+                return Err(e.into());
+            }
+        };
 
         let started_at = std::time::SystemTime::now();
         let session = self
             .spawn_pty(&id, &profile, &row, cwd.clone(), launch_mode)
             .await
             .map_err(|e| {
-                // Roll back the row AND the worktree so a failed spawn leaves
-                // nothing behind.
+                // Roll back the row AND the worktree+branch so a failed spawn
+                // leaves nothing behind.
                 let db = self.db.clone();
                 let id_clone = id.clone();
                 let repo_c = repo.clone();
                 let wt_clone = worktree_path.clone();
+                let br_clone = cleanup_branch.clone();
                 tokio::spawn(async move {
                     if let Err(e) = db.sessions().archive(&id_clone).await {
                         warn!(session_id = %id_clone, error = %e, "rollback archive failed");
                     }
                     if let Some(wt) = wt_clone {
                         let _ = tokio::task::spawn_blocking(move || {
-                            worktree_remove_blocking(&repo_c, &wt)
+                            worktree_cleanup_blocking(&repo_c, &wt, br_clone.as_deref());
                         })
                         .await;
                     }
@@ -1216,11 +1235,40 @@ impl Service {
         let base_branch = row
             .base_branch
             .ok_or_else(|| IpcError::BadInput("session has no base branch to merge into".into()))?;
+        let worktree_path = row.worktree_path.clone();
         let project = self.db.projects().get(&row.project_id).await?;
         let repo = Utf8PathBuf::from(project.repo_path);
-        tokio::task::spawn_blocking(move || merge_worktree_blocking(&repo, &branch, &base_branch))
-            .await
-            .map_err(|e| IpcError::BadInput(format!("merge task: {e}")))?
+        tokio::task::spawn_blocking(move || {
+            // A merge only includes committed work. If the agent left changes
+            // uncommitted in its worktree, warn instead of silently merging
+            // nothing (a common surprise — the agent edited files but never
+            // ran `git commit`).
+            if let Some(wt) = &worktree_path {
+                if worktree_is_dirty(Utf8Path::new(wt)) {
+                    return Err(IpcError::BadInput(
+                        "This agent has uncommitted changes in its worktree — commit them first, \
+                         then merge (a merge only includes committed work)."
+                            .into(),
+                    ));
+                }
+            }
+            merge_worktree_blocking(&repo, &branch, &base_branch)
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("merge task: {e}")))?
+    }
+
+    /// Whether a session's isolated worktree has uncommitted changes. `false`
+    /// for shared-mode sessions (no worktree). The UI uses this to warn before
+    /// closing a session — closing force-removes the worktree.
+    pub async fn session_worktree_dirty(&self, session_id: String) -> Result<bool, IpcError> {
+        let row = self.db.sessions().get(&session_id).await?;
+        match row.worktree_path {
+            Some(wt) => tokio::task::spawn_blocking(move || worktree_is_dirty(Utf8Path::new(&wt)))
+                .await
+                .map_err(|e| IpcError::BadInput(format!("dirty task: {e}"))),
+            None => Ok(false),
+        }
     }
 
     /// Toggle whether new sessions in a project run in isolated worktrees.
@@ -2641,6 +2689,43 @@ fn git_push_blocking(repo: &Utf8Path) -> Result<(), IpcError> {
     Ok(())
 }
 
+/// Branches currently checked out in *linked* worktrees (i.e. session
+/// worktrees). git forbids checking one of these out in a second tree, so the
+/// main tree's branch switcher must exclude them. The main worktree's own
+/// branch (the current one) is not included — it stays listed as current.
+fn linked_worktree_branches(repo: &Utf8Path) -> std::collections::HashSet<String> {
+    let mut occupied = std::collections::HashSet::new();
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["worktree", "list", "--porcelain"])
+        .output();
+    let Ok(out) = out else {
+        return occupied;
+    };
+    if !out.status.success() {
+        return occupied;
+    }
+    // Porcelain output is blank-line-separated blocks, one per worktree, main
+    // worktree first. Skip the first; collect `branch refs/heads/<name>` lines.
+    let text = String::from_utf8_lossy(&out.stdout);
+    for (i, block) in text
+        .split("\n\n")
+        .filter(|b| !b.trim().is_empty())
+        .enumerate()
+    {
+        if i == 0 {
+            continue;
+        }
+        for line in block.lines() {
+            if let Some(b) = line.strip_prefix("branch refs/heads/") {
+                occupied.insert(b.trim().to_string());
+            }
+        }
+    }
+    occupied
+}
+
 fn git_list_branches_blocking(repo: &Utf8Path) -> Result<GitBranchListView, IpcError> {
     let out = std::process::Command::new("git")
         .arg("-C")
@@ -2654,10 +2739,13 @@ fn git_list_branches_blocking(repo: &Utf8Path) -> Result<GitBranchListView, IpcE
             git_failure_detail(&out)
         )));
     }
+    // Hide branches held by session worktrees — the main tree can't switch to
+    // them (git rejects it), so listing them only invites a guaranteed error.
+    let occupied = linked_worktree_branches(repo);
     let branches = String::from_utf8_lossy(&out.stdout)
         .lines()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && !occupied.contains(s))
         .collect();
 
     // `current_branch` errors on detached HEAD; here that's not an error, just
@@ -2685,10 +2773,15 @@ fn git_checkout_branch_blocking(repo: &Utf8Path, name: String) -> Result<(), Ipc
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git checkout: {e}")))?;
     if !out.status.success() {
-        return Err(IpcError::BadInput(format!(
-            "git checkout failed: {}",
-            git_failure_detail(&out)
-        )));
+        let detail = git_failure_detail(&out);
+        // Belt-and-suspenders: the switcher already filters worktree branches,
+        // but if one slips through, explain why it can't be checked out.
+        let msg = if detail.contains("already used by worktree") {
+            format!("\"{name}\" is checked out in an agent's worktree and can't be switched to here.")
+        } else {
+            format!("git checkout failed: {detail}")
+        };
+        return Err(IpcError::BadInput(msg));
     }
     Ok(())
 }
@@ -2764,6 +2857,34 @@ fn worktree_remove_blocking(repo: &Utf8Path, worktree_path: &str) -> Result<(), 
         )));
     }
     Ok(())
+}
+
+/// Roll back a half-created session worktree: remove the worktree AND delete
+/// its branch. Unlike archival we delete the branch here — a failed create has
+/// no work worth keeping, and a dangling `ycode/<id>` branch would otherwise
+/// linger in the branch switcher. Best-effort; errors are ignored.
+fn worktree_cleanup_blocking(repo: &Utf8Path, worktree_path: &str, branch: Option<&str>) {
+    let _ = worktree_remove_blocking(repo, worktree_path);
+    if let Some(b) = branch {
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["branch", "-D", b])
+            .output();
+    }
+}
+
+/// Whether a worktree has uncommitted changes (staged or unstaged). Used to
+/// warn before a merge (which only sees committed work) and before closing a
+/// session (which discards the worktree). Missing/non-git path → not dirty.
+fn worktree_is_dirty(path: &Utf8Path) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(path.as_std_path())
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+        .unwrap_or(false)
 }
 
 /// Merge `branch` into `base_branch` on the main working tree at `repo`.
@@ -3768,6 +3889,34 @@ mod tests {
         std::fs::write(repo.join("dirty.txt"), "x").unwrap();
         let err = merge_worktree_blocking(&repo, "ycode/feat", &base_branch).unwrap_err();
         assert!(format!("{err}").contains("Commit or stash"));
+    }
+
+    #[test]
+    fn list_branches_excludes_worktree_held_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let (base_sha, _) = worktree_base(&repo).unwrap();
+
+        // A session worktree holds ycode/x; a plain branch is free.
+        let wt = Utf8PathBuf::from_path_buf(tmp.path().join("wt")).unwrap();
+        worktree_add_blocking(&repo, &wt, "ycode/x", &base_sha).unwrap();
+        git_in(repo.as_std_path(), &["branch", "feature"]);
+
+        let list = git_list_branches_blocking(&repo).unwrap();
+        assert!(list.branches.contains(&"feature".to_string()));
+        assert!(
+            !list.branches.contains(&"ycode/x".to_string()),
+            "branch held by a worktree must be hidden from the switcher"
+        );
+    }
+
+    #[test]
+    fn worktree_is_dirty_detects_uncommitted_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        assert!(!worktree_is_dirty(&repo), "fresh checkout is clean");
+        std::fs::write(repo.join("x.txt"), "new").unwrap();
+        assert!(worktree_is_dirty(&repo), "untracked file makes it dirty");
     }
 }
 

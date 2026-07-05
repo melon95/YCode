@@ -278,6 +278,18 @@ pub async fn set_project_isolate_sessions(
 }
 
 #[tauri::command]
+pub async fn session_worktree_dirty(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<bool, String> {
+    state
+        .service
+        .session_worktree_dirty(session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_files(
     state: State<'_, AppState>,
     project_id: String,
