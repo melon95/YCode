@@ -3,7 +3,11 @@
 // of drifting into two subtly different "close" behaviours.
 
 import { toast } from "@heroui/react";
-import { archiveSession, sessionWorktreeDirty } from "./ipc";
+import {
+  archiveSession,
+  sessionWorktreeDirty,
+  sessionWorktreeUnmergedCommits,
+} from "./ipc";
 import { confirmDialog } from "./confirm";
 import { displaySessionTitle, useStore } from "./store";
 
@@ -16,18 +20,45 @@ export async function closeSessionNow(sessionId: string): Promise<void> {
   const sess = useStore.getState().sessions[sessionId];
   if (!sess) return;
   if (sess.worktree_path) {
+    // Two independent ways closing can lose sight of an agent's work:
+    //  - uncommitted changes: removed together with the worktree, gone.
+    //  - committed-but-unmerged commits: the branch is kept, but goes orphan
+    //    (no worktree, not surfaced anywhere in the UI) — a plain dirty check
+    //    misses this entirely, which is how "where did my agent's work go?"
+    //    happens. Check both and tailor the warning to what's actually at risk.
     let dirty = false;
+    let unmerged = 0;
     try {
-      dirty = await sessionWorktreeDirty(sessionId);
+      [dirty, unmerged] = await Promise.all([
+        sessionWorktreeDirty(sessionId),
+        sessionWorktreeUnmergedCommits(sessionId),
+      ]);
     } catch {
-      // If we can't determine dirtiness, don't block the close.
+      // If we can't determine either, don't block the close.
     }
-    if (dirty) {
+    if (dirty || unmerged > 0) {
+      const branch = sess.branch ?? "its branch";
+      const commits = `${unmerged} commit${unmerged === 1 ? "" : "s"}`;
+      let message: string;
+      if (dirty && unmerged > 0) {
+        message =
+          `This agent has uncommitted changes and ${commits} not merged into ${sess.base_branch ?? "its base"}. ` +
+          `Closing removes the worktree: the uncommitted changes are discarded, and while the branch "${branch}" is kept, ` +
+          `it goes orphan (no worktree, hidden from the UI). Commit and merge first to keep everything.`;
+      } else if (dirty) {
+        message =
+          "This agent has uncommitted changes in its worktree. Closing removes the worktree and discards them — " +
+          "commit or merge first to keep them.";
+      } else {
+        message =
+          `This agent has ${commits} not yet merged into ${sess.base_branch ?? "its base"}. ` +
+          `Closing removes the worktree; the branch "${branch}" is kept but goes orphan (hidden from the UI) — ` +
+          "merge first to keep the work in view.";
+      }
       const ok = await confirmDialog({
-        title: "Discard uncommitted changes?",
-        message:
-          "This agent has uncommitted changes in its worktree. Closing removes the worktree and discards them — commit or merge first to keep them.",
-        confirmLabel: "Close & discard",
+        title: "Close this agent's worktree?",
+        message,
+        confirmLabel: "Close anyway",
         destructive: true,
       });
       if (!ok) return;

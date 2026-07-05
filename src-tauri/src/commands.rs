@@ -290,6 +290,18 @@ pub async fn session_worktree_dirty(
 }
 
 #[tauri::command]
+pub async fn session_worktree_unmerged_commits(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<u32, String> {
+    state
+        .service
+        .session_worktree_unmerged_commits(session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_files(
     state: State<'_, AppState>,
     project_id: String,

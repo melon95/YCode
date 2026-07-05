@@ -114,6 +114,11 @@ export const setProjectIsolateSessions = (
 export const sessionWorktreeDirty = (sessionId: string): Promise<boolean> =>
   invoke("session_worktree_dirty", { sessionId });
 
+export const sessionWorktreeUnmergedCommits = (
+  sessionId: string,
+): Promise<number> =>
+  invoke("session_worktree_unmerged_commits", { sessionId });
+
 export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
   invoke("rename_session", { request });
 

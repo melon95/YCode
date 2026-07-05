@@ -631,6 +631,7 @@ pub fn run() {
             commands::merge_session_worktree,
             commands::set_project_isolate_sessions,
             commands::session_worktree_dirty,
+            commands::session_worktree_unmerged_commits,
             commands::rename_session,
             commands::list_files,
             commands::read_file,

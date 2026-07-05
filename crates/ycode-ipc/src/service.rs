@@ -1328,6 +1328,29 @@ impl Service {
         }
     }
 
+    /// How many commits on the session's worktree branch are not yet in its
+    /// base branch (`base..branch`). `0` for shared-mode sessions or a
+    /// fully-merged branch. The UI warns before closing a session with unmerged
+    /// commits: closing removes the worktree, and while the branch itself is
+    /// kept, it's no longer surfaced anywhere in the UI — so that committed work
+    /// would silently drop out of view. A count of committed-but-unmerged work
+    /// that a plain dirty check (`session_worktree_dirty`) misses entirely.
+    pub async fn session_worktree_unmerged_commits(
+        &self,
+        session_id: String,
+    ) -> Result<u32, IpcError> {
+        let row = self.db.sessions().get(&session_id).await?;
+        let (branch, base) = match (row.branch, row.base_branch) {
+            (Some(b), Some(base)) => (b, base),
+            _ => return Ok(0),
+        };
+        let project = self.db.projects().get(&row.project_id).await?;
+        let repo = Utf8PathBuf::from(project.repo_path);
+        tokio::task::spawn_blocking(move || unmerged_commit_count_blocking(&repo, &base, &branch))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("unmerged count task: {e}")))
+    }
+
     /// Toggle whether new sessions in a project run in isolated worktrees.
     /// Existing sessions are unaffected — the flag is read at session creation.
     pub async fn set_project_isolate_sessions(
@@ -2944,6 +2967,22 @@ fn worktree_is_dirty(path: &Utf8Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Count commits reachable from `branch` but not `base` (`git rev-list --count
+/// base..branch`), run in the shared repo (worktrees share one ref DB). Fails
+/// open to `0` on any git error — the count only gates a confirm dialog, so
+/// "nothing unmerged" is the safe default rather than blocking a close.
+fn unmerged_commit_count_blocking(repo: &Utf8Path, base: &str, branch: &str) -> u32 {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["rev-list", "--count", &format!("{base}..{branch}")])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
+        .unwrap_or(0)
+}
+
 /// Merge `branch` into `base_branch` on the main working tree at `repo`.
 /// Preconditions (each with a friendly, actionable error): the main tree is on
 /// `base_branch`, and it's clean. Merge conflicts surface git's own message.
@@ -3946,6 +3985,48 @@ mod tests {
         std::fs::write(repo.join("dirty.txt"), "x").unwrap();
         let err = merge_worktree_blocking(&repo, "ycode/feat", &base_branch).unwrap_err();
         assert!(format!("{err}").contains("Commit or stash"));
+    }
+
+    #[test]
+    fn unmerged_commit_count_tracks_worktree_commits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let (base_sha, base_branch) = worktree_base(&repo).unwrap();
+        let base_branch = base_branch.unwrap();
+
+        let wt = Utf8PathBuf::from_path_buf(tmp.path().join("wt")).unwrap();
+        worktree_add_blocking(&repo, &wt, "ycode/feat", &base_sha).unwrap();
+
+        // Fresh worktree, no new commits → nothing unmerged.
+        assert_eq!(
+            unmerged_commit_count_blocking(&repo, &base_branch, "ycode/feat"),
+            0,
+        );
+
+        // Two commits in the worktree → two unmerged. This is exactly the case a
+        // plain dirty check misses (the worktree is clean, work is committed).
+        for name in ["a.txt", "b.txt"] {
+            std::fs::write(wt.join(name), name).unwrap();
+            git_in(wt.as_std_path(), &["add", "-A"]);
+            git_in(wt.as_std_path(), &["commit", "-q", "-m", name]);
+        }
+        assert_eq!(
+            unmerged_commit_count_blocking(&repo, &base_branch, "ycode/feat"),
+            2,
+        );
+
+        // Once merged, nothing is unmerged anymore.
+        merge_worktree_blocking(&repo, "ycode/feat", &base_branch).unwrap();
+        assert_eq!(
+            unmerged_commit_count_blocking(&repo, &base_branch, "ycode/feat"),
+            0,
+        );
+
+        // A bad ref fails open to 0 rather than erroring (it only gates a dialog).
+        assert_eq!(
+            unmerged_commit_count_blocking(&repo, &base_branch, "no-such-branch"),
+            0,
+        );
     }
 
     #[test]
