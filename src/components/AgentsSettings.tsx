@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import type { AgentLaunchProfileView, ConfigView } from "../lib/types";
+import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { AgentIcon } from "./AgentIcon";
 
 const KNOWN_AGENTS: AgentLaunchProfileView[] = [
@@ -207,6 +208,13 @@ export function AgentsSettings({ config, onChange }: Props) {
     setAdding(false);
   }
 
+  // While the inline "add custom agent" sub-form is open, Escape cancels it
+  // first. Registering through the shared guard means it sits ABOVE the Settings
+  // modal's own guard on the stack, so one Escape closes the sub-form and a
+  // second closes Settings — instead of a per-input onKeyDown handler that the
+  // capture-phase guard would swallow before it ever fired.
+  useEscapeGuard(cancelCustom, adding);
+
   // One flat list: configured agents first (in config order), then the
   // remaining catalog agents you can still add. `addedIdx` is the index into
   // config.agents for added rows, or null for addable ones.
@@ -283,7 +291,6 @@ export function AgentsSettings({ config, onChange }: Props) {
                 onChange={(e) => setCustomName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") confirmCustom();
-                  if (e.key === "Escape") cancelCustom();
                 }}
               />
               <input
@@ -294,7 +301,6 @@ export function AgentsSettings({ config, onChange }: Props) {
                 onChange={(e) => setCustomCommand(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") confirmCustom();
-                  if (e.key === "Escape") cancelCustom();
                 }}
               />
               <button

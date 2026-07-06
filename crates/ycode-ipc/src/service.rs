@@ -3039,10 +3039,18 @@ fn merge_worktree_blocking(
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git merge: {e}")))?;
     if !out.status.success() {
-        return Err(IpcError::BadInput(format!(
-            "git merge failed: {}",
-            git_failure_detail(&out)
-        )));
+        let detail = git_failure_detail(&out);
+        // A conflicting merge leaves the *main* working tree mid-merge (conflict
+        // markers written into files + MERGE_HEAD set). Roll it back so we never
+        // strand the user's primary tree in a broken state behind their back.
+        // Best-effort: if there was nothing to abort (a non-conflict failure),
+        // `git merge --abort` is a harmless no-op we ignore.
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["merge", "--abort"])
+            .output();
+        return Err(IpcError::BadInput(format!("git merge failed: {detail}")));
     }
     Ok(())
 }
