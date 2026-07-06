@@ -73,6 +73,14 @@ export const updateTodo = (
 export const deleteTodo = (id: string): Promise<void> =>
   invoke("delete_todo", { id });
 
+// Persist a manual drag-reorder. `orderedIds` is the full new order of the
+// project's todos; each row's sort_order becomes its position in the list.
+export const reorderTodos = (
+  projectId: string,
+  orderedIds: string[],
+): Promise<void> =>
+  invoke("reorder_todos", { projectId, orderedIds });
+
 export const createSession = (
   request: Omit<CreateSessionRequest, "resume"> & { resume?: string | null },
 ): Promise<SessionView> =>

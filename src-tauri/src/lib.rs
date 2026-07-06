@@ -621,6 +621,7 @@ pub fn run() {
             commands::create_todo,
             commands::update_todo,
             commands::delete_todo,
+            commands::reorder_todos,
             commands::create_session,
             commands::write_pty,
             commands::read_pty_backlog,

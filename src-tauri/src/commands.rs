@@ -157,6 +157,19 @@ pub async fn delete_todo(state: State<'_, AppState>, id: String) -> Result<(), S
 }
 
 #[tauri::command]
+pub async fn reorder_todos(
+    state: State<'_, AppState>,
+    project_id: String,
+    ordered_ids: Vec<String>,
+) -> Result<(), String> {
+    state
+        .service
+        .reorder_todos(project_id, ordered_ids)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn spawn_pty_raw(
     state: State<'_, AppState>,
     request: SpawnPtyRequest,

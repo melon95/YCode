@@ -5263,9 +5263,35 @@ textarea.native-input {
   background: rgba(var(--highlight-rgb), 0.05);
 }
 
-/* todo/doing rows advance status on a single click anywhere on the row. */
+/* todo/doing rows toggle status on a single click anywhere on the row. */
 .todo-item.clickable {
   cursor: pointer;
+}
+
+/* Status sub-group header ("In progress" / "To do") in the active list. */
+.todo-group-header {
+  list-style: none;
+  padding: 6px 8px 2px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+
+/* Drag-to-reorder affordances. The grab cursor only shows on hover so the
+   text cursor still wins over the editable title. */
+.todo-item.draggable:hover {
+  cursor: grab;
+}
+
+.todo-item.dragging {
+  opacity: 0.4;
+}
+
+/* Insertion line above the row the dragged item would land before. */
+.todo-item.drop-target {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 /* Status box — empty for todo/doing, filled check for done. Click cycles. */
@@ -5432,4 +5458,101 @@ textarea.native-input {
   margin-left: auto;
   font-weight: 700;
   color: var(--subtle);
+}
+
+/* Completed todos grouped by the week they were finished. */
+.todo-week-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-week-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+}
+
+.todo-week-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text-soft);
+}
+
+.todo-week-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--subtle);
+}
+
+/* "View all completed" link that opens the full archive page. */
+.todo-view-all {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.todo-view-all:hover {
+  background: rgba(var(--highlight-rgb), 0.05);
+}
+
+.todo-view-all-hint {
+  margin-left: auto;
+  color: var(--subtle);
+  font-weight: 500;
+}
+
+/* Full-panel archive page listing every completed week. */
+.todo-archive-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 10px;
+  border-bottom: 1px solid rgba(var(--highlight-rgb), 0.08);
+  margin-bottom: 10px;
+}
+
+.todo-archive-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.todo-archive-back:hover {
+  background: rgba(var(--highlight-rgb), 0.05);
+  color: var(--text);
+}
+
+.todo-archive-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.todo-archive-header .todo-done-count {
+  font-size: 12px;
 }

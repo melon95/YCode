@@ -146,6 +146,30 @@ impl<'a> TodoRepo<'a> {
         Ok(row)
     }
 
+    /// Persist a manual ordering: assign `sort_order = position` to each id in
+    /// `ordered_ids`, scoped to `project_id`. Ids not belonging to the project
+    /// (or unknown) are silently skipped. Runs in one transaction so the list
+    /// never observes a half-applied order.
+    pub async fn reorder(
+        &self,
+        project_id: &str,
+        ordered_ids: &[String],
+    ) -> Result<(), PersistError> {
+        let mut tx = self.pool.begin().await?;
+        for (idx, id) in ordered_ids.iter().enumerate() {
+            sqlx::query(
+                "UPDATE project_todos SET sort_order = ? WHERE id = ? AND project_id = ?",
+            )
+            .bind(idx as i64)
+            .bind(id)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn delete(&self, id: &str) -> Result<(), PersistError> {
         let res = sqlx::query("DELETE FROM project_todos WHERE id = ?")
             .bind(id)
@@ -252,6 +276,42 @@ mod tests {
         let title_only = db.todos().update("a", Some("x"), None).await.unwrap();
         assert_eq!(title_only.started_at, first_started);
         assert_eq!(title_only.done_at, done.done_at);
+    }
+
+    #[tokio::test]
+    async fn reorder_assigns_positions() {
+        let db = seeded_db().await;
+        db.todos().insert(todo_fixture("a")).await.unwrap();
+        db.todos().insert(todo_fixture("b")).await.unwrap();
+        db.todos().insert(todo_fixture("c")).await.unwrap();
+
+        db.todos()
+            .reorder("p1", &["c".into(), "a".into(), "b".into()])
+            .await
+            .unwrap();
+
+        let list = db.todos().list_for_project("p1").await.unwrap();
+        assert_eq!(
+            list.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["c", "a", "b"]
+        );
+        assert_eq!(list[0].sort_order, 0);
+        assert_eq!(list[1].sort_order, 1);
+        assert_eq!(list[2].sort_order, 2);
+    }
+
+    #[tokio::test]
+    async fn reorder_ignores_foreign_ids() {
+        let db = seeded_db().await;
+        db.todos().insert(todo_fixture("a")).await.unwrap();
+        // "ghost" is not a real todo — it must be skipped, not error.
+        db.todos()
+            .reorder("p1", &["ghost".into(), "a".into()])
+            .await
+            .unwrap();
+        let list = db.todos().list_for_project("p1").await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].sort_order, 1);
     }
 
     #[tokio::test]
