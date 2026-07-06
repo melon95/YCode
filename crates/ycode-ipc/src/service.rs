@@ -585,6 +585,18 @@ impl Service {
         Ok(())
     }
 
+    /// Persist a manual drag-reorder of a project's todos. `ordered_ids` is the
+    /// full new order; each row's `sort_order` becomes its position.
+    pub async fn reorder_todos(
+        &self,
+        project_id: String,
+        ordered_ids: Vec<String>,
+    ) -> Result<(), IpcError> {
+        self.db.todos().reorder(&project_id, &ordered_ids).await?;
+        self.emit_todos_changed(&project_id);
+        Ok(())
+    }
+
     fn emit_todos_changed(&self, project_id: &str) {
         let _ = self.ui_bus.send(UiEvent {
             session_id: project_id.to_string(),
@@ -1236,15 +1248,20 @@ impl Service {
         if row.archived_at.is_none() {
             self.db.sessions().archive(&session_id).await?;
         }
-        // Tear down the isolated worktree, if any. Best-effort: a failed remove
-        // must not block archival (the row is already flipped).
+        // Tear down the isolated worktree, if any: stash uncommitted work,
+        // remove the worktree, and prune the branch when it's fully merged.
+        // Best-effort: a failed teardown must not block archival (the row is
+        // already flipped).
         if let Some(wt) = row.worktree_path.clone() {
             if let Ok(project) = self.db.projects().get(&row.project_id).await {
                 let repo = Utf8PathBuf::from(project.repo_path);
-                if let Err(e) =
-                    tokio::task::spawn_blocking(move || worktree_remove_blocking(&repo, &wt)).await
+                let (branch, base) = (row.branch.clone(), row.base_branch.clone());
+                if let Err(e) = tokio::task::spawn_blocking(move || {
+                    worktree_teardown_blocking(&repo, &wt, branch.as_deref(), base.as_deref())
+                })
+                .await
                 {
-                    warn!(session_id = %session_id, error = %e, "worktree remove task join failed");
+                    warn!(session_id = %session_id, error = %e, "worktree teardown task join failed");
                 }
             }
         }
@@ -2963,18 +2980,34 @@ fn worktree_add_blocking(
             git_failure_detail(&out)
         )));
     }
+    // Lock the fresh worktree so an external `git worktree prune`/`remove` (or a
+    // stray `git gc`) can't reclaim a live session's checkout out from under it.
+    // ycode's own teardown removes it with `--force --force`, which overrides
+    // this lock. Best-effort — a failed lock merely forgoes that protection.
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args([
+            "worktree",
+            "lock",
+            "--reason",
+            "ycode: live session",
+            worktree_path.as_str(),
+        ])
+        .output();
     Ok(())
 }
 
-/// Tear down a session's worktree (`git worktree remove --force <path>`).
-/// `--force` because the session is being closed — we discard any uncommitted
-/// state in the worktree rather than leaving an orphan checkout behind. The
-/// session's branch is intentionally kept so unmerged work can still be found.
+/// Tear down a session's worktree (`git worktree remove --force --force <path>`).
+/// The first `--force` discards any uncommitted state; the second overrides the
+/// creation-time `git worktree lock` (see `worktree_add_blocking`) so our own
+/// teardown always succeeds while external tools stay blocked. The session's
+/// branch is intentionally kept so unmerged work can still be found.
 fn worktree_remove_blocking(repo: &Utf8Path, worktree_path: &str) -> Result<(), IpcError> {
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(repo.as_std_path())
-        .args(["worktree", "remove", "--force", worktree_path])
+        .args(["worktree", "remove", "--force", "--force", worktree_path])
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git worktree remove: {e}")))?;
     if !out.status.success() {
@@ -2982,6 +3015,57 @@ fn worktree_remove_blocking(repo: &Utf8Path, worktree_path: &str) -> Result<(), 
             "git worktree remove failed: {}",
             git_failure_detail(&out)
         )));
+    }
+    Ok(())
+}
+
+/// Full teardown for a *closed* session's worktree, layering three safeguards
+/// over the bare `worktree_remove_blocking`:
+///   1. stash uncommitted + untracked work first, so the forced removal can't
+///      silently discard it — the stash lands in the shared object store and is
+///      recoverable from the main tree via `git stash list`/`apply`;
+///   2. remove the worktree;
+///   3. delete the branch ONLY when it's fully merged into its base. An unmerged
+///      branch is kept so its commits stay recoverable; a merged one would
+///      otherwise linger forever in the branch list.
+fn worktree_teardown_blocking(
+    repo: &Utf8Path,
+    worktree_path: &str,
+    branch: Option<&str>,
+    base_branch: Option<&str>,
+) -> Result<(), IpcError> {
+    let wt = Utf8Path::new(worktree_path);
+    // (1) Snapshot uncommitted work before the force-remove throws it away.
+    if worktree_is_dirty(wt) {
+        let msg = format!(
+            "ycode: uncommitted work from {}",
+            branch.unwrap_or("a closed worktree session")
+        );
+        let stashed = std::process::Command::new("git")
+            .arg("-C")
+            .arg(wt.as_std_path())
+            .args(["stash", "push", "--include-untracked", "-m", &msg])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !stashed {
+            warn!(
+                worktree = %worktree_path,
+                "could not stash uncommitted work before close; the forced removal may discard it"
+            );
+        }
+    }
+    // (2) Remove the worktree (double-force overrides our own creation lock).
+    worktree_remove_blocking(repo, worktree_path)?;
+    // (3) Prune the branch only when it's provably fully merged.
+    if let (Some(branch), Some(base)) = (branch, base_branch) {
+        if branch_fully_merged_blocking(repo, base, branch) {
+            let _ = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo.as_std_path())
+                .args(["branch", "-D", branch])
+                .output();
+        }
     }
     Ok(())
 }
@@ -3028,6 +3112,23 @@ fn unmerged_commit_count_blocking(repo: &Utf8Path, base: &str, branch: &str) -> 
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
         .unwrap_or(0)
+}
+
+/// True only when `branch` has NO commits beyond `base` — fully merged and thus
+/// safe to delete. Fails CLOSED (any git error → `false` → keep the branch),
+/// the mirror image of `unmerged_commit_count_blocking`: here a wrong answer
+/// would delete unmerged work, so uncertainty must preserve the branch.
+fn branch_fully_merged_blocking(repo: &Utf8Path, base: &str, branch: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["rev-list", "--count", &format!("{base}..{branch}")])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
+        .map(|n| n == 0)
+        .unwrap_or(false)
 }
 
 /// Merge `branch` into `base_branch` on the main working tree at `repo`.
@@ -4009,6 +4110,19 @@ mod tests {
         );
     }
 
+    /// Like [`git_in`] but returns stdout (for read-only assertions).
+    fn git_out(dir: &std::path::Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
     #[test]
     fn list_branches_reports_current_and_all() {
         let tmp = tempfile::tempdir().unwrap();
@@ -4188,6 +4302,73 @@ mod tests {
             unmerged_commit_count_blocking(&repo, &base_branch, "no-such-branch"),
             0,
         );
+    }
+
+    #[test]
+    fn branch_fully_merged_fails_closed_on_bad_ref() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let (base_sha, base_branch) = worktree_base(&repo).unwrap();
+        let base_branch = base_branch.unwrap();
+        let wt = Utf8PathBuf::from_path_buf(tmp.path().join("wt")).unwrap();
+        worktree_add_blocking(&repo, &wt, "ycode/feat", &base_sha).unwrap();
+
+        // Fresh worktree, no new commits → provably merged.
+        assert!(branch_fully_merged_blocking(&repo, &base_branch, "ycode/feat"));
+        // One commit ahead → not merged.
+        std::fs::write(wt.join("a.txt"), "a").unwrap();
+        git_in(wt.as_std_path(), &["add", "-A"]);
+        git_in(wt.as_std_path(), &["commit", "-q", "-m", "a"]);
+        assert!(!branch_fully_merged_blocking(&repo, &base_branch, "ycode/feat"));
+        // A git error must NOT read as "merged" — keeping the branch is the safe
+        // default, the opposite of the count helper's fail-open-to-0.
+        assert!(!branch_fully_merged_blocking(&repo, &base_branch, "no-such-branch"));
+    }
+
+    #[test]
+    fn teardown_stashes_uncommitted_and_prunes_only_merged_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        // Committer identity in local config so the production `git stash`
+        // (which writes commit objects) doesn't depend on ambient global config.
+        git_in(repo.as_std_path(), &["config", "user.name", "t"]);
+        git_in(repo.as_std_path(), &["config", "user.email", "t@example.com"]);
+        let (base_sha, base_branch) = worktree_base(&repo).unwrap();
+        let base_branch = base_branch.unwrap();
+
+        // Case A: an unmerged branch plus an extra *uncommitted* edit.
+        let wt_a = Utf8PathBuf::from_path_buf(tmp.path().join("wt-a")).unwrap();
+        worktree_add_blocking(&repo, &wt_a, "ycode/keep", &base_sha).unwrap();
+        std::fs::write(wt_a.join("committed.txt"), "work").unwrap();
+        git_in(wt_a.as_std_path(), &["add", "-A"]);
+        git_in(wt_a.as_std_path(), &["commit", "-q", "-m", "wip"]);
+        std::fs::write(wt_a.join("dirty.txt"), "unsaved").unwrap();
+
+        worktree_teardown_blocking(&repo, wt_a.as_str(), Some("ycode/keep"), Some(&base_branch))
+            .unwrap();
+        assert!(!wt_a.exists(), "worktree removed");
+        // Unmerged branch is kept…
+        let kept = git_out(repo.as_std_path(), &["branch", "--list", "ycode/keep"]);
+        assert!(kept.contains("ycode/keep"), "unmerged branch kept: {kept:?}");
+        // …and the uncommitted work was stashed, not discarded by --force.
+        let stash = git_out(repo.as_std_path(), &["stash", "list"]);
+        assert!(
+            stash.contains("ycode: uncommitted work"),
+            "uncommitted work stashed: {stash:?}"
+        );
+
+        // Case B: a fully-merged branch is pruned on teardown.
+        let wt_b = Utf8PathBuf::from_path_buf(tmp.path().join("wt-b")).unwrap();
+        worktree_add_blocking(&repo, &wt_b, "ycode/gone", &base_sha).unwrap();
+        std::fs::write(wt_b.join("m.txt"), "m").unwrap();
+        git_in(wt_b.as_std_path(), &["add", "-A"]);
+        git_in(wt_b.as_std_path(), &["commit", "-q", "-m", "m"]);
+        merge_worktree_blocking(&repo, "ycode/gone", &base_branch).unwrap();
+
+        worktree_teardown_blocking(&repo, wt_b.as_str(), Some("ycode/gone"), Some(&base_branch))
+            .unwrap();
+        let gone = git_out(repo.as_std_path(), &["branch", "--list", "ycode/gone"]);
+        assert!(!gone.contains("ycode/gone"), "merged branch pruned: {gone:?}");
     }
 
     #[test]
