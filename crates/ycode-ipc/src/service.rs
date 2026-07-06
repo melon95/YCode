@@ -245,7 +245,12 @@ impl Service {
     /// Per plan §6.2.5 / §8.12.
     pub async fn start_workspace_watch(&self, project_id: String) -> Result<(), IpcError> {
         let project = self.db.projects().get(&project_id).await?;
-        let cwd = std::path::PathBuf::from(project.repo_path);
+        let repo_cwd = std::path::PathBuf::from(project.repo_path);
+        // All isolated worktrees for this project live under this dir; the
+        // watcher scopes claude/codex events to the repo cwd OR anything below
+        // here, so a session started later (in a worktree that doesn't exist
+        // yet) is covered without re-arming.
+        let worktree_dir = PathBuf::from(self.worktree_root.join(&project_id));
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
 
         // Cancel any prior watcher for this project.
@@ -264,7 +269,7 @@ impl Service {
         let bus = self.ui_bus.clone();
         let project_id_for_task = project_id.clone();
         tokio::spawn(async move {
-            run_jsonl_watcher(home, cwd, project_id_for_task, bus, cancel).await;
+            run_jsonl_watcher(home, repo_cwd, worktree_dir, project_id_for_task, bus, cancel).await;
         });
         Ok(())
     }
@@ -278,6 +283,28 @@ impl Service {
         Ok(())
     }
 
+    /// The `~/.claude/projects` cwds whose jsonl belong to a project: the repo
+    /// dir plus every isolated-session worktree dir (archived or live). Isolated
+    /// sessions run in a git worktree, so claude/codex archive their jsonl under
+    /// the worktree cwd — without folding these in, the history / usage / search
+    /// readers (which all key off the repo cwd) would miss them entirely.
+    async fn workspace_cwds(
+        &self,
+        project_id: &str,
+        repo_path: &str,
+    ) -> Result<Vec<PathBuf>, IpcError> {
+        let mut cwds = vec![PathBuf::from(repo_path)];
+        for wt in self
+            .db
+            .sessions()
+            .worktree_paths_for_project(project_id)
+            .await?
+        {
+            cwds.push(PathBuf::from(wt));
+        }
+        Ok(cwds)
+    }
+
     /// List every session jsonl on disk (claude + codex) for a project's
     /// cwd. Sorted by mtime descending. Per plan §6.3 (`workspace.scan_known`).
     pub async fn scan_workspace_sessions(
@@ -285,9 +312,9 @@ impl Service {
         project_id: String,
     ) -> Result<Vec<DiscoveredSessionView>, IpcError> {
         let project = self.db.projects().get(&project_id).await?;
-        let cwd = std::path::PathBuf::from(project.repo_path);
+        let cwds = self.workspace_cwds(&project_id, &project.repo_path).await?;
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
-        let found = tokio::task::spawn_blocking(move || scanner::scan_workspace(&home, &cwd))
+        let found = tokio::task::spawn_blocking(move || scanner::scan_workspaces(&home, &cwds))
             .await
             .map_err(|e| IpcError::BadInput(format!("scan task: {e}")))?;
         let mut out = Vec::with_capacity(found.len());
@@ -315,9 +342,9 @@ impl Service {
         project_id: String,
     ) -> Result<WorkspaceUsageView, IpcError> {
         let project = self.db.projects().get(&project_id).await?;
-        let cwd = std::path::PathBuf::from(project.repo_path);
+        let cwds = self.workspace_cwds(&project_id, &project.repo_path).await?;
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
-        let agg = tokio::task::spawn_blocking(move || usage::aggregate_workspace(&home, &cwd))
+        let agg = tokio::task::spawn_blocking(move || usage::aggregate_workspaces(&home, &cwds))
             .await
             .map_err(|e| IpcError::BadInput(format!("usage task: {e}")))?;
         Ok(to_usage_view(agg))
@@ -329,10 +356,11 @@ impl Service {
     /// split.
     pub async fn get_all_usage(&self) -> Result<WorkspaceUsageView, IpcError> {
         let rows = self.db.projects().list().await?;
-        let projects: Vec<(String, String, PathBuf)> = rows
-            .into_iter()
-            .map(|r| (r.id, r.name, PathBuf::from(r.repo_path)))
-            .collect();
+        let mut projects: Vec<(String, String, Vec<PathBuf>)> = Vec::with_capacity(rows.len());
+        for r in rows {
+            let cwds = self.workspace_cwds(&r.id, &r.repo_path).await?;
+            projects.push((r.id, r.name, cwds));
+        }
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
         let agg = tokio::task::spawn_blocking(move || usage::aggregate_all_projects(&home, &projects))
             .await
@@ -374,13 +402,13 @@ impl Service {
             return Ok(vec![]);
         }
         let project = self.db.projects().get(&project_id).await?;
-        let cwd = std::path::PathBuf::from(project.repo_path);
+        let cwds = self.workspace_cwds(&project_id, &project.repo_path).await?;
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
         let q = query.to_lowercase();
         let limit = limit.max(1);
         let hits = tokio::task::spawn_blocking(move || {
             let mut hits: Vec<SearchHit> = Vec::new();
-            for s in scanner::scan_workspace(&home, &cwd) {
+            for s in scanner::scan_workspaces(&home, &cwds) {
                 let sid = s.session_id.clone().unwrap_or_default();
                 let agent = s.agent.to_string();
                 let path_str = s.jsonl_path.to_string_lossy().into_owned();
@@ -3446,7 +3474,8 @@ fn to_usage_view(agg: usage::WorkspaceUsage) -> WorkspaceUsageView {
 /// plan §8.12. Stops when `cancel` is triggered or the channel closes.
 async fn run_jsonl_watcher(
     home: std::path::PathBuf,
-    cwd: std::path::PathBuf,
+    repo_cwd: std::path::PathBuf,
+    worktree_dir: std::path::PathBuf,
     project_id: String,
     bus: broadcast::Sender<UiEvent>,
     cancel: CancellationToken,
@@ -3469,12 +3498,17 @@ async fn run_jsonl_watcher(
         }
     };
 
-    // Claude: per-workspace, non-recursive.
+    // Claude: recursive on the sessions root. A per-workspace non-recursive
+    // watch would miss isolated sessions, whose jsonl lands under a *worktree*
+    // cwd dir created only when the session first writes. Watching the whole
+    // root (as codex already does) covers every present + future worktree
+    // without re-arming; `WorkspaceMatcher` scopes emitted events back to this
+    // project so other projects' writes are ignored.
     use ycode_introspect::{claude, codex, AgentBackend};
-    if let Some(dir) = (claude::ClaudeBackend).workspace_dir(&home, &cwd) {
-        if dir.is_dir() {
-            if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
-                warn!(path = %dir.display(), error = %e, "claude watcher failed");
+    if let Some(root) = (claude::ClaudeBackend).sessions_root(&home) {
+        if root.is_dir() {
+            if let Err(e) = watcher.watch(&root, RecursiveMode::Recursive) {
+                warn!(path = %root.display(), error = %e, "claude watcher failed");
             }
         }
     }
@@ -3487,7 +3521,7 @@ async fn run_jsonl_watcher(
         }
     }
 
-    let cwd_str = cwd.to_string_lossy().into_owned();
+    let matcher = WorkspaceMatcher::new(&repo_cwd, &worktree_dir);
     loop {
         tokio::select! {
             biased;
@@ -3501,7 +3535,7 @@ async fn run_jsonl_watcher(
                         if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
                             continue;
                         }
-                        let (agent, session_id) = classify_jsonl(&path, &cwd_str);
+                        let (agent, session_id) = classify_jsonl(&path, &matcher);
                         let Some(agent) = agent else { continue };
                         let sid = session_id.unwrap_or_else(|| project_id.clone());
                         let _ = bus.send(UiEvent::jsonl_changed(sid, agent, path.to_string_lossy().into_owned()));
@@ -3515,14 +3549,60 @@ async fn run_jsonl_watcher(
     drop(watcher);
 }
 
+/// Decides whether a touched jsonl belongs to a project's workspace — its repo
+/// cwd, or any isolated-worktree cwd. Every worktree cwd lives under
+/// `<worktree_root>/<project_id>/`, so a prefix test matches every present *and
+/// future* worktree without the watcher needing to be re-armed when a new
+/// isolated session is created.
+struct WorkspaceMatcher {
+    /// claude: `~/.claude/projects/<dir>`, where `<dir>` is the encoded cwd.
+    repo_dir: String,
+    worktree_dir_prefix: String,
+    /// codex: the raw `payload/cwd` recorded in each rollout's first line.
+    repo_cwd: String,
+    worktree_cwd_prefix: String,
+}
+
+impl WorkspaceMatcher {
+    fn new(repo_cwd: &std::path::Path, worktree_dir: &std::path::Path) -> Self {
+        use ycode_introspect::claude::encode_cwd;
+        // Trailing separator so `.../<project_id>` can't prefix-match a
+        // different project like `.../<project_id>2`.
+        Self {
+            repo_dir: encode_cwd(repo_cwd),
+            worktree_dir_prefix: format!("{}-", encode_cwd(worktree_dir)),
+            repo_cwd: repo_cwd.to_string_lossy().into_owned(),
+            worktree_cwd_prefix: format!("{}/", worktree_dir.to_string_lossy()),
+        }
+    }
+
+    fn matches_claude_dir(&self, dir_name: &str) -> bool {
+        dir_name == self.repo_dir || dir_name.starts_with(&self.worktree_dir_prefix)
+    }
+
+    fn matches_codex_cwd(&self, cwd: &str) -> bool {
+        cwd == self.repo_cwd || cwd.starts_with(&self.worktree_cwd_prefix)
+    }
+}
+
 /// Best-effort routing of a touched jsonl path to (agent, session_id). Returns
-/// `(None, _)` if the path isn't recognised so the watcher can ignore it.
+/// `(None, _)` if the path isn't recognised or doesn't belong to this
+/// project's workspace so the watcher can ignore it.
 fn classify_jsonl(
     path: &std::path::Path,
-    workspace_cwd: &str,
+    matcher: &WorkspaceMatcher,
 ) -> (Option<&'static str>, Option<String>) {
     let path_str = path.to_string_lossy();
     if path_str.contains("/.claude/projects/") {
+        // The parent dir name is the encoded cwd — scope to this project.
+        let dir_name = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if !matcher.matches_claude_dir(dir_name) {
+            return (None, None);
+        }
         let session_id = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -3546,7 +3626,7 @@ fn classify_jsonl(
             .pointer("/payload/cwd")
             .and_then(|s| s.as_str())
             .unwrap_or("");
-        if payload_cwd != workspace_cwd {
+        if !matcher.matches_codex_cwd(payload_cwd) {
             return (None, None);
         }
         let session_id = v
@@ -3845,6 +3925,60 @@ mod tests {
             find_latest_gemini_session_id_in(tmp.path(), cutoff).as_deref(),
             Some("new")
         );
+    }
+
+    #[test]
+    fn workspace_matcher_scopes_claude_to_repo_and_worktrees() {
+        // repo_cwd = /work/app, worktree_dir = /wt/proj-1
+        let m = WorkspaceMatcher::new(
+            std::path::Path::new("/work/app"),
+            std::path::Path::new("/wt/proj-1"),
+        );
+        // Repo dir: encode_cwd("/work/app") = "-work-app".
+        assert!(m.matches_claude_dir("-work-app"));
+        // A worktree session cwd = /wt/proj-1/<sid> → "-wt-proj-1-<sid>".
+        assert!(m.matches_claude_dir("-wt-proj-1-01H8XYZ"));
+        // Different project, and a sibling that only shares a prefix, are out.
+        assert!(!m.matches_claude_dir("-work-other"));
+        assert!(!m.matches_claude_dir("-wt-proj-10-01H8XYZ"));
+    }
+
+    #[test]
+    fn workspace_matcher_matches_real_macos_worktree_dir() {
+        // The real worktree_root on macOS lives under a path with a SPACE
+        // ("Application Support") and DOTS ("dev.ycode.ycode"). encode_cwd must
+        // turn those into dashes to match Claude's on-disk dir — a slash-only
+        // encoding silently matched nothing and made the whole feature a no-op.
+        let m = WorkspaceMatcher::new(
+            std::path::Path::new("/Users/me/learning/ycode"),
+            std::path::Path::new(
+                "/Users/me/Library/Application Support/dev.ycode.ycode/worktrees/01PROJ",
+            ),
+        );
+        // A worktree session cwd = <worktree_dir>/<sid>, as Claude encodes it.
+        assert!(m.matches_claude_dir(
+            "-Users-me-Library-Application-Support-dev-ycode-ycode-worktrees-01PROJ-01SID"
+        ));
+        assert!(m.matches_codex_cwd(
+            "/Users/me/Library/Application Support/dev.ycode.ycode/worktrees/01PROJ/01SID"
+        ));
+        // A different project's worktree under the same root is out.
+        assert!(!m.matches_claude_dir(
+            "-Users-me-Library-Application-Support-dev-ycode-ycode-worktrees-01OTHER-01SID"
+        ));
+    }
+
+    #[test]
+    fn workspace_matcher_scopes_codex_by_payload_cwd() {
+        let m = WorkspaceMatcher::new(
+            std::path::Path::new("/work/app"),
+            std::path::Path::new("/wt/proj-1"),
+        );
+        assert!(m.matches_codex_cwd("/work/app"));
+        assert!(m.matches_codex_cwd("/wt/proj-1/01H8XYZ"));
+        assert!(!m.matches_codex_cwd("/work/other"));
+        // Sibling project prefix must not leak (trailing slash guards it).
+        assert!(!m.matches_codex_cwd("/wt/proj-10/01H8XYZ"));
     }
 
     // --- git remote/branch helpers ---------------------------------------

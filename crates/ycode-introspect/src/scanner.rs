@@ -23,6 +23,22 @@ pub fn scan_workspace(home: &Path, cwd: &Path) -> Vec<DiscoveredSession> {
     out
 }
 
+/// Like [`scan_workspace`] but across several cwds — a project's repo dir plus
+/// every isolated-session worktree dir. Results are merged and de-duped by
+/// jsonl path so a session reachable from two cwds never doubles up.
+pub fn scan_workspaces(home: &Path, cwds: &[PathBuf]) -> Vec<DiscoveredSession> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for cwd in cwds {
+        for s in scan_workspace(home, cwd) {
+            if seen.insert(s.jsonl_path.clone()) {
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
 /// Stream every line of `path`, parse + normalise to UnifiedEvent, dispatch
 /// to `cb`. Stops on first IO error. Per plan §6.2.5 / §8.20.
 pub fn read_all_events<F>(

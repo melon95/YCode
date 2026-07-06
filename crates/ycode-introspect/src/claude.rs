@@ -33,8 +33,17 @@ impl AgentBackend for ClaudeBackend {
 
 /// `/Users/melon/work/x` → `-Users-melon-work-x`. The forward direction is
 /// the only reliable one.
+///
+/// Matches Claude Code's own project-dir encoding: EVERY non-alphanumeric byte
+/// (`/`, `.`, space, `_`, …) becomes `-`, one-for-one (so `/.claude` →
+/// `--claude`). A slash-only replacement silently mismatches any path with a
+/// dot or space — e.g. worktrees under `~/Library/Application Support/
+/// dev.ycode.ycode/…` — and the scan/watch then finds nothing.
 pub fn encode_cwd(cwd: &Path) -> String {
-    cwd.to_string_lossy().replace('/', "-")
+    cwd.to_string_lossy()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
 }
 
 /// Discover every `*.jsonl` session under `<root>/<encoded-cwd>` matching
@@ -353,10 +362,26 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn encode_cwd_is_simple_slash_replacement() {
+    fn encode_cwd_replaces_every_non_alnum_char() {
+        // Plain path: slashes → dashes.
         assert_eq!(
             encode_cwd(&PathBuf::from("/Users/me/work/app")),
             "-Users-me-work-app"
+        );
+        // Dots and spaces also become dashes, matching Claude's real encoding
+        // (this is the macOS worktree_root shape: `Application Support` +
+        // `dev.ycode.ycode`). A slash-only replacement would leave the space and
+        // dots intact and never match the on-disk dir.
+        assert_eq!(
+            encode_cwd(&PathBuf::from(
+                "/Users/me/Library/Application Support/dev.ycode.ycode/worktrees/01ABC/01XYZ"
+            )),
+            "-Users-me-Library-Application-Support-dev-ycode-ycode-worktrees-01ABC-01XYZ"
+        );
+        // `/.claude` collapses to a double dash (slash + dot), one per char.
+        assert_eq!(
+            encode_cwd(&PathBuf::from("/w/a/.claude/x")),
+            "-w-a--claude-x"
         );
     }
 

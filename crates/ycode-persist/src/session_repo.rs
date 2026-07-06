@@ -86,6 +86,25 @@ impl<'a> SessionRepo<'a> {
         .await?)
     }
 
+    /// Distinct worktree paths for a project across *all* sessions — archived
+    /// included. Isolated sessions run in a git worktree, so claude/codex
+    /// archive their jsonl under the worktree cwd rather than the repo cwd; the
+    /// history / usage / search readers scan these dirs in addition to the repo
+    /// so those sessions still surface. Archived rows count because the on-disk
+    /// jsonl outlives the worktree directory.
+    pub async fn worktree_paths_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<String>, PersistError> {
+        Ok(sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT worktree_path FROM sessions \
+             WHERE project_id = ? AND worktree_path IS NOT NULL",
+        )
+        .bind(project_id)
+        .fetch_all(self.pool)
+        .await?)
+    }
+
     /// All live (non-archived) sessions across every project.
     pub async fn list_live(&self) -> Result<Vec<SessionRow>, PersistError> {
         Ok(sqlx::query_as::<_, SessionRow>(

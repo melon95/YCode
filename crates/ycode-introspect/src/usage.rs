@@ -187,6 +187,17 @@ pub fn aggregate_workspace(home: &Path, cwd: &Path) -> WorkspaceUsage {
     aggregate(records)
 }
 
+/// Like [`aggregate_workspace`] but spanning several cwds — a project's repo
+/// dir plus every isolated-session worktree dir. Records are collected across
+/// all cwds and aggregated once.
+pub fn aggregate_workspaces(home: &Path, cwds: &[std::path::PathBuf]) -> WorkspaceUsage {
+    let mut records = Vec::new();
+    for s in scanner::scan_workspaces(home, cwds) {
+        collect_records(&s, &mut records);
+    }
+    aggregate(records)
+}
+
 fn collect_records(s: &crate::DiscoveredSession, out: &mut Vec<UsageRecord>) {
     let path_str = s.jsonl_path.to_string_lossy().into_owned();
     // Stream line-by-line: codex rollouts can be 20MB+ (see service.rs), so we
@@ -460,18 +471,19 @@ pub fn aggregate(records: Vec<UsageRecord>) -> WorkspaceUsage {
 
 /// Scan every project's cwd, cost each session, and aggregate into ONE global
 /// rollup with a per-project breakdown. `projects` is `(project_id, name,
-/// cwd)`. The global `totals` / `by_model` / `by_day` / `sessions` span all
-/// projects; `by_project` carries the per-project split, sorted by cost.
+/// cwds)` where `cwds` is the repo dir plus any isolated-worktree dirs. The
+/// global `totals` / `by_model` / `by_day` / `sessions` span all projects;
+/// `by_project` carries the per-project split, sorted by cost.
 pub fn aggregate_all_projects(
     home: &Path,
-    projects: &[(String, String, std::path::PathBuf)],
+    projects: &[(String, String, Vec<std::path::PathBuf>)],
 ) -> WorkspaceUsage {
     let mut all_records = Vec::new();
     let mut by_project = Vec::new();
 
-    for (project_id, name, cwd) in projects {
+    for (project_id, name, cwds) in projects {
         let mut records = Vec::new();
-        for s in scanner::scan_workspace(home, cwd) {
+        for s in scanner::scan_workspaces(home, cwds) {
             collect_records(&s, &mut records);
         }
 
