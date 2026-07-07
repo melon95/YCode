@@ -228,7 +228,9 @@ export function SettingsModal({ open, onClose }: Props) {
                         onChange={setStaged}
                       />
                     )}
-                    {section === "updates" && <UpdatesSettings />}
+                    {section === "updates" && (
+                      <UpdatesSettings onClose={handleClose} />
+                    )}
                   </div>
                 </div>
               )}

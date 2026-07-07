@@ -9,7 +9,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useEffect } from "react";
 import { checkForUpdate } from "../lib/updater";
 
-export function UpdatesSettings() {
+export function UpdatesSettings({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState<string>("…");
   const [checking, setChecking] = useState(false);
 
@@ -38,6 +38,11 @@ export function UpdatesSettings() {
       window.dispatchEvent(
         new CustomEvent("ycode:update-available", { detail: update }),
       );
+      // Close Settings before the notice card appears. `UpdateNotice` renders
+      // outside this modal's DOM subtree, so with Settings still open the first
+      // click on "Install & restart" is judged an outside-press and merely
+      // dismisses the modal — forcing a second click to actually install.
+      onClose();
     } catch (err) {
       toast.danger(`Check failed: ${err}`);
     } finally {
