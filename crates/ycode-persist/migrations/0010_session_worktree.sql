@@ -9,14 +9,12 @@
 --   • branch        — the session's dedicated branch (ycode/<short-id>)
 --   • base_branch   — the branch it was forked from, used to merge back
 --
--- `projects.isolate_sessions` is the per-project switch, defaulting to OFF:
--- isolation is opt-in, so neither existing projects (backfilled by this ADD
--- COLUMN) nor freshly created ones get worktrees until the user turns it on.
--- `ProjectRepo::create` also writes the value explicitly, so the code-side
--- default and this column default agree.
+-- `projects.isolate_sessions` is the per-project switch, defaulting to on so
+-- new sessions get isolation without extra setup; existing shared sessions are
+-- unaffected (their columns stay NULL).
 
 ALTER TABLE sessions ADD COLUMN worktree_path TEXT;
 ALTER TABLE sessions ADD COLUMN branch TEXT;
 ALTER TABLE sessions ADD COLUMN base_branch TEXT;
 
-ALTER TABLE projects ADD COLUMN isolate_sessions INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE projects ADD COLUMN isolate_sessions INTEGER NOT NULL DEFAULT 1;
