@@ -164,6 +164,7 @@ function activeIdFromLayout(layout: Layout): string | null {
 // pick instead of jumping to whichever project happens to be first in the
 // backend list (currently the newest by `created_at`).
 const ACTIVE_PROJECT_STORAGE_KEY = "ycode-active-project";
+const PROJECT_ORDER_STORAGE_KEY = "ycode-project-order";
 
 function readStoredActiveProjectId(): string | null {
   if (typeof window === "undefined") return null;
@@ -187,8 +188,59 @@ function writeStoredActiveProjectId(id: string | null) {
   }
 }
 
+function readStoredProjectOrder(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(PROJECT_ORDER_STORAGE_KEY) ?? "[]",
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredProjectOrder(ids: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROJECT_ORDER_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    /* quota / privacy mode — best effort */
+  }
+}
+
+function reconcileProjectOrder(
+  list: ProjectView[],
+  current: string[],
+): string[] {
+  const known = new Set(list.map((project) => project.id));
+  const seen = new Set<string>();
+  const preferred = current.length > 0 ? current : readStoredProjectOrder();
+  const order: string[] = [];
+
+  for (const id of preferred) {
+    if (known.has(id) && !seen.has(id)) {
+      order.push(id);
+      seen.add(id);
+    }
+  }
+  for (const project of [...list].sort(
+    (a, b) => a.created_at_ms - b.created_at_ms,
+  )) {
+    if (!seen.has(project.id)) order.push(project.id);
+  }
+
+  writeStoredProjectOrder(order);
+  return order;
+}
+
 interface AppState {
   projects: Record<string, ProjectView>;
+  /// User-controlled order for the main-window project tab strip. Persisted
+  /// locally because it is window chrome preference, not project data.
+  projectOrder: string[];
   /// When non-null, this window is a detached "single project" window —
   /// only this project's tab is rendered, the new-project "+" is hidden,
   /// and the user can't switch away. Seeded once from the URL at startup.
@@ -275,6 +327,11 @@ interface AppState {
   setProjects: (list: ProjectView[]) => void;
   upsertProject: (p: ProjectView) => void;
   removeProject: (id: string) => void;
+  moveProject: (
+    draggedId: string,
+    targetId: string,
+    edge: "before" | "after",
+  ) => void;
   setActiveProjectId: (id: string | null) => void;
   /// One-shot at startup. Locks this window to a single project and forces
   /// the active selection to it.
@@ -356,6 +413,7 @@ interface AppState {
 
 export const useStore = create<AppState>((set) => ({
   projects: {},
+  projectOrder: [],
   lockedProjectId: null,
   lockedByOtherWindows: {},
   agents: [],
@@ -416,10 +474,15 @@ export const useStore = create<AppState>((set) => ({
   setProjects: (list) =>
     set((state) => {
       const projects = Object.fromEntries(list.map((p) => [p.id, p]));
+      const projectOrder = reconcileProjectOrder(list, state.projectOrder);
       // A detached single-project window forces its lock no matter what
       // localStorage thinks — that URL is the source of truth.
       if (state.lockedProjectId && projects[state.lockedProjectId]) {
-        return { projects, activeProjectId: state.lockedProjectId };
+        return {
+          projects,
+          projectOrder,
+          activeProjectId: state.lockedProjectId,
+        };
       }
       // Preference order: current selection (still valid) → last-selected from
       // localStorage (survives reloads) → newest project as a final fallback.
@@ -435,17 +498,24 @@ export const useStore = create<AppState>((set) => ({
           ? stored
           : fallback;
       writeStoredActiveProjectId(activeProjectId);
-      return { projects, activeProjectId };
+      return { projects, projectOrder, activeProjectId };
     }),
 
   upsertProject: (p) =>
     set((state) => {
       const activeProjectId = state.activeProjectId ?? p.id;
+      const projectOrder = state.projectOrder.includes(p.id)
+        ? state.projectOrder
+        : [...state.projectOrder, p.id];
       if (activeProjectId !== state.activeProjectId) {
         writeStoredActiveProjectId(activeProjectId);
       }
+      if (projectOrder !== state.projectOrder) {
+        writeStoredProjectOrder(projectOrder);
+      }
       return {
         projects: { ...state.projects, [p.id]: p },
+        projectOrder,
         activeProjectId,
       };
     }),
@@ -454,6 +524,10 @@ export const useStore = create<AppState>((set) => ({
     set((state) => {
       const projects = { ...state.projects };
       delete projects[id];
+      const projectOrder = state.projectOrder.filter(
+        (projectId) => projectId !== id,
+      );
+      writeStoredProjectOrder(projectOrder);
       const wasActive = state.activeProjectId === id;
       if (wasActive) writeStoredActiveProjectId(null);
       const layoutsByProject = { ...state.layoutsByProject };
@@ -462,6 +536,7 @@ export const useStore = create<AppState>((set) => ({
       delete rightUiByProject[id];
       return {
         projects,
+        projectOrder,
         layoutsByProject,
         rightUiByProject,
         activeProjectId: wasActive ? null : state.activeProjectId,
@@ -470,6 +545,19 @@ export const useStore = create<AppState>((set) => ({
         activeId: wasActive ? null : state.activeId,
         layout: wasActive ? EMPTY_LAYOUT : state.layout,
       };
+    }),
+
+  moveProject: (draggedId, targetId, edge) =>
+    set((state) => {
+      if (draggedId === targetId) return state;
+      if (!state.projects[draggedId] || !state.projects[targetId]) return state;
+
+      const projectOrder = state.projectOrder.filter((id) => id !== draggedId);
+      const targetIndex = projectOrder.indexOf(targetId);
+      if (targetIndex < 0) return state;
+      projectOrder.splice(targetIndex + (edge === "after" ? 1 : 0), 0, draggedId);
+      writeStoredProjectOrder(projectOrder);
+      return { projectOrder };
     }),
 
   setActiveProjectId: (id) =>

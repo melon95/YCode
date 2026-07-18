@@ -302,6 +302,30 @@ body {
   color: var(--text-soft);
 }
 
+.project-tab.dragging {
+  opacity: 0.45;
+}
+
+.project-tab.drop-before::before,
+.project-tab.drop-after::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.project-tab.drop-before::before {
+  left: 0;
+}
+
+.project-tab.drop-after::before {
+  right: 0;
+}
+
 .project-tab.active {
   color: var(--text);
 }
@@ -336,6 +360,13 @@ body {
   /* Inactive tabs get italic — typographic distinction between
      selected vs not. Reads as "drafts" vs "the live one". */
   font-style: italic;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.project-tab-name:active {
+  cursor: grabbing;
 }
 
 .project-tab.active .project-tab-name {
@@ -5279,9 +5310,16 @@ textarea.native-input {
   color: var(--subtle);
 }
 
-/* Drag-to-reorder affordances. The grab cursor only shows on hover so the
-   text cursor still wins over the editable title. */
+/* Drag-to-reorder affordances. The grab cursor shows on hover across the whole
+   active row — including the title — so the "draggable" hint is consistent
+   instead of only appearing over the status tag. (The title's default
+   `cursor: text` is overridden below; the real edit cursor lives on the
+   `.todo-edit-input` that replaces the title during a rename.) */
 .todo-item.draggable:hover {
+  cursor: grab;
+}
+
+.todo-item.draggable:hover .todo-title {
   cursor: grab;
 }
 
@@ -5332,18 +5370,33 @@ textarea.native-input {
   cursor: default;
 }
 
-/* TODO / DOING tag */
+/* TODO / DOING tag. On active rows the tag is the click target that toggles
+   status, so it advertises itself with a pointer cursor (winning over the row's
+   grab) plus a hover highlight — keeping the "click to switch status" gesture
+   visually distinct from the "drag to reorder" gesture on the rest of the row. */
 .todo-tag {
   flex: 0 0 auto;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--accent);
+  padding: 1px 4px;
+  margin: -1px -2px;
+  border-radius: 4px;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 .todo-tag.tag-doing {
   color: var(--accent);
   opacity: 0.85;
+}
+
+.todo-item.clickable .todo-tag {
+  cursor: pointer;
+}
+
+.todo-item.clickable .todo-tag:hover {
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .todo-title {

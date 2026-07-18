@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Button,
@@ -41,13 +41,29 @@ export function TopBar() {
   const upsertProject = useStore((s) => s.upsertProject);
   const setActiveProjectId = useStore((s) => s.setActiveProjectId);
   const removeProject = useStore((s) => s.removeProject);
+  const moveProject = useStore((s) => s.moveProject);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const projects = useStore((s) => s.projects);
+  const projectOrder = useStore((s) => s.projectOrder);
   const lockedProjectId = useStore((s) => s.lockedProjectId);
   const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
   const sessions = useStore((s) => s.sessions);
   const activityBySession = useStore((s) => s.activityBySession);
   const detached = lockedProjectId !== null;
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [projectDrop, setProjectDrop] = useState<{
+    id: string;
+    edge: "before" | "after";
+  } | null>(null);
+  const projectDragRef = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    active: boolean;
+  } | null>(null);
+  const projectDropRef = useRef<typeof projectDrop>(null);
+  const suppressProjectClickRef = useRef(false);
 
   // Per-project agent-activity rollup, so each tab shows a status dot telling
   // you whether that project's agents are still working or have all finished.
@@ -80,12 +96,71 @@ export function TopBar() {
   // In a detached window only the locked project shows. In the main window
   // peers' projects are hidden so the same id never appears twice.
   const projectList = useMemo(() => {
-    const all = Object.values(projects).sort(
-      (a, b) => a.created_at_ms - b.created_at_ms,
-    );
+    const orderById = new Map(projectOrder.map((id, index) => [id, index]));
+    const all = Object.values(projects).slice().sort((a, b) => {
+      const aOrder = orderById.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = orderById.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder || a.created_at_ms - b.created_at_ms;
+    });
     if (lockedProjectId) return all.filter((p) => p.id === lockedProjectId);
     return all.filter((p) => !lockedByOtherWindows[p.id]);
-  }, [projects, lockedProjectId, lockedByOtherWindows]);
+  }, [projects, projectOrder, lockedProjectId, lockedByOtherWindows]);
+
+  function clearProjectDrag() {
+    projectDragRef.current = null;
+    projectDropRef.current = null;
+    setDraggedProjectId(null);
+    setProjectDrop(null);
+  }
+
+  function onProjectPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = projectDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (!drag.active) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 4) return;
+      drag.active = true;
+      setDraggedProjectId(drag.id);
+    }
+    e.preventDefault();
+
+    const target = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>(".project-tab");
+    const targetId = target?.dataset.projectId;
+    if (!target || !targetId || targetId === drag.id) {
+      projectDropRef.current = null;
+      setProjectDrop(null);
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const edge = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+    const next = { id: targetId, edge } as const;
+    const current = projectDropRef.current;
+    if (current?.id !== next.id || current.edge !== next.edge) {
+      projectDropRef.current = next;
+      setProjectDrop(next);
+    }
+  }
+
+  function onProjectPointerEnd(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = projectDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const drop = projectDropRef.current;
+    if (drag.active) {
+      suppressProjectClickRef.current = true;
+      requestAnimationFrame(() => {
+        suppressProjectClickRef.current = false;
+      });
+    }
+    clearProjectDrag();
+    if (drag.active && drop) moveProject(drag.id, drop.id, drop.edge);
+  }
+
+  function onProjectPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = projectDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    clearProjectDrag();
+  }
 
   async function onAddProject() {
     if (creatingProject) return;
@@ -153,15 +228,34 @@ export function TopBar() {
           title bar (set when we spawn the WebviewWindow), so we hide the
           tab strip here to avoid showing the same name twice. */}
       {!detached && (
-        <div className="project-tabs">
+        <div
+          className="project-tabs"
+          onPointerMove={onProjectPointerMove}
+          onPointerUp={onProjectPointerEnd}
+          onPointerCancel={onProjectPointerCancel}
+        >
           {projectList.map((p) => {
             const active = p.id === activeProjectId;
             const activity = activityByProject[p.id] ?? null;
             return (
               <div
                 key={p.id}
-                className={"project-tab" + (active ? " active" : "")}
-                onClick={() => setActiveProjectId(p.id)}
+                className={
+                  "project-tab" +
+                  (active ? " active" : "") +
+                  (draggedProjectId === p.id ? " dragging" : "") +
+                  (projectDrop && projectDrop.id === p.id
+                    ? ` drop-${projectDrop.edge}`
+                    : "")
+                }
+                data-project-id={p.id}
+                onClick={() => {
+                  if (suppressProjectClickRef.current) {
+                    suppressProjectClickRef.current = false;
+                    return;
+                  }
+                  setActiveProjectId(p.id);
+                }}
                 onContextMenu={(e) => onProjectContextMenu(e, p)}
                 title={p.repo_path}
               >
@@ -173,7 +267,23 @@ export function TopBar() {
                   title={activity ? activityTooltip(activity) : "No active sessions"}
                   aria-label={activity ? activityTooltip(activity) : "No active sessions"}
                 />
-                <span className="project-tab-name">{p.name}</span>
+                <span
+                  className="project-tab-name"
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    projectDragRef.current = {
+                      id: p.id,
+                      pointerId: e.pointerId,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      active: false,
+                    };
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                  }}
+                  title={`Drag to reorder · ${p.repo_path}`}
+                >
+                  {p.name}
+                </span>
                 <span
                   className="project-tab-close"
                   role="button"

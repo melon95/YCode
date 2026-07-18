@@ -6,7 +6,7 @@ import {
   PICKER_SLOT,
   useStore,
 } from "./store";
-import type { SessionView } from "./types";
+import type { ProjectView, SessionView } from "./types";
 
 const initialState = useStore.getState();
 
@@ -35,6 +35,44 @@ function session(
 function state() {
   return useStore.getState();
 }
+
+function project(id: string, createdAt: number): ProjectView {
+  return {
+    id,
+    name: id,
+    repo_path: `/tmp/${id}`,
+    created_at_ms: createdAt,
+    session_count: 0,
+    isolate_sessions: false,
+  };
+}
+
+describe("project tab order", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it("moves a project before or after another project and persists the order", () => {
+    state().setProjects([project("b", 2), project("a", 1), project("c", 3)]);
+    expect(state().projectOrder).toEqual(["a", "b", "c"]);
+
+    state().moveProject("a", "c", "after");
+    expect(state().projectOrder).toEqual(["b", "c", "a"]);
+
+    useStore.setState(initialState, true);
+    state().setProjects([project("a", 1), project("b", 2), project("c", 3)]);
+    expect(state().projectOrder).toEqual(["b", "c", "a"]);
+  });
+
+  it("keeps persisted projects in order while appending newly discovered ones", () => {
+    state().setProjects([project("a", 1), project("b", 2)]);
+    state().moveProject("b", "a", "before");
+
+    state().setProjects([project("a", 1), project("b", 2), project("c", 3)]);
+    expect(state().projectOrder).toEqual(["b", "a", "c"]);
+  });
+});
 
 describe("layout store", () => {
   beforeEach(() => {
