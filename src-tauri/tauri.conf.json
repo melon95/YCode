@@ -12,10 +12,12 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "YCode",
         "width": 1100,
         "height": 800,
-        "resizable": true
+        "resizable": true,
+        "create": false
       }
     ],
     "security": {

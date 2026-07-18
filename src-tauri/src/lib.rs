@@ -235,24 +235,62 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )
 }
 
-/// Show the main "all projects" window, recreating it from scratch when the
-/// user previously closed it. Without this, closing main while a detached
-/// project window survives leaves the app with no way back to the picker —
-/// the tray "Show YCode" entry and the dock-icon reopen both no-op'd before.
-fn ensure_main_window(app: &tauri::AppHandle) {
+/// Show the main "all projects" window, creating it if it doesn't exist yet.
+///
+/// This is the *single* owner of the `main` window label. The window is
+/// deliberately NOT auto-created from `tauri.conf.json` (`"create": false`
+/// there) — Tauri builds config windows *before* our `setup` hook runs, and if
+/// any other path (a `RunEvent::Reopen` firing early, the tray/menu, an
+/// updater relaunch) had already built a `main` window, that config pass would
+/// fail with "a webview with label `main` already exists". Tauri turns that
+/// setup error into `panic!("Failed to setup app: …")` *inside* AppKit's
+/// `didFinishLaunching` ObjC callback, which can't unwind → `abort()` (an
+/// opaque SIGABRT crash report). Funnelling every creation and every "bring it
+/// back" gesture through this one idempotent get-or-create removes that race
+/// entirely.
+fn ensure_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(win) = app.get_webview_window("main") {
-        let _ = win.show();
-        let _ = win.set_focus();
-        return;
+        win.show()?;
+        win.set_focus()?;
+        return Ok(());
     }
-    let build =
-        tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-            .title("YCode")
-            .inner_size(1100.0, 800.0)
-            .resizable(true);
-    if let Err(e) = build.build() {
-        tracing::warn!(error = %e, "failed to recreate main window");
+
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .ok_or(tauri::Error::WindowNotFound)?;
+    let build = tauri::WebviewWindowBuilder::from_config(app, config)?;
+    match build.build() {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            // A concurrent creation could have won the race between the
+            // get-above and build(); treat that as success by showing the
+            // window that now exists. Any real build failure is returned so
+            // startup cannot report success while leaving a headless app.
+            if let Some(win) = app.get_webview_window("main") {
+                win.show()?;
+                win.set_focus()?;
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
     }
+}
+
+/// Event handlers must not synchronously build a webview on Windows (WebView2
+/// can deadlock there). Dispatch recovery work onto Tauri's async runtime so
+/// the triggering menu/tray/single-instance callback can return first.
+fn request_main_window(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = ensure_main_window(&app) {
+            tracing::warn!(%error, "failed to show main window");
+        }
+    });
 }
 
 /// The window the user is currently looking at, falling back to the main
@@ -379,7 +417,7 @@ pub fn run() {
         // App-level menu event sink. Items on the macOS menu bar route their
         // clicks here; the tray menu items keep their own handler below.
         .on_menu_event(|app, ev| match ev.id().as_ref() {
-            "menu-new-window" => ensure_main_window(app),
+            "menu-new-window" => request_main_window(app),
             #[cfg(debug_assertions)]
             "menu-reload" => reload_focused(app),
             #[cfg(debug_assertions)]
@@ -390,10 +428,7 @@ pub fn run() {
         // second `ycode` launch (or a `ycode://` deep-link) just refocuses
         // the existing window instead of forking a second app process.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-                let _ = win.set_focus();
-            }
+            request_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -417,13 +452,17 @@ pub fn run() {
             // Forward incoming `ycode://...` URLs to the frontend.
             let handle_for_links = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    let _ = handle_for_links.emit("ycode://deep-link", url.to_string());
-                    if let Some(win) = handle_for_links.get_webview_window("main") {
-                        let _ = win.show();
-                        let _ = win.set_focus();
+                let urls: Vec<String> = event.urls().iter().map(ToString::to_string).collect();
+                let handle = handle_for_links.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = ensure_main_window(&handle) {
+                        tracing::warn!(%error, "failed to show main window for deep link");
+                        return;
                     }
-                }
+                    for url in urls {
+                        let _ = handle.emit("ycode://deep-link", url);
+                    }
+                });
             });
 
             // Install a macOS-style menu bar so File → New Window (⌘N) is
@@ -535,7 +574,7 @@ pub fn run() {
                     .tooltip("YCode")
                     .menu(&tray_menu)
                     .on_menu_event(|app, ev| match ev.id.as_ref() {
-                        "tray-show" => ensure_main_window(app),
+                        "tray-show" => request_main_window(app),
                         "tray-quit" => {
                             app.exit(0);
                         }
@@ -605,6 +644,15 @@ pub fn run() {
             });
 
             app.manage(state);
+
+            // Create the main window now, as the last step of setup — AFTER
+            // `manage(state)` so the webview's first command invocations always
+            // find the managed `AppState`. It is not auto-created from config
+            // (`"create": false`); `ensure_main_window` is the sole creator, so
+            // there is exactly one `main` label owner and no way to collide with
+            // Tauri's config-window pass (see the fn's doc for the crash this
+            // prevents).
+            ensure_main_window(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -700,7 +748,7 @@ pub fn run() {
             } = _event
             {
                 if !has_visible_windows {
-                    ensure_main_window(_app_handle);
+                    request_main_window(_app_handle);
                 }
             }
         });
