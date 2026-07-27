@@ -1,30 +1,27 @@
-// Per-project todo list. Single-column list: each row has a status box, a
-// status tag (TODO / DOING) for the in-progress states, and the title (struck
-// through + muted when done). Clicking a row toggles it between todo and doing;
-// only ticking the checkbox marks it done (or reopens a done item). Double-click
-// a title to rename; hover to reveal a delete button. A trailing input row
-// appends new todos. Completed todos collapse into a per-week grouped section at
-// the bottom, capped at the 10 most recent weeks — a "View all" link opens a
-// full archive page listing every completed week. Data is fetched on mount and
-// refreshed live via the `TodosChanged` event (which also fires for MCP-driven
-// changes made by an AI agent) — see App.tsx.
+// Per-project task flow built on the existing todo state machine. The overview,
+// capture field, grouped counts, and per-row timestamps are all derived from
+// real TodoView data; no engineering/session relationship is implied until the
+// task-worktree schema exists. Clicking an active row toggles todo/doing, while
+// completion stays an explicit checkbox action. Double-click renames, drag
+// reorders within a status group, and completed work remains grouped by week.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createTodo,
   deleteTodo,
   listTodos,
-  reorderTodos,
   updateTodo,
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { TodoView } from "../lib/types";
+import { useTodoReorder } from "./useTodoReorder";
 
 type Status = "todo" | "doing" | "done";
 
 // How many weeks of completed todos to show inline before the rest is only
 // reachable through the "View all" archive page.
 const MAX_INLINE_WEEKS = 10;
+const EMPTY_TODOS: TodoView[] = [];
 
 export function TodoPanel({ projectId }: { projectId: string }) {
   const todos = useStore((s) => s.todos[projectId]);
@@ -40,19 +37,26 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   // is capped at MAX_INLINE_WEEKS). Toggled by the "View all" link.
   const [showArchive, setShowArchive] = useState(false);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     listTodos(projectId)
       .then((list) => setTodos(projectId, list))
       .catch((e) => setError(String(e)));
-  };
+  }, [projectId, setTodos]);
+  const list = todos ?? EMPTY_TODOS;
+  const todoReorder = useTodoReorder({
+    projectId,
+    todos: list,
+    setTodos,
+    onError: setError,
+    refresh,
+  });
 
   // Fetch on mount / project switch. Subsequent updates arrive via the
   // TodosChanged event handled in App.tsx, but we also refresh after our own
   // mutations below in case the event bus lags.
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [refresh]);
 
   const setStatus = (todo: TodoView, next: Status) => {
     updateTodo(todo.id, { status: next })
@@ -73,92 +77,6 @@ export function TodoPanel({ projectId }: { projectId: string }) {
     setStatus(todo, status === "done" ? "todo" : "done");
   };
 
-  // ── Drag-to-reorder (active todos only) ──────────────────────────────
-  // Reordering is confined to a single status group: you can shuffle the DOING
-  // items among themselves and the TODO items among themselves, but not across
-  // groups (status is changed by clicking, not dragging). The dragged id is
-  // held in state; `dropTargetId` drives the insertion-line highlight.
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-
-  const clearDrag = () => {
-    setDragId(null);
-    setDropTargetId(null);
-  };
-
-  // Commit a reorder: move `draggedId` to just before `targetId` within their
-  // shared status group, then persist the full new ordering. Applied
-  // optimistically so the row settles instantly; the IPC (and its TodosChanged
-  // event) reconcile afterwards.
-  const commitReorder = (draggedId: string, targetId: string) => {
-    if (draggedId === targetId) return;
-    const cur = todos ?? [];
-    const byId = new Map(cur.map((t) => [t.id, t] as const));
-    const dragged = byId.get(draggedId);
-    const target = byId.get(targetId);
-    if (!dragged || !target) return;
-    const groupStatus = dragged.status as Status;
-    if ((target.status as Status) !== groupStatus) return; // same group only
-
-    const groupIds = cur
-      .filter((t) => (t.status as Status) === groupStatus)
-      .map((t) => t.id);
-    const from = groupIds.indexOf(draggedId);
-    if (from < 0) return;
-    groupIds.splice(from, 1);
-    const insertAt = groupIds.indexOf(targetId);
-    groupIds.splice(insertAt < 0 ? groupIds.length : insertAt, 0, draggedId);
-
-    // Rebuild the whole project order as doing → todo → done, substituting the
-    // reordered group. Keeps sort_order globally consistent.
-    const idsFor = (status: Status) =>
-      status === groupStatus
-        ? groupIds
-        : cur
-            .filter((t) => (t.status as Status) === status)
-            .map((t) => t.id);
-    const fullOrder = [...idsFor("doing"), ...idsFor("todo"), ...idsFor("done")];
-
-    setTodos(
-      projectId,
-      fullOrder.map((id) => byId.get(id)).filter((t): t is TodoView => !!t),
-    );
-    reorderTodos(projectId, fullOrder).catch((e) => {
-      setError(String(e));
-      refresh();
-    });
-  };
-
-  const dragHandlers = (todo: TodoView) => ({
-    draggable: editingId !== todo.id,
-    onDragStart: (e: React.DragEvent) => {
-      setDragId(todo.id);
-      e.dataTransfer.effectAllowed = "move";
-      // Firefox refuses to start a drag unless some data is set.
-      try {
-        e.dataTransfer.setData("text/plain", todo.id);
-      } catch {
-        /* older browsers — best effort */
-      }
-    },
-    onDragOver: (e: React.DragEvent) => {
-      if (!dragId || dragId === todo.id) return;
-      const dragged = (todos ?? []).find((t) => t.id === dragId);
-      // Only same-group drops are valid targets.
-      if (!dragged || dragged.status !== todo.status) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-      if (dropTargetId !== todo.id) setDropTargetId(todo.id);
-    },
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      const draggedId = dragId;
-      clearDrag();
-      if (draggedId) commitReorder(draggedId, todo.id);
-    },
-    onDragEnd: clearDrag,
-  });
-
   // Pending single-click timer, used to disambiguate a row click (advance
   // status) from a double-click on the title (edit). A double-click clears it
   // before it fires.
@@ -170,6 +88,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   // Click anywhere on a todo/doing row to toggle it between todo and doing.
   // Done rows aren't affected by a row click — use the checkbox to reopen them.
   const handleRowClick = (todo: TodoView) => {
+    if (todoReorder.consumeSuppressedClick()) return;
     const status = (todo.status as Status) ?? "todo";
     if (status === "done") return;
     if (editingId === todo.id) return;
@@ -227,16 +146,18 @@ export function TodoPanel({ projectId }: { projectId: string }) {
     return (
       <li
         key={todo.id}
+        data-todo-reorder-id={canDrag ? todo.id : undefined}
         className={
           "todo-item status-" +
           status +
           (done || editing ? "" : " clickable") +
           (canDrag ? " draggable" : "") +
-          (dragId === todo.id ? " dragging" : "") +
-          (dropTargetId === todo.id ? " drop-target" : "")
+          (todoReorder.dragId === todo.id ? " dragging" : "") +
+          (todoReorder.dropTarget?.id === todo.id
+            ? ` drop-${todoReorder.dropTarget.edge}`
+            : "")
         }
         onClick={() => handleRowClick(todo)}
-        {...(canDrag ? dragHandlers(todo) : {})}
       >
         <button
           type="button"
@@ -250,30 +171,47 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         >
           {done ? <CheckIcon /> : null}
         </button>
+        <div className="todo-item-content">
+          {editing ? (
+            <input
+              className="todo-edit-input"
+              value={editingText}
+              autoFocus
+              onChange={(e) => setEditingText(e.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitEdit();
+                if (e.key === "Escape") setEditingId(null);
+              }}
+            />
+          ) : (
+            <>
+              <span
+                className="todo-title"
+                onDoubleClick={() => beginEdit(todo)}
+                title={statusDatesTooltip(todo)}
+              >
+                {todo.title}
+              </span>
+              <span className="todo-item-meta">{statusTimeLabel(todo, status)}</span>
+            </>
+          )}
+        </div>
         {!done && (
           <span className={"todo-tag tag-" + status}>
-            {status.toUpperCase()}
+            <span className="todo-tag-dot" aria-hidden />
+            {status === "doing" ? "Active" : "Queued"}
           </span>
         )}
-        {editing ? (
-          <input
-            className="todo-edit-input"
-            value={editingText}
-            autoFocus
-            onChange={(e) => setEditingText(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") setEditingId(null);
-            }}
-          />
-        ) : (
+        {canDrag && (
           <span
-            className="todo-title"
-            onDoubleClick={() => beginEdit(todo)}
-            title={statusDatesTooltip(todo)}
+            className="todo-drag-handle"
+            aria-hidden
+            title="Drag to reorder"
+            onPointerDown={(event) => todoReorder.handlePointerDown(event, todo)}
+            onClick={(event) => event.stopPropagation()}
           >
-            {todo.title}
+            <GripIcon />
           </span>
         )}
         <button
@@ -286,21 +224,26 @@ export function TodoPanel({ projectId }: { projectId: string }) {
           aria-label="Delete todo"
           title="Delete"
         >
-          ×
+          <TrashIcon />
         </button>
       </li>
     );
   };
 
-  const list = todos ?? [];
   // Completed todos sink to a collapsible group at the bottom; the active todos
   // split into DOING then TODO sub-groups (their "category") above the add-row.
-  const doing = list.filter((t) => (t.status as Status) === "doing");
-  const todo = list.filter((t) => (t.status as Status) === "todo");
-  const done = list.filter((t) => (t.status as Status) === "done");
-  // Only show the "In progress" / "To do" section headers when both groups are
-  // populated — a lone header over a single group is just noise.
-  const showGroupHeaders = doing.length > 0 && todo.length > 0;
+  const { doing, todo, done } = useMemo(() => {
+    const groups: Record<Status, TodoView[]> = {
+      doing: [],
+      todo: [],
+      done: [],
+    };
+    for (const item of list) {
+      const status = item.status as Status;
+      (groups[status] ?? groups.todo).push(item);
+    }
+    return groups;
+  }, [list]);
   // Bucket completed todos by the week they were finished, newest week first.
   // Recomputed only when the completed set changes.
   const weeks = useMemo(() => groupByWeek(done), [done]);
@@ -347,27 +290,78 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   return (
     <div className="todo-panel">
       {error && <div className="todo-panel-error">{error}</div>}
-      <ul className="todo-list">
-        {showGroupHeaders && doing.length > 0 && (
-          <li className="todo-group-header">In progress</li>
+      <header className="todo-panel-overview">
+        <div className="todo-panel-heading">
+          <h2>Task flow</h2>
+          <p>Move work between the queue and active focus.</p>
+        </div>
+        <div className="todo-panel-summary" aria-label="Task summary">
+          <span className="todo-summary-item summary-active">
+            <strong>{doing.length}</strong>
+            <span>Active</span>
+          </span>
+          <span className="todo-summary-rule" aria-hidden />
+          <span className="todo-summary-item">
+            <strong>{todo.length}</strong>
+            <span>Queued</span>
+          </span>
+          {done.length > 0 && (
+            <>
+              <span className="todo-summary-rule" aria-hidden />
+              <span className="todo-summary-item">
+                <strong>{done.length}</strong>
+                <span>Done</span>
+              </span>
+            </>
+          )}
+        </div>
+      </header>
+      <form
+        className="todo-capture"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addTodo();
+        }}
+      >
+        <PlusIcon />
+        <input
+          className="todo-add-input"
+          aria-label="New task"
+          placeholder="Add a task"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button
+          type="submit"
+          className="todo-capture-submit"
+          aria-label="Add task"
+          title="Add task"
+          disabled={!draft.trim()}
+        >
+          <kbd>↵</kbd>
+        </button>
+      </form>
+      <ul className="todo-list" {...todoReorder.containerHandlers}>
+        {doing.length > 0 && (
+          <li className="todo-group-header">
+            <span>In progress</span>
+            <span>{doing.length}</span>
+          </li>
         )}
         {doing.map((t) => renderTodo(t, { draggable: true }))}
-        {showGroupHeaders && (
-          <li className="todo-group-header">To do</li>
+        {todo.length > 0 && (
+          <li className="todo-group-header">
+            <span>Queue</span>
+            <span>{todo.length}</span>
+          </li>
         )}
         {todo.map((t) => renderTodo(t, { draggable: true }))}
-        <li className="todo-item todo-add-row">
-          <span className="todo-check todo-add-bullet" aria-hidden />
-          <input
-            className="todo-add-input"
-            placeholder="Add a todo…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") addTodo();
-            }}
-          />
-        </li>
+        {doing.length === 0 && todo.length === 0 && (
+          <li className="todo-active-empty">
+            <span>Nothing in flight.</span>
+            <span>Add a task above when you are ready.</span>
+          </li>
+        )}
       </ul>
       {done.length > 0 && (
         <div className="todo-done-section">
@@ -478,6 +472,32 @@ function statusDatesTooltip(todo: TodoView): string {
   return lines.join("\n");
 }
 
+function statusTimeLabel(todo: TodoView, status: Status): string {
+  const timestamp =
+    status === "doing"
+      ? (todo.started_at_ms ?? todo.updated_at_ms)
+      : status === "done"
+        ? (todo.done_at_ms ?? todo.updated_at_ms)
+        : todo.created_at_ms;
+  const verb = status === "doing" ? "Started" : status === "done" ? "Completed" : "Added";
+  return `${verb} ${relativeTime(timestamp)}`;
+}
+
+function relativeTime(ms: number): string {
+  const elapsed = Math.max(0, Date.now() - ms);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (elapsed < minute) return "just now";
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)}m ago`;
+  if (elapsed < day) return `${Math.floor(elapsed / hour)}h ago`;
+  if (elapsed < 7 * day) return `${Math.floor(elapsed / day)}d ago`;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(ms));
+}
+
 function ChevronIcon() {
   return (
     <svg
@@ -519,6 +539,35 @@ function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M5 12l5 5L20 6" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function GripIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="4" r="1" />
+      <circle cx="11" cy="4" r="1" />
+      <circle cx="5" cy="8" r="1" />
+      <circle cx="11" cy="8" r="1" />
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="11" cy="12" r="1" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
     </svg>
   );
 }

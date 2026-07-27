@@ -5,11 +5,23 @@
 // change yet — git index churn during a `npm install` could re-render dozens
 // of times a second.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Diff, Hunk, parseDiff, type FileData } from "react-diff-view";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Decoration,
+  Diff,
+  Hunk,
+  parseDiff,
+  type FileData,
+  type HunkData,
+} from "react-diff-view";
 import "react-diff-view/style/index.css";
 import {
+  gitApplyHunk,
   gitBranch,
+  gitBranchDiffFile,
+  gitBranchStatus,
+  gitCheckpointDiffFile,
+  gitCheckpointStatus,
   gitCheckoutBranch,
   gitCommit,
   gitDiffFile,
@@ -21,19 +33,29 @@ import {
   gitStageFile,
   gitStatus,
   gitUnstageFile,
+  listReviewCheckpoints,
+  listenSessionEvents,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
+import { extractHunkPatch, hunkTotals } from "../lib/diffReview";
 import { useStore } from "../lib/store";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import type {
   GitBranchInfo,
   GitBranchListView,
+  GitDiffSource,
+  GitFileDiff,
   GitFileChange,
   GitFileStatus,
-  SessionView,
+  GitHunkAction,
+  ReviewCheckpointView,
 } from "../lib/types";
 
 type ViewMode = "list" | "tree";
+type ReviewScope = "working" | "branch" | "checkpoint";
+type DiffLayout = "unified" | "split";
+
+const EMPTY_DIFF: GitFileDiff = { patch: "", source: "unstaged" };
 
 // Strip the internal "bad input:" prefix that IpcError::BadInput serializes
 // with, so the panel surfaces only the actionable git message.
@@ -41,22 +63,25 @@ function cleanError(e: unknown): string {
   return String(e).replace(/^bad input:\s*/i, "");
 }
 
-// Label for a worktree in the tree picker: its branch name (`ycode/<short-id>`).
-// We deliberately do NOT use the session's display title here — that comes from
-// the CLI's terminal title, which varies per agent (Claude Code sets a friendly
-// name, Codex sets its working dir = the session id), so it's neither stable nor
-// reliably unique. The branch is always unique per worktree and stable. Falls
-// back to reconstructing it from the id for rows created before `branch` was
-// persisted on the view.
-function treeBranch(s: SessionView): string {
-  return s.branch ?? `ycode/${s.id}`;
-}
-
-export function ChangesPanel({ projectId }: { projectId: string }) {
+export function ChangesPanel({
+  projectId,
+  sessionId,
+  baseBranch,
+}: {
+  projectId: string;
+  sessionId?: string;
+  baseBranch?: string;
+}) {
   const [changes, setChanges] = useState<GitFileChange[]>([]);
   const [branch, setBranch] = useState<GitBranchInfo | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [diffText, setDiffText] = useState<string>("");
+  const [fileDiff, setFileDiff] = useState<GitFileDiff>(EMPTY_DIFF);
+  const [scope, setScope] = useState<ReviewScope>("working");
+  const [checkpoints, setCheckpoints] = useState<ReviewCheckpointView[]>([]);
+  const [checkpointId, setCheckpointId] = useState<string | null>(null);
+  const [diffLayout, setDiffLayout] = useState<DiffLayout>("unified");
+  const [diffRevision, setDiffRevision] = useState(0);
+  const [hunkOp, setHunkOp] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,34 +98,29 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   const [branchList, setBranchList] = useState<GitBranchListView | null>(null);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
-  // Which tree the panel targets: null = the project's main working tree, or a
-  // session id to target that agent's isolated worktree.
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null,
-  );
-  const sessions = useStore((s) => s.sessions);
-  // Sessions in THIS project running in their own worktree — the extra trees
-  // the user can point the panel at besides the main one.
-  const isolatedSessions = useMemo(
-    () =>
-      Object.values(sessions).filter(
-        (s): s is SessionView =>
-          s.project_id === projectId && !!s.worktree_path,
-      ),
-    [sessions, projectId],
-  );
-  // Resolved target passed to every git call: the selected session id, or
-  // `undefined` (main tree) — including when the selected session has gone away.
-  const treeSid =
-    selectedSessionId &&
-    isolatedSessions.some((s) => s.id === selectedSessionId)
-      ? selectedSessionId
-      : undefined;
+  // The target is owned by RightPane's shared Workspace picker. Every git
+  // operation therefore reads the same checkout as Files, Editor, and LSP.
+  const treeSid = sessionId;
   // True when the panel targets an agent's isolated worktree (not the main
   // tree). Such a worktree is pinned to its own `ycode/*` branch, so the branch
   // switcher is meaningless — worse, since worktrees share one ref DB it would
   // list the *main tree's* branches. We render the branch read-only instead.
   const onWorktree = treeSid !== undefined;
+  const canReviewBranch = !!treeSid && !!baseBranch;
+  const reviewableCheckpoints = useMemo(
+    () => checkpoints.filter((checkpoint) => checkpoint.has_previous),
+    [checkpoints],
+  );
+  const selectedCheckpoint = useMemo(
+    () =>
+      reviewableCheckpoints.find(
+        (checkpoint) => checkpoint.id === checkpointId,
+      ) ?? null,
+    [checkpointId, reviewableCheckpoints],
+  );
+  const canReviewCheckpoint = reviewableCheckpoints.length > 0;
+  const openFile = useStore((s) => s.openFile);
+  const setRightTab = useStore((s) => s.setRightTab);
   // Escape closes the branch switcher (only while it's open).
   useEscapeGuard(() => setBranchMenuOpen(false), branchMenuOpen);
 
@@ -111,38 +131,88 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   // showing the old tree's branch/files. Each result checks it's still current.
   const reqSeq = useRef(0);
 
-  const refresh = useMemo(() => {
+  useEffect(() => {
+    if (!canReviewBranch && scope === "branch") setScope("working");
+    if (!canReviewCheckpoint && scope === "checkpoint") setScope("working");
+  }, [canReviewBranch, canReviewCheckpoint, scope]);
+
+  const refreshCheckpoints = useCallback(() => {
+    return listReviewCheckpoints(projectId)
+      .then((rows) => {
+        setCheckpoints(rows);
+        const reviewable = rows.filter((checkpoint) => checkpoint.has_previous);
+        setCheckpointId((current) =>
+          current && reviewable.some((checkpoint) => checkpoint.id === current)
+            ? current
+            : (reviewable[0]?.id ?? null),
+        );
+      })
+      .catch(() => {
+        // Checkpoint history is an enhancement to normal Git review. Keep the
+        // working-tree panel usable when migration/repository state prevents
+        // the timeline from loading.
+        setCheckpoints([]);
+        setCheckpointId(null);
+      });
+  }, [projectId]);
+
+  useEffect(() => {
+    void refreshCheckpoints();
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenSessionEvents((event) => {
+      if (event.kind.type === "CheckpointCreated") {
+        void refreshCheckpoints();
+      }
+    })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {});
     return () => {
-      const my = ++reqSeq.current;
-      const fresh = () => my === reqSeq.current;
-      setLoadingList(true);
-      setError(null);
-      gitStatus(projectId, treeSid)
-        .then((rows) => {
-          if (!fresh()) return;
-          setChanges(rows);
-          setSelected((cur) => {
-            if (cur && rows.some((r) => r.path === cur)) return cur;
-            return rows[0]?.path ?? null;
-          });
-        })
-        .catch((e) => {
-          if (fresh()) setError(cleanError(e));
-        })
-        .finally(() => {
-          if (fresh()) setLoadingList(false);
-        });
-      // Branch context is independent of the file list — fetch it alongside,
-      // and don't let its failure (e.g. not a git repo) clobber the file view.
-      gitBranch(projectId, treeSid)
-        .then((b) => {
-          if (fresh()) setBranch(b);
-        })
-        .catch(() => {
-          if (fresh()) setBranch(null);
-        });
+      disposed = true;
+      unlisten?.();
     };
-  }, [projectId, treeSid]);
+  }, [refreshCheckpoints]);
+
+  const refresh = useCallback(() => {
+    const my = ++reqSeq.current;
+    const fresh = () => my === reqSeq.current;
+    setLoadingList(true);
+    setError(null);
+    const rowsPromise =
+      scope === "checkpoint" && checkpointId
+        ? gitCheckpointStatus(projectId, checkpointId)
+        : scope === "branch" && treeSid
+          ? gitBranchStatus(projectId, treeSid)
+          : gitStatus(projectId, treeSid);
+    rowsPromise
+      .then((rows) => {
+        if (!fresh()) return;
+        setChanges(rows);
+        setSelected((cur) => {
+          if (cur && rows.some((r) => r.path === cur)) return cur;
+          return rows[0]?.path ?? null;
+        });
+        setDiffRevision((revision) => revision + 1);
+      })
+      .catch((e) => {
+        if (fresh()) setError(cleanError(e));
+      })
+      .finally(() => {
+        if (fresh()) setLoadingList(false);
+      });
+    // Branch context is independent of the file list — fetch it alongside,
+    // and don't let its failure (e.g. not a git repo) clobber the file view.
+    gitBranch(projectId, treeSid)
+      .then((b) => {
+        if (fresh()) setBranch(b);
+      })
+      .catch(() => {
+        if (fresh()) setBranch(null);
+      });
+  }, [checkpointId, projectId, scope, treeSid]);
 
   useEffect(() => {
     refresh();
@@ -150,18 +220,24 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!selected) {
-      setDiffText("");
+      setFileDiff(EMPTY_DIFF);
       return;
     }
     let cancelled = false;
     setLoadingDiff(true);
-    gitDiffFile(projectId, selected, treeSid)
-      .then((text) => {
-        if (!cancelled) setDiffText(text);
+    const detailPromise =
+      scope === "checkpoint" && checkpointId
+        ? gitCheckpointDiffFile(projectId, checkpointId, selected)
+        : scope === "branch" && treeSid
+        ? gitBranchDiffFile(projectId, treeSid, selected)
+        : gitDiffFile(projectId, selected, treeSid);
+    detailPromise
+      .then((detail) => {
+        if (!cancelled) setFileDiff(detail);
       })
       .catch((e) => {
         if (!cancelled) {
-          setDiffText("");
+          setFileDiff(EMPTY_DIFF);
           setError(cleanError(e));
         }
       })
@@ -171,16 +247,16 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, selected, treeSid]);
+  }, [checkpointId, diffRevision, projectId, scope, selected, treeSid]);
 
   const files: FileData[] = useMemo(() => {
-    if (!diffText) return [];
+    if (!fileDiff.patch) return [];
     try {
-      return parseDiff(diffText);
+      return parseDiff(fileDiff.patch);
     } catch {
       return [];
     }
-  }, [diffText]);
+  }, [fileDiff.patch]);
 
   // Binary/unsupported files (images, etc.) come back as a patch with no
   // hunks — react-diff-view renders nothing, leaving the pane blank. Detect
@@ -203,7 +279,11 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
   const trimmedMsg = commitMsg.trim();
   // Disabled unless there's something staged-able AND a non-empty message,
   // and we're not mid-commit.
-  const canCommit = changes.length > 0 && trimmedMsg.length > 0 && !committing;
+  const canCommit =
+    scope === "working" &&
+    changes.length > 0 &&
+    trimmedMsg.length > 0 &&
+    !committing;
 
   const doCommit = () => {
     if (!canCommit) return;
@@ -325,33 +405,120 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
       .catch((e) => setError(cleanError(e)));
   };
 
+  const applyHunk = async (
+    hunk: HunkData,
+    hunkIndex: number,
+    action: GitHunkAction,
+  ) => {
+    if (
+      !selected ||
+      fileDiff.source === "branch" ||
+      fileDiff.source === "checkpoint"
+    ) {
+      return;
+    }
+    if (action === "discard") {
+      const ok = await confirmDialog({
+        title: `Discard this hunk from ${basename(selected)}?`,
+        message:
+          "Only the lines in this hunk will be restored. Other edits in the file remain unchanged.",
+        confirmLabel: "Discard hunk",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    const operationKey = `${selected}:${hunk.content}:${action}`;
+    setHunkOp(operationKey);
+    setError(null);
+    try {
+      await gitApplyHunk(
+        projectId,
+        selected,
+        extractHunkPatch(fileDiff.patch, hunkIndex),
+        action,
+        treeSid,
+      );
+      refresh();
+    } catch (e) {
+      setError(cleanError(e));
+    } finally {
+      setHunkOp(null);
+    }
+  };
+
+  const openSelectedFile = () => {
+    if (!selected) return;
+    openFile(selected);
+    setRightTab("editor");
+  };
+
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
-        {isolatedSessions.length > 0 && (
-          <select
-            className="changes-panel-tree"
-            value={selectedSessionId ?? ""}
-            onChange={(e) => {
-              setBranchMenuOpen(false);
-              setSelectedSessionId(e.target.value || null);
-            }}
-            title="Which working tree to show — the project's main tree or an agent's isolated worktree"
+        <div className="changes-review-scope" role="tablist" aria-label="Review scope">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "working"}
+            className={scope === "working" ? "active" : ""}
+            onClick={() => setScope("working")}
           >
-            <option value="">Main tree</option>
-            {isolatedSessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {treeBranch(s)}
-              </option>
-            ))}
-          </select>
+            Working tree
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "branch"}
+            className={scope === "branch" ? "active" : ""}
+            disabled={!canReviewBranch}
+            onClick={() => setScope("branch")}
+            title={
+              canReviewBranch
+                ? `Review committed changes since ${baseBranch}`
+                : "Select an isolated worktree with a base branch"
+            }
+          >
+            Branch vs base
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "checkpoint"}
+            className={scope === "checkpoint" ? "active" : ""}
+            disabled={!canReviewCheckpoint}
+            onClick={() => setScope("checkpoint")}
+            title={
+              canReviewCheckpoint
+                ? "Review one completed agent turn"
+                : "No completed agent turns captured yet"
+            }
+          >
+            Agent turn
+          </button>
+        </div>
+        {scope === "checkpoint" && selectedCheckpoint && (
+          <label className="changes-checkpoint-picker">
+            <span>Snapshot</span>
+            <select
+              aria-label="Agent turn snapshot"
+              value={selectedCheckpoint.id}
+              onChange={(event) => setCheckpointId(event.target.value)}
+            >
+              {reviewableCheckpoints.map((checkpoint) => (
+                <option key={checkpoint.id} value={checkpoint.id}>
+                  {checkpoint.session_title} · Turn {checkpoint.sequence} ·{" "}
+                  {formatCheckpointTime(checkpoint.created_at_ms)}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {/* The branch switcher belongs to the main tree only. An isolated
             worktree is pinned to its own `ycode/*` branch (already shown as the
             tree-picker label), so we hide this entirely when one is selected —
             no redundant branch, no meaningless switch to the main tree's
             branches. */}
-        {!onWorktree && (
+        {scope !== "checkpoint" && !onWorktree && (
           <div className="changes-panel-branch-wrap">
             <button
               type="button"
@@ -425,9 +592,22 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
             )}
           </div>
         )}
+        {scope !== "checkpoint" && onWorktree && branch && (
+          <span className="changes-review-context" title={branch.head}>
+            <BranchIcon />
+            <span>{branch.head}</span>
+            {scope === "branch" && baseBranch && (
+              <span className="changes-review-base">from {baseBranch}</span>
+            )}
+          </span>
+        )}
         <span className="changes-panel-count">
           {changes.length === 0
-            ? "No changes"
+            ? scope === "branch"
+              ? "No branch changes"
+              : scope === "checkpoint"
+                ? "No turn changes"
+              : "No changes"
             : `${changes.length} file${changes.length === 1 ? "" : "s"}`}
           {changes.length > 0 &&
             (totals.additions > 0 || totals.deletions > 0) && (
@@ -441,6 +621,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
               </span>
             )}
         </span>
+        {scope !== "checkpoint" && (
         <div className="changes-panel-remote" role="group" aria-label="Remote">
           <button
             type="button"
@@ -495,6 +676,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
             )}
           </button>
         </div>
+        )}
         <div className="changes-panel-mode" role="tablist" aria-label="View mode">
           <button
             type="button"
@@ -533,7 +715,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <RefreshIcon />
         </button>
       </div>
-      <div className="changes-commit-box">
+      {scope === "working" && <div className="changes-commit-box">
         <textarea
           className="changes-commit-input"
           value={commitMsg}
@@ -569,14 +751,20 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
           <CommitIcon />
           <span>{committing ? "Committing…" : "Commit"}</span>
         </button>
-      </div>
+      </div>}
       <div className="changes-panel-body">
         <div className="changes-file-pane">
           {loadingList && changes.length === 0 && (
             <div className="changes-empty">Loading…</div>
           )}
           {!loadingList && changes.length === 0 && !error && (
-            <div className="changes-empty">Working tree clean.</div>
+            <div className="changes-empty">
+              {scope === "branch"
+                ? `No committed changes since ${baseBranch}.`
+                : scope === "checkpoint"
+                  ? "This agent turn did not change any files."
+                : "Working tree clean."}
+            </div>
           )}
           {error && <div className="changes-empty error">{error}</div>}
           {changes.length > 0 && viewMode === "list" && (
@@ -589,6 +777,7 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
                     onClick={() => setSelected(c.path)}
                     onToggleStage={() => toggleStage(c)}
                     onDiscard={() => discardFile(c)}
+                    readOnly={scope !== "working"}
                     showDir
                     indent={0}
                   />
@@ -609,41 +798,176 @@ export function ChangesPanel({ projectId }: { projectId: string }) {
                   onSelectFile={setSelected}
                   onToggleStage={toggleStage}
                   onDiscard={discardFile}
+                  readOnly={scope !== "working"}
                 />
               ))}
             </ul>
           )}
         </div>
-        <div className="changes-diff-view">
-          {loadingDiff && <div className="changes-empty">Loading diff…</div>}
-          {!loadingDiff && !selected && (
-            <div className="changes-empty">Select a file to view its diff.</div>
-          )}
-          {!loadingDiff && selected && !hasRenderableDiff && (
-            <div className="changes-empty">
-              {diffText
-                ? "Preview not supported for this file type."
-                : "No diff to display."}
+        <div className="changes-diff-pane">
+          <div className="changes-diff-header">
+            <div className="changes-diff-title">
+              <span>{selected ? basename(selected) : "Review"}</span>
+              {selected && dirname(selected) && (
+                <span className="changes-diff-directory">{dirname(selected)}</span>
+              )}
+              {selected && (
+                <span className={`changes-diff-source source-${fileDiff.source}`}>
+                  {diffSourceLabel(fileDiff.source)}
+                </span>
+              )}
             </div>
-          )}
-          {!loadingDiff &&
-            hasRenderableDiff &&
-            files.map((file, i) => (
-              <Diff
-                key={i}
-                viewType="unified"
-                diffType={file.type}
-                hunks={file.hunks}
+            <div className="changes-diff-actions">
+              <div className="changes-diff-layout" role="group" aria-label="Diff layout">
+                <button
+                  type="button"
+                  className={diffLayout === "unified" ? "active" : ""}
+                  onClick={() => setDiffLayout("unified")}
+                  aria-label="Unified diff"
+                  title="Unified diff"
+                >
+                  <UnifiedDiffIcon />
+                </button>
+                <button
+                  type="button"
+                  className={diffLayout === "split" ? "active" : ""}
+                  onClick={() => setDiffLayout("split")}
+                  aria-label="Side-by-side diff"
+                  title="Side-by-side diff"
+                >
+                  <SplitDiffIcon />
+                </button>
+              </div>
+              <button
+                type="button"
+                className="changes-open-file"
+                onClick={openSelectedFile}
+                disabled={!selected}
               >
-                {(hunks) =>
-                  hunks.map((h) => <Hunk key={h.content} hunk={h} />)
-                }
-              </Diff>
-            ))}
+                {scope === "checkpoint" ? "Open current file" : "Open file"}
+              </button>
+            </div>
+          </div>
+          <div className="changes-diff-view">
+            {loadingDiff && <div className="changes-empty">Loading diff…</div>}
+            {!loadingDiff && !selected && (
+              <div className="changes-empty">Select a file to review its diff.</div>
+            )}
+            {!loadingDiff && selected && !hasRenderableDiff && (
+              <div className="changes-empty">
+                {fileDiff.patch
+                  ? "Preview not supported for this file type."
+                  : "No diff to display."}
+              </div>
+            )}
+            {!loadingDiff &&
+              hasRenderableDiff &&
+              files.map((file, fileIndex) => (
+                <Diff
+                  key={`${file.oldPath}:${file.newPath}:${fileIndex}`}
+                  viewType={diffLayout}
+                  diffType={file.type}
+                  hunks={file.hunks}
+                >
+                  {(hunks) =>
+                    hunks.flatMap((hunk, hunkIndex) => [
+                      <Decoration key={`toolbar:${hunk.content}`}>
+                        <HunkToolbar
+                          hunk={hunk}
+                          source={fileDiff.source}
+                          busy={hunkOp !== null}
+                          onAction={(action) =>
+                            applyHunk(hunk, hunkIndex, action)
+                          }
+                        />
+                      </Decoration>,
+                      <Hunk key={hunk.content} hunk={hunk} />,
+                    ])
+                  }
+                </Diff>
+              ))}
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+function HunkToolbar({
+  hunk,
+  source,
+  busy,
+  onAction,
+}: {
+  hunk: HunkData;
+  source: GitDiffSource;
+  busy: boolean | undefined;
+  onAction: (action: GitHunkAction) => void;
+}) {
+  const totals = hunkTotals(hunk);
+  return (
+    <div className="changes-hunk-toolbar">
+      <span className="changes-hunk-location">{hunk.content}</span>
+      <span className="changes-hunk-totals">
+        {totals.additions > 0 && <span className="diff-add">+{totals.additions}</span>}
+        {totals.deletions > 0 && <span className="diff-del">−{totals.deletions}</span>}
+      </span>
+      <span className="changes-hunk-spacer" />
+      {source === "unstaged" && (
+        <>
+          <button type="button" disabled={busy} onClick={() => onAction("discard")}>
+            Discard hunk
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            onClick={() => onAction("stage")}
+          >
+            {busy ? "Applying…" : "Stage hunk"}
+          </button>
+        </>
+      )}
+      {source === "staged" && (
+        <button
+          type="button"
+          className="primary"
+          disabled={busy}
+          onClick={() => onAction("unstage")}
+        >
+          {busy ? "Applying…" : "Unstage hunk"}
+        </button>
+      )}
+      {source === "branch" && (
+        <span className="changes-hunk-readonly">Committed change</span>
+      )}
+      {source === "checkpoint" && (
+        <span className="changes-hunk-readonly">Turn snapshot</span>
+      )}
+    </div>
+  );
+}
+
+function diffSourceLabel(source: GitDiffSource): string {
+  switch (source) {
+    case "staged":
+      return "Staged";
+    case "branch":
+      return "Branch";
+    case "checkpoint":
+      return "Agent turn";
+    default:
+      return "Unstaged";
+  }
+}
+
+function formatCheckpointTime(createdAtMs: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(createdAtMs));
 }
 
 /// ---- Tree model ----
@@ -735,6 +1059,7 @@ function TreeRow({
   onSelectFile,
   onToggleStage,
   onDiscard,
+  readOnly,
 }: {
   node: TreeNode;
   depth: number;
@@ -744,6 +1069,7 @@ function TreeRow({
   onSelectFile: (path: string) => void;
   onToggleStage: (change: GitFileChange) => void;
   onDiscard: (change: GitFileChange) => void;
+  readOnly: boolean;
 }) {
   if (node.kind === "file") {
     return (
@@ -754,6 +1080,7 @@ function TreeRow({
           onClick={() => onSelectFile(node.change.path)}
           onToggleStage={() => onToggleStage(node.change)}
           onDiscard={() => onDiscard(node.change)}
+          readOnly={readOnly}
           showDir={false}
           indent={depth}
         />
@@ -792,6 +1119,7 @@ function TreeRow({
               onSelectFile={onSelectFile}
               onToggleStage={onToggleStage}
               onDiscard={onDiscard}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -808,6 +1136,7 @@ function FileRow({
   onDiscard,
   showDir,
   indent,
+  readOnly,
 }: {
   change: GitFileChange;
   active: boolean;
@@ -816,6 +1145,7 @@ function FileRow({
   onDiscard: () => void;
   showDir: boolean;
   indent: number;
+  readOnly: boolean;
 }) {
   // The row is a container (not a <button>) so it can hold three independent
   // targets: the main body selects the file for the diff view, the ↩ discards,
@@ -850,27 +1180,31 @@ function FileRow({
           )}
         </span>
       </button>
-      <button
-        type="button"
-        className="changes-file-discard"
-        onClick={onDiscard}
-        aria-label={`Discard changes to ${basename(change.path)}`}
-        title="Discard changes"
-      >
-        <DiscardIcon />
-      </button>
-      <input
-        type="checkbox"
-        className="changes-file-stage"
-        checked={change.staged}
-        onChange={onToggleStage}
-        aria-label={
-          change.staged
-            ? `Unstage ${basename(change.path)}`
-            : `Stage ${basename(change.path)}`
-        }
-        title={change.staged ? "Unstage" : "Stage"}
-      />
+      {!readOnly && (
+        <>
+          <button
+            type="button"
+            className="changes-file-discard"
+            onClick={onDiscard}
+            aria-label={`Discard changes to ${basename(change.path)}`}
+            title="Discard changes"
+          >
+            <DiscardIcon />
+          </button>
+          <input
+            type="checkbox"
+            className="changes-file-stage"
+            checked={change.staged}
+            onChange={onToggleStage}
+            aria-label={
+              change.staged
+                ? `Unstage ${basename(change.path)}`
+                : `Stage ${basename(change.path)}`
+            }
+            title={change.staged ? "Unstage" : "Stage"}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -980,6 +1314,42 @@ function RefreshIcon() {
     >
       <path d="M21 12a9 9 0 1 1-3-6.7" />
       <path d="M21 4v5h-5" />
+    </svg>
+  );
+}
+
+function UnifiedDiffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M5 6h14M5 12h9M5 18h14" />
+      <path d="M17 10v4M15 12h4" />
+    </svg>
+  );
+}
+
+function SplitDiffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M4 6h6M4 12h6M4 18h6M14 6h6M14 12h6M14 18h6" />
+      <path d="M12 4v16" />
     </svg>
   );
 }
