@@ -42,7 +42,7 @@ pub use ycode_lsp::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use ycode_config::{AgentLaunchProfile, FontSizes, NotificationSettings};
-use ycode_persist::{ProjectRow, SessionRow, TodoRow};
+use ycode_persist::{CheckpointListRow, ProjectRow, SessionRow, TodoRow};
 use ycode_terminal::TerminalStatus;
 
 /// Wire-format mirror of [`TerminalStatus`]. Kept here (rather than deriving
@@ -525,6 +525,75 @@ pub struct GitFileChange {
     /// per-row stage checkbox in the Changes panel. A file partially staged
     /// (both index and worktree edits) still reads as `true`.
     pub staged: bool,
+}
+
+/// Which Git layer produced a file patch. The Changes panel uses this to
+/// expose only the operations that are meaningful for the visible content:
+/// unstaged hunks can be staged or discarded, staged hunks can be unstaged,
+/// and both branch-review and checkpoint hunks are read-only (they describe
+/// history that is already committed, not pending working-tree state).
+#[derive(Clone, Debug, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum GitDiffSource {
+    Unstaged,
+    Staged,
+    Branch,
+    Checkpoint,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct GitFileDiff {
+    pub patch: String,
+    pub source: GitDiffSource,
+}
+
+/// One durable snapshot in an agent session's review timeline. Sequence zero
+/// is the pre-launch baseline; later entries are completed turns and compare
+/// against the immediately preceding checkpoint.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ReviewCheckpointView {
+    pub id: String,
+    pub session_id: String,
+    pub session_title: String,
+    pub agent_profile: String,
+    pub sequence: u32,
+    pub kind: String,
+    pub source: Option<String>,
+    pub event_kind: Option<String>,
+    pub body_preview: Option<String>,
+    pub created_at_ms: i64,
+    pub has_previous: bool,
+}
+
+impl From<CheckpointListRow> for ReviewCheckpointView {
+    fn from(row: CheckpointListRow) -> Self {
+        Self {
+            id: row.id,
+            session_id: row.session_id,
+            session_title: row.session_title,
+            agent_profile: row.agent_profile,
+            sequence: row.sequence.max(0) as u32,
+            kind: row.kind,
+            source: row.source,
+            event_kind: row.event_kind,
+            body_preview: row.body_preview,
+            created_at_ms: row.created_at,
+            has_previous: row.sequence > 0,
+        }
+    }
+}
+
+/// A single-hunk mutation requested from the Review surface.
+#[derive(Clone, Debug, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum GitHunkAction {
+    Stage,
+    Unstage,
+    Discard,
 }
 
 /// HEAD context for the "Changes" panel header — the current branch (or a

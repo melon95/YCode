@@ -286,7 +286,8 @@ mod tests {
     use ycode_persist::Db;
 
     fn unix_socket_bind_available() -> bool {
-        let path = std::env::temp_dir().join(format!("ycode-mcp-probe-{}.sock", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("ycode-mcp-probe-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let ok = std::os::unix::net::UnixListener::bind(&path).is_ok();
         let _ = std::fs::remove_file(&path);

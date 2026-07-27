@@ -74,6 +74,9 @@ pub enum UiEventKind {
         /// body.
         body_preview: Option<String>,
     },
+    /// A durable git snapshot finished recording for an agent turn. Changes
+    /// panels listening to the project can refresh their checkpoint timeline.
+    CheckpointCreated { checkpoint_id: String },
     /// Progress update from an in-flight LSP install. `session_id` carries
     /// the manifest id so the Settings card can correlate. Streamed by the
     /// installer through the same broadcast bus as everything else.

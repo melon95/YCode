@@ -54,3 +54,19 @@ pub struct TodoRow {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CheckpointRow {
+    pub id: String,
+    pub session_id: String,
+    pub project_id: String,
+    pub sequence: i64,
+    pub commit_sha: String,
+    pub ref_name: String,
+    /// `initial` for the pre-launch baseline, `turn` for a completed turn.
+    pub kind: String,
+    pub source: Option<String>,
+    pub event_kind: Option<String>,
+    pub body_preview: Option<String>,
+    pub created_at: i64,
+}

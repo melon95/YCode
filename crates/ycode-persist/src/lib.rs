@@ -7,6 +7,7 @@
 //! - Production: `sqlite://<data_dir>/ycode.db`
 //! - Tests: `sqlite::memory:`
 
+pub mod checkpoint_repo;
 mod error;
 pub mod lsp_repo;
 mod models;
@@ -14,9 +15,10 @@ pub mod project_repo;
 pub mod session_repo;
 pub mod todo_repo;
 
+pub use checkpoint_repo::{CheckpointListRow, CheckpointRepo, NewCheckpoint};
 pub use error::PersistError;
 pub use lsp_repo::{LspInstallationRepo, LspInstallationRow, NewLspInstallation};
-pub use models::{ProjectRow, SessionRow, TodoRow};
+pub use models::{CheckpointRow, ProjectRow, SessionRow, TodoRow};
 pub use project_repo::{NewProject, ProjectRepo};
 pub use session_repo::{NewSession, SessionRepo};
 pub use todo_repo::{NewTodo, TodoRepo, TODO_STATUSES};
@@ -83,6 +85,10 @@ impl Db {
 
     pub fn lsp_installations(&self) -> LspInstallationRepo<'_> {
         LspInstallationRepo::new(&self.pool)
+    }
+
+    pub fn checkpoints(&self) -> CheckpointRepo<'_> {
+        CheckpointRepo::new(&self.pool)
     }
 }
 

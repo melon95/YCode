@@ -184,13 +184,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let view_submenu = {
         let fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
         let separator = PredefinedMenuItem::separator(app)?;
-        let reload = MenuItem::with_id(
-            app,
-            "menu-reload",
-            "Reload",
-            true,
-            Some("CmdOrCtrl+R"),
-        )?;
+        let reload = MenuItem::with_id(app, "menu-reload", "Reload", true, Some("CmdOrCtrl+R"))?;
         let devtools = MenuItem::with_id(
             app,
             "menu-toggle-devtools",
@@ -622,6 +616,33 @@ pub fn run() {
                                 body_preview,
                             } = &event.kind
                             {
+                                // Permission/notification hooks are not turn
+                                // boundaries. Capture only true completions so
+                                // adjacent checkpoints represent one agent turn.
+                                if matches!(event_kind.as_str(), "stop" | "turn_complete") {
+                                    let checkpoint_service = service.clone();
+                                    let checkpoint_session_id = event.session_id.clone();
+                                    let checkpoint_source = source.clone();
+                                    let checkpoint_event_kind = event_kind.clone();
+                                    let checkpoint_preview = body_preview.clone();
+                                    tauri::async_runtime::spawn(async move {
+                                        if let Err(error) = checkpoint_service
+                                            .capture_agent_checkpoint(
+                                                checkpoint_session_id.clone(),
+                                                checkpoint_source,
+                                                checkpoint_event_kind,
+                                                checkpoint_preview,
+                                            )
+                                            .await
+                                        {
+                                            tracing::warn!(
+                                                session_id = %checkpoint_session_id,
+                                                error = %error,
+                                                "agent checkpoint capture failed"
+                                            );
+                                        }
+                                    });
+                                }
                                 let settings = service.notification_settings().await;
                                 maybe_show_agent_notification(
                                     &handle,
@@ -691,6 +712,12 @@ pub fn run() {
             commands::git_status,
             commands::git_branch,
             commands::git_diff_file,
+            commands::git_branch_status,
+            commands::git_branch_diff_file,
+            commands::list_review_checkpoints,
+            commands::git_checkpoint_status,
+            commands::git_checkpoint_diff_file,
+            commands::git_apply_hunk,
             commands::git_commit,
             commands::git_stage_file,
             commands::git_unstage_file,

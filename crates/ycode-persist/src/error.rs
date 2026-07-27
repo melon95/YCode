@@ -25,4 +25,10 @@ pub enum PersistError {
 
     #[error("invalid todo status: {0} (expected todo|doing|done)")]
     InvalidTodoStatus(String),
+
+    #[error("checkpoint not found: {0}")]
+    CheckpointNotFound(String),
+
+    #[error("invalid checkpoint kind: {0} (expected initial|turn)")]
+    InvalidCheckpointKind(String),
 }

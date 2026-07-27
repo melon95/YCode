@@ -13,8 +13,8 @@ use ycode_config::agent_patcher::{
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
-    GitFileChange, LspManifestView,
-    OpenInExternalEditorRequest, ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
+    GitFileChange, GitFileDiff, GitHunkAction, LspManifestView, OpenInExternalEditorRequest,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, ReviewCheckpointView, SearchHit,
     SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WorktreeCloseState,
     WriteFileRequest, WritePtyRequest,
 };
@@ -306,10 +306,11 @@ pub async fn stop_session_for_close(
 pub async fn list_files(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
 ) -> Result<Vec<FileEntry>, String> {
     state
         .service
-        .list_files(project_id)
+        .list_files(project_id, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -318,11 +319,12 @@ pub async fn list_files(
 pub async fn read_file(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<FileContents, String> {
     state
         .service
-        .read_file(project_id, file_path)
+        .read_file(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -331,11 +333,12 @@ pub async fn read_file(
 pub async fn read_file_data_url(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<String, String> {
     state
         .service
-        .read_file_data_url(project_id, file_path)
+        .read_file_data_url(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -344,10 +347,11 @@ pub async fn read_file_data_url(
 pub async fn write_file(
     state: State<'_, AppState>,
     request: WriteFileRequest,
+    session_id: Option<String>,
 ) -> Result<(), String> {
     state
         .service
-        .write_file(request)
+        .write_file(request, session_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -356,11 +360,12 @@ pub async fn write_file(
 pub async fn delete_path(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .delete_path(project_id, file_path)
+        .delete_path(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -369,12 +374,13 @@ pub async fn delete_path(
 pub async fn rename_path(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     from_path: String,
     to_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .rename_path(project_id, from_path, to_path)
+        .rename_path(project_id, session_id, from_path, to_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -383,12 +389,13 @@ pub async fn rename_path(
 pub async fn create_path(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
     is_dir: bool,
 ) -> Result<(), String> {
     state
         .service
-        .create_path(project_id, file_path, is_dir)
+        .create_path(project_id, session_id, file_path, is_dir)
         .await
         .map_err(|e| e.to_string())
 }
@@ -425,10 +432,92 @@ pub async fn git_diff_file(
     project_id: String,
     session_id: Option<String>,
     file_path: String,
-) -> Result<String, String> {
+) -> Result<GitFileDiff, String> {
     state
         .service
         .git_diff_file(project_id, session_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_branch_status(
+    state: State<'_, AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<GitFileChange>, String> {
+    state
+        .service
+        .git_branch_status(project_id, session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_branch_diff_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    session_id: String,
+    file_path: String,
+) -> Result<GitFileDiff, String> {
+    state
+        .service
+        .git_branch_diff_file(project_id, session_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_review_checkpoints(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<ReviewCheckpointView>, String> {
+    state
+        .service
+        .list_review_checkpoints(project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_checkpoint_status(
+    state: State<'_, AppState>,
+    project_id: String,
+    checkpoint_id: String,
+) -> Result<Vec<GitFileChange>, String> {
+    state
+        .service
+        .git_checkpoint_status(project_id, checkpoint_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_checkpoint_diff_file(
+    state: State<'_, AppState>,
+    project_id: String,
+    checkpoint_id: String,
+    file_path: String,
+) -> Result<GitFileDiff, String> {
+    state
+        .service
+        .git_checkpoint_diff_file(project_id, checkpoint_id, file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn git_apply_hunk(
+    state: State<'_, AppState>,
+    project_id: String,
+    session_id: Option<String>,
+    file_path: String,
+    patch: String,
+    action: GitHunkAction,
+) -> Result<(), String> {
+    state
+        .service
+        .git_apply_hunk(project_id, session_id, file_path, patch, action)
         .await
         .map_err(|e| e.to_string())
 }
@@ -490,7 +579,9 @@ pub async fn git_discard_file(
 }
 
 #[tauri::command]
-pub async fn git_fetch(state: State<'_, AppState>, project_id: String,
+pub async fn git_fetch(
+    state: State<'_, AppState>,
+    project_id: String,
     session_id: Option<String>,
 ) -> Result<(), String> {
     state
@@ -501,7 +592,9 @@ pub async fn git_fetch(state: State<'_, AppState>, project_id: String,
 }
 
 #[tauri::command]
-pub async fn git_pull(state: State<'_, AppState>, project_id: String,
+pub async fn git_pull(
+    state: State<'_, AppState>,
+    project_id: String,
     session_id: Option<String>,
 ) -> Result<(), String> {
     state
@@ -512,7 +605,9 @@ pub async fn git_pull(state: State<'_, AppState>, project_id: String,
 }
 
 #[tauri::command]
-pub async fn git_push(state: State<'_, AppState>, project_id: String,
+pub async fn git_push(
+    state: State<'_, AppState>,
+    project_id: String,
     session_id: Option<String>,
 ) -> Result<(), String> {
     state
@@ -598,9 +693,7 @@ pub async fn get_workspace_usage(
 }
 
 #[tauri::command]
-pub async fn get_all_usage(
-    state: State<'_, AppState>,
-) -> Result<WorkspaceUsageView, String> {
+pub async fn get_all_usage(state: State<'_, AppState>) -> Result<WorkspaceUsageView, String> {
     state
         .service
         .get_all_usage()
@@ -667,11 +760,12 @@ pub async fn open_url(state: State<'_, AppState>, url: String) -> Result<(), Str
 pub async fn resolve_terminal_path(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     candidate: String,
 ) -> Result<Option<String>, String> {
     state
         .service
-        .resolve_terminal_path(project_id, candidate)
+        .resolve_terminal_path(project_id, session_id, candidate)
         .await
         .map_err(|e| e.to_string())
 }
@@ -889,13 +983,14 @@ pub async fn lsp_uninstall(state: State<'_, AppState>, server_id: String) -> Res
 pub async fn lsp_did_open(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
     content: String,
     version: i64,
 ) -> Result<bool, String> {
     state
         .service
-        .lsp_did_open(project_id, file_path, content, version)
+        .lsp_did_open(project_id, session_id, file_path, content, version)
         .await
         .map_err(|e| e.to_string())
 }
@@ -904,13 +999,14 @@ pub async fn lsp_did_open(
 pub async fn lsp_did_change(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
     version: i64,
     content: String,
 ) -> Result<bool, String> {
     state
         .service
-        .lsp_did_change(project_id, file_path, version, content)
+        .lsp_did_change(project_id, session_id, file_path, version, content)
         .await
         .map_err(|e| e.to_string())
 }
@@ -919,11 +1015,12 @@ pub async fn lsp_did_change(
 pub async fn lsp_did_close(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<(), String> {
     state
         .service
-        .lsp_did_close(project_id, file_path)
+        .lsp_did_close(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -932,13 +1029,14 @@ pub async fn lsp_did_close(
 pub async fn lsp_definition(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
     line: u32,
     character: u32,
 ) -> Result<serde_json::Value, String> {
     state
         .service
-        .lsp_definition(project_id, file_path, line, character)
+        .lsp_definition(project_id, session_id, file_path, line, character)
         .await
         .map_err(|e| e.to_string())
 }
@@ -947,11 +1045,12 @@ pub async fn lsp_definition(
 pub async fn lsp_semantic_tokens_full(
     state: State<'_, AppState>,
     project_id: String,
+    session_id: Option<String>,
     file_path: String,
 ) -> Result<serde_json::Value, String> {
     state
         .service
-        .lsp_semantic_tokens_full(project_id, file_path)
+        .lsp_semantic_tokens_full(project_id, session_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }

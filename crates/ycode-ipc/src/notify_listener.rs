@@ -95,7 +95,9 @@ pub fn cleanup_orphaned_sockets(dir: &Path) {
                 removed += 1;
                 debug!(path = %path.display(), pid, "removed orphaned notify socket");
             }
-            Err(e) => warn!(path = %path.display(), error = %e, "could not remove orphaned notify socket"),
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "could not remove orphaned notify socket")
+            }
         }
     }
     if removed > 0 {
@@ -283,7 +285,10 @@ fn parse_payload(line: &str) -> Option<UiEvent> {
 fn extract_codex_permission_request(payload: &serde_json::Value) -> Option<String> {
     let stdin = payload.get("stdin")?.as_str()?;
     let parsed: serde_json::Value = serde_json::from_str(stdin).ok()?;
-    let tool_name = parsed.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+    let tool_name = parsed
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let tool_input = parsed.get("tool_input");
     let tool_label = format_codex_tool_label(tool_name);
 

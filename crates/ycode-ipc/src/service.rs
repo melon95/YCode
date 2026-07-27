@@ -17,21 +17,23 @@ use tracing::{info, warn};
 
 use ycode_config::{AgentLaunchProfile, Config};
 use ycode_lsp::{
-    builtin_manifests, manifest_by_id, path_to_file_uri, InstallSpec, LspManager,
-    NotificationSink, ServerManifest, ServerNotification,
+    builtin_manifests, manifest_by_id, path_to_file_uri, InstallSpec, LspManager, NotificationSink,
+    ServerManifest, ServerNotification,
 };
-use ycode_persist::{Db, NewLspInstallation, NewProject, NewSession, NewTodo, PersistError};
+use ycode_persist::{
+    Db, NewCheckpoint, NewLspInstallation, NewProject, NewSession, NewTodo, PersistError,
+};
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
     mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
-    CreateSessionRequest,
-    DailyUsageView, DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo,
-    GitBranchListView, GitFileChange, GitFileStatus,
-    LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView, ProjectView,
-    RenameSessionRequest, ResizePtyRequest, SearchHit, SessionUsageView, SessionView,
-    SpawnPtyRequest, TodoView, TokenCountsView, UiEvent, UiEventKind, UnifiedEvent,
-    WorkspaceUsageView, WorktreeCloseState, WriteFileRequest, WritePtyRequest,
+    CreateSessionRequest, DailyUsageView, DiscoveredSessionView, FileContents, FileEntry,
+    GitBranchInfo, GitBranchListView, GitDiffSource, GitFileChange, GitFileDiff, GitFileStatus,
+    GitHunkAction, LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, ReviewCheckpointView, SearchHit,
+    SessionUsageView, SessionView, SpawnPtyRequest, TodoView, TokenCountsView, UiEvent,
+    UiEventKind, UnifiedEvent, WorkspaceUsageView, WorktreeCloseState, WriteFileRequest,
+    WritePtyRequest,
 };
 use ycode_introspect::{scanner, usage};
 
@@ -42,6 +44,16 @@ const INITIAL_COLS: u16 = 120;
 
 /// Size of the per-session output broadcast buffer at the IPC layer.
 const UI_BUS_CAPACITY: usize = 4096;
+
+/// LSP processes must be isolated by checkout, not merely by project. Two
+/// worktrees can contain different dependency graphs and file contents while
+/// sharing the same project id.
+fn workspace_lsp_key(project_id: &str, session_id: Option<&str>) -> String {
+    match session_id {
+        Some(session_id) => format!("{project_id}:worktree:{session_id}"),
+        None => format!("{project_id}:main"),
+    }
+}
 
 pub struct Service {
     db: Db,
@@ -92,17 +104,18 @@ impl Service {
         // a closure that knows how to translate `ServerNotification` into a
         // `UiEvent`. Keeps the dependency edge one-way.
         let bus_for_sink = tx.clone();
-        let sink: NotificationSink = Arc::new(move |server_id: &str, notif: ServerNotification| {
-            match notif {
-                ServerNotification::PublishDiagnostics { uri, params } => {
-                    let _ = bus_for_sink.send(UiEvent::lsp_diagnostics(
-                        server_id.to_string(),
-                        uri,
-                        params,
-                    ));
-                }
-            }
-        });
+        let sink: NotificationSink =
+            Arc::new(
+                move |server_id: &str, notif: ServerNotification| match notif {
+                    ServerNotification::PublishDiagnostics { uri, params } => {
+                        let _ = bus_for_sink.send(UiEvent::lsp_diagnostics(
+                            server_id.to_string(),
+                            uri,
+                            params,
+                        ));
+                    }
+                },
+            );
         let lsp = Arc::new(LspManager::new(db.clone(), sink));
         // Start the notify listener inside the current tokio runtime. Bind
         // failure (or non-Unix targets) returns `None` and disables
@@ -269,7 +282,15 @@ impl Service {
         let bus = self.ui_bus.clone();
         let project_id_for_task = project_id.clone();
         tokio::spawn(async move {
-            run_jsonl_watcher(home, repo_cwd, worktree_dir, project_id_for_task, bus, cancel).await;
+            run_jsonl_watcher(
+                home,
+                repo_cwd,
+                worktree_dir,
+                project_id_for_task,
+                bus,
+                cancel,
+            )
+            .await;
         });
         Ok(())
     }
@@ -362,9 +383,10 @@ impl Service {
             projects.push((r.id, r.name, cwds));
         }
         let home = home_dir().ok_or_else(|| IpcError::BadInput("no HOME".into()))?;
-        let agg = tokio::task::spawn_blocking(move || usage::aggregate_all_projects(&home, &projects))
-            .await
-            .map_err(|e| IpcError::BadInput(format!("usage task: {e}")))?;
+        let agg =
+            tokio::task::spawn_blocking(move || usage::aggregate_all_projects(&home, &projects))
+                .await
+                .map_err(|e| IpcError::BadInput(format!("usage task: {e}")))?;
         Ok(to_usage_view(agg))
     }
 
@@ -487,6 +509,7 @@ impl Service {
             .await
             .ok()
             .map(|p| Utf8PathBuf::from(p.repo_path));
+        let checkpoint_refs = self.db.checkpoints().refs_for_project(&project_id).await?;
         let live = self.db.sessions().list_for_project(&project_id).await?;
         for row in live {
             // list_for_project already filters out archived rows.
@@ -512,6 +535,29 @@ impl Service {
             let mut map = self.workspace_watchers.write().await;
             if let Some(token) = map.remove(&project_id) {
                 token.cancel();
+            }
+        }
+
+        // Checkpoint rows are removed by the project FK cascade, but their Git
+        // objects are kept alive by private refs. Delete those refs first so a
+        // removed project does not leave an invisible, permanently reachable
+        // review history in the repository.
+        if let Some(repo) = repo {
+            let cleanup = tokio::task::spawn_blocking(move || {
+                for ref_name in checkpoint_refs {
+                    git_checkpoint_delete_ref_blocking(&repo, &ref_name)?;
+                }
+                Ok::<(), IpcError>(())
+            })
+            .await;
+            match cleanup {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    warn!(error = %error, "checkpoint refs cleanup on project delete failed")
+                }
+                Err(error) => {
+                    warn!(error = %error, "checkpoint refs cleanup task on project delete failed")
+                }
             }
         }
 
@@ -626,13 +672,18 @@ impl Service {
             .ok_or_else(|| IpcError::BadInput(format!("no project matches cwd {cwd}")))
     }
 
-    /// Walk a project's repo, honouring `.gitignore` and friends. Returns
-    /// every directory and file entry (relative to repo root) so the frontend
-    /// can render an expandable tree. The walk runs on a blocking thread to
-    /// keep large repos from stalling the async runtime.
-    pub async fn list_files(&self, project_id: String) -> Result<Vec<FileEntry>, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let root = Utf8PathBuf::from(project.repo_path);
+    /// Walk a project's repo, including ignored files but pruning explicitly
+    /// heavy directories. Returns every directory and file entry (relative to
+    /// repo root) so the frontend can render an expandable tree. The walk runs
+    /// on a blocking thread to keep large repos from stalling the async runtime.
+    pub async fn list_files(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+    ) -> Result<Vec<FileEntry>, IpcError> {
+        let root = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || walk_repo(&root))
             .await
             .map_err(|e| IpcError::BadInput(format!("walk task: {e}")))?
@@ -645,10 +696,12 @@ impl Service {
     pub async fn read_file(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<FileContents, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || read_repo_file(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
@@ -660,10 +713,12 @@ impl Service {
     pub async fn read_file_data_url(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<String, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || read_repo_file_data_url(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("read task: {e}")))?
@@ -671,9 +726,14 @@ impl Service {
 
     /// Overwrite a project file's contents. Path traversal escaping the repo
     /// is rejected. Parent directories must already exist.
-    pub async fn write_file(&self, req: WriteFileRequest) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&req.project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+    pub async fn write_file(
+        &self,
+        req: WriteFileRequest,
+        session_id: Option<String>,
+    ) -> Result<(), IpcError> {
+        let repo = self
+            .resolve_workspace_root(&req.project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || write_repo_file(&repo, req.file_path, req.contents))
             .await
             .map_err(|e| IpcError::BadInput(format!("write task: {e}")))?
@@ -684,10 +744,12 @@ impl Service {
     pub async fn delete_path(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || delete_repo_path(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("delete task: {e}")))?
@@ -698,11 +760,13 @@ impl Service {
     pub async fn rename_path(
         &self,
         project_id: String,
+        session_id: Option<String>,
         from_path: String,
         to_path: String,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || rename_repo_path(&repo, from_path, to_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("rename task: {e}")))?
@@ -714,27 +778,35 @@ impl Service {
     pub async fn create_path(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
         is_dir: bool,
     ) -> Result<(), IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || create_repo_path(&repo, file_path, is_dir))
             .await
             .map_err(|e| IpcError::BadInput(format!("create task: {e}")))?
     }
 
-    /// Resolve the working directory a git command runs in: a session's
-    /// isolated worktree when `session_id` names one that has a worktree,
-    /// otherwise the project's main working tree. Lets the Changes panel point
-    /// its git operations at either tree.
-    async fn resolve_git_cwd(
+    /// Resolve the checkout used by every repo-facing operation. A valid
+    /// isolated session routes to its worktree; no session routes to the main
+    /// checkout. Reject cross-project ids instead of silently editing a tree
+    /// owned by another project.
+    async fn resolve_workspace_root(
         &self,
         project_id: &str,
         session_id: Option<&str>,
     ) -> Result<Utf8PathBuf, IpcError> {
         if let Some(sid) = session_id {
-            if let Some(wt) = self.db.sessions().get(sid).await?.worktree_path {
+            let session = self.db.sessions().get(sid).await?;
+            if session.project_id != project_id {
+                return Err(IpcError::BadInput(format!(
+                    "session {sid} does not belong to project {project_id}"
+                )));
+            }
+            if let Some(wt) = session.worktree_path {
                 return Ok(Utf8PathBuf::from(wt));
             }
         }
@@ -751,7 +823,7 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<Vec<GitFileChange>, IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_status_blocking(&repo))
             .await
@@ -766,28 +838,195 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<GitBranchInfo, IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_branch_blocking(&repo))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_branch task: {e}")))?
     }
 
-    /// Unified-diff text for one file vs its index entry (unstaged). For
-    /// untracked files the entire file content is returned as additions.
-    /// Empty string if there's nothing to diff.
+    /// Unified diff for one working-tree file. Prefer the unstaged patch; when
+    /// the file is fully staged, fall back to its index-vs-HEAD patch so the
+    /// Review pane never shows a blank preview for a staged-only row.
     pub async fn git_diff_file(
         &self,
         project_id: String,
         session_id: Option<String>,
         file_path: String,
-    ) -> Result<String, IpcError> {
+    ) -> Result<GitFileDiff, IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_diff_file_blocking(&repo, file_path))
             .await
             .map_err(|e| IpcError::BadInput(format!("git_diff task: {e}")))?
+    }
+
+    /// Committed changes on an isolated worktree branch relative to the merge
+    /// base with the branch it forked from. Uncommitted edits remain exclusively
+    /// in the Working tree scope so the two review modes never double-count.
+    pub async fn git_branch_status(
+        &self,
+        project_id: String,
+        session_id: String,
+    ) -> Result<Vec<GitFileChange>, IpcError> {
+        let (repo, base_branch) = self
+            .resolve_branch_review_target(&project_id, &session_id)
+            .await?;
+        tokio::task::spawn_blocking(move || git_branch_status_blocking(&repo, &base_branch))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git branch status task: {e}")))?
+    }
+
+    pub async fn git_branch_diff_file(
+        &self,
+        project_id: String,
+        session_id: String,
+        file_path: String,
+    ) -> Result<GitFileDiff, IpcError> {
+        let (repo, base_branch) = self
+            .resolve_branch_review_target(&project_id, &session_id)
+            .await?;
+        tokio::task::spawn_blocking(move || {
+            git_branch_diff_file_blocking(&repo, &base_branch, file_path)
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("git branch diff task: {e}")))?
+    }
+
+    /// Every durable baseline/turn checkpoint for a project, newest first.
+    /// Sequence-zero baselines are returned so the frontend can explain the
+    /// timeline, but only entries with `has_previous` form a reviewable turn.
+    pub async fn list_review_checkpoints(
+        &self,
+        project_id: String,
+    ) -> Result<Vec<ReviewCheckpointView>, IpcError> {
+        // Fail with the normal project-not-found error rather than returning
+        // an ambiguous empty timeline for an invalid id.
+        self.db.projects().get(&project_id).await?;
+        Ok(self
+            .db
+            .checkpoints()
+            .list_for_project(&project_id)
+            .await?
+            .into_iter()
+            .map(ReviewCheckpointView::from)
+            .collect())
+    }
+
+    /// Files changed during one completed agent turn (the selected checkpoint
+    /// compared with the immediately preceding checkpoint in the same session).
+    pub async fn git_checkpoint_status(
+        &self,
+        project_id: String,
+        checkpoint_id: String,
+    ) -> Result<Vec<GitFileChange>, IpcError> {
+        let (repo, before, after) = self
+            .resolve_checkpoint_review_target(&project_id, &checkpoint_id)
+            .await?;
+        tokio::task::spawn_blocking(move || git_range_status_blocking(&repo, &before, &after))
+            .await
+            .map_err(|e| IpcError::BadInput(format!("git checkpoint status task: {e}")))?
+    }
+
+    pub async fn git_checkpoint_diff_file(
+        &self,
+        project_id: String,
+        checkpoint_id: String,
+        file_path: String,
+    ) -> Result<GitFileDiff, IpcError> {
+        let (repo, before, after) = self
+            .resolve_checkpoint_review_target(&project_id, &checkpoint_id)
+            .await?;
+        tokio::task::spawn_blocking(move || {
+            git_range_diff_file_blocking(
+                &repo,
+                &before,
+                &after,
+                file_path,
+                GitDiffSource::Checkpoint,
+            )
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("git checkpoint diff task: {e}")))?
+    }
+
+    async fn resolve_checkpoint_review_target(
+        &self,
+        project_id: &str,
+        checkpoint_id: &str,
+    ) -> Result<(Utf8PathBuf, String, String), IpcError> {
+        let checkpoint = self.db.checkpoints().get(checkpoint_id).await?;
+        if checkpoint.project_id != project_id {
+            return Err(IpcError::BadInput(format!(
+                "checkpoint {checkpoint_id} does not belong to project {project_id}"
+            )));
+        }
+        let previous = self
+            .db
+            .checkpoints()
+            .previous(&checkpoint.session_id, checkpoint.sequence)
+            .await?
+            .ok_or_else(|| {
+                IpcError::BadInput("the initial checkpoint has no previous turn state".into())
+            })?;
+        // Run the diff in the same checkout the snapshot was captured from.
+        // The commits live in the shared object database either way, but the
+        // per-file path validation resolves against this root — a file the
+        // agent created inside an isolated worktree has no counterpart in the
+        // main checkout, so reviewing it from there would fail outright.
+        // Fall back to the main tree when the worktree is already gone.
+        let project = self.db.projects().get(project_id).await?;
+        let session = self.db.sessions().get(&checkpoint.session_id).await?;
+        let repo = session
+            .worktree_path
+            .map(Utf8PathBuf::from)
+            .filter(|path| path.exists())
+            .unwrap_or_else(|| Utf8PathBuf::from(project.repo_path));
+        Ok((repo, previous.commit_sha, checkpoint.commit_sha))
+    }
+
+    /// Apply exactly one displayed hunk to the index or working tree. The
+    /// backend re-validates both the repo-relative file path and patch headers;
+    /// a forged patch cannot escape the selected WorkspaceTarget.
+    pub async fn git_apply_hunk(
+        &self,
+        project_id: String,
+        session_id: Option<String>,
+        file_path: String,
+        patch: String,
+        action: GitHunkAction,
+    ) -> Result<(), IpcError> {
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
+        tokio::task::spawn_blocking(move || {
+            git_apply_hunk_blocking(&repo, file_path, patch, action)
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("git hunk task: {e}")))?
+    }
+
+    async fn resolve_branch_review_target(
+        &self,
+        project_id: &str,
+        session_id: &str,
+    ) -> Result<(Utf8PathBuf, String), IpcError> {
+        let session = self.db.sessions().get(session_id).await?;
+        if session.project_id != project_id {
+            return Err(IpcError::BadInput(format!(
+                "session {session_id} does not belong to project {project_id}"
+            )));
+        }
+        let repo = session
+            .worktree_path
+            .map(Utf8PathBuf::from)
+            .ok_or_else(|| IpcError::BadInput("selected session has no worktree".into()))?;
+        let base_branch = session
+            .base_branch
+            .filter(|branch| !branch.trim().is_empty())
+            .ok_or_else(|| IpcError::BadInput("selected worktree has no base branch".into()))?;
+        Ok((repo, base_branch))
     }
 
     /// Stage every working-tree change (`git add -A`) and commit it with
@@ -801,7 +1040,7 @@ impl Service {
         message: String,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_commit_blocking(&repo, message))
             .await
@@ -816,7 +1055,7 @@ impl Service {
         file_path: String,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_stage_file_blocking(&repo, file_path))
             .await
@@ -832,7 +1071,7 @@ impl Service {
         file_path: String,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_unstage_file_blocking(&repo, file_path))
             .await
@@ -849,7 +1088,7 @@ impl Service {
         file_path: String,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_discard_file_blocking(&repo, file_path))
             .await
@@ -864,7 +1103,7 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_fetch_blocking(&repo))
             .await
@@ -880,7 +1119,7 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_pull_blocking(&repo))
             .await
@@ -895,7 +1134,7 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_push_blocking(&repo))
             .await
@@ -909,7 +1148,7 @@ impl Service {
         session_id: Option<String>,
     ) -> Result<GitBranchListView, IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_list_branches_blocking(&repo))
             .await
@@ -925,7 +1164,7 @@ impl Service {
         name: String,
     ) -> Result<(), IpcError> {
         let repo = self
-            .resolve_git_cwd(&project_id, session_id.as_deref())
+            .resolve_workspace_root(&project_id, session_id.as_deref())
             .await?;
         tokio::task::spawn_blocking(move || git_checkout_branch_blocking(&repo, name))
             .await
@@ -974,10 +1213,12 @@ impl Service {
     pub async fn resolve_terminal_path(
         &self,
         project_id: String,
+        session_id: Option<String>,
         candidate: String,
     ) -> Result<Option<String>, IpcError> {
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         tokio::task::spawn_blocking(move || resolve_terminal_path_blocking(&repo, &candidate))
             .await
             .map_err(|e| IpcError::BadInput(format!("resolve-path task: {e}")))?
@@ -991,6 +1232,123 @@ impl Service {
             out.push(SessionView::from_row(row, is_live));
         }
         Ok(out)
+    }
+
+    /// Capture the filesystem state after a completed agent turn. The notify
+    /// listener deliberately does not touch git; the Tauri event pump calls
+    /// this method only for true completion events (`stop`/`turn_complete`),
+    /// not permission or generic notification hooks.
+    pub async fn capture_agent_checkpoint(
+        &self,
+        session_id: String,
+        source: String,
+        event_kind: String,
+        body_preview: Option<String>,
+    ) -> Result<Option<ReviewCheckpointView>, IpcError> {
+        let session = self.db.sessions().get(&session_id).await?;
+        self.capture_session_checkpoint(
+            session,
+            "turn",
+            Some(source),
+            Some(event_kind),
+            body_preview,
+        )
+        .await
+    }
+
+    async fn capture_session_checkpoint(
+        &self,
+        session: ycode_persist::SessionRow,
+        kind: &str,
+        source: Option<String>,
+        event_kind: Option<String>,
+        body_preview: Option<String>,
+    ) -> Result<Option<ReviewCheckpointView>, IpcError> {
+        let project = self.db.projects().get(&session.project_id).await?;
+        let repo = Utf8PathBuf::from(
+            session
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| project.repo_path.clone()),
+        );
+        let previous = self
+            .db
+            .checkpoints()
+            .latest_for_session(&session.id)
+            .await?;
+        let checkpoint_id = ulid::Ulid::new().to_string();
+        let ref_name = format!("refs/ycode/checkpoints/{}/{}", session.id, checkpoint_id);
+        let message = if kind == "initial" {
+            format!("YCode baseline for {}", session.title)
+        } else {
+            format!("YCode agent turn {}", session.title)
+        };
+        let parent = previous.as_ref().map(|row| row.commit_sha.clone());
+        let repo_for_capture = repo.clone();
+        let ref_for_capture = ref_name.clone();
+        let commit_sha = tokio::task::spawn_blocking(move || {
+            git_checkpoint_create_blocking(
+                &repo_for_capture,
+                &ref_for_capture,
+                &message,
+                parent.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| IpcError::BadInput(format!("git checkpoint task: {e}")))??;
+        let Some(commit_sha) = commit_sha else {
+            // Non-git projects remain fully usable; they simply have no review
+            // timeline because there is no durable object database to own it.
+            return Ok(None);
+        };
+
+        let checkpoint = match self
+            .db
+            .checkpoints()
+            .insert(NewCheckpoint {
+                id: checkpoint_id.clone(),
+                session_id: session.id.clone(),
+                project_id: session.project_id.clone(),
+                commit_sha,
+                ref_name: ref_name.clone(),
+                kind: kind.to_string(),
+                source: source.clone(),
+                event_kind: event_kind.clone(),
+                body_preview: body_preview.clone(),
+            })
+            .await
+        {
+            Ok(row) => row,
+            Err(error) => {
+                let repo_for_cleanup = repo;
+                let ref_for_cleanup = ref_name;
+                let _ = tokio::task::spawn_blocking(move || {
+                    git_checkpoint_delete_ref_blocking(&repo_for_cleanup, &ref_for_cleanup)
+                })
+                .await;
+                return Err(error.into());
+            }
+        };
+        let view = ReviewCheckpointView {
+            id: checkpoint.id,
+            session_id: session.id.clone(),
+            session_title: session.title,
+            agent_profile: session.agent_profile,
+            sequence: checkpoint.sequence.max(0) as u32,
+            kind: checkpoint.kind,
+            source: checkpoint.source,
+            event_kind: checkpoint.event_kind,
+            body_preview: checkpoint.body_preview,
+            created_at_ms: checkpoint.created_at,
+            has_previous: checkpoint.sequence > 0,
+        };
+        let _ = self.ui_bus.send(UiEvent {
+            session_id: session.id,
+            kind: UiEventKind::CheckpointCreated {
+                checkpoint_id: checkpoint_id.clone(),
+            },
+        });
+        Ok(Some(view))
     }
 
     pub async fn create_session(&self, req: CreateSessionRequest) -> Result<SessionView, IpcError> {
@@ -1041,7 +1399,12 @@ impl Service {
                     })
                     .await
                     .map_err(|e| IpcError::BadInput(format!("worktree add task: {e}")))??;
-                    (wt.clone(), Some(wt.into_string()), Some(branch), base_branch)
+                    (
+                        wt.clone(),
+                        Some(wt.into_string()),
+                        Some(branch),
+                        base_branch,
+                    )
                 }
                 // No commit to branch from → shared mode.
                 None => (repo.clone(), None, None, None),
@@ -1083,6 +1446,17 @@ impl Service {
                 return Err(e.into());
             }
         };
+
+        // The baseline must exist before the child gets a chance to write. A
+        // checkpoint failure never blocks launching an agent: non-git repos
+        // and unusual filesystem states should degrade to no turn timeline,
+        // not make session creation unusable.
+        if let Err(error) = self
+            .capture_session_checkpoint(row.clone(), "initial", None, None, None)
+            .await
+        {
+            warn!(session_id = %id, error = %error, "initial checkpoint capture failed");
+        }
 
         let started_at = std::time::SystemTime::now();
         let session = self
@@ -1248,6 +1622,42 @@ impl Service {
         if row.archived_at.is_none() {
             self.db.sessions().archive(&session_id).await?;
         }
+        // Drop this session's review timeline. Archiving does not delete the
+        // session row, so the checkpoint FK never cascades — without this the
+        // rows keep surfacing in the Agent turn picker (pointing at a worktree
+        // that the teardown below is about to remove) and their private refs
+        // pin every snapshot commit in the object database forever.
+        //
+        // Refs go first: once they're gone the objects are unreachable and the
+        // teardown's branch pruning can actually reclaim them. Best-effort, so
+        // a git failure never blocks archival.
+        match self.db.checkpoints().refs_for_session(&session_id).await {
+            Ok(refs) if !refs.is_empty() => {
+                if let Ok(project) = self.db.projects().get(&row.project_id).await {
+                    let repo = Utf8PathBuf::from(project.repo_path);
+                    let cleanup = tokio::task::spawn_blocking(move || {
+                        for ref_name in refs {
+                            if let Err(error) = git_checkpoint_delete_ref_blocking(&repo, &ref_name)
+                            {
+                                warn!(ref_name = %ref_name, error = %error, "checkpoint ref cleanup failed");
+                            }
+                        }
+                    })
+                    .await;
+                    if let Err(error) = cleanup {
+                        warn!(session_id = %session_id, error = %error, "checkpoint ref cleanup task failed");
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(error) => {
+                warn!(session_id = %session_id, error = %error, "checkpoint ref lookup failed")
+            }
+        }
+        if let Err(error) = self.db.checkpoints().delete_for_session(&session_id).await {
+            warn!(session_id = %session_id, error = %error, "checkpoint rows cleanup failed");
+        }
+
         // Tear down the isolated worktree, if any: stash uncommitted work,
         // remove the worktree, and prune the branch when it's fully merged.
         // Best-effort: a failed teardown must not block archival (the row is
@@ -1317,6 +1727,25 @@ impl Service {
 
         // Clear the recorded exit code — we're alive again.
         self.db.sessions().set_exit_code(&session_id, None).await?;
+
+        // Sessions created before checkpoint support have no pre-turn
+        // baseline. Capture one immediately before their next resumed agent
+        // process starts; later completion hooks can then represent the whole
+        // turn as a meaningful before/after diff.
+        if self
+            .db
+            .checkpoints()
+            .latest_for_session(&session_id)
+            .await?
+            .is_none()
+        {
+            if let Err(error) = self
+                .capture_session_checkpoint(row.clone(), "initial", None, None, None)
+                .await
+            {
+                warn!(session_id = %session_id, error = %error, "restart baseline capture failed");
+            }
+        }
 
         let session = self
             .spawn_pty(&session_id, &profile, &row, cwd, LaunchMode::Resume)
@@ -1390,11 +1819,9 @@ impl Service {
         }
         let row = self.db.sessions().get(&session_id).await?;
         let uncommitted = match row.worktree_path.clone() {
-            Some(wt) => tokio::task::spawn_blocking(move || {
-                worktree_is_dirty(Utf8Path::new(&wt))
-            })
-            .await
-            .map_err(|e| IpcError::BadInput(format!("dirty task: {e}")))?,
+            Some(wt) => tokio::task::spawn_blocking(move || worktree_is_dirty(Utf8Path::new(&wt)))
+                .await
+                .map_err(|e| IpcError::BadInput(format!("dirty task: {e}")))?,
             None => false,
         };
         let unmerged_commits = match (row.branch, row.base_branch) {
@@ -1435,8 +1862,10 @@ impl Service {
     /// state. The Settings → Languages page renders one card per entry.
     pub async fn lsp_list_manifests(&self) -> Result<Vec<LspManifestView>, IpcError> {
         let installed = self.db.lsp_installations().list().await?;
-        let installed_by_id: std::collections::HashMap<String, _> =
-            installed.into_iter().map(|row| (row.id.clone(), row)).collect();
+        let installed_by_id: std::collections::HashMap<String, _> = installed
+            .into_iter()
+            .map(|row| (row.id.clone(), row))
+            .collect();
 
         let mut out = Vec::new();
         for manifest in builtin_manifests() {
@@ -1551,12 +1980,13 @@ impl Service {
     pub async fn lsp_did_open(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
         content: String,
         version: i64,
     ) -> Result<bool, IpcError> {
         let Some((session, uri, language_id)) = self
-            .lsp_session_for(&project_id, &file_path)
+            .lsp_session_for(&project_id, session_id.as_deref(), &file_path)
             .await?
         else {
             return Ok(false);
@@ -1570,6 +2000,7 @@ impl Service {
     pub async fn lsp_did_change(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
         version: i64,
         content: String,
@@ -1579,11 +2010,13 @@ impl Service {
         let Some(manifest) = LspManager::manifest_for_file(&file_path) else {
             return Ok(false);
         };
-        let Some(session) = self.lsp.get(&project_id, &manifest.id).await else {
+        let target_key = workspace_lsp_key(&project_id, session_id.as_deref());
+        let Some(session) = self.lsp.get(&target_key, &manifest.id).await else {
             return Ok(false);
         };
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         let abs = repo.as_std_path().join(&file_path);
         let uri = path_to_file_uri(&abs);
         session.did_change_full(&uri, version, &content).await?;
@@ -1593,16 +2026,19 @@ impl Service {
     pub async fn lsp_did_close(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<(), IpcError> {
         let Some(manifest) = LspManager::manifest_for_file(&file_path) else {
             return Ok(());
         };
-        let Some(session) = self.lsp.get(&project_id, &manifest.id).await else {
+        let target_key = workspace_lsp_key(&project_id, session_id.as_deref());
+        let Some(session) = self.lsp.get(&target_key, &manifest.id).await else {
             return Ok(());
         };
-        let project = self.db.projects().get(&project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self
+            .resolve_workspace_root(&project_id, session_id.as_deref())
+            .await?;
         let abs = repo.as_std_path().join(&file_path);
         let uri = path_to_file_uri(&abs);
         session.did_close(&uri).await?;
@@ -1615,11 +2051,15 @@ impl Service {
     pub async fn lsp_definition(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
         line: u32,
         character: u32,
     ) -> Result<serde_json::Value, IpcError> {
-        let Some((session, uri, _)) = self.lsp_session_for(&project_id, &file_path).await? else {
+        let Some((session, uri, _)) = self
+            .lsp_session_for(&project_id, session_id.as_deref(), &file_path)
+            .await?
+        else {
             return Ok(serde_json::Value::Null);
         };
         Ok(session.definition(&uri, line, character).await?)
@@ -1630,9 +2070,13 @@ impl Service {
     pub async fn lsp_semantic_tokens_full(
         &self,
         project_id: String,
+        session_id: Option<String>,
         file_path: String,
     ) -> Result<serde_json::Value, IpcError> {
-        let Some((session, uri, _)) = self.lsp_session_for(&project_id, &file_path).await? else {
+        let Some((session, uri, _)) = self
+            .lsp_session_for(&project_id, session_id.as_deref(), &file_path)
+            .await?
+        else {
             return Ok(serde_json::Value::Null);
         };
         Ok(session.semantic_tokens_full(&uri).await?)
@@ -1644,19 +2088,20 @@ impl Service {
     async fn lsp_session_for(
         &self,
         project_id: &str,
+        session_id: Option<&str>,
         file_path: &str,
     ) -> Result<Option<(Arc<ycode_lsp::LspSession>, String, String)>, IpcError> {
         let Some(manifest) = LspManager::manifest_for_file(file_path) else {
             return Ok(None);
         };
-        let project = self.db.projects().get(project_id).await?;
-        let repo = Utf8PathBuf::from(project.repo_path);
+        let repo = self.resolve_workspace_root(project_id, session_id).await?;
+        let target_key = workspace_lsp_key(project_id, session_id);
         let abs = repo.as_std_path().join(file_path);
         let uri = path_to_file_uri(&abs);
         let language_id = LspManager::language_id_for(&manifest, file_path).to_string();
         match self
             .lsp
-            .get_or_spawn(project_id, repo.as_std_path(), manifest)
+            .get_or_spawn(&target_key, repo.as_std_path(), manifest)
             .await
         {
             Ok(session) => Ok(Some((session, uri, language_id))),
@@ -2514,9 +2959,20 @@ fn count_file_lines(repo: &Utf8Path, rel: &str) -> u32 {
     count
 }
 
+/// Wrap a repo-relative path so git treats it as one exact file rather than a
+/// glob. Git reads a bare pathspec as a wildcard pattern, so a real filename
+/// containing `[`, `*` or `?` — `app/[slug].tsx` in every Next.js/SvelteKit
+/// repo — silently matches its siblings too (`[slug]` is a character class, so
+/// `g.tsx`, `l.tsx`, `s.tsx`… all match). That turns a single-file `git diff`
+/// into a multi-file patch, and every per-file operation into a scattergun.
+fn literal_pathspec(file_path: &str) -> String {
+    format!(":(literal){file_path}")
+}
+
 /// Run `git diff -- <path>` for tracked files or synthesize a "new file" diff
-/// for untracked files. Returns empty string when the file is unchanged.
-fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, IpcError> {
+/// for untracked files. A fully staged file falls back to `--cached` so it is
+/// still reviewable and can be unstaged one hunk at a time.
+fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<GitFileDiff, IpcError> {
     use std::process::Command;
 
     // Reject path traversal — same enforcement as `read_repo_file`.
@@ -2527,24 +2983,24 @@ fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, 
         .arg("-C")
         .arg(repo.as_std_path())
         .args(["ls-files", "--error-unmatch", "--"])
-        .arg(&file_path)
+        .arg(literal_pathspec(&file_path))
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     if tracked {
-        let out = Command::new("git")
-            .arg("-C")
-            .arg(repo.as_std_path())
-            .args(["diff", "--no-color", "--no-ext-diff", "--"])
-            .arg(&file_path)
-            .output()
-            .map_err(|e| IpcError::BadInput(format!("spawn git diff: {e}")))?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            return Err(IpcError::BadInput(format!("git diff failed: {stderr}")));
+        let unstaged = git_diff_output(repo, &["--"], Some(&file_path))?;
+        if !unstaged.is_empty() {
+            return Ok(GitFileDiff {
+                patch: unstaged,
+                source: GitDiffSource::Unstaged,
+            });
         }
-        return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+        let staged = git_diff_output(repo, &["--cached", "--"], Some(&file_path))?;
+        return Ok(GitFileDiff {
+            patch: staged,
+            source: GitDiffSource::Staged,
+        });
     }
 
     // Untracked: synthesize a "new file" diff so the frontend's gitdiff-parser
@@ -2559,7 +3015,10 @@ fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, 
             "diff --git a/{p} b/{p}\nnew file mode 100644\n--- /dev/null\n+++ b/{p}\nBinary file (untracked)\n",
             p = file_path
         );
-        return Ok(body);
+        return Ok(GitFileDiff {
+            patch: body,
+            source: GitDiffSource::Unstaged,
+        });
     }
     let text = String::from_utf8_lossy(&bytes);
     let lines: Vec<&str> = text.split_inclusive('\n').collect();
@@ -2584,7 +3043,492 @@ fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<String, 
             body.push('\n');
         }
     }
-    Ok(body)
+    Ok(GitFileDiff {
+        patch: body,
+        source: GitDiffSource::Unstaged,
+    })
+}
+
+fn git_branch_status_blocking(
+    repo: &Utf8Path,
+    base_branch: &str,
+) -> Result<Vec<GitFileChange>, IpcError> {
+    let range = branch_review_range(base_branch)?;
+    git_diff_range_status_blocking(repo, &range)
+}
+
+fn git_range_status_blocking(
+    repo: &Utf8Path,
+    before: &str,
+    after: &str,
+) -> Result<Vec<GitFileChange>, IpcError> {
+    validate_checkpoint_oid(before)?;
+    validate_checkpoint_oid(after)?;
+    git_diff_range_status_blocking(repo, &format!("{before}..{after}"))
+}
+
+fn git_diff_range_status_blocking(
+    repo: &Utf8Path,
+    range: &str,
+) -> Result<Vec<GitFileChange>, IpcError> {
+    use std::process::Command;
+
+    let status_out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["diff", "--name-status", "-z", "--no-renames"])
+        .arg(range)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn branch status: {e}")))?;
+    if !status_out.status.success() {
+        let stderr = String::from_utf8_lossy(&status_out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!(
+            "git branch status failed: {stderr}"
+        )));
+    }
+
+    let numstat_out = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["diff", "--numstat", "-z", "--no-renames"])
+        .arg(range)
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn branch numstat: {e}")))?;
+    if !numstat_out.status.success() {
+        let stderr = String::from_utf8_lossy(&numstat_out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!(
+            "git branch numstat failed: {stderr}"
+        )));
+    }
+    let numstat = parse_numstat_z(&numstat_out.stdout);
+
+    let status_text = String::from_utf8_lossy(&status_out.stdout);
+    let fields: Vec<&str> = status_text
+        .split('\0')
+        .filter(|field| !field.is_empty())
+        .collect();
+    let mut changes = Vec::new();
+    for pair in fields.chunks_exact(2) {
+        let status = match pair[0].as_bytes().first().copied() {
+            Some(b'A') => GitFileStatus::Added,
+            Some(b'D') => GitFileStatus::Deleted,
+            Some(b'M') => GitFileStatus::Modified,
+            _ => GitFileStatus::Other,
+        };
+        let path = pair[1].to_string();
+        let (additions, deletions) = numstat.get(&path).copied().unwrap_or((0, 0));
+        changes.push(GitFileChange {
+            path,
+            status,
+            additions,
+            deletions,
+            staged: false,
+        });
+    }
+    changes.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(changes)
+}
+
+fn git_branch_diff_file_blocking(
+    repo: &Utf8Path,
+    base_branch: &str,
+    file_path: String,
+) -> Result<GitFileDiff, IpcError> {
+    let _ = resolve_under_repo(repo, &file_path)?;
+    let range = branch_review_range(base_branch)?;
+    git_diff_range_file_blocking(repo, &range, file_path, GitDiffSource::Branch)
+}
+
+fn git_range_diff_file_blocking(
+    repo: &Utf8Path,
+    before: &str,
+    after: &str,
+    file_path: String,
+    source: GitDiffSource,
+) -> Result<GitFileDiff, IpcError> {
+    validate_checkpoint_oid(before)?;
+    validate_checkpoint_oid(after)?;
+    git_diff_range_file_blocking(repo, &format!("{before}..{after}"), file_path, source)
+}
+
+fn git_diff_range_file_blocking(
+    repo: &Utf8Path,
+    range: &str,
+    file_path: String,
+    source: GitDiffSource,
+) -> Result<GitFileDiff, IpcError> {
+    let _ = resolve_under_repo(repo, &file_path)?;
+    let patch = git_diff_output(repo, &[range, "--"], Some(&file_path))?;
+    Ok(GitFileDiff { patch, source })
+}
+
+fn validate_checkpoint_oid(value: &str) -> Result<(), IpcError> {
+    if !(40..=64).contains(&value.len()) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(IpcError::BadInput("invalid checkpoint object id".into()));
+    }
+    Ok(())
+}
+
+fn branch_review_range(base_branch: &str) -> Result<String, IpcError> {
+    let base = base_branch.trim();
+    if base.is_empty() || base.starts_with('-') || base.contains(char::is_whitespace) {
+        return Err(IpcError::BadInput("invalid base branch".into()));
+    }
+    Ok(format!("{base}...HEAD"))
+}
+
+fn git_diff_output(
+    repo: &Utf8Path,
+    args: &[&str],
+    file_path: Option<&str>,
+) -> Result<String, IpcError> {
+    use std::process::Command;
+
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args([
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-renames",
+        ])
+        .args(args);
+    if let Some(path) = file_path {
+        command.arg(literal_pathspec(path));
+    }
+    let out = command
+        .output()
+        .map_err(|e| IpcError::BadInput(format!("spawn git diff: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git diff failed: {stderr}")));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Snapshot the complete visible working tree into a git commit without
+/// touching the user's real index or checkout. An alternate temporary index
+/// starts from the previous checkpoint (or HEAD for the baseline), then
+/// `git add -A` captures tracked edits, deletions, and untracked files while
+/// still respecting `.gitignore`. A private ref keeps the commit reachable.
+fn git_checkpoint_create_blocking(
+    repo: &Utf8Path,
+    ref_name: &str,
+    message: &str,
+    checkpoint_parent: Option<&str>,
+) -> Result<Option<String>, IpcError> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let is_repo = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !is_repo {
+        return Ok(None);
+    }
+    if !ref_name.starts_with("refs/ycode/checkpoints/") || ref_name.contains(char::is_whitespace) {
+        return Err(IpcError::BadInput("invalid checkpoint ref".into()));
+    }
+
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["rev-parse", "--verify", "HEAD^{commit}"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
+    let parent = checkpoint_parent.map(str::to_string).or(head);
+    if let Some(parent) = parent.as_deref() {
+        validate_checkpoint_oid(parent)?;
+    }
+
+    let index_path =
+        std::env::temp_dir().join(format!("ycode-checkpoint-{}.index", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<String, IpcError> {
+        let mut read_tree = Command::new("git");
+        read_tree
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .env("GIT_INDEX_FILE", &index_path)
+            .arg("read-tree");
+        if let Some(parent) = parent.as_deref() {
+            read_tree.arg(parent);
+        } else {
+            read_tree.arg("--empty");
+        }
+        checkpoint_command_success(read_tree, "read checkpoint base")?;
+
+        let mut add = Command::new("git");
+        add.arg("-C")
+            .arg(repo.as_std_path())
+            .env("GIT_INDEX_FILE", &index_path)
+            .args(["add", "-A", "--", "."]);
+        checkpoint_command_success(add, "snapshot working tree")?;
+
+        let mut write_tree = Command::new("git");
+        write_tree
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .env("GIT_INDEX_FILE", &index_path)
+            .arg("write-tree");
+        let tree = checkpoint_command_output(write_tree, "write checkpoint tree")?;
+
+        let mut commit = Command::new("git");
+        commit
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .env("GIT_INDEX_FILE", &index_path)
+            .env("GIT_AUTHOR_NAME", "YCode")
+            .env("GIT_AUTHOR_EMAIL", "checkpoint@ycode.local")
+            .env("GIT_COMMITTER_NAME", "YCode")
+            .env("GIT_COMMITTER_EMAIL", "checkpoint@ycode.local")
+            .args(["commit-tree", tree.trim()]);
+        if let Some(parent) = parent.as_deref() {
+            commit.args(["-p", parent]);
+        }
+        commit
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = commit
+            .spawn()
+            .map_err(|error| IpcError::BadInput(format!("spawn checkpoint commit: {error}")))?;
+        child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| IpcError::BadInput("checkpoint commit stdin unavailable".into()))?
+            .write_all(message.as_bytes())
+            .map_err(|error| IpcError::BadInput(format!("write checkpoint message: {error}")))?;
+        let commit_output = child
+            .wait_with_output()
+            .map_err(|error| IpcError::BadInput(format!("wait checkpoint commit: {error}")))?;
+        if !commit_output.status.success() {
+            return Err(IpcError::BadInput(format!(
+                "git checkpoint commit failed: {}",
+                String::from_utf8_lossy(&commit_output.stderr).trim()
+            )));
+        }
+        let commit_sha = String::from_utf8_lossy(&commit_output.stdout)
+            .trim()
+            .to_string();
+        validate_checkpoint_oid(&commit_sha)?;
+
+        let mut update_ref = Command::new("git");
+        update_ref
+            .arg("-C")
+            .arg(repo.as_std_path())
+            .args(["update-ref", ref_name, &commit_sha]);
+        checkpoint_command_success(update_ref, "persist checkpoint ref")?;
+        Ok(commit_sha)
+    })();
+    let _ = std::fs::remove_file(index_path);
+    result.map(Some)
+}
+
+fn checkpoint_command_success(
+    mut command: std::process::Command,
+    operation: &str,
+) -> Result<(), IpcError> {
+    let output = command
+        .output()
+        .map_err(|error| IpcError::BadInput(format!("spawn {operation}: {error}")))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(IpcError::BadInput(format!(
+            "git {operation} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+fn checkpoint_command_output(
+    mut command: std::process::Command,
+    operation: &str,
+) -> Result<String, IpcError> {
+    let output = command
+        .output()
+        .map_err(|error| IpcError::BadInput(format!("spawn {operation}: {error}")))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(IpcError::BadInput(format!(
+            "git {operation} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+fn git_checkpoint_delete_ref_blocking(repo: &Utf8Path, ref_name: &str) -> Result<(), IpcError> {
+    use std::process::Command;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo.as_std_path())
+        .args(["update-ref", "-d", ref_name])
+        .output()
+        .map_err(|error| IpcError::BadInput(format!("spawn checkpoint cleanup: {error}")))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(IpcError::BadInput(format!(
+            "git checkpoint cleanup failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+fn git_apply_hunk_blocking(
+    repo: &Utf8Path,
+    file_path: String,
+    patch: String,
+    action: GitHunkAction,
+) -> Result<(), IpcError> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let _ = resolve_under_repo(repo, &file_path)?;
+    if patch.is_empty() || patch.len() > 2 * 1024 * 1024 {
+        return Err(IpcError::BadInput("invalid hunk patch size".into()));
+    }
+    validate_hunk_patch(&file_path, &patch)?;
+
+    let mut command = Command::new("git");
+    command.arg("-C").arg(repo.as_std_path()).args([
+        "apply",
+        "--whitespace=nowarn",
+        "--unidiff-zero",
+    ]);
+    match action {
+        GitHunkAction::Stage => {
+            command.arg("--cached");
+        }
+        GitHunkAction::Unstage => {
+            command.args(["--cached", "--reverse"]);
+        }
+        GitHunkAction::Discard => {
+            command.arg("--reverse");
+        }
+    }
+    command.arg("-").stdin(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|e| IpcError::BadInput(format!("spawn git apply: {e}")))?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or_else(|| IpcError::BadInput("git apply stdin unavailable".into()))?
+        .write_all(patch.as_bytes())
+        .map_err(|e| IpcError::BadInput(format!("write git apply patch: {e}")))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| IpcError::BadInput(format!("wait git apply: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(IpcError::BadInput(format!("git apply failed: {stderr}")));
+    }
+    Ok(())
+}
+
+/// Gate a frontend-supplied single-hunk patch before it reaches `git apply`.
+///
+/// The split between preamble and body is load-bearing. Everything before the
+/// first `@@` is header territory, where `---`/`+++`/`diff --git` name the
+/// files git will touch. Everything after is hunk content, where those same
+/// prefixes are ordinary data: deleting a `-- comment` line (SQL, Lua, Haskell,
+/// Ada) emits `--- comment`, and adding a `++ x` line emits `+++ x`. Scanning
+/// the whole patch conflates the two and rejects perfectly honest diffs.
+///
+/// Rejecting extra *sections* matters as much as extra pairs: git also acts on
+/// a `diff --git` block that carries no `---`/`+++` at all — renames, mode
+/// changes and `GIT binary patch` name their targets on the `diff --git` line
+/// alone — so a forged section could rename or overwrite an unrelated file.
+fn validate_hunk_patch(file_path: &str, patch: &str) -> Result<(), IpcError> {
+    if file_path.contains(['\r', '\n']) {
+        return Err(IpcError::BadInput("invalid hunk patch".into()));
+    }
+    // Everything up to the first hunk marker is the header block.
+    let body_start = patch
+        .find("\n@@ ")
+        .map(|idx| idx + 1)
+        .or_else(|| patch.starts_with("@@ ").then_some(0))
+        .ok_or_else(|| IpcError::BadInput("invalid hunk patch".into()))?;
+    let preamble = &patch[..body_start];
+
+    let old = format!("--- a/{file_path}");
+    let new = format!("+++ b/{file_path}");
+    let old_ok = preamble
+        .lines()
+        .any(|line| line == old || line == "--- /dev/null");
+    let new_ok = preamble
+        .lines()
+        .any(|line| line == new || line == "+++ /dev/null");
+    if !old_ok || !new_ok {
+        return Err(IpcError::BadInput(
+            "hunk patch does not match selected file".into(),
+        ));
+    }
+
+    // Exactly one file section, and exactly one file-header pair naming it.
+    //
+    // The pair must be counted over the WHOLE patch, not just the preamble:
+    // `git apply` happily starts a new file section from a `---`/`+++` pair
+    // that appears after a hunk, so a forged trailer would write to a second
+    // file. Body lines can only *look* like a header when they carry a diff
+    // prefix (`---` from deleting `-- x`, `+++` from adding `++ x`), so
+    // discount exactly those before counting.
+    let sections = patch
+        .lines()
+        .filter(|line| line.starts_with("diff --git "))
+        .count();
+    let body = &patch[body_start..];
+    let body_old_content = body
+        .lines()
+        .filter(|line| line.starts_with("--- ") && !line.starts_with("--- a/"))
+        .count();
+    let body_new_content = body
+        .lines()
+        .filter(|line| line.starts_with("+++ ") && !line.starts_with("+++ b/"))
+        .count();
+    let old_headers = patch
+        .lines()
+        .filter(|line| line.starts_with("--- "))
+        .count()
+        - body_old_content;
+    let new_headers = patch
+        .lines()
+        .filter(|line| line.starts_with("+++ "))
+        .count()
+        - body_new_content;
+    if sections > 1 || old_headers != 1 || new_headers != 1 {
+        return Err(IpcError::BadInput(
+            "hunk patch must contain exactly one file".into(),
+        ));
+    }
+    // Header-only operations never accompany a hunk we rendered; their presence
+    // means the patch was hand-built to touch something else.
+    let forbidden = [
+        "\nrename from ",
+        "\nrename to ",
+        "\ncopy from ",
+        "\ncopy to ",
+        "\nGIT binary patch",
+        "\ndeleted file mode ",
+    ];
+    if forbidden.iter().any(|marker| patch.contains(marker)) {
+        return Err(IpcError::BadInput(
+            "hunk patch contains an unsupported file operation".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn git_commit_blocking(repo: &Utf8Path, message: String) -> Result<(), IpcError> {
@@ -2629,7 +3573,11 @@ fn git_commit_blocking(repo: &Utf8Path, message: String) -> Result<(), IpcError>
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-        let detail = if stderr.trim().is_empty() { stdout } else { stderr };
+        let detail = if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        };
         return Err(IpcError::BadInput(format!("git commit failed: {detail}")));
     }
     Ok(())
@@ -2646,7 +3594,7 @@ fn git_stage_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), Ipc
         .arg("-C")
         .arg(repo.as_std_path())
         .args(["add", "--"])
-        .arg(&file_path)
+        .arg(literal_pathspec(&file_path))
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git add: {e}")))?;
     if !out.status.success() {
@@ -2667,7 +3615,7 @@ fn git_unstage_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), I
         .arg("-C")
         .arg(repo.as_std_path())
         .args(["reset", "-q", "HEAD", "--"])
-        .arg(&file_path)
+        .arg(literal_pathspec(&file_path))
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git reset: {e}")))?;
     if !out.status.success() {
@@ -2701,7 +3649,7 @@ fn git_discard_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), I
             .arg("-C")
             .arg(repo.as_std_path())
             .args(["restore", "--source=HEAD", "--staged", "--worktree", "--"])
-            .arg(&file_path)
+            .arg(literal_pathspec(&file_path))
             .output()
             .map_err(|e| IpcError::BadInput(format!("spawn git restore: {e}")))?;
         if !out.status.success() {
@@ -2716,7 +3664,7 @@ fn git_discard_file_blocking(repo: &Utf8Path, file_path: String) -> Result<(), I
             .arg("-C")
             .arg(repo.as_std_path())
             .args(["rm", "-q", "--cached", "--ignore-unmatch", "--"])
-            .arg(&file_path)
+            .arg(literal_pathspec(&file_path))
             .status();
         match std::fs::remove_file(&abs) {
             Ok(()) => Ok(()),
@@ -2921,7 +3869,9 @@ fn git_checkout_branch_blocking(repo: &Utf8Path, name: String) -> Result<(), Ipc
         // Belt-and-suspenders: the switcher already filters worktree branches,
         // but if one slips through, explain why it can't be checked out.
         let msg = if detail.contains("already used by worktree") {
-            format!("\"{name}\" is checked out in an agent's worktree and can't be switched to here.")
+            format!(
+                "\"{name}\" is checked out in an agent's worktree and can't be switched to here."
+            )
         } else {
             format!("git checkout failed: {detail}")
         };
@@ -2971,7 +3921,14 @@ fn worktree_add_blocking(
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(repo.as_std_path())
-        .args(["worktree", "add", "-b", branch, worktree_path.as_str(), base_sha])
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            worktree_path.as_str(),
+            base_sha,
+        ])
         .output()
         .map_err(|e| IpcError::BadInput(format!("spawn git worktree add: {e}")))?;
     if !out.status.success() {
@@ -3126,7 +4083,12 @@ fn branch_fully_merged_blocking(repo: &Utf8Path, base: &str, branch: &str) -> bo
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .parse::<u32>()
+                .ok()
+        })
         .map(|n| n == 0)
         .unwrap_or(false)
 }
@@ -3256,11 +4218,7 @@ fn delete_repo_path(repo: &Utf8Path, file_path: String) -> Result<(), IpcError> 
     Ok(())
 }
 
-fn rename_repo_path(
-    repo: &Utf8Path,
-    from_path: String,
-    to_path: String,
-) -> Result<(), IpcError> {
+fn rename_repo_path(repo: &Utf8Path, from_path: String, to_path: String) -> Result<(), IpcError> {
     if from_path.is_empty() || to_path.is_empty() {
         return Err(IpcError::BadInput("path is empty".into()));
     }
@@ -3270,7 +4228,10 @@ fn rename_repo_path(
     let from_abs = resolve_under_repo(repo, &from_path)?;
     let to_abs = resolve_under_repo(repo, &to_path)?;
     if to_abs.exists() {
-        return Err(IpcError::BadInput(format!("destination exists: {}", to_path)));
+        return Err(IpcError::BadInput(format!(
+            "destination exists: {}",
+            to_path
+        )));
     }
     std::fs::rename(&from_abs, &to_abs)
         .map_err(|e| IpcError::BadInput(format!("rename {} → {}: {e}", from_path, to_path)))?;
@@ -4160,6 +5121,267 @@ mod tests {
     }
 
     #[test]
+    fn branch_review_lists_and_diffs_committed_changes_from_merge_base() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let base = current_branch(&repo).unwrap();
+        git_in(repo.as_std_path(), &["checkout", "-q", "-b", "feature"]);
+        std::fs::write(repo.join("f.txt"), "feature\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "one\ntwo\n").unwrap();
+        git_in(repo.as_std_path(), &["add", "-A"]);
+        git_in(repo.as_std_path(), &["commit", "-q", "-m", "feature"]);
+
+        let changes = git_branch_status_blocking(&repo, &base).unwrap();
+        assert_eq!(changes.len(), 2);
+        assert!(changes
+            .iter()
+            .any(|change| change.path == "f.txt" && change.status == GitFileStatus::Modified));
+        assert!(changes
+            .iter()
+            .any(|change| change.path == "new.txt" && change.status == GitFileStatus::Added));
+
+        let diff = git_branch_diff_file_blocking(&repo, &base, "new.txt".into()).unwrap();
+        assert_eq!(diff.source, GitDiffSource::Branch);
+        assert!(diff.patch.contains("+one"));
+        assert!(diff.patch.contains("+two"));
+    }
+
+    #[test]
+    fn checkpoints_capture_uncommitted_and_untracked_files_without_touching_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = init_repo_with_commit(tmp.path());
+        let baseline_ref = "refs/ycode/checkpoints/s1/c0";
+        let baseline = git_checkpoint_create_blocking(&repo, baseline_ref, "baseline", None)
+            .unwrap()
+            .unwrap();
+
+        std::fs::write(repo.join("f.txt"), "changed\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "new\nfile\n").unwrap();
+        let turn_ref = "refs/ycode/checkpoints/s1/c1";
+        let turn = git_checkpoint_create_blocking(&repo, turn_ref, "turn one", Some(&baseline))
+            .unwrap()
+            .unwrap();
+
+        let changes = git_range_status_blocking(&repo, &baseline, &turn).unwrap();
+        assert!(changes
+            .iter()
+            .any(|change| change.path == "f.txt" && change.status == GitFileStatus::Modified));
+        assert!(changes
+            .iter()
+            .any(|change| change.path == "new.txt" && change.status == GitFileStatus::Added));
+        let diff = git_range_diff_file_blocking(
+            &repo,
+            &baseline,
+            &turn,
+            "new.txt".into(),
+            GitDiffSource::Checkpoint,
+        )
+        .unwrap();
+        assert_eq!(diff.source, GitDiffSource::Checkpoint);
+        assert!(diff.patch.contains("+new"));
+        assert!(diff.patch.contains("+file"));
+
+        assert!(git_out(repo.as_std_path(), &["diff", "--cached"]).is_empty());
+        let status = git_out(repo.as_std_path(), &["status", "--porcelain"]);
+        assert!(status.contains(" M f.txt"));
+        assert!(status.contains("?? new.txt"));
+        assert_eq!(
+            git_out(repo.as_std_path(), &["rev-parse", turn_ref]).trim(),
+            turn
+        );
+    }
+
+    /// Git reads a bare pathspec as a glob, so `app/[slug].tsx` — a routine
+    /// Next.js/SvelteKit filename — also matches `g.tsx`, `l.tsx`, `s.tsx`…
+    /// A single-file diff would then carry several files, and every per-file
+    /// git operation would hit the siblings too.
+    #[test]
+    fn per_file_git_ops_treat_bracket_filenames_literally() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("app")).unwrap();
+        git_in(&repo, &["init", "-q"]);
+        for name in ["[slug].tsx", "g.tsx", "l.tsx", "s.tsx"] {
+            std::fs::write(repo.join("app").join(name), "orig\n").unwrap();
+        }
+        git_in(&repo, &["add", "-A"]);
+        git_in(&repo, &["commit", "-q", "-m", "base"]);
+        for name in ["[slug].tsx", "g.tsx", "l.tsx", "s.tsx"] {
+            std::fs::write(repo.join("app").join(name), "changed\n").unwrap();
+        }
+        let repo = Utf8Path::from_path(&repo).unwrap();
+
+        // The diff must describe exactly one file.
+        let detail = git_diff_file_blocking(repo, "app/[slug].tsx".into()).unwrap();
+        assert_eq!(
+            detail.patch.matches("diff --git ").count(),
+            1,
+            "bracket filename pulled in siblings: {}",
+            detail.patch
+        );
+        assert!(detail.patch.contains("a/app/[slug].tsx"));
+
+        // …and staging it must leave the siblings untouched.
+        git_stage_file_blocking(repo, "app/[slug].tsx".into()).unwrap();
+        let staged = git_out(repo.as_std_path(), &["diff", "--cached", "--name-only"]);
+        assert_eq!(staged.trim(), "app/[slug].tsx", "staged extra files");
+    }
+
+    #[test]
+    fn hunk_actions_stage_unstage_and_discard_only_the_selected_hunk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git_in(&repo, &["init", "-q"]);
+        let base = (1..=24)
+            .map(|line| format!("line {line}\n"))
+            .collect::<String>();
+        std::fs::write(repo.join("f.txt"), &base).unwrap();
+        git_in(&repo, &["add", "-A"]);
+        git_in(&repo, &["commit", "-q", "-m", "base"]);
+
+        let changed = base
+            .replace("line 2\n", "line two\n")
+            .replace("line 22\n", "line twenty-two\n");
+        std::fs::write(repo.join("f.txt"), changed).unwrap();
+        let repo = Utf8Path::from_path(&repo).unwrap();
+        let detail = git_diff_file_blocking(repo, "f.txt".into()).unwrap();
+        assert_eq!(detail.source, GitDiffSource::Unstaged);
+        let first = first_hunk_patch(&detail.patch);
+
+        git_apply_hunk_blocking(repo, "f.txt".into(), first.clone(), GitHunkAction::Stage).unwrap();
+        let cached = git_diff_output(repo, &["--cached", "--"], Some("f.txt")).unwrap();
+        let unstaged = git_diff_output(repo, &["--"], Some("f.txt")).unwrap();
+        assert!(cached.contains("line two"));
+        assert!(!cached.contains("line twenty-two"));
+        assert!(!unstaged.contains("line two"));
+        assert!(unstaged.contains("line twenty-two"));
+
+        git_apply_hunk_blocking(repo, "f.txt".into(), first.clone(), GitHunkAction::Unstage)
+            .unwrap();
+        assert!(git_diff_output(repo, &["--cached", "--"], Some("f.txt"))
+            .unwrap()
+            .is_empty());
+
+        git_apply_hunk_blocking(repo, "f.txt".into(), first, GitHunkAction::Discard).unwrap();
+        let remaining = std::fs::read_to_string(repo.join("f.txt")).unwrap();
+        assert!(remaining.contains("line 2\n"));
+        assert!(remaining.contains("line twenty-two\n"));
+    }
+
+    fn first_hunk_patch(patch: &str) -> String {
+        let first = patch.find("@@ ").expect("diff has a hunk");
+        let next = patch[first + 3..]
+            .find("\n@@ ")
+            .map(|offset| first + 3 + offset + 1)
+            .unwrap_or(patch.len());
+        patch[..next].to_string()
+    }
+
+    /// `git apply` honours every `---`/`+++` pair it sees, even several under
+    /// one `diff --git` header. Counting only `diff --git` would let a forged
+    /// patch name the selected file once and then write to an unrelated path
+    /// in the same request.
+    #[test]
+    fn hunk_patch_with_a_smuggled_second_file_is_rejected() {
+        let forged = "diff --git a/f.txt b/f.txt\n\
+                      --- a/f.txt\n\
+                      +++ b/f.txt\n\
+                      @@ -1 +1 @@\n\
+                      -a\n\
+                      +b\n\
+                      --- a/other.txt\n\
+                      +++ b/other.txt\n\
+                      @@ -1 +1 @@\n\
+                      -orig\n\
+                      +INJECTED\n";
+        assert!(validate_hunk_patch("f.txt", forged).is_err());
+
+        // The honest single-file shape still passes.
+        let honest = "diff --git a/f.txt b/f.txt\n\
+                      --- a/f.txt\n\
+                      +++ b/f.txt\n\
+                      @@ -1 +1 @@\n\
+                      -a\n\
+                      +b\n";
+        assert!(validate_hunk_patch("f.txt", honest).is_ok());
+
+        // So does an untracked file's synthesized /dev/null patch.
+        let untracked = "diff --git a/new.txt b/new.txt\n\
+                         new file mode 100644\n\
+                         --- /dev/null\n\
+                         +++ b/new.txt\n\
+                         @@ -0,0 +1 @@\n\
+                         +hello\n";
+        assert!(validate_hunk_patch("new.txt", untracked).is_ok());
+    }
+
+    /// `---`/`+++` are only file headers *before* the first `@@`. After it they
+    /// are content: deleting a `-- comment` line emits `--- comment`. Counting
+    /// them across the whole patch rejects honest SQL/Lua/Haskell diffs.
+    #[test]
+    fn hunk_patch_keeps_dashes_in_the_body_as_content() {
+        let sql = "diff --git a/m.sql b/m.sql\n\
+                   --- a/m.sql\n\
+                   +++ b/m.sql\n\
+                   @@ -1,3 +1,2 @@\n\
+                   --- Durable git snapshots captured before a session starts\n\
+                    -- completed agent turn.\n\
+                    CREATE TABLE t (id TEXT);\n";
+        assert!(
+            validate_hunk_patch("m.sql", sql).is_ok(),
+            "deleting a SQL comment line must not read as a second file header"
+        );
+
+        let added = "diff --git a/a.md b/a.md\n\
+                     --- a/a.md\n\
+                     +++ b/a.md\n\
+                     @@ -1 +1,2 @@\n\
+                      text\n\
+                     +++ nested marker\n";
+        assert!(validate_hunk_patch("a.md", added).is_ok());
+    }
+
+    /// git also acts on a `diff --git` section carrying no `---`/`+++` pair:
+    /// renames, mode changes and binary patches name their targets on the
+    /// `diff --git` line alone.
+    #[test]
+    fn hunk_patch_with_a_header_only_second_section_is_rejected() {
+        let rename = "diff --git a/f.txt b/f.txt\n\
+                      --- a/f.txt\n\
+                      +++ b/f.txt\n\
+                      @@ -1 +1 @@\n\
+                      -one\n\
+                      +ONE\n\
+                      diff --git a/victim.txt b/pwned.txt\n\
+                      similarity index 100%\n\
+                      rename from victim.txt\n\
+                      rename to pwned.txt\n";
+        assert!(validate_hunk_patch("f.txt", rename).is_err());
+
+        let binary = "diff --git a/f.txt b/f.txt\n\
+                      --- a/f.txt\n\
+                      +++ b/f.txt\n\
+                      @@ -1 +1 @@\n\
+                      -one\n\
+                      +ONE\n\
+                      diff --git a/victim.txt b/victim.txt\n\
+                      GIT binary patch\n\
+                      literal 26\n";
+        assert!(validate_hunk_patch("f.txt", binary).is_err());
+
+        let deleted = "diff --git a/f.txt b/f.txt\n\
+                       --- a/f.txt\n\
+                       +++ b/f.txt\n\
+                       @@ -1 +1 @@\n\
+                       -one\n\
+                       +ONE\n\
+                       diff --git a/victim.txt b/victim.txt\n\
+                       deleted file mode 100644\n";
+        assert!(validate_hunk_patch("f.txt", deleted).is_err());
+    }
+
+    #[test]
     fn push_pull_fetch_roundtrip_via_local_bare_remote() {
         let tmp = tempfile::tempdir().unwrap();
         let bare = tmp.path().join("remote.git");
@@ -4314,15 +5536,27 @@ mod tests {
         worktree_add_blocking(&repo, &wt, "ycode/feat", &base_sha).unwrap();
 
         // Fresh worktree, no new commits → provably merged.
-        assert!(branch_fully_merged_blocking(&repo, &base_branch, "ycode/feat"));
+        assert!(branch_fully_merged_blocking(
+            &repo,
+            &base_branch,
+            "ycode/feat"
+        ));
         // One commit ahead → not merged.
         std::fs::write(wt.join("a.txt"), "a").unwrap();
         git_in(wt.as_std_path(), &["add", "-A"]);
         git_in(wt.as_std_path(), &["commit", "-q", "-m", "a"]);
-        assert!(!branch_fully_merged_blocking(&repo, &base_branch, "ycode/feat"));
+        assert!(!branch_fully_merged_blocking(
+            &repo,
+            &base_branch,
+            "ycode/feat"
+        ));
         // A git error must NOT read as "merged" — keeping the branch is the safe
         // default, the opposite of the count helper's fail-open-to-0.
-        assert!(!branch_fully_merged_blocking(&repo, &base_branch, "no-such-branch"));
+        assert!(!branch_fully_merged_blocking(
+            &repo,
+            &base_branch,
+            "no-such-branch"
+        ));
     }
 
     #[test]
@@ -4332,7 +5566,10 @@ mod tests {
         // Committer identity in local config so the production `git stash`
         // (which writes commit objects) doesn't depend on ambient global config.
         git_in(repo.as_std_path(), &["config", "user.name", "t"]);
-        git_in(repo.as_std_path(), &["config", "user.email", "t@example.com"]);
+        git_in(
+            repo.as_std_path(),
+            &["config", "user.email", "t@example.com"],
+        );
         let (base_sha, base_branch) = worktree_base(&repo).unwrap();
         let base_branch = base_branch.unwrap();
 
@@ -4349,7 +5586,10 @@ mod tests {
         assert!(!wt_a.exists(), "worktree removed");
         // Unmerged branch is kept…
         let kept = git_out(repo.as_std_path(), &["branch", "--list", "ycode/keep"]);
-        assert!(kept.contains("ycode/keep"), "unmerged branch kept: {kept:?}");
+        assert!(
+            kept.contains("ycode/keep"),
+            "unmerged branch kept: {kept:?}"
+        );
         // …and the uncommitted work was stashed, not discarded by --force.
         let stash = git_out(repo.as_std_path(), &["stash", "list"]);
         assert!(
@@ -4368,7 +5608,10 @@ mod tests {
         worktree_teardown_blocking(&repo, wt_b.as_str(), Some("ycode/gone"), Some(&base_branch))
             .unwrap();
         let gone = git_out(repo.as_std_path(), &["branch", "--list", "ycode/gone"]);
-        assert!(!gone.contains("ycode/gone"), "merged branch pruned: {gone:?}");
+        assert!(
+            !gone.contains("ycode/gone"),
+            "merged branch pruned: {gone:?}"
+        );
     }
 
     #[test]

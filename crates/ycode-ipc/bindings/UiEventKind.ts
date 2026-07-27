@@ -22,4 +22,4 @@ event_kind: string,
  * — the Tauri shell falls back to the generic "finished its turn"
  * body.
  */
-body_preview: string | null, } | { "type": "LspInstallProgress", stage: InstallStage, percent: number | null, message: string, } | { "type": "LspInstallFinished", ok: boolean, version: string | null, error: string | null, } | { "type": "LspUninstalled" } | { "type": "LspDiagnostics", server_id: string, uri: string, params: unknown, };
+body_preview: string | null, } | { "type": "CheckpointCreated", checkpoint_id: string, } | { "type": "LspInstallProgress", stage: InstallStage, percent: number | null, message: string, } | { "type": "LspInstallFinished", ok: boolean, version: string | null, error: string | null, } | { "type": "LspUninstalled" } | { "type": "LspDiagnostics", server_id: string, uri: string, params: unknown, };
