@@ -109,13 +109,20 @@ interface FileState {
   loaded: boolean;
 }
 
-export function EditorPanel({ projectId }: { projectId: string }) {
+export function EditorPanel({
+  projectId,
+  sessionId,
+  rootPath,
+}: {
+  projectId: string;
+  sessionId?: string;
+  rootPath?: string;
+}) {
   const openFiles = useStore((s) => s.openFiles);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
   const closeFile = useStore((s) => s.closeFile);
   const setFileDirty = useStore((s) => s.setFileDirty);
   const openFile = useStore((s) => s.openFile);
-  const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
   const editorFontSize = useStore((s) => s.fontSizes.editor);
 
   const filesRef = useRef<Map<string, FileState>>(new Map());
@@ -160,12 +167,12 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         const timer = lspChangeTimerRef.current.get(path);
         if (timer) clearTimeout(timer);
         lspChangeTimerRef.current.delete(path);
-        void lspDidClose(projectId, path).catch((err) =>
+        void lspDidClose(projectId, path, sessionId).catch((err) =>
           console.warn("lsp didClose failed", err),
         );
       }
     }
-  }, [openFiles, projectId]);
+  }, [openFiles, projectId, sessionId]);
 
   // Lazy-load the focused file (no IPC if already cached). Images/SVGs render
   // through <ImagePreview>, which fetches its own data URL — skip the text
@@ -184,7 +191,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       loaded: false,
     });
     let cancelled = false;
-    readFile(projectId, selectedFilePath)
+    readFile(projectId, selectedFilePath, sessionId)
       .then((file) => {
         if (cancelled) return;
         filesRef.current.set(selectedFilePath, {
@@ -199,7 +206,13 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         // Binary files are skipped — no language server cares about them.
         if (!file.is_binary && !lspOpenRef.current.has(selectedFilePath)) {
           lspOpenRef.current.set(selectedFilePath, { version: 1, active: false });
-          void lspDidOpen(projectId, selectedFilePath, file.contents, 1)
+          void lspDidOpen(
+            projectId,
+            selectedFilePath,
+            file.contents,
+            1,
+            sessionId,
+          )
             .then((active) => {
               if (cancelled) return;
               const entry = lspOpenRef.current.get(selectedFilePath);
@@ -221,14 +234,14 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, selectedFilePath, setFileDirty]);
+  }, [projectId, sessionId, selectedFilePath, setFileDirty]);
 
   // Watch only the focused file. Inactive tabs catch up on next focus via
   // the load effect above.
   useEffect(() => {
-    if (!selectedFilePath || !repoPath) return;
+    if (!selectedFilePath || !rootPath) return;
     if (isImagePath(selectedFilePath)) return;
-    const abs = `${repoPath}/${selectedFilePath}`;
+    const abs = `${rootPath}/${selectedFilePath}`;
     let cancelled = false;
     let unwatch: (() => void) | undefined;
     watch(
@@ -239,7 +252,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
           skipNextWatchRef.current = false;
           return;
         }
-        readFile(projectId, selectedFilePath)
+        readFile(projectId, selectedFilePath, sessionId)
           .then((file) => {
             if (cancelled) return;
             const cur = filesRef.current.get(selectedFilePath);
@@ -275,7 +288,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       cancelled = true;
       unwatch?.();
     };
-  }, [projectId, repoPath, selectedFilePath, setFileDirty]);
+  }, [projectId, sessionId, rootPath, selectedFilePath, setFileDirty]);
 
   // ── LSP helpers ────────────────────────────────────────────────────────
   //
@@ -285,7 +298,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   const requestSemanticTokens = useCallback(
     async (path: string) => {
       try {
-        const resp = (await lspSemanticTokensFull(projectId, path)) as
+        const resp = (await lspSemanticTokensFull(projectId, path, sessionId)) as
           | SemanticTokensResponse
           | null;
         if (useStore.getState().selectedFilePath !== path) return;
@@ -295,7 +308,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         console.warn("lsp semantic tokens failed", err);
       }
     },
-    [projectId],
+    [projectId, sessionId],
   );
 
   // Debounced didChange. Keystrokes within 300 ms collapse into one update —
@@ -313,7 +326,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         if (!cur || !cur.active) return;
         cur.version += 1;
         const nextVersion = cur.version;
-        void lspDidChange(projectId, path, nextVersion, value)
+        void lspDidChange(projectId, path, nextVersion, value, sessionId)
           .then(() => {
             if (useStore.getState().selectedFilePath === path) {
               void requestSemanticTokens(path);
@@ -323,23 +336,29 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       }, 300);
       lspChangeTimerRef.current.set(path, timer);
     },
-    [projectId, requestSemanticTokens],
+    [projectId, sessionId, requestSemanticTokens],
   );
 
   const handleGotoDef = useCallback(
     async (line: number, character: number) => {
       const path = useStore.getState().selectedFilePath;
-      if (!path || !repoPath) return;
+      if (!path || !rootPath) return;
       try {
-        const result = await lspDefinition(projectId, path, line, character);
+        const result = await lspDefinition(
+          projectId,
+          path,
+          line,
+          character,
+          sessionId,
+        );
         const loc = pickLspLocation(result);
         if (!loc) return;
         const abs = parseFileUri(loc.uri);
         if (!abs) return;
         // Anchor the prefix match on `/` so a repo at `/foo` doesn't match
         // `/foobar/...`. Same-file jumps are allowed via the equality arm.
-        if (abs !== repoPath && !abs.startsWith(repoPath + "/")) return;
-        const rel = abs === repoPath ? "" : abs.slice(repoPath.length + 1);
+        if (abs !== rootPath && !abs.startsWith(rootPath + "/")) return;
+        const rel = abs === rootPath ? "" : abs.slice(rootPath.length + 1);
         if (!rel) return;
         openFile(rel);
         window.dispatchEvent(
@@ -355,7 +374,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         console.warn("lsp definition failed", err);
       }
     },
-    [projectId, repoPath, openFile],
+    [projectId, sessionId, rootPath, openFile],
   );
 
   const save = useCallback(async () => {
@@ -365,11 +384,14 @@ export function EditorPanel({ projectId }: { projectId: string }) {
     if (fs.value === fs.original) return;
     skipNextWatchRef.current = true;
     try {
-      await writeFile({
-        project_id: projectId,
-        file_path: selectedFilePath,
-        contents: fs.value,
-      });
+      await writeFile(
+        {
+          project_id: projectId,
+          file_path: selectedFilePath,
+          contents: fs.value,
+        },
+        sessionId,
+      );
       fs.original = fs.value;
       setFileDirty(selectedFilePath, false);
       setExternalChange(false);
@@ -378,7 +400,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
       skipNextWatchRef.current = false;
       toast.danger(`Save ${selectedFilePath}: ${err}`);
     }
-  }, [projectId, selectedFilePath, setFileDirty]);
+  }, [projectId, sessionId, selectedFilePath, setFileDirty]);
 
   // Stash `save` in a ref so the CM keymap extension doesn't rebuild on every
   // value/dirty change (which would discard editor history).
@@ -443,7 +465,7 @@ export function EditorPanel({ projectId }: { projectId: string }) {
   async function discardAndReload() {
     if (!selectedFilePath) return;
     try {
-      const file = await readFile(projectId, selectedFilePath);
+      const file = await readFile(projectId, selectedFilePath, sessionId);
       filesRef.current.set(selectedFilePath, {
         original: file.contents,
         value: file.contents,
@@ -603,7 +625,8 @@ export function EditorPanel({ projectId }: { projectId: string }) {
         <ImagePreview
           projectId={projectId}
           path={selectedFilePath}
-          repoPath={repoPath}
+          sessionId={sessionId}
+          rootPath={rootPath}
         />
       ) : isBinary ? (
         <div className="empty">Binary file — editor cannot display.</div>
@@ -1012,11 +1035,13 @@ function SvgPreview({ value }: { value: string }) {
 function ImagePreview({
   projectId,
   path,
-  repoPath,
+  sessionId,
+  rootPath,
 }: {
   projectId: string;
   path: string;
-  repoPath?: string;
+  sessionId?: string;
+  rootPath?: string;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1026,7 +1051,7 @@ function ImagePreview({
     setSrc(null);
     setError(null);
     const load = () => {
-      readFileDataUrl(projectId, path)
+      readFileDataUrl(projectId, path, sessionId)
         .then((url) => {
           if (!cancelled) setSrc(url);
         })
@@ -1036,12 +1061,12 @@ function ImagePreview({
     };
     load();
 
-    if (!repoPath) {
+    if (!rootPath) {
       return () => {
         cancelled = true;
       };
     }
-    const abs = `${repoPath}/${path}`;
+    const abs = `${rootPath}/${path}`;
     let unwatch: (() => void) | undefined;
     watch(abs, () => !cancelled && load(), { delayMs: 300 })
       .then((fn) => {
@@ -1053,7 +1078,7 @@ function ImagePreview({
       cancelled = true;
       unwatch?.();
     };
-  }, [projectId, path, repoPath]);
+  }, [projectId, path, sessionId, rootPath]);
 
   if (error) {
     return <div className="empty">Failed to load image: {error}</div>;

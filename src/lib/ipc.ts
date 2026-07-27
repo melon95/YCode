@@ -23,8 +23,11 @@ import type {
   FileEntry,
   FileContents,
   GitFileChange,
+  GitFileDiff,
+  GitHunkAction,
   GitBranchInfo,
   GitBranchListView,
+  ReviewCheckpointView,
   LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
@@ -128,14 +131,18 @@ export const stopSessionForClose = (
 export const renameSession = (request: RenameSessionRequest): Promise<SessionView> =>
   invoke("rename_session", { request });
 
-export const listFiles = (projectId: string): Promise<FileEntry[]> =>
-  invoke("list_files", { projectId });
+export const listFiles = (
+  projectId: string,
+  sessionId?: string,
+): Promise<FileEntry[]> =>
+  invoke("list_files", { projectId, sessionId: sessionId ?? null });
 
 export const readFile = (
   projectId: string,
   filePath: string,
+  sessionId?: string,
 ): Promise<FileContents> =>
-  invoke("read_file", { projectId, filePath });
+  invoke("read_file", { projectId, sessionId: sessionId ?? null, filePath });
 
 /**
  * Read a file as a base64 `data:` URL (MIME inferred from extension) so the
@@ -144,26 +151,52 @@ export const readFile = (
 export const readFileDataUrl = (
   projectId: string,
   filePath: string,
+  sessionId?: string,
 ): Promise<string> =>
-  invoke("read_file_data_url", { projectId, filePath });
+  invoke("read_file_data_url", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+  });
 
-export const writeFile = (request: WriteFileRequest): Promise<void> =>
-  invoke("write_file", { request });
+export const writeFile = (
+  request: WriteFileRequest,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("write_file", { request, sessionId: sessionId ?? null });
 
-export const deletePath = (projectId: string, filePath: string): Promise<void> =>
-  invoke("delete_path", { projectId, filePath });
+export const deletePath = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("delete_path", { projectId, sessionId: sessionId ?? null, filePath });
 
 export const renamePath = (
   projectId: string,
   fromPath: string,
   toPath: string,
-): Promise<void> => invoke("rename_path", { projectId, fromPath, toPath });
+  sessionId?: string,
+): Promise<void> =>
+  invoke("rename_path", {
+    projectId,
+    sessionId: sessionId ?? null,
+    fromPath,
+    toPath,
+  });
 
 export const createPath = (
   projectId: string,
   filePath: string,
   isDir: boolean,
-): Promise<void> => invoke("create_path", { projectId, filePath, isDir });
+  sessionId?: string,
+): Promise<void> =>
+  invoke("create_path", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+    isDir,
+  });
 
 // `sessionId` optionally targets a session's isolated worktree instead of the
 // project's main working tree — the Changes panel passes it to view/stage/
@@ -184,8 +217,54 @@ export const gitDiffFile = (
   projectId: string,
   filePath: string,
   sessionId?: string,
-): Promise<string> =>
+): Promise<GitFileDiff> =>
   invoke("git_diff_file", { projectId, sessionId: sessionId ?? null, filePath });
+
+export const gitBranchStatus = (
+  projectId: string,
+  sessionId: string,
+): Promise<GitFileChange[]> =>
+  invoke("git_branch_status", { projectId, sessionId });
+
+export const gitBranchDiffFile = (
+  projectId: string,
+  sessionId: string,
+  filePath: string,
+): Promise<GitFileDiff> =>
+  invoke("git_branch_diff_file", { projectId, sessionId, filePath });
+
+export const listReviewCheckpoints = (
+  projectId: string,
+): Promise<ReviewCheckpointView[]> =>
+  invoke("list_review_checkpoints", { projectId });
+
+export const gitCheckpointStatus = (
+  projectId: string,
+  checkpointId: string,
+): Promise<GitFileChange[]> =>
+  invoke("git_checkpoint_status", { projectId, checkpointId });
+
+export const gitCheckpointDiffFile = (
+  projectId: string,
+  checkpointId: string,
+  filePath: string,
+): Promise<GitFileDiff> =>
+  invoke("git_checkpoint_diff_file", { projectId, checkpointId, filePath });
+
+export const gitApplyHunk = (
+  projectId: string,
+  filePath: string,
+  patch: string,
+  action: GitHunkAction,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("git_apply_hunk", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+    patch,
+    action,
+  });
 
 export const gitCommit = (
   projectId: string,
@@ -303,8 +382,13 @@ export const openUrl = (url: string): Promise<void> =>
 export const resolveTerminalPath = (
   projectId: string,
   candidate: string,
+  sessionId?: string,
 ): Promise<string | null> =>
-  invoke("resolve_terminal_path", { projectId, candidate });
+  invoke("resolve_terminal_path", {
+    projectId,
+    sessionId: sessionId ?? null,
+    candidate,
+  });
 
 export const spawnPtyRaw = (request: SpawnPtyRequest): Promise<string> =>
   invoke("spawn_pty_raw", { request });
@@ -394,19 +478,41 @@ export const lspDidOpen = (
   filePath: string,
   content: string,
   version: number,
+  sessionId?: string,
 ): Promise<boolean> =>
-  invoke("lsp_did_open", { projectId, filePath, content, version });
+  invoke("lsp_did_open", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+    content,
+    version,
+  });
 
 export const lspDidChange = (
   projectId: string,
   filePath: string,
   version: number,
   content: string,
+  sessionId?: string,
 ): Promise<boolean> =>
-  invoke("lsp_did_change", { projectId, filePath, version, content });
+  invoke("lsp_did_change", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+    version,
+    content,
+  });
 
-export const lspDidClose = (projectId: string, filePath: string): Promise<void> =>
-  invoke("lsp_did_close", { projectId, filePath });
+export const lspDidClose = (
+  projectId: string,
+  filePath: string,
+  sessionId?: string,
+): Promise<void> =>
+  invoke("lsp_did_close", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+  });
 
 /** Raw LSP `textDocument/definition` payload. `null` when no server is wired. */
 export const lspDefinition = (
@@ -414,14 +520,26 @@ export const lspDefinition = (
   filePath: string,
   line: number,
   character: number,
+  sessionId?: string,
 ): Promise<unknown> =>
-  invoke("lsp_definition", { projectId, filePath, line, character });
+  invoke("lsp_definition", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+    line,
+    character,
+  });
 
 export const lspSemanticTokensFull = (
   projectId: string,
   filePath: string,
+  sessionId?: string,
 ): Promise<unknown> =>
-  invoke("lsp_semantic_tokens_full", { projectId, filePath });
+  invoke("lsp_semantic_tokens_full", {
+    projectId,
+    sessionId: sessionId ?? null,
+    filePath,
+  });
 
 export const listenSessionEvents = (
   handler: (event: UiEvent) => void,

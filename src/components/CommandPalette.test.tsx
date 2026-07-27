@@ -3,7 +3,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { listFiles, searchSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
-import type { AgentProfileView, FileEntry, SearchHit } from "../lib/types";
+import type {
+  AgentProfileView,
+  FileEntry,
+  SearchHit,
+  SessionView,
+} from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 
 vi.mock("../lib/ipc", () => ({
@@ -100,7 +105,9 @@ describe("CommandPalette", () => {
     const user = userEvent.setup();
     const { onClose } = renderPalette();
 
-    await waitFor(() => expect(listFilesMock).toHaveBeenCalledWith("project-a"));
+    await waitFor(() =>
+      expect(listFilesMock).toHaveBeenCalledWith("project-a", undefined),
+    );
     await user.type(screen.getByRole("textbox", { name: "Search files" }), "cmd");
     await user.keyboard("{Enter}");
 
@@ -110,6 +117,25 @@ describe("CommandPalette", () => {
     expect(state.previewFilePath).toBe("src/components/CommandPalette.tsx");
     expect(state.rightTab).toBe("editor");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads files from the selected workspace checkout", async () => {
+    useStore.setState({
+      workspaceSessionByProject: { "project-a": "session-a" },
+      sessions: {
+        "session-a": {
+          id: "session-a",
+          project_id: "project-a",
+          worktree_path: "/tmp/project-a-worktree",
+        } as SessionView,
+      },
+    });
+
+    renderPalette();
+
+    await waitFor(() =>
+      expect(listFilesMock).toHaveBeenCalledWith("project-a", "session-a"),
+    );
   });
 
   it("debounces session history search and returns the picked hit", async () => {

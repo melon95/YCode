@@ -54,10 +54,12 @@ export function ManualTerminal({
   cwd,
   visible,
   projectId,
+  sessionId,
 }: {
   cwd: string;
   visible: boolean;
   projectId: string;
+  sessionId?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -120,6 +122,7 @@ export function ManualTerminal({
           candidate,
           line,
           column,
+          sessionId,
         ).catch(() => {});
       }),
     );
@@ -243,7 +246,7 @@ export function ManualTerminal({
       fitRef.current = null;
       if (id) void killPtyRaw(id).catch(() => {});
     };
-  }, [cwd]);
+  }, [cwd, sessionId]);
 
   // Route PTY events strictly by exact id match. Anything arriving before our
   // spawn returns is dropped — we don't try to buffer because a previous mount

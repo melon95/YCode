@@ -53,17 +53,52 @@ export interface ProjectUiSnapshot {
   openFiles: string[];
   selectedFilePath: string | null;
   previewFilePath: string | null;
+  /** Optional for backward compatibility with snapshots created before
+   * workspace-target routing was introduced. */
+  workspaceSessionId?: string | null;
 }
 
-// Per-project right-column state, stashed on project switch and restored when
-// the user comes back, so each project remembers its own tab + open editor
-// tabs instead of bleeding state across projects. Mirrors `layoutsByProject`.
+// Per-workspace right-column state, stashed when the user switches project OR
+// workspace target and restored when they come back, so each checkout
+// remembers its own tab + open editor tabs.
+//
+// Keyed by workspace, not by project: the same repo-relative path means a
+// different file in the main checkout than in an agent's worktree. Reusing one
+// entry across both would keep a tab open while silently swapping the file
+// underneath it — and would leave the tab dead when the path exists in only one
+// of the two trees.
 export interface RightPaneUi {
   rightTab: RightTab;
   openFiles: string[];
   selectedFilePath: string | null;
   previewFilePath: string | null;
   dirtyFiles: Record<string, true>;
+}
+
+/// Stash key for one project's right-column UI under a given workspace target.
+/// `null` (no session) is the project's main checkout.
+export function workspaceUiKey(
+  projectId: string,
+  sessionId: string | null | undefined,
+): string {
+  return `${projectId}:${sessionId ?? "main"}`;
+}
+
+/// Snapshot the live right-column fields so they can be stashed.
+function captureRightUi(state: {
+  rightTab: RightTab;
+  openFiles: string[];
+  selectedFilePath: string | null;
+  previewFilePath: string | null;
+  dirtyFiles: Record<string, true>;
+}): RightPaneUi {
+  return {
+    rightTab: state.rightTab,
+    openFiles: state.openFiles,
+    selectedFilePath: state.selectedFilePath,
+    previewFilePath: state.previewFilePath,
+    dirtyFiles: state.dirtyFiles,
+  };
 }
 
 const DEFAULT_RIGHT_UI: RightPaneUi = {
@@ -73,6 +108,71 @@ const DEFAULT_RIGHT_UI: RightPaneUi = {
   previewFilePath: null,
   dirtyFiles: {},
 };
+
+/// Fields `dropWorkspaceTargets` may hand back to `set()`.
+type WorkspaceTargetReset = Partial<
+  Pick<
+    AppState,
+    | "workspaceSessionByProject"
+    | "rightUiByProject"
+    | "rightTab"
+    | "openFiles"
+    | "selectedFilePath"
+    | "previewFilePath"
+    | "dirtyFiles"
+  >
+>;
+
+/// Force every project whose workspace target `isGone` back to its main
+/// checkout, as a session-driven counterpart to `setWorkspaceSessionId`.
+///
+/// This has to do the same stash/restore that an explicit switch does. Simply
+/// nulling the target would leave the editor showing the vanished worktree's
+/// tabs while their paths silently re-resolve against the main checkout — the
+/// exact cross-checkout bleed the per-workspace keying exists to prevent. The
+/// dead workspace's stash entries are dropped too: their keys can never be
+/// selected again, so keeping them would leak.
+function dropWorkspaceTargets(
+  state: AppState,
+  isGone: (sessionId: string) => boolean,
+): WorkspaceTargetReset {
+  // Reclaim by scanning the stash itself, not just the currently-selected
+  // targets. The common flow is that a finished worktree is de-selected (the
+  // picker falls back to Main) *before* the session is archived, so by the
+  // time we get here its key is no longer in `workspaceSessionByProject` and
+  // a selection-only scan would never free it.
+  const deadKeys = Object.keys(state.rightUiByProject).filter((key) => {
+    const sessionId = key.slice(key.indexOf(":") + 1);
+    return sessionId !== "main" && isGone(sessionId);
+  });
+  const selected = Object.entries(state.workspaceSessionByProject).filter(
+    ([, sessionId]) => sessionId && isGone(sessionId),
+  );
+  if (deadKeys.length === 0 && selected.length === 0) return {};
+
+  const workspaceSessionByProject = { ...state.workspaceSessionByProject };
+  const rightUiByProject = { ...state.rightUiByProject };
+  for (const key of deadKeys) delete rightUiByProject[key];
+
+  let live: WorkspaceTargetReset = {};
+  for (const [projectId, sessionId] of selected) {
+    workspaceSessionByProject[projectId] = null;
+    delete rightUiByProject[workspaceUiKey(projectId, sessionId)];
+    if (state.activeProjectId !== projectId) continue;
+    // The viewed project: its live editor fields still hold the dead
+    // worktree's tabs, so swap in whatever the main checkout had stashed.
+    const restored =
+      rightUiByProject[workspaceUiKey(projectId, null)] ?? DEFAULT_RIGHT_UI;
+    live = {
+      rightTab: restored.rightTab,
+      openFiles: restored.openFiles,
+      selectedFilePath: restored.selectedFilePath,
+      previewFilePath: restored.previewFilePath,
+      dirtyFiles: restored.dirtyFiles,
+    };
+  }
+  return { workspaceSessionByProject, rightUiByProject, ...live };
+}
 
 // What modes are visually defined for N visible panes. Used by the layout
 // switcher to grey out invalid choices and by reducers to fall back when
@@ -106,6 +206,29 @@ const EMPTY_LAYOUT: Layout = { mode: "single", visibleIds: [], focusSlot: 0 };
 // out alongside running sessions, but it's not a session id — `realId` strips
 // it anywhere we'd otherwise treat a slot as the active session.
 export const PICKER_SLOT = "__picker__";
+
+export function shouldShowFullscreenNewSessionPicker(
+  layout: Layout,
+  sessions: Record<string, SessionView>,
+): boolean {
+  const { visibleIds, focusSlot } = layout;
+  if (visibleIds.length === 0) return true;
+  if (visibleIds.length !== 1) return false;
+
+  const focusedId = visibleIds[focusSlot];
+  const focusedSession = focusedId ? sessions[focusedId] : null;
+  return !!focusedSession && focusedSession.status.type !== "Running";
+}
+
+export function isNewSessionPickerVisible(
+  layout: Layout,
+  sessions: Record<string, SessionView>,
+): boolean {
+  return (
+    layout.visibleIds.includes(PICKER_SLOT) ||
+    shouldShowFullscreenNewSessionPicker(layout, sessions)
+  );
+}
 
 const realId = (id: string | undefined): string | null =>
   id && id !== PICKER_SLOT ? id : null;
@@ -277,6 +400,11 @@ interface AppState {
   /// The project currently scoped for new-session creation. Top-bar project
   /// tabs select this.
   activeProjectId: string | null;
+  /// Project-scoped workspace routing. A null/missing value targets the main
+  /// checkout; a session id targets that session's isolated worktree. This is
+  /// shared by Files, Editor, Changes, LSP, terminal links, and the manual
+  /// terminal so those surfaces can never silently point at different trees.
+  workspaceSessionByProject: Record<string, string | null>;
   /// Which panel the right column is showing.
   rightTab: RightTab;
   /// Editor tab strip — paths of all open files, in tab order. The currently
@@ -333,6 +461,7 @@ interface AppState {
     edge: "before" | "after",
   ) => void;
   setActiveProjectId: (id: string | null) => void;
+  setWorkspaceSessionId: (projectId: string, sessionId: string | null) => void;
   /// One-shot at startup. Locks this window to a single project and forces
   /// the active selection to it.
   setLockedProjectId: (id: string | null) => void;
@@ -424,6 +553,7 @@ export const useStore = create<AppState>((set) => ({
   layoutsByProject: {},
   rightUiByProject: {},
   activeProjectId: null,
+  workspaceSessionByProject: {},
   rightTab: "files",
   openFiles: [],
   selectedFilePath: null,
@@ -532,13 +662,21 @@ export const useStore = create<AppState>((set) => ({
       if (wasActive) writeStoredActiveProjectId(null);
       const layoutsByProject = { ...state.layoutsByProject };
       delete layoutsByProject[id];
-      const rightUiByProject = { ...state.rightUiByProject };
-      delete rightUiByProject[id];
+      // One project owns several workspace entries (main checkout + one per
+      // session worktree), so drop every key carrying its prefix.
+      const rightUiByProject = Object.fromEntries(
+        Object.entries(state.rightUiByProject).filter(
+          ([key]) => !key.startsWith(`${id}:`),
+        ),
+      );
+      const workspaceSessionByProject = { ...state.workspaceSessionByProject };
+      delete workspaceSessionByProject[id];
       return {
         projects,
         projectOrder,
         layoutsByProject,
         rightUiByProject,
+        workspaceSessionByProject,
         activeProjectId: wasActive ? null : state.activeProjectId,
         // The terminal id would point at a now-orphaned session if its project
         // was the one we just removed.
@@ -576,21 +714,57 @@ export const useStore = create<AppState>((set) => ({
       const rightUiByProject = state.activeProjectId
         ? {
             ...state.rightUiByProject,
-            [state.activeProjectId]: {
-              rightTab: state.rightTab,
-              openFiles: state.openFiles,
-              selectedFilePath: state.selectedFilePath,
-              previewFilePath: state.previewFilePath,
-              dirtyFiles: state.dirtyFiles,
-            },
+            [workspaceUiKey(
+              state.activeProjectId,
+              state.workspaceSessionByProject[state.activeProjectId],
+            )]: captureRightUi(state),
           }
         : state.rightUiByProject;
-      const restored = (id && rightUiByProject[id]) || DEFAULT_RIGHT_UI;
+      const restored =
+        (id &&
+          rightUiByProject[
+            workspaceUiKey(id, state.workspaceSessionByProject[id])
+          ]) ||
+        DEFAULT_RIGHT_UI;
       return {
         activeProjectId: id,
         activeId: activeIdFromLayout(layout),
         layout,
         layoutsByProject,
+        rightUiByProject,
+        rightTab: restored.rightTab,
+        openFiles: restored.openFiles,
+        selectedFilePath: restored.selectedFilePath,
+        previewFilePath: restored.previewFilePath,
+        dirtyFiles: restored.dirtyFiles,
+      };
+    }),
+
+  setWorkspaceSessionId: (projectId, sessionId) =>
+    set((state) => {
+      const current = state.workspaceSessionByProject[projectId] ?? null;
+      if (current === sessionId) return state;
+      const workspaceSessionByProject = {
+        ...state.workspaceSessionByProject,
+        [projectId]: sessionId,
+      };
+      // Switching the target of a project the user isn't looking at must not
+      // touch the live editor fields — those belong to the active project.
+      if (state.activeProjectId !== projectId) {
+        return { workspaceSessionByProject };
+      }
+      // Same stash/restore dance as a project switch: each checkout keeps its
+      // own tabs. Without this the tab strip survives the switch and its paths
+      // silently re-resolve against the new tree.
+      const rightUiByProject = {
+        ...state.rightUiByProject,
+        [workspaceUiKey(projectId, current)]: captureRightUi(state),
+      };
+      const restored =
+        rightUiByProject[workspaceUiKey(projectId, sessionId)] ??
+        DEFAULT_RIGHT_UI;
+      return {
+        workspaceSessionByProject,
         rightUiByProject,
         rightTab: restored.rightTab,
         openFiles: restored.openFiles,
@@ -613,13 +787,36 @@ export const useStore = create<AppState>((set) => ({
       // new window finishing its load. `layoutForProject` filters orphaned
       // ids, clamps the focus slot, and reflows the mode for the new count.
       const layout = layoutForProject(state.sessions, pid, snap.layout);
-      return {
-        layout,
-        activeId: activeIdFromLayout(layout),
+      const target = snap.workspaceSessionId ?? null;
+      const restored: RightPaneUi = {
         rightTab: snap.rightTab,
         openFiles: snap.openFiles,
         selectedFilePath: snap.selectedFilePath,
         previewFilePath: snap.previewFilePath,
+        // Snapshots are serialized into a window URL and carry no dirty state;
+        // a freshly-detached window has nothing unsaved yet.
+        dirtyFiles: {},
+      };
+      return {
+        layout,
+        activeId: activeIdFromLayout(layout),
+        rightTab: restored.rightTab,
+        openFiles: restored.openFiles,
+        selectedFilePath: restored.selectedFilePath,
+        previewFilePath: restored.previewFilePath,
+        dirtyFiles: restored.dirtyFiles,
+        workspaceSessionByProject: {
+          ...state.workspaceSessionByProject,
+          [pid]: target,
+        },
+        // Seed the stash for the workspace we're landing on. The live fields
+        // and their stash entry have to start in sync, or the first switch away
+        // and back reads a missing entry, falls back to the empty default, and
+        // the hydrated tabs are gone.
+        rightUiByProject: {
+          ...state.rightUiByProject,
+          [workspaceUiKey(pid, target)]: restored,
+        },
       };
     }),
 
@@ -645,11 +842,30 @@ export const useStore = create<AppState>((set) => ({
           nextActive,
           state.layoutsByProject[nextActive ?? ""],
         );
-        // Restore the project we're jumping to, same as a manual tab switch.
+        // Stash what we're leaving before restoring the target, exactly as a
+        // manual tab switch does. Skipping this drops the detached project's
+        // tabs *and its dirty-file flags* from this window — and the dirty
+        // flags are what drive the unsaved-changes badge and the discard
+        // confirm, so losing them silently removes that guard.
+        const rightUiByProject = {
+          ...state.rightUiByProject,
+          [workspaceUiKey(id, state.workspaceSessionByProject[id])]:
+            captureRightUi(state),
+        };
+        // Restore the project we're jumping to, same as a manual tab switch —
+        // under whichever workspace target that project last had selected.
         const restored =
-          (nextActive && state.rightUiByProject[nextActive]) || DEFAULT_RIGHT_UI;
+          (nextActive &&
+            rightUiByProject[
+              workspaceUiKey(
+                nextActive,
+                state.workspaceSessionByProject[nextActive],
+              )
+            ]) ||
+          DEFAULT_RIGHT_UI;
         return {
           lockedByOtherWindows,
+          rightUiByProject,
           activeProjectId: nextActive,
           activeId: activeIdFromLayout(layout),
           layout,
@@ -674,9 +890,13 @@ export const useStore = create<AppState>((set) => ({
   setRightTab: (tab) => set({ rightTab: tab }),
 
   setSessions: (list) =>
-    set(() => ({
-      sessions: Object.fromEntries(list.map((s) => [s.id, s])),
-    })),
+    set((state) => {
+      const sessions = Object.fromEntries(list.map((s) => [s.id, s]));
+      return {
+        sessions,
+        ...dropWorkspaceTargets(state, (sessionId) => !sessions[sessionId]),
+      };
+    }),
 
   upsertSession: (s) =>
     set((state) => ({ sessions: { ...state.sessions, [s.id]: s } })),
@@ -701,6 +921,10 @@ export const useStore = create<AppState>((set) => ({
             return next;
           })()
         : state.activityBySession;
+      const workspaceReset = dropWorkspaceTargets(
+        state,
+        (sessionId) => sessionId === id,
+      );
       // Drop from the layout too — a slot pointing at a removed session
       // would render a blank pane. Reflow mode if the new count needs it.
       const idx = state.layout.visibleIds.indexOf(id);
@@ -729,6 +953,7 @@ export const useStore = create<AppState>((set) => ({
         activeId,
         attentionBySession,
         activityBySession,
+        ...workspaceReset,
       };
     }),
 
@@ -1027,13 +1252,16 @@ function buildProjectUiSnapshot(projectId: string): ProjectUiSnapshot | null {
         selectedFilePath: s.selectedFilePath,
         previewFilePath: s.previewFilePath,
       }
-    : s.rightUiByProject[projectId];
+    : s.rightUiByProject[
+        workspaceUiKey(projectId, s.workspaceSessionByProject[projectId])
+      ];
   return {
     layout,
     rightTab: ui?.rightTab ?? "files",
     openFiles: ui?.openFiles ?? [],
     selectedFilePath: ui?.selectedFilePath ?? null,
     previewFilePath: ui?.previewFilePath ?? null,
+    workspaceSessionId: s.workspaceSessionByProject[projectId] ?? null,
   };
 }
 

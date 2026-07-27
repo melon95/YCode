@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../lib/store";
+import type { SessionView } from "../lib/types";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
 import { ChangesPanel } from "./ChangesPanel";
 import { TodoPanel } from "./TodoPanel";
+import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 import {
   RightTerminalSplit,
   closePane,
@@ -17,6 +19,10 @@ import {
 
 export function RightPane() {
   const projects = useStore((s) => s.projects);
+  const sessions = useStore((s) => s.sessions);
+  const workspaceSessionByProject = useStore(
+    (s) => s.workspaceSessionByProject,
+  );
   const activeProjectId = useStore((s) => s.activeProjectId);
   const rightTab = useStore((s) => s.rightTab);
   const setRightTab = useStore((s) => s.setRightTab);
@@ -28,6 +34,19 @@ export function RightPane() {
   const setSelectedFilePath = useStore((s) => s.setSelectedFilePath);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const hasOpenFiles = openFiles.length > 0;
+  const activeWorkspaceSession = activeProject
+    ? workspaceSession(
+        activeProject.id,
+        workspaceSessionByProject[activeProject.id],
+        sessions,
+      )
+    : null;
+  const activeWorkspaceSessionId = activeWorkspaceSession?.id;
+  const activeWorkspaceRoot =
+    activeWorkspaceSession?.worktree_path ?? activeProject?.repo_path;
+  const activeWorkspaceKey = activeProject
+    ? `${activeProject.id}:${activeWorkspaceSessionId ?? "main"}`
+    : "none";
 
   // File-tree column width, in pixels. Only consulted in the `with-editor`
   // workspace mode — tree-only mode keeps the existing `1fr` rule from CSS.
@@ -217,6 +236,14 @@ export function RightPane() {
 
   return (
     <section className="right-pane">
+      {activeProject && (
+        <div className="workspace-context-bar">
+          <WorkspaceTargetPicker projectId={activeProject.id} />
+          <span className="workspace-context-hint">
+            This workspace target controls Files, Editor, Changes, LSP, and Terminal.
+          </span>
+        </div>
+      )}
       <div className="right-pane-tabs" role="tablist" aria-label="Right pane views">
         <button
           type="button"
@@ -228,6 +255,7 @@ export function RightPane() {
           title="Terminal"
         >
           <TerminalIcon />
+          <span className="right-pane-tab-label">Terminal</span>
         </button>
         {!hasOpenFiles && (
           <button
@@ -240,6 +268,7 @@ export function RightPane() {
             title="Files"
           >
             <FilesIcon />
+            <span className="right-pane-tab-label">Files</span>
           </button>
         )}
         <button
@@ -252,6 +281,7 @@ export function RightPane() {
           title="Changes"
         >
           <ChangesIcon />
+          <span className="right-pane-tab-label">Changes</span>
         </button>
         <button
           type="button"
@@ -263,6 +293,7 @@ export function RightPane() {
           title="Todos"
         >
           <TodosIcon />
+          <span className="right-pane-tab-label">Todos</span>
         </button>
         {openFiles.length > 0 && <div className="right-pane-tab-separator" />}
         {openFiles.map((path) => {
@@ -340,14 +371,28 @@ export function RightPane() {
                   react-arborist + SVG-icon-fetch on every switch. */}
               <div className="right-editor-file-tree">
                 {Array.from(visitedProjects).map((pid) => {
-                  if (!projects[pid]) return null;
+                  const project = projects[pid];
+                  if (!project) return null;
                   const isActive = pid === activeProject?.id;
+                  const targetSession = workspaceSession(
+                    pid,
+                    workspaceSessionByProject[pid],
+                    sessions,
+                  );
+                  const targetSessionId = targetSession?.id;
+                  const targetRoot =
+                    targetSession?.worktree_path ?? project.repo_path;
                   return (
                     <div
                       key={pid}
                       className={"file-tree-host" + (isActive ? "" : " hidden")}
                     >
-                      <FileTreePanel projectId={pid} />
+                      <FileTreePanel
+                        key={`${pid}:${targetSessionId ?? "main"}`}
+                        projectId={pid}
+                        sessionId={targetSessionId}
+                        rootPath={targetRoot}
+                      />
                     </div>
                   );
                 })}
@@ -375,7 +420,12 @@ export function RightPane() {
                     "right-editor-main" + (editorVisible ? "" : " hidden")
                   }
                 >
-                  <EditorPanel projectId={activeProject.id} />
+                  <EditorPanel
+                    key={activeWorkspaceKey}
+                    projectId={activeProject.id}
+                    sessionId={activeWorkspaceSessionId}
+                    rootPath={activeWorkspaceRoot}
+                  />
                 </div>
               )}
             </div>
@@ -400,7 +450,12 @@ export function RightPane() {
           // menu, remote-op flags, and any in-flight git requests all belong to
           // one repo and must not leak into the next (a stale checkout would run
           // against the wrong repo otherwise).
-          <ChangesPanel key={activeProject.id} projectId={activeProject.id} />
+          <ChangesPanel
+            key={activeWorkspaceKey}
+            projectId={activeProject.id}
+            sessionId={activeWorkspaceSessionId}
+            baseBranch={activeWorkspaceSession?.base_branch ?? undefined}
+          />
         )}
         {rightTab === "todos" && activeProject && (
           <TodoPanel projectId={activeProject.id} />
@@ -415,15 +470,24 @@ export function RightPane() {
           if (!proj || !state) return null;
           const isActiveProject = pid === activeProject?.id;
           const visible = isActiveProject && rightTab === "terminal";
+          const targetSession = workspaceSession(
+            pid,
+            workspaceSessionByProject[pid],
+            sessions,
+          );
+          const targetSessionId = targetSession?.id;
+          const targetRoot = targetSession?.worktree_path ?? proj.repo_path;
           return (
             <div
               key={pid}
               className={"manual-terminal-host" + (visible ? "" : " hidden")}
             >
               <RightTerminalSplit
+                key={`${pid}:${targetSessionId ?? "main"}`}
                 tree={state.tree}
-                cwd={proj.repo_path}
+                cwd={targetRoot}
                 projectId={pid}
+                sessionId={targetSessionId}
                 visible={visible}
                 onSplit={(paneId, direction) =>
                   handleSplit(pid, paneId, direction)
@@ -439,6 +503,23 @@ export function RightPane() {
       </div>
     </section>
   );
+}
+
+function workspaceSession(
+  projectId: string,
+  requestedSessionId: string | null | undefined,
+  sessions: Record<string, SessionView>,
+): SessionView | null {
+  if (!requestedSessionId) return null;
+  const session = sessions[requestedSessionId];
+  if (
+    !session ||
+    session.project_id !== projectId ||
+    !session.worktree_path
+  ) {
+    return null;
+  }
+  return session;
 }
 
 function basename(path: string): string {

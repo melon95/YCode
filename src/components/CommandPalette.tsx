@@ -34,6 +34,18 @@ type Hit = FileHit | SessionHitWrapped;
 
 export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const activeProjectId = useStore((s) => s.activeProjectId);
+  const workspaceSessionId = useStore((s) =>
+    s.activeProjectId
+      ? (s.workspaceSessionByProject[s.activeProjectId] ?? null)
+      : null,
+  );
+  const workspaceSession = useStore((s) =>
+    workspaceSessionId ? s.sessions[workspaceSessionId] : undefined,
+  );
+  const targetSessionId =
+    workspaceSession?.project_id === activeProjectId && workspaceSession.worktree_path
+    ? workspaceSession.id
+    : undefined;
   const openFile = useStore((s) => s.openFile);
   const setRightTab = useStore((s) => s.setRightTab);
   const agents = useStore((s) => s.agents);
@@ -78,7 +90,7 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
       return;
     }
     let cancelled = false;
-    listFiles(activeProjectId)
+    listFiles(activeProjectId, targetSessionId)
       .then((entries) => {
         if (cancelled) return;
         setAllFiles(entries.filter((e) => !e.is_dir).map((e) => e.path));
@@ -89,7 +101,7 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
     return () => {
       cancelled = true;
     };
-  }, [open, activeProjectId]);
+  }, [open, activeProjectId, targetSessionId]);
 
   // Run the right search per mode. File mode is synchronous (client-side
   // fuzzy); session mode is a debounced IPC call.

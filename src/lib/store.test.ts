@@ -276,6 +276,28 @@ describe("detached-window UI snapshot", () => {
     expect(state().selectedFilePath).toBe("src/a.ts");
   });
 
+  it("round-trips the shared workspace target and clears it with its session", () => {
+    const isolated = {
+      ...session("s1"),
+      worktree_path: "/tmp/worktrees/s1",
+      branch: "ycode/s1",
+    };
+    state().setSessions([isolated]);
+    useStore.setState({ activeProjectId: "project-a" });
+    state().appendSessionToLayout("s1");
+    state().setWorkspaceSessionId("project-a", "s1");
+
+    const snap = captureProjectUiSnapshot("project-a");
+    useStore.setState(initialState, true);
+    state().setSessions([isolated]);
+    state().setLockedProjectId("project-a");
+    state().hydrateLockedWindow(snap);
+    expect(state().workspaceSessionByProject["project-a"]).toBe("s1");
+
+    state().removeSession("s1");
+    expect(state().workspaceSessionByProject["project-a"]).toBeNull();
+  });
+
   it("captures a backgrounded project's stashed right-pane state on detach", () => {
     state().setSessions([
       { ...session("a1", "project-a"), updated_at_ms: 10 },
@@ -370,6 +392,193 @@ describe("editor tab store", () => {
       editor: 32,
       terminal: DEFAULT_FONT_SIZES.terminal,
     });
+  });
+});
+
+describe("workspace target routing", () => {
+  beforeEach(() => {
+    useStore.setState(initialState, true);
+    state().setProjects([project("project-a", 1)]);
+    state().setActiveProjectId("project-a");
+  });
+
+  it("gives each checkout its own editor tabs instead of re-resolving paths", () => {
+    state().openFile("src/main.ts");
+    state().setFileDirty("src/main.ts", true);
+
+    // The same repo-relative path names a different file in the worktree, so
+    // the tab strip must not carry over.
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    expect(state().openFiles).toEqual([]);
+    expect(state().selectedFilePath).toBeNull();
+    expect(state().dirtyFiles).toEqual({});
+
+    state().openFile("src/worktree-only.ts");
+    expect(state().openFiles).toEqual(["src/worktree-only.ts"]);
+
+    // Switching back restores the main checkout's tabs, dirty flag included.
+    state().setWorkspaceSessionId("project-a", null);
+    expect(state().openFiles).toEqual(["src/main.ts"]);
+    expect(state().selectedFilePath).toBe("src/main.ts");
+    expect(state().dirtyFiles).toEqual({ "src/main.ts": true });
+
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    expect(state().openFiles).toEqual(["src/worktree-only.ts"]);
+  });
+
+  it("keeps per-workspace tabs separate across a project switch", () => {
+    state().setProjects([project("project-a", 1), project("project-b", 2)]);
+    state().openFile("a-main.ts");
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    state().openFile("a-worktree.ts");
+
+    state().setActiveProjectId("project-b");
+    expect(state().openFiles).toEqual([]);
+
+    // Returning lands on the workspace project-a was last left on.
+    state().setActiveProjectId("project-a");
+    expect(state().openFiles).toEqual(["a-worktree.ts"]);
+    state().setWorkspaceSessionId("project-a", null);
+    expect(state().openFiles).toEqual(["a-main.ts"]);
+  });
+
+  it("ignores target changes for a project the user isn't viewing", () => {
+    state().openFile("a-main.ts");
+
+    state().setWorkspaceSessionId("project-b", "sess-9");
+
+    // project-a's live editor fields must be untouched.
+    expect(state().openFiles).toEqual(["a-main.ts"]);
+    expect(state().workspaceSessionByProject["project-b"]).toBe("sess-9");
+  });
+
+  it("restores the main checkout's tabs when the targeted session is closed", () => {
+    state().setSessions([session("sess-1")]);
+    state().openFile("main-file.ts");
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    state().openFile("worktree-file.ts");
+    expect(state().openFiles).toEqual(["worktree-file.ts"]);
+
+    state().removeSession("sess-1");
+
+    // The worktree is gone, so its tabs must go with it — leaving them would
+    // silently re-resolve those paths against the main checkout.
+    expect(state().workspaceSessionByProject["project-a"]).toBeNull();
+    expect(state().openFiles).toEqual(["main-file.ts"]);
+    // The dead workspace's stash is unreachable now; it must not linger.
+    expect(Object.keys(state().rightUiByProject)).not.toContain(
+      "project-a:sess-1",
+    );
+  });
+
+  it("drops a vanished target when a session list refresh omits it", () => {
+    state().setSessions([session("sess-1")]);
+    state().openFile("main-file.ts");
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    state().openFile("worktree-file.ts");
+
+    // Backend no longer reports the session (archived elsewhere).
+    state().setSessions([]);
+
+    expect(state().workspaceSessionByProject["project-a"]).toBeNull();
+    expect(state().openFiles).toEqual(["main-file.ts"]);
+    expect(Object.keys(state().rightUiByProject)).not.toContain(
+      "project-a:sess-1",
+    );
+  });
+
+  it("leaves the viewed project alone when another project's target dies", () => {
+    state().setProjects([project("project-a", 1), project("project-b", 2)]);
+    state().setSessions([session("sess-b", "project-b")]);
+    state().setWorkspaceSessionId("project-b", "sess-b");
+    state().setActiveProjectId("project-a");
+    state().openFile("a-main.ts");
+
+    state().removeSession("sess-b");
+
+    expect(state().workspaceSessionByProject["project-b"]).toBeNull();
+    // project-a is what's on screen; its tabs must not be disturbed.
+    expect(state().openFiles).toEqual(["a-main.ts"]);
+  });
+
+  it("stashes the detached project's tabs and dirty flags", () => {
+    state().setProjects([project("project-a", 1), project("project-b", 2)]);
+    state().setActiveProjectId("project-a");
+    state().openFile("a-main.ts");
+    state().setFileDirty("a-main.ts", true);
+
+    // Another window takes over project-a; this window jumps to project-b.
+    state().addLockedByOther("project-a");
+    expect(state().activeProjectId).toBe("project-b");
+
+    state().setActiveProjectId("project-a");
+    expect(state().openFiles).toEqual(["a-main.ts"]);
+    // The dirty flag drives the unsaved badge and the discard confirm; losing
+    // it silently removes that guard.
+    expect(state().dirtyFiles).toEqual({ "a-main.ts": true });
+  });
+
+  it("reclaims stashes for worktrees de-selected before their session died", () => {
+    state().setProjects([project("project-a", 1)]);
+    state().setActiveProjectId("project-a");
+    for (const id of ["s0", "s1", "s2"]) {
+      state().setSessions([session(id)]);
+      state().setWorkspaceSessionId("project-a", id);
+      state().openFile(`${id}.ts`);
+      // The picker falls back to Main when a worktree finishes, so the target
+      // is already de-selected by the time the session is archived.
+      state().setWorkspaceSessionId("project-a", null);
+      state().removeSession(id);
+    }
+
+    expect(Object.keys(state().rightUiByProject)).toEqual(["project-a:main"]);
+  });
+
+  it("seeds a detached window's stash so its tabs survive a round trip", () => {
+    useStore.setState(initialState, true);
+    state().setProjects([project("project-a", 1)]);
+    state().setLockedProjectId("project-a");
+    state().setSessions([session("sess-1")]);
+    state().hydrateLockedWindow(
+      JSON.stringify({
+        layout: { mode: "single", visibleIds: ["sess-1"], focusSlot: 0 },
+        rightTab: "editor",
+        openFiles: ["wt.ts"],
+        selectedFilePath: "wt.ts",
+        previewFilePath: null,
+        workspaceSessionId: "sess-1",
+      }),
+    );
+    expect(state().openFiles).toEqual(["wt.ts"]);
+
+    // The live fields and their stash entry must start in sync. Anything that
+    // restores from the stash without a prior stash-on-exit — a project switch
+    // driven by `addLockedByOther`, or a session teardown — would otherwise
+    // read a missing entry and fall back to empty defaults.
+    expect(state().rightUiByProject["project-a:sess-1"]).toMatchObject({
+      openFiles: ["wt.ts"],
+      selectedFilePath: "wt.ts",
+      rightTab: "editor",
+    });
+
+    // And the ordinary round trip still works.
+    state().setWorkspaceSessionId("project-a", null);
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    expect(state().openFiles).toEqual(["wt.ts"]);
+  });
+
+  it("drops every workspace entry when its project is removed", () => {
+    state().openFile("a-main.ts");
+    state().setWorkspaceSessionId("project-a", "sess-1");
+    state().openFile("a-worktree.ts");
+    expect(Object.keys(state().rightUiByProject).length).toBeGreaterThan(0);
+
+    state().removeProject("project-a");
+
+    const leftover = Object.keys(state().rightUiByProject).filter((key) =>
+      key.startsWith("project-a:"),
+    );
+    expect(leftover).toEqual([]);
   });
 });
 

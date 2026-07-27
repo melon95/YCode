@@ -43,7 +43,15 @@ interface MenuState {
 
 const ROW_HEIGHT = 24;
 
-export function FileTreePanel({ projectId }: { projectId: string }) {
+export function FileTreePanel({
+  projectId,
+  sessionId,
+  rootPath,
+}: {
+  projectId: string;
+  sessionId?: string;
+  rootPath: string;
+}) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +62,6 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
   const closeFile = useStore((s) => s.closeFile);
   const openFiles = useStore((s) => s.openFiles);
   const setRightTab = useStore((s) => s.setRightTab);
-  const repoPath = useStore((s) => s.projects[projectId]?.repo_path);
   const reloadKeyRef = useRef(reloadKey);
   reloadKeyRef.current = reloadKey;
 
@@ -89,7 +96,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    listFiles(projectId)
+    listFiles(projectId, sessionId)
       .then((es) => {
         if (cancelled) return;
         setEntries(es);
@@ -103,7 +110,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, reloadKey]);
+  }, [projectId, sessionId, reloadKey]);
 
   // Watch the repo directory for changes. We use `watchImmediate` instead of
   // `watch` because the latter wraps notify in `notify-debouncer-full`, which
@@ -117,14 +124,13 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
   // call. We replace the 400ms debounce on our side with a trailing-edge
   // setTimeout so a burst of events still only re-lists once.
   useEffect(() => {
-    if (!repoPath) return;
     let cancelled = false;
     let unwatch: (() => void) | undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const DEBOUNCE_MS = 400;
 
     watchImmediate(
-      repoPath,
+      rootPath,
       () => {
         if (cancelled) return;
         if (timer) clearTimeout(timer);
@@ -147,7 +153,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
       if (timer) clearTimeout(timer);
       unwatch?.();
     };
-  }, [repoPath]);
+  }, [rootPath]);
 
   const tree = useMemo(() => buildTree(entries), [entries]);
 
@@ -193,25 +199,24 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
       });
       if (!ok) return;
       try {
-        await deletePath(projectId, node.id);
+        await deletePath(projectId, node.id, sessionId);
         closeAffectedTabs(node.id);
       } catch (err) {
         toast.danger(`Delete ${node.name}: ${err}`);
       }
     },
-    [projectId, closeAffectedTabs],
+    [projectId, sessionId, closeAffectedTabs],
   );
 
   const doRevealInFinder = useCallback(
     async (relPath: string) => {
-      if (!repoPath) return;
       try {
-        await revealInFinder(`${repoPath}/${relPath}`);
+        await revealInFinder(`${rootPath}/${relPath}`);
       } catch (err) {
         toast.danger(`Reveal in Finder failed: ${err}`);
       }
     },
-    [repoPath],
+    [rootPath],
   );
 
   function startCreate(parentDir: string, isDir: boolean) {
@@ -239,7 +244,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     const isDir = creating.isDir;
     setCreating(null);
     try {
-      await createPath(projectId, targetPath, isDir);
+      await createPath(projectId, targetPath, isDir, sessionId);
       if (!isDir) {
         // Auto-open new files so the user can start typing immediately. Skip
         // for directories — there's nothing to display.
@@ -266,7 +271,7 @@ export function FileTreePanel({ projectId }: { projectId: string }) {
     const newPath = dir ? `${dir}/${name}` : name;
     setEditingPath(null);
     try {
-      await renamePath(projectId, oldPath, newPath);
+      await renamePath(projectId, oldPath, newPath, sessionId);
       // Reopen affected tabs at their new paths so the user keeps the file
       // they were just looking at. Done before closing the old paths to
       // preserve tab focus order.

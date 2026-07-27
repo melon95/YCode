@@ -56,8 +56,19 @@ export type { FileEntry } from "@bindings/FileEntry";
 export type { FileContents } from "@bindings/FileContents";
 export type { GitFileChange } from "@bindings/GitFileChange";
 export type { GitFileStatus } from "@bindings/GitFileStatus";
+export type { GitFileDiff } from "@bindings/GitFileDiff";
+export type { GitDiffSource } from "@bindings/GitDiffSource";
+export type { GitHunkAction } from "@bindings/GitHunkAction";
 export type { GitBranchInfo } from "@bindings/GitBranchInfo";
 export type { GitBranchListView } from "@bindings/GitBranchListView";
+
+import type { ReviewCheckpointView as RawReviewCheckpointView } from "@bindings/ReviewCheckpointView";
+export type ReviewCheckpointView = Omit<
+  RawReviewCheckpointView,
+  "created_at_ms"
+> & {
+  created_at_ms: number;
+};
 export type { WorktreeCloseState } from "@bindings/WorktreeCloseState";
 export type { OpenInExternalEditorRequest } from "@bindings/OpenInExternalEditorRequest";
 export type { WriteFileRequest } from "@bindings/WriteFileRequest";

@@ -11,6 +11,7 @@
 //     highlight is off.
 
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
+import { toast } from "@heroui/react";
 import { resolveTerminalPath } from "./ipc";
 import { useStore } from "./store";
 
@@ -31,24 +32,73 @@ export async function activateFilePath(
   candidate: string,
   line: number | undefined,
   column: number | undefined,
+  sessionId?: string,
 ): Promise<void> {
   let rel: string | null;
   try {
-    rel = await resolveTerminalPath(projectId, candidate);
+    rel = await resolveTerminalPath(projectId, candidate, sessionId);
   } catch {
     return;
   }
   if (!rel) return;
-  const store = useStore.getState();
+  let switchedWorkspace = false;
+  // Each switch below replaces the live editor slice, so re-read the store
+  // after one rather than working from a stale snapshot.
+  let store = useStore.getState();
+  // `openFile` writes the live editor slice, which belongs to whatever project
+  // is on screen. A link clicked in a background project's terminal would drop
+  // that project's file into the visible tab strip, so bring the project
+  // forward first — its own tabs get restored on the way in.
+  if (store.activeProjectId !== projectId) {
+    if (Object.keys(store.dirtyFiles).length > 0) {
+      toast.warning("Save or close edited files before switching project.");
+      return;
+    }
+    store.setActiveProjectId(projectId);
+    store = useStore.getState();
+    switchedWorkspace = true;
+  }
+  const targetSession = sessionId ? store.sessions[sessionId] : undefined;
+  if (targetSession) {
+    // Point the editor at the tree this session actually runs in. An isolated
+    // session owns a worktree; a shared-mode session (`worktree_path: null`)
+    // runs in the main checkout — and that case needs the switch just as much,
+    // since the path was resolved against main while the editor may still be
+    // pinned to some worktree, where the same relative path is a different
+    // file (or missing entirely).
+    const wanted = targetSession.worktree_path ? targetSession.id : null;
+    const current = store.workspaceSessionByProject[projectId] ?? null;
+    // Unsaved edits in the checkout we'd be leaving block the switch — say so
+    // rather than making the click look broken.
+    if (current !== wanted) {
+      if (Object.keys(store.dirtyFiles).length > 0) {
+        toast.warning("Save or close edited files before switching workspace.");
+        return;
+      }
+      store.setWorkspaceSessionId(projectId, wanted);
+      store = useStore.getState();
+      switchedWorkspace = true;
+    }
+  }
   store.openFile(rel, { preview: true });
   store.setRightTab("editor");
-  if (line !== undefined) {
+  if (line === undefined) return;
+  const goto = () =>
     window.dispatchEvent(
       new CustomEvent<EditorGotoDetail>("ycode:editor-goto", {
         detail: { path: rel, line, column },
       }),
     );
+  if (!switchedWorkspace) {
+    goto();
+    return;
   }
+  // Changing the workspace target remounts EditorPanel (RightPane keys it by
+  // workspace), and the pending-goto request it listens for is instance-local.
+  // Dispatching synchronously would hand the event to the outgoing instance
+  // and the file would open without ever jumping to the line, so wait for the
+  // replacement to mount and subscribe.
+  requestAnimationFrame(goto);
 }
 
 // Three top-level alternatives so we cover the common shapes terminal output

@@ -209,6 +209,7 @@ interface RightTerminalSplitProps {
   tree: SplitTree;
   cwd: string;
   projectId: string;
+  sessionId?: string;
   visible: boolean;
   onSplit: (paneId: string, direction: SplitDirection) => void;
   onClose: (paneId: string) => void;
@@ -265,6 +266,7 @@ export function RightTerminalSplit(props: RightTerminalSplitProps) {
           paneId={leaf.paneId}
           cwd={props.cwd}
           projectId={props.projectId}
+          sessionId={props.sessionId}
           visible={props.visible}
           canClose={hasMultiplePanes}
           rect={leaf.rect}
@@ -306,6 +308,7 @@ interface TerminalPaneCardProps {
   paneId: string;
   cwd: string;
   projectId: string;
+  sessionId?: string;
   visible: boolean;
   canClose: boolean;
   rect: Rect;
@@ -357,6 +360,7 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
         <ManualTerminal
           cwd={props.cwd}
           projectId={props.projectId}
+          sessionId={props.sessionId}
           visible={props.visible}
         />
       </div>
