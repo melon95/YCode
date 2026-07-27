@@ -74,52 +74,52 @@ export function getTheme(id: string): Theme {
 
 // --- Theme definitions ----------------------------------------------------
 
-// "Foundry" — the launch identity. Warm ink + terracotta. Exact transcription
-// of the previous hard-coded `:root` block so existing screenshots/docs keep
-// matching after the refactor.
+// "Atelier" — the launch identity. Cool graphite surfaces and a restrained
+// mineral-blue accent keep the chrome quiet beside terminal and diff content.
+// The stable `foundry` id preserves existing user preferences across upgrades.
 const foundry: Theme = {
   id: "foundry",
-  label: "Foundry",
+  label: "Atelier",
   mode: "dark",
   chrome: {
-    "--bg": "#0f0d0a",
-    "--surface": "#15120e",
-    "--panel": "#191510",
-    "--panel-raised": "#211c15",
-    "--panel-sunken": "#0b0907",
+    "--bg": "#0b0e13",
+    "--surface": "#0f1319",
+    "--panel": "#12171f",
+    "--panel-raised": "#181e28",
+    "--panel-sunken": "#080b10",
 
-    "--rule": "#2a221a",
-    "--rule-strong": "#3a2f25",
-    "--rule-accent": "rgba(217, 119, 87, 0.32)",
+    "--rule": "#202733",
+    "--rule-strong": "#303a49",
+    "--rule-accent": "rgba(110, 156, 255, 0.34)",
 
-    "--text": "#ebe1cf",
-    "--text-soft": "#d4c8b3",
-    "--muted": "#9e9180",
-    "--subtle": "#6a5f51",
-    "--whisper": "#3f372d",
+    "--text": "#edf1f7",
+    "--text-soft": "#c9d0dc",
+    "--muted": "#8d97a8",
+    "--subtle": "#626d7e",
+    "--whisper": "#394351",
 
-    "--accent": "#d97757",
-    "--accent-soft": "#e08a6e",
-    "--accent-strong": "#ec9576",
-    "--accent-rgb": "217, 119, 87",
-    "--accent-tint": "rgba(217, 119, 87, 0.08)",
-    "--accent-tint-hover": "rgba(217, 119, 87, 0.14)",
+    "--accent": "#6e9cff",
+    "--accent-soft": "#83aaff",
+    "--accent-strong": "#9ab9ff",
+    "--accent-rgb": "110, 156, 255",
+    "--accent-tint": "rgba(110, 156, 255, 0.10)",
+    "--accent-tint-hover": "rgba(110, 156, 255, 0.16)",
 
-    "--idle": "#756d61",
-    "--running": "#8aaa6f",
-    "--running-rgb": "138, 170, 111",
-    "--error": "#d46a5f",
-    "--error-rgb": "212, 106, 95",
-    "--warning": "#d6a95c",
-    "--warning-rgb": "214, 169, 92",
+    "--idle": "#647083",
+    "--running": "#70c59a",
+    "--running-rgb": "112, 197, 154",
+    "--error": "#ef7b88",
+    "--error-rgb": "239, 123, 136",
+    "--warning": "#e4b66a",
+    "--warning-rgb": "228, 182, 106",
 
-    "--diff-add-rgb": "138, 170, 111",
-    "--diff-del-rgb": "201, 119, 112",
+    "--diff-add-rgb": "112, 197, 154",
+    "--diff-del-rgb": "239, 123, 136",
 
-    "--role-user": "#7bb8a6",
-    "--role-thinking": "#c58fbd",
-    "--role-tool": "#8aa4c8",
-    "--role-plan": "#efc06f",
+    "--role-user": "#7cc8ba",
+    "--role-thinking": "#c49ad9",
+    "--role-tool": "#8eb9f0",
+    "--role-plan": "#e4b66a",
 
     // New tokens. Any literal `rgba(0,0,0,a)` / `rgba(255,255,255,a)` in
     // styles.css has been rewritten to `rgba(var(--shadow-rgb), a)` /
@@ -132,36 +132,36 @@ const foundry: Theme = {
     "--vignette-cool": "rgba(120, 80, 200, 0.025)",
     // Selection / focus halo derived from accent — re-declared per theme so
     // each palette can tune intensity instead of inheriting Foundry's bias.
-    "--selection-bg": "rgba(217, 119, 87, 0.32)",
+    "--selection-bg": "rgba(110, 156, 255, 0.30)",
     "--accent-glow":
-      "0 0 0 1px rgba(217, 119, 87, 0.18), 0 0 24px -8px rgba(217, 119, 87, 0.55)",
+      "0 0 0 1px rgba(110, 156, 255, 0.42), 0 0 0 4px rgba(110, 156, 255, 0.10)",
     // Text on a filled-accent surface (primary button, hovered menu item).
-    // Foundry's terracotta is light enough that dark ink reads better than
-    // white — kept as a near-`--bg` warm-black so the brand voice carries.
-    "--text-on-accent": "#1a0e08",
+    // Dark ink gives filled primary controls enough contrast without making
+    // the blue accent feel fluorescent.
+    "--text-on-accent": "#07101f",
   },
   xterm: {
-    background: "#13120f",
-    foreground: "#f0eee6",
-    cursor: "#d97757",
-    cursorAccent: "#13120f",
-    selectionBackground: "rgba(217, 119, 87, 0.28)",
-    black: "#13120f",
-    red: "#d46a5f",
-    green: "#4caf81",
-    yellow: "#d6a95c",
-    blue: "#8aa4c8",
-    magenta: "#c58fbd",
-    cyan: "#7bb8a6",
-    white: "#f0eee6",
-    brightBlack: "#736b5f",
-    brightRed: "#f47670",
-    brightGreen: "#6ed09f",
-    brightYellow: "#efc06f",
-    brightBlue: "#a8bddb",
-    brightMagenta: "#d8a8cf",
-    brightCyan: "#98d0bf",
-    brightWhite: "#fff9ef",
+    background: "#0b0e13",
+    foreground: "#d9e0eb",
+    cursor: "#6e9cff",
+    cursorAccent: "#0b0e13",
+    selectionBackground: "rgba(110, 156, 255, 0.26)",
+    black: "#0b0e13",
+    red: "#ef7b88",
+    green: "#70c59a",
+    yellow: "#e4b66a",
+    blue: "#6e9cff",
+    magenta: "#c49ad9",
+    cyan: "#7cc8ba",
+    white: "#d9e0eb",
+    brightBlack: "#687386",
+    brightRed: "#ff95a0",
+    brightGreen: "#8bd8b1",
+    brightYellow: "#f1c982",
+    brightBlue: "#94b5ff",
+    brightMagenta: "#d5afe7",
+    brightCyan: "#95d9ce",
+    brightWhite: "#f4f7fb",
   },
 };
 

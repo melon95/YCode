@@ -27,12 +27,10 @@ import { confirmDialog } from "../lib/confirm";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { openProjectInNewWindow } from "../lib/multiWindow";
 import { LayoutSwitcher } from "./LayoutSwitcher";
-import { SettingsModal } from "./SettingsModal";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
-export function TopBar() {
+export function TopBar({ settingsActive = false }: { settingsActive?: boolean }) {
   const [creatingProject, setCreatingProject] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -81,14 +79,11 @@ export function TopBar() {
 
   // Listen for global hotkeys dispatched from `useHotkeys`.
   useEffect(() => {
-    const onOpenSettings = () => setSettingsOpen(true);
     const onNewProject = () => {
       if (!detached) void onAddProject();
     };
-    window.addEventListener("ycode:open-settings", onOpenSettings);
     window.addEventListener("ycode:new-project", onNewProject);
     return () => {
-      window.removeEventListener("ycode:open-settings", onOpenSettings);
       window.removeEventListener("ycode:new-project", onNewProject);
     };
   }, [detached, creatingProject]);
@@ -306,30 +301,33 @@ export function TopBar() {
             aria-label="New project"
             title="New project"
           >
-            +
+            <PlusIcon />
           </button>
         </div>
       )}
-      <LayoutSwitcher />
-      <button
-        type="button"
-        className="topbar-search"
-        onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
-        aria-label="Search across sessions (⌘K)"
-        title="Search across sessions (⌘K)"
-      >
-        Search
-      </button>
-      <button
-        type="button"
-        className="topbar-gear"
-        onClick={() => setSettingsOpen(true)}
-        aria-label="Settings"
-        title="Settings"
-      >
-        <GearIcon />
-      </button>
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <div className="topbar-actions">
+        <LayoutSwitcher />
+        <button
+          type="button"
+          className="topbar-search"
+          onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
+          aria-label="Search across sessions (⌘K)"
+          title="Search across sessions (⌘K)"
+        >
+          <SearchIcon />
+          <span>Search or run command</span>
+        </button>
+        <button
+          type="button"
+          className={`topbar-gear${settingsActive ? " active" : ""}`}
+          onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-settings"))}
+          aria-label="Settings"
+          aria-pressed={settingsActive}
+          title="Settings"
+        >
+          <GearIcon />
+        </button>
+      </div>
       {menu && (
         <ContextMenu
           x={menu.x}
@@ -339,6 +337,41 @@ export function TopBar() {
         />
       )}
     </header>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 

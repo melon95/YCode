@@ -14,7 +14,6 @@ vi.mock("../lib/ipc", () => ({
 vi.mock("../lib/confirm", () => ({ confirmDialog: vi.fn() }));
 vi.mock("../lib/multiWindow", () => ({ openProjectInNewWindow: vi.fn() }));
 vi.mock("./LayoutSwitcher", () => ({ LayoutSwitcher: () => null }));
-vi.mock("./SettingsModal", () => ({ SettingsModal: () => null }));
 vi.mock("./ContextMenu", () => ({ ContextMenu: () => null }));
 
 const initialState = useStore.getState();
@@ -42,6 +41,14 @@ describe("TopBar project reorder", () => {
   });
 
   afterEach(cleanup);
+
+  it("starts with project tabs instead of a product brand block", () => {
+    render(<TopBar />);
+
+    expect(screen.queryByLabelText("ycode workspace")).not.toBeInTheDocument();
+    expect(document.querySelector(".topbar-brand")).toBeNull();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
 
   it("moves a project after the tab whose right half receives the drop", async () => {
     render(<TopBar />);

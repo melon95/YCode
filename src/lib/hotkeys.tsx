@@ -29,7 +29,13 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { toast } from "@heroui/react";
-import { LAYOUT_CAP, PICKER_SLOT, useStore, type RightTab } from "./store";
+import {
+  isNewSessionPickerVisible,
+  LAYOUT_CAP,
+  PICKER_SLOT,
+  useStore,
+  type RightTab,
+} from "./store";
 import { createSession, listAgents } from "./ipc";
 import { archiveSessionWithConfirm } from "./sessionActions";
 
@@ -193,14 +199,7 @@ export function useHotkeys({
         // picker), a lone exited pane (picker takes over), or an open ⇧⌘N
         // picker pane. The picker IS the "new session" UI, so ⌘N would just
         // bypass the user's pending choice. No-op and let them pick from it.
-        const { visibleIds } = s.layout;
-        const lone =
-          visibleIds.length === 1 ? s.sessions[visibleIds[0]] : undefined;
-        const pickerVisible =
-          visibleIds.includes(PICKER_SLOT) ||
-          visibleIds.length === 0 ||
-          (!!lone && lone.status.type !== "Running");
-        if (pickerVisible) return;
+        if (isNewSessionPickerVisible(s.layout, s.sessions)) return;
         if (s.layout.visibleIds.length >= LAYOUT_CAP) {
           toast.warning(
             `Close a pane first — at the ${LAYOUT_CAP}-pane limit.`,

@@ -41,7 +41,13 @@ import {
   writePty,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
-import { displaySessionTitle, PICKER_SLOT, useStore, type LayoutMode } from "../lib/store";
+import {
+  displaySessionTitle,
+  PICKER_SLOT,
+  shouldShowFullscreenNewSessionPicker,
+  useStore,
+  type LayoutMode,
+} from "../lib/store";
 import { closeSessionNow } from "../lib/sessionActions";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import {
@@ -253,12 +259,7 @@ export function TerminalPane() {
   // single pane whose process has exited — they probably want to start
   // a fresh one rather than stare at the [process exited] banner.
   const focusedId = visibleIds[focusSlot] ?? null;
-  const focusedSession = focusedId ? sessions[focusedId] : null;
-  const onlyDeadSlot =
-    visibleIds.length === 1 &&
-    !!focusedSession &&
-    focusedSession.status.type !== "Running";
-  const showPicker = visibleIds.length === 0 || onlyDeadSlot;
+  const showPicker = shouldShowFullscreenNewSessionPicker(layout, sessions);
 
   // Holds Terminal instances not currently mounted in a slot cell. Hidden
   // (display:none) so cursor blinks etc. don't burn CPU off-screen.
@@ -921,7 +922,7 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
       const projectId =
         useStore.getState().sessions[sessionId]?.project_id;
       if (!projectId) return;
-      void activateFilePath(projectId, candidate, line, column).catch(
+      void activateFilePath(projectId, candidate, line, column, sessionId).catch(
         () => {},
       );
     }),

@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, toast } from "@heroui/react";
-import { LAYOUT_CAP, useStore } from "../lib/store";
+import { isNewSessionPickerVisible, LAYOUT_CAP, useStore } from "../lib/store";
 import {
   createSession,
   listenSessionEvents,
   scanWorkspaceSessions,
 } from "../lib/ipc";
-import type {
-  AgentProfileView,
-  DiscoveredSessionView,
-  ProjectView,
+import {
+  sessionLight,
+  SESSION_LIGHT_LABEL,
+  type SessionLight,
+  type SessionView,
+  type AgentProfileView,
+  type DiscoveredSessionView,
+  type ProjectView,
 } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
 
@@ -21,6 +25,8 @@ export function Sidebar() {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
   const agents = useStore((s) => s.agents);
+  const sessions = useStore((s) => s.sessions);
+  const activityBySession = useStore((s) => s.activityBySession);
 
   // Agent filter tabs = every configured profile whose command resolves on
   // PATH. Unavailable agents are hidden entirely (per user request) — the
@@ -31,6 +37,9 @@ export function Sidebar() {
   // replace-focused-slot at cap, but we'd rather block the click so the
   // user doesn't accidentally lose a pane they were looking at.
   const visibleCount = useStore((s) => s.layout.visibleIds.length);
+  const pickerVisible = useStore((s) =>
+    isNewSessionPickerVisible(s.layout, s.sessions),
+  );
   const atCap = visibleCount >= LAYOUT_CAP;
 
   // Discovered sessions live here (rather than inside the panel) so we can
@@ -103,7 +112,25 @@ export function Sidebar() {
     () => agentTabs.find((p) => p.id === activeAgent) ?? null,
     [agentTabs, activeAgent],
   );
-
+  const statusByProfile = useMemo(() => {
+    const latest = new Map<string, SessionView>();
+    for (const session of Object.values(sessions)) {
+      if (session.project_id !== activeProjectId || session.archived_at_ms) continue;
+      const current = latest.get(session.agent_profile);
+      if (!current || session.updated_at_ms > current.updated_at_ms) {
+        latest.set(session.agent_profile, session);
+      }
+    }
+    const result = new Map<string, { light: SessionLight; label: string }>();
+    for (const [profileId, session] of latest) {
+      const light = sessionLight(session.status, activityBySession[session.id]);
+      result.set(profileId, {
+        light,
+        label: SESSION_LIGHT_LABEL[light].replace(" for input", ""),
+      });
+    }
+    return result;
+  }, [activeProjectId, activityBySession, sessions]);
   // Mirror the active agent tab id into the store so the ⌘N hotkey can
   // build a createSession call without reaching into our local state. A
   // plain string is durable across our re-renders; a function value would
@@ -195,48 +222,50 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="sidebar-agent-tabs" role="tablist" aria-label="Agent filter">
-          {agentTabs.map((profile) => (
-            <button
-              key={profile.id}
-              type="button"
-              role="tab"
-              aria-selected={activeAgent === profile.id}
-              className={
-                `sidebar-agent-tab agent-${profile.id}` +
-                (activeAgent === profile.id ? " active" : "")
-              }
-              onClick={() => setUserPickedAgent(profile.id)}
-              title={
-                profile.introspect
-                  ? `Show ${profile.display_name} sessions`
-                  : `${profile.display_name} (no session history)`
-              }
-            >
-              <AgentIcon
-                icon={profile.icon}
-                variant={profile.icon_variant}
-                fallbackChar={profile.display_name}
-                size={18}
-              />
-            </button>
-          ))}
+        <div className="sidebar-heading">
+          <span className="sidebar-eyebrow">Agents</span>
+          <span className="sidebar-project-name">
+            {activeProject?.name ?? "No project"}
+          </span>
         </div>
-        <Button
-          size="sm"
-          variant="primary"
-          onPress={() => activeProject && onCreate(activeProject, activeAgent)}
-          isDisabled={!activeProject || creating || atCap}
-          className="sidebar-new-session"
-          isIconOnly
-          aria-label={
-            atCap
-              ? `Close a pane to add another (limit ${LAYOUT_CAP})`
-              : `New ${activeAgentProfile?.display_name ?? activeAgent ?? "session"}`
-          }
-        >
-          +
-        </Button>
+        <div className="sidebar-agent-tabs" role="tablist" aria-label="Agent filter">
+          {agentTabs.map((profile) => {
+            const status = statusByProfile.get(profile.id);
+            const historyLabel = profile.introspect
+              ? `Show ${profile.display_name} sessions`
+              : `${profile.display_name} (no session history)`;
+            return (
+              <button
+                key={profile.id}
+                type="button"
+                role="tab"
+                aria-label={`${profile.display_name}${status ? `, ${status.label}` : ""}`}
+                aria-selected={activeAgent === profile.id}
+                className={
+                  `sidebar-agent-tab agent-${profile.id}` +
+                  (activeAgent === profile.id ? " active" : "")
+                }
+                onClick={() => setUserPickedAgent(profile.id)}
+                title={`${historyLabel}${status ? ` · ${status.label}` : ""}`}
+              >
+                <AgentIcon
+                  icon={profile.icon}
+                  variant={profile.icon_variant}
+                  fallbackChar={profile.display_name}
+                  size={20}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="sidebar-section-heading">
+        <span>Recent sessions</span>
+        {activeAgentProfile && (
+          <span className="sidebar-section-context">
+            {activeAgentProfile.display_name}
+          </span>
+        )}
       </div>
       <div className="sidebar-content">
         {!activeProject ? (
@@ -256,7 +285,44 @@ export function Sidebar() {
           />
         )}
       </div>
+      {pickerVisible ? null : (
+        <div className="sidebar-footer">
+          <Button
+            size="sm"
+            variant="primary"
+            onPress={() => activeProject && onCreate(activeProject, activeAgent)}
+            isDisabled={!activeProject || creating || atCap}
+            className="sidebar-new-session"
+            aria-label={
+              atCap
+                ? `Close a pane to add another (limit ${LAYOUT_CAP})`
+                : `New ${activeAgentProfile?.display_name ?? activeAgent ?? "session"}`
+            }
+          >
+            <PlusIcon />
+            <span>{creating ? "Starting…" : "New session"}</span>
+            <kbd aria-hidden>⌘N</kbd>
+          </Button>
+        </div>
+      )}
     </aside>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 

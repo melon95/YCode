@@ -208,63 +208,63 @@ export function AgentsSettings({ config, onChange }: Props) {
     setAdding(false);
   }
 
-  // While the inline "add custom agent" sub-form is open, Escape cancels it
-  // first. Registering through the shared guard means it sits ABOVE the Settings
-  // modal's own guard on the stack, so one Escape closes the sub-form and a
-  // second closes Settings — instead of a per-input onKeyDown handler that the
-  // capture-phase guard would swallow before it ever fired.
+  // Let Escape close the inline editor before the settings workspace itself.
   useEscapeGuard(cancelCustom, adding);
 
-  // One flat list: configured agents first (in config order), then the
-  // remaining catalog agents you can still add. `addedIdx` is the index into
-  // config.agents for added rows, or null for addable ones.
-  const rows: { agent: AgentLaunchProfileView; addedIdx: number | null }[] = [
-    ...config.agents.map((agent, addedIdx) => ({ agent, addedIdx })),
-    ...KNOWN_AGENTS.filter((a) => !configuredIds.has(a.id)).map((agent) => ({
-      agent,
-      addedIdx: null,
-    })),
-  ];
+  const availableAgents = KNOWN_AGENTS.filter(
+    (agent) => !configuredIds.has(agent.id),
+  );
 
   return (
     <div className="agents-settings">
-      <div className="agents-list">
-        <div className="agents-list-header">
-          <span className="agents-list-count">
-            {config.agents.length} agent{config.agents.length === 1 ? "" : "s"}
-          </span>
-        </div>
-        <div className="agents-list-rows">
-          {rows.map(({ agent, addedIdx }) => {
-            const added = addedIdx !== null;
+      <header className="settings-pane-heading">
+        <h2>Agents</h2>
+        <p>Choose which coding agents are available when starting a session.</p>
+        <span>
+          {config.agents.length} configured
+        </span>
+      </header>
+
+      <section className="agent-group" aria-labelledby="configured-agents">
+        <h3 id="configured-agents">Configured</h3>
+        <div className="agents-list configured">
+          {config.agents.length === 0 && (
+            <p className="agents-list-empty">No agents configured yet.</p>
+          )}
+          {config.agents.map((agent, idx) => {
             const label = agent.display_name || agent.id;
-            const icon = (
-              <span className="agent-row-icon">
-                <AgentIcon
-                  icon={agent.icon}
-                  variant={agent.icon_variant}
-                  fallbackChar={label}
-                  size={16}
-                />
-              </span>
+            return (
+              <div key={agent.id} className="agent-row configured">
+                <span className="agent-row-icon">
+                  <AgentIcon
+                    icon={agent.icon}
+                    variant={agent.icon_variant}
+                    fallbackChar={label}
+                    size={24}
+                  />
+                </span>
+                <span className="agent-row-name">{label}</span>
+                <code className="agent-row-command">{agent.command}</code>
+                <span className="agent-row-status">Configured</span>
+                <button
+                  type="button"
+                  className="agent-row-delete"
+                  onClick={() => deleteAgent(idx)}
+                  aria-label={`Remove ${label}`}
+                >
+                  Remove
+                </button>
+              </div>
             );
-            if (added) {
-              return (
-                <div key={agent.id} className="agent-row">
-                  {icon}
-                  <span className="agent-row-name">{label}</span>
-                  <button
-                    type="button"
-                    className="agent-row-delete"
-                    onClick={() => deleteAgent(addedIdx)}
-                    aria-label={`Remove ${label}`}
-                    title="Remove agent"
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            }
+          })}
+        </div>
+      </section>
+
+      <section className="agent-group" aria-labelledby="available-agents">
+        <h3 id="available-agents">Available agents</h3>
+        <div className="agents-list available">
+          {availableAgents.map((agent) => {
+            const label = agent.display_name || agent.id;
             return (
               <button
                 key={agent.id}
@@ -273,7 +273,14 @@ export function AgentsSettings({ config, onChange }: Props) {
                 onClick={() => addKnownAgent(agent)}
                 title={`Add ${label}`}
               >
-                {icon}
+                <span className="agent-row-icon">
+                <AgentIcon
+                  icon={agent.icon}
+                  variant={agent.icon_variant}
+                  fallbackChar={label}
+                  size={24}
+                />
+                </span>
                 <span className="agent-row-name">{label}</span>
                 <span className="agent-row-add">+ Add</span>
               </button>
@@ -328,10 +335,11 @@ export function AgentsSettings({ config, onChange }: Props) {
             >
               <span className="agent-row-icon agent-row-custom-icon">+</span>
               <span className="agent-row-name">Custom agent…</span>
+              <span className="agent-row-add">+ Add</span>
             </button>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

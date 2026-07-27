@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Group,
-  Panel,
-  Separator,
-  useDefaultLayout,
-  usePanelRef,
-} from "react-resizable-panels";
+import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import {
   getConfig,
   listAgents,
@@ -21,12 +15,11 @@ import { useEscapeGuard } from "./lib/useEscapeGuard";
 import { applyTheme, getTheme } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
 import { TopBar } from "./components/TopBar";
-import { Sidebar } from "./components/Sidebar";
-import { TerminalPane } from "./components/TerminalPane";
-import { RightPane } from "./components/RightPane";
 import { CommandPalette } from "./components/CommandPalette";
 import { HistoryTab } from "./components/HistoryTab";
 import { UpdateNotice } from "./components/UpdateNotice";
+import { SettingsScreen } from "./components/SettingsModal";
+import { WorkspaceCanvas } from "./components/WorkspaceCanvas";
 import {
   bindUnlockOnClose,
   listenPeerLockEvents,
@@ -95,6 +88,7 @@ export function App() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [history, setHistory] = useState<HistoryView | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // The session-history overlay had no Escape handling at all — add it, and
   // like every other modal make it dismiss-only (no fullscreen exit).
   useEscapeGuard(() => setHistory(null), !!history);
@@ -110,7 +104,11 @@ export function App() {
   const sidebarRef = usePanelRef();
   const rightPaneRef = usePanelRef();
   const openCommandPalette = useCallback(() => setPaletteOpen(true), []);
-  useHotkeys({ sidebarRef, rightPaneRef, openCommandPalette });
+  useHotkeys({
+    sidebarRef,
+    rightPaneRef,
+    openCommandPalette,
+  });
 
   // Suppress the WebView's native right-click menu (its lone "Reload" entry
   // would let users blow away app state). Editable surfaces keep their menu so
@@ -139,11 +137,14 @@ export function App() {
       const detail = (event as CustomEvent<HistoryView>).detail;
       if (detail) setHistory(detail);
     };
+    const onOpenSettings = () => setSettingsOpen(true);
     window.addEventListener("ycode:open-palette", onOpen);
     window.addEventListener("ycode:open-history", onOpenHistory);
+    window.addEventListener("ycode:open-settings", onOpenSettings);
     return () => {
       window.removeEventListener("ycode:open-palette", onOpen);
       window.removeEventListener("ycode:open-history", onOpenHistory);
+      window.removeEventListener("ycode:open-settings", onOpenSettings);
     };
   }, []);
 
@@ -317,39 +318,26 @@ export function App() {
 
   return (
     <>
-      <TopBar />
-      <Group
-        orientation="horizontal"
-        className="columns"
-        defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
-      >
-        <Panel
-          id="sidebar"
-          defaultSize="20%"
-          minSize="12%"
-          collapsible
-          collapsedSize="0"
-          panelRef={sidebarRef}
-        >
-          <Sidebar />
-        </Panel>
-        <Separator className="col-handle" />
-        <Panel id="middle" defaultSize="40%" minSize="20%">
-          <TerminalPane />
-        </Panel>
-        <Separator className="col-handle" />
-        <Panel
-          id="right"
-          defaultSize="40%"
-          minSize="20%"
-          collapsible
-          collapsedSize="0"
-          panelRef={rightPaneRef}
-        >
-          <RightPane />
-        </Panel>
-      </Group>
+      <TopBar settingsActive={settingsOpen} />
+      {/* Settings covers the workspace instead of replacing it. Unmounting
+          would tear down every ManualTerminal, and those kill their PTY on
+          cleanup (they have no session row keeping them alive backend-side),
+          so a long-running `npm run dev` would die just because the user
+          opened Settings. Hiding matches how project switching already keeps
+          background terminals alive. */}
+      <div className="app-workspace" hidden={settingsOpen}>
+        <div className="app-workspace-view">
+          <WorkspaceCanvas
+            defaultLayout={defaultLayout}
+            onLayoutChanged={onLayoutChanged}
+            sidebarRef={sidebarRef}
+            rightPaneRef={rightPaneRef}
+          />
+        </div>
+      </div>
+      {settingsOpen && (
+        <SettingsScreen onClose={() => setSettingsOpen(false)} />
+      )}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
