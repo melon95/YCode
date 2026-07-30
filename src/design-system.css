@@ -491,10 +491,23 @@ select {
   box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.08);
 }
 
-.pane-header,
-.terminal-pane-card-header {
+.pane-header {
   min-height: 36px;
   padding: 6px 8px 6px 12px;
+  gap: 8px;
+  background: var(--surface);
+  border-bottom-color: var(--rule);
+  color: var(--muted);
+}
+
+/* Split-terminal headers are deliberately NOT grouped with `.pane-header`
+   above. This header is absolutely positioned over the xterm, and the only
+   thing pushing the terminal body clear of it is `--pane-header-h` (see
+   styles.css). Setting a height here that outgrows the variable silently
+   covers the terminal's top rows — with a fresh shell that is the entire
+   visible content, so the pane reads as blank. Restyle via the variable. */
+.terminal-pane-card-header {
+  padding: 4px 8px;
   gap: 8px;
   background: var(--surface);
   border-bottom-color: var(--rule);
@@ -2016,8 +2029,7 @@ select {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.app-workspace .pane-header,
-.app-workspace .terminal-pane-card-header {
+.app-workspace .pane-header {
   min-height: 50px;
   padding: 8px 12px 8px 16px;
 }

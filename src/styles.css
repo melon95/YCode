@@ -3259,9 +3259,15 @@ textarea.native-input {
    Absolute (not flex): percentage heights inside flex items aren't always
    "definite" enough at first paint for xterm's FitAddon to read accurate
    container dimensions, so the initial fit would compute wrong cols/rows.
-   Pixel offsets sidestep that. */
+   Pixel offsets sidestep that.
+
+   `--pane-header-h` is the single source of truth for how far the body is
+   pushed down. Any theme that restyles the header must override the variable
+   rather than setting a height directly — the header paints over the xterm,
+   so a mismatch hides the terminal's top rows. 33px is the content budget:
+   24px close button + 4px padding top/bottom + the 1px bottom border. */
 :root {
-  --pane-header-h: 28px;
+  --pane-header-h: 33px;
 }
 .terminal-pane-card-header {
   position: absolute;

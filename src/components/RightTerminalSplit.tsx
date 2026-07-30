@@ -381,8 +381,13 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
   );
 }
 
+// Mirrors `.split-menu` in styles.css: 188px min-width, 4px padding and a 1px
+// border on each side, 32px per item, and a 9px separator before Close Pane.
+// Used only to keep the menu inside the viewport, so being a pixel or two off
+// just shifts the clamp — but omitting the borders clipped the bottom edge.
 const MENU_WIDTH = 188;
-const MENU_HEIGHT_BASE = 8 + 4 * 32;
+const MENU_BORDER_Y = 2;
+const MENU_HEIGHT_BASE = 8 + MENU_BORDER_Y + 4 * 32;
 const MENU_HEIGHT_WITH_CLOSE = MENU_HEIGHT_BASE + 9 + 32;
 
 interface SplitContextMenuProps {
