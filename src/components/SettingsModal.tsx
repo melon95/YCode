@@ -11,6 +11,7 @@ import {
   CircleArrowDown,
   Code2,
   Monitor,
+  TerminalSquare,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "@heroui/react";
@@ -21,6 +22,7 @@ import { confirmDialog } from "../lib/confirm";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { AgentsSettings } from "./AgentsSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { CommandLineSettings } from "./CommandLineSettings";
 import { LanguagesSettings } from "./LanguagesSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
@@ -29,6 +31,7 @@ import { UsageSettings } from "./UsageSettings";
 type SectionId =
   | "agents"
   | "appearance"
+  | "command-line"
   | "languages"
   | "notifications"
   | "usage"
@@ -37,6 +40,7 @@ type SectionId =
 const SECTIONS: Array<{ id: SectionId; label: string; icon: LucideIcon }> = [
   { id: "agents", label: "Agents", icon: Bot },
   { id: "appearance", label: "Appearance", icon: Monitor },
+  { id: "command-line", label: "Command Line", icon: TerminalSquare },
   { id: "languages", label: "Languages", icon: Code2 },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "usage", label: "Usage", icon: ChartPie },
@@ -192,6 +196,7 @@ export function SettingsScreen({ onClose }: Props) {
             {section === "appearance" && (
               <AppearanceSettings config={staged} onChange={setStaged} />
             )}
+            {section === "command-line" && <CommandLineSettings />}
             {section === "languages" && <LanguagesSettings />}
             {section === "usage" && <UsageSettings />}
             {section === "notifications" && (

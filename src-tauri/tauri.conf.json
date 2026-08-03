@@ -39,7 +39,8 @@
     ],
     "resources": {
       "binaries/ycode-notify": "binaries/ycode-notify",
-      "binaries/ycode-mcp": "binaries/ycode-mcp"
+      "binaries/ycode-mcp": "binaries/ycode-mcp",
+      "binaries/ycode-cli*": "binaries/"
     }
   },
   "plugins": {

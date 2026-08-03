@@ -10,6 +10,7 @@ use ycode_config::agent_patcher::{
     self, claude_json_path, claude_settings_path, codex_config_path, HookStatus, McpStatus,
     NotifyStatus,
 };
+use ycode_config::cli_installer::{self, CliInstallStatus};
 use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
@@ -19,7 +20,7 @@ use ycode_ipc::{
     WriteFileRequest, WritePtyRequest,
 };
 
-use crate::state::AppState;
+use crate::state::{AppState, PendingCliOpen};
 
 #[tauri::command]
 pub async fn list_agents(state: State<'_, AppState>) -> Result<Vec<AgentProfileView>, String> {
@@ -897,6 +898,99 @@ pub fn mcp_uninstall(agent: String) -> Result<McpStatus, String> {
         }
         other => Err(format!("unsupported agent: {other}")),
     }
+}
+
+/// Locate the `ycode-cli` binary — the one `/usr/local/bin/ycode` points at.
+///
+/// Resolution order is deliberately the *reverse* of [`resolve_helper_bin`]:
+/// bundled resources first, adjacent-to-exe second. The helper binaries are
+/// only ever spawned by the running app, so a dev-tree path is fine for them.
+/// This path, by contrast, gets baked into a symlink that outlives the process
+/// — and in `tauri dev` the exe lives in `target/debug`, so preferring the
+/// adjacent copy would point `/usr/local/bin/ycode` at a build artifact that
+/// the next `cargo clean` deletes, leaving the user a dangling command.
+///
+/// The adjacent lookup is kept as a fallback for portable/unbundled layouts
+/// where the CLI really does sit beside the app binary.
+pub(crate) fn resolve_cli_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let bin_name = if cfg!(windows) {
+        "ycode-cli.exe"
+    } else {
+        "ycode-cli"
+    };
+
+    if let Ok(p) = app.path().resolve(
+        format!("binaries/{bin_name}"),
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let adjacent = dir.join(bin_name);
+            if adjacent.exists() {
+                return Ok(adjacent);
+            }
+        }
+    }
+
+    Err("ycode-cli binary not found — looked next to YCode and in bundled resources".into())
+}
+
+/// Drain the `ycode <path>` request parked for the calling window, if any.
+///
+/// Covers the cold-start race: `ycode .` with the app closed launches YCode and
+/// its request lands while the webview is still booting, so the
+/// `ycode://cli-open` event has no listener. The frontend calls this once on
+/// mount to pick up what it missed. Returns `None` in the common warm case.
+#[tauri::command]
+pub fn take_pending_cli_open(
+    window: tauri::Window,
+    pending: State<'_, PendingCliOpen>,
+) -> Option<serde_json::Value> {
+    pending.take_for(window.label())
+}
+
+/// Whether `/usr/local/bin/ycode` currently points at this build's CLI.
+#[tauri::command]
+pub fn cli_status(app: tauri::AppHandle) -> Result<CliInstallStatus, String> {
+    // A missing binary is not an error for *status*: the UI should still be
+    // able to render "not installed" (and explain why installing will fail)
+    // rather than showing a fetch error. An unresolvable path can never equal
+    // an existing link target, so it reads as NotInstalled / Stale correctly.
+    let bin = resolve_cli_bin(&app).unwrap_or_else(|_| PathBuf::from("/nonexistent/ycode-cli"));
+    Ok(cli_installer::status(&bin))
+}
+
+/// Symlink `/usr/local/bin/ycode` at the bundled CLI, prompting for
+/// administrator rights only if that directory isn't user-writable.
+///
+/// `async` on purpose, unlike its `mcp_install` sibling: Tauri runs sync
+/// commands on the main thread, and the elevation path blocks on an
+/// `osascript` password dialog until the user answers — or wanders off. That
+/// would freeze the whole UI. `spawn_blocking` keeps the prompt off the event
+/// loop.
+#[tauri::command]
+pub async fn cli_install(app: tauri::AppHandle) -> Result<CliInstallStatus, String> {
+    let bin = resolve_cli_bin(&app)?;
+    tauri::async_runtime::spawn_blocking(move || cli_installer::install(&bin))
+        .await
+        .map_err(|e| format!("install task: {e}"))?
+        .map_err(|e| e.to_string())
+}
+
+/// Remove the symlink. No-op when it isn't there. `async` for the same reason
+/// as [`cli_install`] — removal needs the same elevation.
+#[tauri::command]
+pub async fn cli_uninstall(app: tauri::AppHandle) -> Result<CliInstallStatus, String> {
+    let bin = resolve_cli_bin(&app).unwrap_or_else(|_| PathBuf::from("/nonexistent/ycode-cli"));
+    tauri::async_runtime::spawn_blocking(move || cli_installer::uninstall(&bin))
+        .await
+        .map_err(|e| format!("uninstall task: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
 /// Inspect the current state of the per-agent hook config without modifying

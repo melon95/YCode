@@ -1,0 +1,21 @@
+[package]
+name = "ycode-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The `ycode` shell command — opens a folder (or a file's folder) in the running YCode app, launching it first when needed."
+
+# The binary ships as `ycode-cli` (matching the other bundled helpers, and
+# what `resolve_cli_bin` looks for); it reaches the user's PATH as `ycode` via
+# the symlink created by Settings → Command Line.
+[[bin]]
+name = "ycode-cli"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

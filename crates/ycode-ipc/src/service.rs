@@ -26,7 +26,7 @@ use ycode_persist::{
 use ycode_terminal::{SpawnSpec, TerminalError, TerminalEvent, TerminalManager, TerminalSession};
 
 use crate::{
-    mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
+    cli_listener, mcp_listener, notify_listener, AgentProfileView, ConfigView, CreateProjectRequest,
     CreateSessionRequest, DailyUsageView, DiscoveredSessionView, FileContents, FileEntry,
     GitBranchInfo, GitBranchListView, GitDiffSource, GitFileChange, GitFileDiff, GitFileStatus,
     GitHunkAction, LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView,
@@ -88,6 +88,11 @@ pub struct Service {
     /// [`mcp_listener::start`] (it needs an `Arc<Service>`). `None` on
     /// non-Unix targets.
     mcp_sock_path: Option<PathBuf>,
+    /// Stable path of the `ycode` command's control socket. Same deal as
+    /// `mcp_sock_path`: computed here, bound by the Tauri shell (which needs
+    /// an `Arc<Service>` plus a channel back into the window layer). `None`
+    /// on non-Unix targets, where the shell command isn't shipped yet.
+    cli_sock_path: Option<PathBuf>,
     /// Root directory under which per-session isolated worktrees are checked
     /// out (`<worktree_root>/<project_id>/<session_id>`). Kept outside every
     /// repo so worktrees don't pollute the project tree or get picked up by
@@ -137,6 +142,9 @@ impl Service {
         } else {
             None
         };
+        // Unlike the notify/MCP sidecars this one is implemented on Windows
+        // too (named pipe), so it isn't gated on `cfg!(unix)`.
+        let cli_sock_path = Some(cli_listener::default_socket_path());
         Self {
             db,
             terminals: Arc::new(TerminalManager::new()),
@@ -148,8 +156,15 @@ impl Service {
             workspace_watchers: RwLock::new(std::collections::HashMap::new()),
             notify_sock_path,
             mcp_sock_path,
+            cli_sock_path,
             worktree_root,
         }
+    }
+
+    /// The `ycode` command's control socket path to bind. The Tauri shell
+    /// reads this and hands it to [`cli_listener::start`].
+    pub fn cli_sock_path(&self) -> Option<PathBuf> {
+        self.cli_sock_path.clone()
     }
 
     /// The MCP control socket path to bind/inject. The Tauri shell reads this,
@@ -670,6 +685,55 @@ impl Service {
             .max_by_key(|p| p.repo_path.len());
         best.map(|p| p.id)
             .ok_or_else(|| IpcError::BadInput(format!("no project matches cwd {cwd}")))
+    }
+
+    /// Resolve a folder to the project that should be shown for it, creating
+    /// one when nothing matches. Backs the `ycode <path>` shell command.
+    ///
+    /// Resolution order:
+    /// 1. Exact `repo_path` match — the common `ycode ~/repo` case.
+    /// 2. Deepest enclosing project. `ycode ~/repo/crates/foo` opens the
+    ///    already-registered `~/repo` instead of adding a second, overlapping
+    ///    project that would duplicate its sessions and todos.
+    /// 3. Otherwise register a new project named after the folder.
+    pub async fn open_project_for_path(&self, path: String) -> Result<ProjectView, IpcError> {
+        let dir = Utf8PathBuf::from(path);
+        if !dir.as_std_path().is_dir() {
+            return Err(IpcError::InvalidRepoPath(dir.into_string()));
+        }
+        // Normalise before comparing: a trailing slash or a `..` segment would
+        // otherwise miss an existing project whose stored path is canonical.
+        let canonical = dir
+            .as_std_path()
+            .canonicalize()
+            .map_err(|e| IpcError::BadInput(format!("cannot resolve {dir}: {e}")))?;
+        let canonical = Utf8PathBuf::from_path_buf(canonical)
+            .map_err(|p| IpcError::BadInput(format!("path is not UTF-8: {}", p.display())))?;
+        let target = canonical.as_str().trim_end_matches('/').to_string();
+
+        let rows = self.db.projects().list().await?;
+        if let Some(existing) = rows
+            .iter()
+            .filter(|p| {
+                let stored = p.repo_path.trim_end_matches('/');
+                target == stored || target.starts_with(&format!("{stored}/"))
+            })
+            .max_by_key(|p| p.repo_path.trim_end_matches('/').len())
+        {
+            let count = self.db.projects().live_session_count(&existing.id).await?;
+            return Ok(ProjectView::from_row(existing.clone(), count));
+        }
+
+        let name = canonical
+            .file_name()
+            .filter(|n| !n.is_empty())
+            .unwrap_or(target.as_str())
+            .to_string();
+        self.create_project(CreateProjectRequest {
+            name,
+            repo_path: target,
+        })
+        .await
     }
 
     /// Walk a project's repo, including ignored files but pruning explicitly

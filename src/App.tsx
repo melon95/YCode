@@ -6,7 +6,9 @@ import {
   listProjects,
   listSessions,
   listTodos,
+  listenCliOpen,
   listenSessionEvents,
+  takePendingCliOpen,
   startWorkspaceWatch,
   stopWorkspaceWatch,
 } from "./lib/ipc";
@@ -27,6 +29,7 @@ import {
   readUiStateFromUrl,
   snapshotPeerLockedProjects,
 } from "./lib/multiWindow";
+import type { CliOpenPayload } from "./lib/ipc";
 import type { SearchHit } from "./lib/types";
 
 const COLUMN_PANEL_IDS = ["sidebar", "middle", "right"];
@@ -148,6 +151,118 @@ export function App() {
     };
   }, []);
 
+  // Resolves once the initial projects/sessions load below has landed. The
+  // CLI-open effect waits on it: on a cold start (`ycode .` launched the app)
+  // both run concurrently, and whichever `setProjects` lands last wins — with
+  // the initial load winning, the CLI's project selection and its opened file
+  // get silently reverted.
+  const initialLoadRef = useRef<{
+    promise: Promise<void>;
+    resolve: () => void;
+  } | null>(null);
+  if (!initialLoadRef.current) {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    initialLoadRef.current = { promise, resolve };
+  }
+  const initialLoad = initialLoadRef.current;
+
+  // `ycode <path>` from a terminal. The backend has already resolved (or
+  // created) the project row and picked this window; we just select the
+  // project and, when the user pointed at a file, open it.
+  //
+  // The project may be brand new, in which case it isn't in the store yet —
+  // re-fetch the list first so `setActiveProjectId` has something to select.
+  // The file is opened after the selection: switching projects swaps the
+  // right-column UI (see `setActiveProjectId`), which would otherwise discard
+  // a tab we opened first.
+  //
+  // Two intake paths, because a cold start (`ycode .` launched the app) lands
+  // its request before this effect runs and the event would be lost:
+  // `takePendingCliOpen` drains that one, `listenCliOpen` covers every
+  // invocation while the window is already up. The backend clears the parked
+  // slot on read, so a warm request handled by the listener isn't replayed.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    // The same request can reach us twice — the backend parks *and* emits
+    // every invocation, because `emit` can't tell whether anyone was
+    // listening. Dedupe on the request's identity so `apply` stays safe to
+    // make stateful later; today's store writes happen to be idempotent, but
+    // that's a property of the current calls, not a guarantee.
+    const applied = new Set<string>();
+
+    // Deliberately NOT gated on `cancelled`: every write below targets the
+    // global zustand store, not component state, and the payload is consumed
+    // destructively (`take_pending_cli_open` empties the slot). StrictMode's
+    // double-mount cancels the first pass mid-flight — bailing there would
+    // drop the user's `ycode <path>` on the floor, since the second pass
+    // finds nothing left to read.
+    const apply = (payload: CliOpenPayload) => {
+      const key = `${payload.project_id} ${payload.file ?? ""}`;
+      if (applied.has(key)) return Promise.resolve();
+      applied.add(key);
+      return initialLoad.promise
+        .then(() => listProjects())
+        .then((projects) => {
+          const store = useStore.getState();
+          store.setProjects(projects);
+          // The backend already proved no other window owns this project (it
+          // routed the request here). A peer lock left over from a window that
+          // died without broadcasting would otherwise hide the tab we're about
+          // to select — active project, but no highlighted tab in the strip.
+          store.removeLockedByOther(payload.project_id);
+          store.setActiveProjectId(payload.project_id);
+          if (payload.file) {
+            // The CLI resolved this path against the project's main checkout
+            // (its git root), so point the workspace there before opening —
+            // otherwise a project left on a session worktree resolves the same
+            // relative path against a different branch's content.
+            if (payload.repo_path === store.projects[payload.project_id]?.repo_path) {
+              store.setWorkspaceSessionId(payload.project_id, null);
+            }
+            store.openFile(payload.file, { preview: false });
+            // Must accompany every `openFile` (as at every other call site):
+            // the incoming project's restored tab is "files" (or "terminal"),
+            // and RightPane hides the Files tab once anything is open — so
+            // without this the body renders nothing and there's no visible
+            // control to get back.
+            store.setRightTab("editor");
+          }
+        })
+        .catch((err) => console.error("cli open failed", err));
+    };
+
+    // Register the listener BEFORE draining the parked slot. The backend parks
+    // then emits, microseconds apart; draining first would leave a window in
+    // which a request lands after our (empty) read but before we're listening,
+    // and nothing retries — the CLI has already told the user "ok". Doing it in
+    // this order can only duplicate, never lose, and duplicates are deduped
+    // above.
+    listenCliOpen(apply)
+      .then((u) => {
+        if (cancelled) {
+          u();
+          return;
+        }
+        unlisten = u;
+        // Draining also *clears* the slot, which is what stops a warm-path
+        // payload from being replayed by the next webview under this label.
+        return takePendingCliOpen().then((pending) => {
+          if (pending) void apply(pending);
+        });
+      })
+      .catch((err) => console.error("pending cli open failed", err));
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [initialLoad]);
+
   // Start a jsonl watcher for the active project. Switching projects swaps
   // watchers; unmounting cancels.
   useEffect(() => {
@@ -191,9 +306,19 @@ export function App() {
               store.hydrateLockedWindow(readUiStateFromUrl());
             }
           }
+          // Release any queued `ycode <path>` request — here, at the end of
+          // the branch that actually applied, not in a `.finally`. A cancelled
+          // StrictMode pass bails at the `cancelled` check above without
+          // running `setProjects`/`hydrateLockedWindow`, and resolving for it
+          // would let the CLI's file open race the *surviving* pass's
+          // hydrate — which overwrites openFiles/rightTab wholesale in a
+          // detached window, exactly what this latch exists to prevent.
+          initialLoad.resolve();
         })
         .catch((err) => {
           console.error("initial load failed", err);
+          // A failed load must not strand the request forever.
+          initialLoad.resolve();
         });
     };
     refresh();
@@ -252,7 +377,15 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setSessions, setProjects, setAgents, setFontSizes, setTheme, setLiveTitle]);
+  }, [
+    setSessions,
+    setProjects,
+    setAgents,
+    setFontSizes,
+    setTheme,
+    setLiveTitle,
+    initialLoad,
+  ]);
 
   // UI font size → CSS variable. Chrome (sidebar / tab strip / file tree /
   // top bar) reads `--ui-font-size`. Editor and terminal layers don't go

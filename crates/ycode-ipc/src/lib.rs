@@ -7,6 +7,7 @@
 //! | `list_agents`      | Read [`Config`] and return registered profiles.        |
 //! | `list_projects`    | All projects, newest first.                            |
 //! | `create_project`   | Validate folder + persist; returns the new row.        |
+//! | `open_project_for_path` | Resolve a folder to an existing/new project (`ycode` CLI). |
 //! | `delete_project`   | Removes the project iff no live sessions remain.       |
 //! | `list_sessions`    | All non-archived sessions across projects.             |
 //! | `create_session`   | Spawn PTY child, persist row; returns view.            |
@@ -18,6 +19,7 @@
 //!
 //! Events flow back through [`UiEvent`] on the channel `"ycode://session"`.
 
+pub mod cli_listener;
 pub mod events;
 pub mod mcp_listener;
 pub mod notify_listener;

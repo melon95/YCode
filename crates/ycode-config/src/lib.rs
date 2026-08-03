@@ -48,6 +48,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 pub mod agent_patcher;
+pub mod cli_installer;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {

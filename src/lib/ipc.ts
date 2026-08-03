@@ -445,6 +445,61 @@ export const mcpInstall = (agent: "claude" | "codex"): Promise<McpStatus> =>
 export const mcpUninstall = (agent: "claude" | "codex"): Promise<McpStatus> =>
   invoke<{ kind: McpStatus }>("mcp_uninstall", { agent }).then(unwrapMcpStatus);
 
+// ── `ycode` shell command (symlink in /usr/local/bin) ──────────────────────
+
+/**
+ * State of `/usr/local/bin/ycode`. `stale` means our symlink is there but
+ * points at a binary that has since moved (re-installing fixes it);
+ * `conflict` means something we didn't create occupies the path and the user
+ * has to clear it themselves.
+ */
+export type CliInstallStatus =
+  | { kind: "not_installed" }
+  | { kind: "installed"; path: string; target: string }
+  | { kind: "stale"; path: string; target: string }
+  | { kind: "conflict"; path: string; detail: string };
+
+export const cliStatus = (): Promise<CliInstallStatus> => invoke("cli_status");
+
+/**
+ * Create the symlink. macOS/Linux prompt for administrator rights only when
+ * `/usr/local/bin` isn't writable by the current user; a cancelled prompt
+ * rejects with "authentication was cancelled".
+ */
+export const cliInstall = (): Promise<CliInstallStatus> => invoke("cli_install");
+
+export const cliUninstall = (): Promise<CliInstallStatus> => invoke("cli_uninstall");
+
+/**
+ * Payload of the `ycode://cli-open` event: the shell command was run against
+ * `repo_path`, which the backend resolved (or created) as `project_id`.
+ * `file` is repo-relative when the user pointed at a file.
+ */
+export interface CliOpenPayload {
+  project_id: string;
+  repo_path: string;
+  file: string | null;
+}
+
+/**
+ * Subscribe to `ycode <path>` invocations routed to *this* window. The
+ * backend picks the window (the project's detached window when one exists,
+ * otherwise main) and emits only there, so no filtering is needed here.
+ */
+export const listenCliOpen = (
+  handler: (payload: CliOpenPayload) => void,
+): Promise<UnlistenFn> =>
+  listen<CliOpenPayload>("ycode://cli-open", (msg) => handler(msg.payload));
+
+/**
+ * Pick up a `ycode <path>` request that arrived while this window's webview was
+ * still booting — the cold-start case, where `ycode .` launched the app and the
+ * backend answered seconds before React mounted, so the event above had no
+ * listener yet. Call once on mount; resolves to `null` in the warm case.
+ */
+export const takePendingCliOpen = (): Promise<CliOpenPayload | null> =>
+  invoke("take_pending_cli_open");
+
 // ── Language servers ───────────────────────────────────────────────────────
 
 /**

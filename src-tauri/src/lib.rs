@@ -10,7 +10,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_notification::NotificationExt;
 use tracing_subscriber::EnvFilter;
 
-use crate::state::AppState;
+use crate::state::{AppState, PendingCliOpen};
 
 /// Bundled macOS apps inherit a minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`)
 /// when launched from Finder/Dock, so user-installed CLIs (claude, codex,
@@ -275,6 +275,62 @@ fn ensure_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
 }
 
+/// Bring a window to the front for a `ycode <path>` invocation and tell its
+/// webview which project (and optionally which file) to show.
+///
+/// Window choice mirrors what the user would expect from clicking the project
+/// in the sidebar: if a detached window already owns this project — its label
+/// is `project-<id>`, see `src/lib/multiWindow.ts` — that window is the one
+/// showing it, so raise that instead of the main window, where the tab is
+/// greyed out as peer-locked and can't be selected.
+fn focus_cli_open_request(
+    app: &tauri::AppHandle,
+    req: &ycode_ipc::cli_listener::CliOpenRequest,
+) -> tauri::Result<()> {
+    let payload = serde_json::json!({
+        "project_id": req.project.id,
+        "repo_path": req.project.repo_path,
+        "file": req.file,
+    });
+
+    let detached_label = format!("project-{}", req.project.id);
+    let target = match app.get_webview_window(&detached_label) {
+        Some(win) => win,
+        None => {
+            ensure_main_window(app)?;
+            match app.get_webview_window("main") {
+                Some(win) => win,
+                // `ensure_main_window` returning Ok without a `main` window is
+                // not reachable, but bail loudly rather than silently dropping
+                // the user's request if it ever becomes so.
+                None => return Err(tauri::Error::WindowNotFound),
+            }
+        }
+    };
+
+    target.show()?;
+    target.unminimize()?;
+    target.set_focus()?;
+    // Park before emitting. On a cold start (`ycode .` launched the app) the
+    // webview hasn't subscribed yet and the emit is dropped on the floor, so
+    // the frontend drains this slot on mount to pick up what it missed.
+    //
+    // Parking happens on *every* invocation, warm ones included: `emit`
+    // returns `Ok` with zero listeners, so there is no way to tell from here
+    // whether anyone heard it. The frontend is therefore responsible for
+    // clearing the slot once its listener is live (see `takePendingCliOpen`)
+    // — otherwise a warm payload lingers and gets replayed by the next
+    // webview to mount under this label (a ⌘R reload, or a rebuilt `main`
+    // window after the user closed it), yanking the user back to a project
+    // they left minutes ago.
+    app.state::<PendingCliOpen>()
+        .park(target.label().to_string(), payload.clone());
+    // Emit to this window only: a broadcast would make every open window jump
+    // to the project, stealing whatever the user had on screen elsewhere.
+    target.emit("ycode://cli-open", payload)?;
+    Ok(())
+}
+
 /// Event handlers must not synchronously build a webview on Windows (WebView2
 /// can deadlock there). Dispatch recovery work onto Tauri's async runtime so
 /// the triggering menu/tray/single-instance callback can return first.
@@ -434,6 +490,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // Managed before anything can produce a CLI request (the listener
+            // is bound further down) so `focus_cli_open_request` always finds
+            // the slot. Independent of `AppState`, which needs a fallible
+            // async init.
+            app.manage(PendingCliOpen::default());
+
             // Per plan §8.22: register `ycode://` so the OS hands URL launches
             // back to this binary. On macOS Info.plist controls registration;
             // calling this is a no-op there but harmless. On Linux it writes
@@ -603,6 +665,32 @@ pub fn run() {
                 });
             }
 
+            // Same deal for the `ycode` shell command's socket. Requests
+            // arriving there resolve to a project inside the IPC crate, then
+            // land on this channel so the window layer can raise a window and
+            // point the webview at it — the listener itself stays free of any
+            // Tauri types. Bind failure is non-fatal: the app runs, the
+            // command just reports that nothing is listening.
+            if let Some(cli_sock) = state.service.cli_sock_path() {
+                let (open_tx, mut open_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<ycode_ipc::cli_listener::CliOpenRequest>(
+                    );
+                let svc = state.service.clone();
+                let token = state.service.shutdown_token();
+                tauri::async_runtime::block_on(async move {
+                    ycode_ipc::cli_listener::start(svc, token, cli_sock, open_tx);
+                });
+
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some(req) = open_rx.recv().await {
+                        if let Err(error) = focus_cli_open_request(&handle, &req) {
+                            tracing::warn!(%error, project = %req.project.id, "cli open failed");
+                        }
+                    }
+                });
+            }
+
             let service = state.service.clone();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -747,6 +835,10 @@ pub fn run() {
             commands::mcp_status,
             commands::mcp_install,
             commands::mcp_uninstall,
+            commands::cli_status,
+            commands::cli_install,
+            commands::cli_uninstall,
+            commands::take_pending_cli_open,
             commands::test_notification,
             commands::lsp_list_manifests,
             commands::lsp_install,

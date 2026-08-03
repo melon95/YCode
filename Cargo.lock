@@ -7368,6 +7368,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ycode-cli"
+version = "0.4.1"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ycode-config"
 version = "0.4.1"
 dependencies = [
