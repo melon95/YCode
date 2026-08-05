@@ -55,6 +55,7 @@ export function SettingsScreen({ onClose }: Props) {
   const setAgents = useStore((s) => s.setAgents);
   const setFontSizes = useStore((s) => s.setFontSizes);
   const setTheme = useStore((s) => s.setTheme);
+  const setAutoHideTopBar = useStore((s) => s.setAutoHideTopBar);
   const [staged, setStaged] = useState<ConfigView | null>(null);
   const [original, setOriginal] = useState<ConfigView | null>(null);
   const [section, setSection] = useState<SectionId>("agents");
@@ -116,6 +117,7 @@ export function SettingsScreen({ onClose }: Props) {
       setAgents(refreshed);
       setFontSizes(staged.font_sizes);
       setTheme(staged.theme);
+      setAutoHideTopBar(staged.auto_hide_top_bar);
       setOriginal(staged);
       toast.success("Settings saved");
       onClose();
@@ -143,6 +145,7 @@ export function SettingsScreen({ onClose }: Props) {
       setOriginal(cfg);
       setFontSizes(cfg.font_sizes);
       setTheme(cfg.theme);
+      setAutoHideTopBar(cfg.auto_hide_top_bar);
       toast.success("Reset to defaults");
     } catch (err) {
       toast.danger(`Reset failed: ${err}`);

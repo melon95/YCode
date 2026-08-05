@@ -433,6 +433,11 @@ interface AppState {
   /// `App.tsx` writes the resolved theme's CSS variable map to `:root` on
   /// change; TerminalPane / ManualTerminal re-skin live xterm instances.
   theme: string;
+  /// When true the top bar collapses out of the layout and only slides back
+  /// in while the pointer is near the window's top edge. Mirrors the
+  /// backend config field of the same name; defaults to false until the
+  /// initial `getConfig` IPC returns.
+  autoHideTopBar: boolean;
   /// Sessions that fired an `AgentTurnComplete` (turn ended / needs input)
   /// while the user wasn't looking at them. Drives the dot badge on visible
   /// pane headers and cleared when the session becomes the active pane.
@@ -521,6 +526,7 @@ interface AppState {
   setLiveTitle: (sessionId: string, title: string) => void;
   setFontSizes: (f: FontSizesView) => void;
   setTheme: (id: string) => void;
+  setAutoHideTopBar: (on: boolean) => void;
   /// Sidebar publishes the id of the agent profile currently highlighted
   /// in the agent-tab strip — the same one the "+" button creates against.
   /// Used by the ⌘N hotkey, which builds the createSession call itself
@@ -561,6 +567,7 @@ export const useStore = create<AppState>((set) => ({
   previewFilePath: null,
   fontSizes: DEFAULT_FONT_SIZES,
   theme: DEFAULT_THEME_ID,
+  autoHideTopBar: false,
   activeSidebarAgentId: null,
   attentionBySession: {},
   activityBySession: {},
@@ -1228,6 +1235,9 @@ export const useStore = create<AppState>((set) => ({
 
   setTheme: (id) =>
     set((state) => (state.theme === id ? state : { theme: id })),
+
+  setAutoHideTopBar: (on) =>
+    set((state) => (state.autoHideTopBar === on ? state : { autoHideTopBar: on })),
 
   setActiveSidebarAgentId: (id) => set({ activeSidebarAgentId: id }),
 }));

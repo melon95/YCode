@@ -53,6 +53,7 @@ export function App() {
   const fontSizes = useStore((s) => s.fontSizes);
   const setFontSizes = useStore((s) => s.setFontSizes);
   const setTheme = useStore((s) => s.setTheme);
+  const setAutoHideTopBar = useStore((s) => s.setAutoHideTopBar);
   const setLockedProjectId = useStore((s) => s.setLockedProjectId);
   const setLockedByOtherWindows = useStore((s) => s.setLockedByOtherWindows);
   const addLockedByOther = useStore((s) => s.addLockedByOther);
@@ -295,6 +296,7 @@ export function App() {
           setAgents(agents);
           setFontSizes(config.font_sizes);
           setTheme(config.theme);
+          setAutoHideTopBar(config.auto_hide_top_bar);
           // Detached windows replay the layout snapshot carried in their URL
           // (so "Open in New Window" keeps the panes the user had). The main
           // window deliberately does NOT restore on plain relaunch. Guarded so
@@ -383,6 +385,7 @@ export function App() {
     setAgents,
     setFontSizes,
     setTheme,
+    setAutoHideTopBar,
     setLiveTitle,
     initialLoad,
   ]);

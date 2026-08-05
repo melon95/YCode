@@ -29,6 +29,16 @@ import { openProjectInNewWindow } from "../lib/multiWindow";
 import { LayoutSwitcher } from "./LayoutSwitcher";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
+/// How close to the window's top edge the pointer has to get before the
+/// auto-hidden bar slides back in. Deliberately larger than the visible
+/// 4px sliver so the reveal feels reachable rather than pixel-hunted.
+const TOPBAR_REVEAL_ZONE_PX = 6;
+
+/// How long the bar stays peeked open after a keyboard project switch. Long
+/// enough to read the newly-active tab, short enough not to linger over the
+/// terminal you're typing into.
+const TOPBAR_PEEK_MS = 1200;
+
 export function TopBar({ settingsActive = false }: { settingsActive?: boolean }) {
   const [creatingProject, setCreatingProject] = useState(false);
   const [menu, setMenu] = useState<{
@@ -47,6 +57,9 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
   const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
   const sessions = useStore((s) => s.sessions);
   const activityBySession = useStore((s) => s.activityBySession);
+  const autoHideTopBar = useStore((s) => s.autoHideTopBar);
+  const [revealed, setRevealed] = useState(false);
+  const [peeking, setPeeking] = useState(false);
   const detached = lockedProjectId !== null;
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [projectDrop, setProjectDrop] = useState<{
@@ -76,6 +89,71 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
     }
     return out;
   }, [sessions, activityBySession]);
+
+  // Pointer-driven reveal for the auto-hide mode. Tracked on `window` rather
+  // than the header's own mouseenter, because the collapsed bar is a 4px
+  // sliver — too small to reliably enter — and because the pointer has to be
+  // able to *leave* through the workspace below and re-hide the bar.
+  const headerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!autoHideTopBar) {
+      setRevealed(false);
+      return;
+    }
+    const onMove = (e: PointerEvent) => {
+      if (e.clientY <= TOPBAR_REVEAL_ZONE_PX) {
+        setRevealed(true);
+        return;
+      }
+      // Once open, the bar stays open for as long as the pointer is inside
+      // it — otherwise the tabs would slide away the moment the user moved
+      // down to click one.
+      const rect = headerRef.current?.getBoundingClientRect();
+      setRevealed(
+        !!rect &&
+          e.clientY <= rect.bottom &&
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right,
+      );
+    };
+    // The window losing the pointer entirely (moving into another app, or
+    // over a native menu) should settle the bar back to hidden.
+    const onLeave = () => setRevealed(false);
+    window.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerleave", onLeave);
+    window.addEventListener("blur", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("blur", onLeave);
+    };
+  }, [autoHideTopBar]);
+
+  // Keyboard project switching (⇧⌘[ / ⇧⌘]) briefly peeks the bar, so a blind
+  // switch still shows which project you landed on. Without this the only
+  // other on-screen project label is the sidebar's, which ⌘B can collapse —
+  // leaving the switch with no feedback at all.
+  useEffect(() => {
+    if (!autoHideTopBar) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onPeek = () => {
+      setPeeking(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setPeeking(false), TOPBAR_PEEK_MS);
+    };
+    window.addEventListener("ycode:peek-topbar", onPeek);
+    return () => {
+      window.removeEventListener("ycode:peek-topbar", onPeek);
+      clearTimeout(timer);
+      setPeeking(false);
+    };
+  }, [autoHideTopBar]);
+
+  // Interactions started from the bar must pin it open: the folder picker
+  // and the context menu both move the pointer off the header, which would
+  // otherwise collapse the bar out from under the gesture.
+  const pinned = creatingProject || menu !== null || draggedProjectId !== null;
+  const hidden = autoHideTopBar && !revealed && !pinned && !peeking;
 
   // Listen for global hotkeys dispatched from `useHotkeys`.
   useEffect(() => {
@@ -218,7 +296,19 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
   }
 
   return (
-    <header className="topbar">
+    <header
+      ref={headerRef}
+      className={
+        "topbar" +
+        (autoHideTopBar ? " auto-hide" : "") +
+        (hidden ? " hidden" : "")
+      }
+      // The collapsed bar is decorative until revealed — keep it off the
+      // tab order and out of the a11y tree so keyboard/screen-reader users
+      // don't land on invisible controls.
+      aria-hidden={hidden || undefined}
+      inert={hidden || undefined}
+    >
       {/* Detached windows display the project name in the native window
           title bar (set when we spawn the WebviewWindow), so we hide the
           tab strip here to avoid showing the same name twice. */}

@@ -63,6 +63,12 @@ pub struct Config {
     /// time, so a future-version config file can't softlock the UI.
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Collapse the top bar (project tabs + search + gear) into a thin
+    /// hover strip, reclaiming its vertical space for the workspace. The
+    /// bar slides back over the content while the pointer is near the top
+    /// edge. Off by default — the bar is the primary project switcher.
+    #[serde(default)]
+    pub auto_hide_top_bar: bool,
 }
 
 fn default_theme() -> String {
@@ -155,6 +161,7 @@ impl Default for Config {
             font_sizes: FontSizes::default(),
             notifications: NotificationSettings::default(),
             theme: default_theme(),
+            auto_hide_top_bar: false,
         }
     }
 }

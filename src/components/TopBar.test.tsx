@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useStore } from "../lib/store";
 import type { ProjectView } from "../lib/types";
 import { TopBar } from "./TopBar";
@@ -126,5 +126,69 @@ describe("TopBar project reorder", () => {
       "gamma",
     ]);
     expect(target).not.toHaveClass("drop-after");
+  });
+});
+
+describe("TopBar auto-hide", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useStore.setState(initialState, true);
+    useStore.getState().setProjects([project("alpha", 1)]);
+  });
+
+  afterEach(cleanup);
+
+  it("stays laid out when the setting is off", () => {
+    render(<TopBar />);
+    const header = document.querySelector(".topbar");
+    expect(header).not.toHaveClass("auto-hide");
+    expect(header).not.toHaveClass("hidden");
+  });
+
+  it("collapses when enabled and reveals on a pointer at the top edge", async () => {
+    useStore.getState().setAutoHideTopBar(true);
+    render(<TopBar />);
+    const header = document.querySelector(".topbar");
+    expect(header).toHaveClass("auto-hide");
+    expect(header).toHaveClass("hidden");
+
+    // jsdom hands back an all-zero rect, so a move below the reveal zone
+    // can't accidentally land "inside" the bar and keep it open.
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 2 });
+    await waitFor(() => expect(header).not.toHaveClass("hidden"));
+
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 400 });
+    await waitFor(() => expect(header).toHaveClass("hidden"));
+  });
+
+  it("peeks open on a keyboard project switch, then settles back", async () => {
+    vi.useFakeTimers();
+    useStore.getState().setAutoHideTopBar(true);
+    render(<TopBar />);
+    const header = document.querySelector(".topbar");
+    expect(header).toHaveClass("hidden");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("ycode:peek-topbar"));
+    });
+    expect(header).not.toHaveClass("hidden");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1300);
+    });
+    expect(header).toHaveClass("hidden");
+    vi.useRealTimers();
+  });
+
+  it("re-hides immediately when the setting is turned back off", async () => {
+    useStore.getState().setAutoHideTopBar(true);
+    render(<TopBar />);
+    const header = document.querySelector(".topbar");
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 2 });
+    await waitFor(() => expect(header).not.toHaveClass("hidden"));
+
+    useStore.getState().setAutoHideTopBar(false);
+    await waitFor(() => expect(header).not.toHaveClass("auto-hide"));
+    expect(header).not.toHaveClass("hidden");
   });
 });

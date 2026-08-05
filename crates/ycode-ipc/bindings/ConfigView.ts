@@ -13,4 +13,9 @@ export type ConfigView = { agents: Array<AgentLaunchProfileView>, font_sizes: Fo
  * id is unknown (lets future themes round-trip safely through older app
  * versions).
  */
-theme: string, };
+theme: string, 
+/**
+ * Collapse the top bar into a hover-reveal strip. Mirrors
+ * [`ycode_config::Config::auto_hide_top_bar`].
+ */
+auto_hide_top_bar: boolean, };

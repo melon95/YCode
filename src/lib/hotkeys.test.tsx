@@ -198,6 +198,49 @@ describe("useHotkeys", () => {
     expect(useStore.getState().activeProjectId).toBe("project-b");
   });
 
+  it("walks projects in the top bar's drag order, not creation order", () => {
+    // `projectOrder` is what the tab strip renders; a user who dragged the
+    // newest project to the front expects ⇧⌘] to follow the tabs they see.
+    useStore.setState({
+      projects: {
+        "project-a": project("project-a", 1),
+        "project-b": project("project-b", 2),
+        "project-c": project("project-c", 3),
+      },
+      projectOrder: ["project-c", "project-a", "project-b"],
+      activeProjectId: "project-c",
+    });
+    render(<HotkeyHost />);
+
+    press("]", { shiftKey: true });
+    expect(useStore.getState().activeProjectId).toBe("project-a");
+
+    press("]", { shiftKey: true });
+    expect(useStore.getState().activeProjectId).toBe("project-b");
+
+    // Wraps around the end of the strip, back to the leftmost tab.
+    press("]", { shiftKey: true });
+    expect(useStore.getState().activeProjectId).toBe("project-c");
+  });
+
+  it("peeks the top bar so a keyboard project switch is visible when hidden", () => {
+    const handler = vi.fn();
+    window.addEventListener("ycode:peek-topbar", handler);
+    useStore.setState({
+      projects: {
+        "project-a": project("project-a", 1),
+        "project-b": project("project-b", 2),
+      },
+      activeProjectId: "project-a",
+    });
+    render(<HotkeyHost />);
+
+    press("]", { shiftKey: true });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ycode:peek-topbar", handler);
+  });
+
   it("dispatches a new-project event with command o", () => {
     const handler = vi.fn();
     window.addEventListener("ycode:new-project", handler);

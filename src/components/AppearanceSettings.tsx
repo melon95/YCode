@@ -1,8 +1,9 @@
-// Settings → Appearance: theme picker + font-size editor.
+// Settings → Appearance: theme picker, top-bar behavior, font-size editor.
 //
 // Parent owns the staged ConfigView; this component just nudges the
-// `theme` / `font_sizes` slices via `onChange`. Font sizes are applied on
-// Save (the actual CSS-var / xterm fit happens in App.tsx, EditorPanel,
+// `theme` / `auto_hide_top_bar` / `font_sizes` slices via `onChange`. Font
+// sizes and the top-bar toggle are applied on Save (the actual CSS-var /
+// xterm fit happens in App.tsx, EditorPanel,
 // TerminalPane, ManualTerminal). Theme is *live-previewed* — clicking a
 // card writes through to the store immediately so the user sees what
 // they're picking. SettingsModal reverts the preview when the dialog is
@@ -97,6 +98,25 @@ export function AppearanceSettings({ config, onChange }: Props) {
             </div>
           );
         })}
+      </section>
+
+      <section className="appearance-section">
+        <h3 className="appearance-section-title">Top bar</h3>
+        <p className="settings-section-blurb">
+          The top bar holds the project tabs, search, and this settings gear.
+        </p>
+        <Field
+          label="Auto-hide the top bar"
+          hint="Collapses the bar and hands its 44px to the workspace. Move the pointer to the very top of the window to slide it back over the content. ⌘K and ⌘O keep working while it's hidden."
+        >
+          <input
+            type="checkbox"
+            checked={config.auto_hide_top_bar}
+            onChange={(e) =>
+              onChange({ ...config, auto_hide_top_bar: e.target.checked })
+            }
+          />
+        </Field>
       </section>
 
       <section className="appearance-section">

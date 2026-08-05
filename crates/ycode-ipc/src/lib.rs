@@ -241,6 +241,9 @@ pub struct ConfigView {
     /// id is unknown (lets future themes round-trip safely through older app
     /// versions).
     pub theme: String,
+    /// Collapse the top bar into a hover-reveal strip. Mirrors
+    /// [`ycode_config::Config::auto_hide_top_bar`].
+    pub auto_hide_top_bar: bool,
 }
 
 /// Editable mirror of [`ycode_config::NotificationSettings`].
@@ -307,6 +310,7 @@ impl From<ycode_config::Config> for ConfigView {
             font_sizes: c.font_sizes.into(),
             notifications: c.notifications.into(),
             theme: c.theme,
+            auto_hide_top_bar: c.auto_hide_top_bar,
         }
     }
 }
@@ -318,6 +322,7 @@ impl From<ConfigView> for ycode_config::Config {
             font_sizes: v.font_sizes.into(),
             notifications: v.notifications.into(),
             theme: v.theme,
+            auto_hide_top_bar: v.auto_hide_top_bar,
         }
     }
 }

@@ -200,6 +200,9 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  /* Containing block for the auto-hidden top bar, which floats over the
+     workspace instead of taking a row in this column. */
+  position: relative;
 }
 
 .columns {
@@ -248,6 +251,34 @@ body {
   position: relative;
   /* Hairline accent under the topbar — barely perceptible at rest,
      this is the "spine" of the chrome. */
+}
+
+/* Auto-hide mode (Settings → Appearance). The bar leaves the column flow
+   entirely — the workspace grows into its 44px — and floats back over the
+   content on hover. `position: absolute` against `#root` rather than the
+   viewport so detached windows and the settings screen behave the same. */
+.topbar.auto-hide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  flex: 0 0 44px;
+  height: 44px;
+  z-index: 300;
+  /* Opaque: it overlaps live terminal output, which would otherwise bleed
+     through the surface gradient. */
+  background: var(--surface);
+  box-shadow: 0 6px 20px -12px rgba(0, 0, 0, 0.5);
+  transition: transform var(--duration-base) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out);
+}
+
+/* Collapsed: slid up until only a hairline sliver remains as the hover
+   target. Not `display: none` — the strip has to stay hit-testable, and
+   keeping it mounted means no layout thrash on every reveal. */
+.topbar.auto-hide.hidden {
+  transform: translateY(calc(-100% + 4px));
+  opacity: 0;
 }
 
 .topbar::after {
