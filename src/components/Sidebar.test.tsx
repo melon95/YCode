@@ -86,18 +86,25 @@ describe("Sidebar agent filter", () => {
     fireEvent.click(codexTab);
 
     expect(codexTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Codex")).toHaveClass("sidebar-section-context");
+    // Picking a filter deselects the others. This used to also assert that
+    // the history section's heading echoed the agent name — that heading is
+    // gone, along with the separate history list it labelled.
+    expect(claudeTab).toHaveAttribute("aria-selected", "false");
   });
 
-  it("hides the shortcut while the main new-session picker is visible", () => {
+  it("keeps the new-session shortcut available even with no sessions yet", () => {
     render(<Sidebar />);
 
+    // The button used to hide whenever the canvas showed the agent picker.
+    // It no longer does: it is the fast path (start with the active agent,
+    // no picker round-trip), and whether it exists shouldn't depend on what
+    // the middle column happens to be rendering.
     expect(
-      screen.queryByRole("button", { name: "New Claude Code" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "新建会话" }),
+    ).toBeInTheDocument();
   });
 
-  it("shows the shortcut for an active session and hides it for an added picker pane", () => {
+  it("keeps the shortcut visible for an active session and an added picker pane", () => {
     useStore.setState({
       sessions: { [runningSession.id]: runningSession },
       layout: {
@@ -109,7 +116,7 @@ describe("Sidebar agent filter", () => {
     const { rerender } = render(<Sidebar />);
 
     expect(
-      screen.getByRole("button", { name: "New Claude Code" }),
+      screen.getByRole("button", { name: "新建会话" }),
     ).toBeInTheDocument();
 
     useStore.setState({
@@ -122,7 +129,7 @@ describe("Sidebar agent filter", () => {
     rerender(<Sidebar />);
 
     expect(
-      screen.queryByRole("button", { name: "New Claude Code" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "新建会话" }),
+    ).toBeInTheDocument();
   });
 });

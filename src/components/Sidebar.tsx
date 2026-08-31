@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button, toast } from "@heroui/react";
-import { isNewSessionPickerVisible, LAYOUT_CAP, useStore } from "../lib/store";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "@heroui/react";
+import { LAYOUT_CAP, useStore } from "../lib/store";
 import {
   createSession,
   listenSessionEvents,
@@ -16,11 +16,60 @@ import {
   type ProjectView,
 } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
+import { StatusDot } from "./ui/StatusDot";
+import { SidebarToggle } from "./ui/SidebarToggle";
+import { statusFromLight, STATUS_RANK } from "../lib/sessionStatus";
+import {
+  bucketSessions,
+  mergeSessions,
+  type MergedSession,
+} from "../lib/sessionList";
 
-export function Sidebar() {
+interface SidebarProps {
+  /// Hides the sidebar. Optional so the component still renders standalone
+  /// in tests, where there is no surrounding column to collapse.
+  onToggleSidebar?: () => void;
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={"sec-chevron" + (open ? " open" : "")}
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+function relativeTime(ms: number): string {
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  return `${Math.floor(diff / 86_400_000)} 天前`;
+}
+
+export function Sidebar({ onToggleSidebar }: SidebarProps) {
   const [creating, setCreating] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [showAllAgents, setShowAllAgents] = useState(true);
   const upsertSession = useStore((s) => s.upsertSession);
   const openSessionInLayout = useStore((s) => s.openSessionInLayout);
+  // The footer button opens the agent picker rather than starting a session
+  // outright — that's the preview's behaviour, and it's the honest one: the
+  // sidebar's agent filter is a *view* control, so using it as the implicit
+  // launch target meant the button did something different depending on a
+  // pill you may have clicked minutes ago. ⌘N still takes the fast path.
+  const showNewSessionPicker = useStore((s) => s.showNewSessionPicker);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const activeProject = activeProjectId ? projects[activeProjectId] : null;
@@ -33,14 +82,48 @@ export function Sidebar() {
   // Settings dialog is where the user discovers what's configured but not
   // installed.
   const agentTabs = useMemo(() => agents.filter((a) => a.available), [agents]);
+  // The row can't scroll (that would clip the count badges), so it shows the
+  // first few and folds the rest into a "+N" chip. Most setups have two or
+  // three agents; this only bites at five or more.
+  const AGENT_PILL_CAP = 4;
+  const shownAgentTabs = agentTabs.slice(0, AGENT_PILL_CAP);
+  const hiddenAgentTabs = agentTabs.slice(AGENT_PILL_CAP);
   // Cap-aware "+ new session" button. The layout reducer would silently
   // replace-focused-slot at cap, but we'd rather block the click so the
   // user doesn't accidentally lose a pane they were looking at.
   const visibleCount = useStore((s) => s.layout.visibleIds.length);
-  const pickerVisible = useStore((s) =>
-    isNewSessionPickerVisible(s.layout, s.sessions),
-  );
   const atCap = visibleCount >= LAYOUT_CAP;
+  const visibleIds = useStore((s) => s.layout.visibleIds);
+
+  // Live sessions of the active project, ordered by how much they want your
+  // attention (blocked first, then error/working, then finished). This is the
+  // list the redesign leads with: the discovered-transcript list below is for
+  // *resuming* past work, this one is for the work already running.
+  const liveSessions = useMemo(() => {
+    if (!activeProjectId) return [];
+    const rows = Object.values(sessions).filter(
+      (s) => s.project_id === activeProjectId && s.archived_at_ms == null,
+    );
+    return rows.sort((a, b) => {
+      const ra = STATUS_RANK[statusFromLight(sessionLight(a.status, activityBySession[a.id]))];
+      const rb = STATUS_RANK[statusFromLight(sessionLight(b.status, activityBySession[b.id]))];
+      if (ra !== rb) return ra - rb;
+      return b.updated_at_ms - a.updated_at_ms;
+    });
+  }, [sessions, activeProjectId, activityBySession]);
+
+  // The "更早" group opens itself only when it's the whole list — otherwise
+  // it would bury this week's work under two months of history. A manual
+  // toggle pins it either way. (It has to be able to close again too: the
+  // first render happens before the store is populated, so a one-way
+  // "open when empty" rule would leave it open forever.)
+  const historyPinnedRef = useRef(false);
+
+  const agentByProfileId = useMemo(() => {
+    const out: Record<string, AgentProfileView> = {};
+    for (const a of agents) out[a.id] = a;
+    return out;
+  }, [agents]);
 
   // Discovered sessions live here (rather than inside the panel) so we can
   // derive the default agent tab from the most-recent one.
@@ -108,10 +191,86 @@ export function Sidebar() {
   }, [items, agentTabs]);
 
   const activeAgent = userPickedAgent ?? defaultAgent;
-  const activeAgentProfile = useMemo(
-    () => agentTabs.find((p) => p.id === activeAgent) ?? null,
-    [agentTabs, activeAgent],
+  // introspect id → the profile that parses it, so a transcript-only row can
+  // resolve to an icon and a display name.
+  const profileByIntrospect = useMemo(() => {
+    const map: Record<string, AgentProfileView> = {};
+    for (const a of agents) {
+      if (a.introspect && !(a.introspect in map)) map[a.introspect] = a;
+    }
+    return map;
+  }, [agents]);
+
+  // The whole project as one list: sessions ycode started, transcripts found
+  // on disk, and the overlap between them folded together.
+  const allRows = useMemo(
+    () =>
+      mergeSessions({
+        live: liveSessions,
+        discovered: items,
+        agentByProfileId,
+        profileByIntrospect,
+        activityBySession,
+        visibleIds,
+      }),
+    [
+      liveSessions,
+      items,
+      agentByProfileId,
+      profileByIntrospect,
+      activityBySession,
+      visibleIds,
+    ],
   );
+
+  // Per-agent counts for the filter pills' badges. Counted off the merged
+  // rows rather than the raw DB list — a conversation resumed four times was
+  // being counted four times, so the badge read 23 for 16 conversations.
+  const countByProfile = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const r of allRows) {
+      const id = r.live?.agent_profile ?? r.profile?.id;
+      if (id) out[id] = (out[id] ?? 0) + 1;
+    }
+    return out;
+  }, [allRows]);
+
+  const shownRows = useMemo(() => {
+    if (showAllAgents) return allRows;
+    // The filter is by launch profile, but a transcript-only row only knows
+    // its introspect id — so match either way round.
+    return allRows.filter(
+      (r) =>
+        r.live?.agent_profile === activeAgent ||
+        (r.live == null && r.profile?.id === activeAgent),
+    );
+  }, [allRows, showAllAgents, activeAgent]);
+
+  // Blocked sessions are hoisted out of the list into their own block: with
+  // 25 sessions in a project, one that stopped and scrolled out of view is a
+  // stalled agent you don't know about.
+  const waitingRows = useMemo(
+    () => shownRows.filter((r) => r.light === "waiting"),
+    [shownRows],
+  );
+  const mergedRows = useMemo(
+    () => shownRows.filter((r) => r.light !== "waiting"),
+    [shownRows],
+  );
+  const buckets = useMemo(() => bucketSessions(mergedRows), [mergedRows]);
+
+  /// One click, two meanings — but only one to the user. A row ycode owns
+  /// opens its existing pane; a transcript-only row resumes into a new one.
+  function openRow(row: MergedSession) {
+    if (row.live) {
+      openSessionInLayout(row.live.id);
+      return;
+    }
+    if (row.discovered && activeProject) {
+      void onResume(row.discovered, activeProject);
+    }
+  }
+
   const statusByProfile = useMemo(() => {
     const latest = new Map<string, SessionView>();
     for (const session of Object.values(sessions)) {
@@ -126,7 +285,7 @@ export function Sidebar() {
       const light = sessionLight(session.status, activityBySession[session.id]);
       result.set(profileId, {
         light,
-        label: SESSION_LIGHT_LABEL[light].replace(" for input", ""),
+        label: SESSION_LIGHT_LABEL[light],
       });
     }
     return result;
@@ -222,18 +381,30 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="sidebar-heading">
-          <span className="sidebar-eyebrow">Agents</span>
-          <span className="sidebar-project-name">
-            {activeProject?.name ?? "No project"}
-          </span>
-        </div>
+        {onToggleSidebar && (
+          <SidebarToggle collapsed={false} onToggle={onToggleSidebar} />
+        )}
         <div className="sidebar-agent-tabs" role="tablist" aria-label="Agent filter">
-          {agentTabs.map((profile) => {
+          {/* "All" is a filter value like any other, so it lives in the same
+              row rather than as a separate clear-filter affordance. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={userPickedAgent === null && showAllAgents}
+            className={
+              "sidebar-agent-tab is-all" +
+              (showAllAgents ? " active" : "")
+            }
+            onClick={() => setShowAllAgents(true)}
+            title="全部 agent"
+          >
+            ALL
+          </button>
+          {shownAgentTabs.map((profile) => {
             const status = statusByProfile.get(profile.id);
             const historyLabel = profile.introspect
-              ? `Show ${profile.display_name} sessions`
-              : `${profile.display_name} (no session history)`;
+              ? `只看 ${profile.display_name} 的会话`
+              : `${profile.display_name}(无会话历史)`;
             return (
               <button
                 key={profile.id}
@@ -243,9 +414,12 @@ export function Sidebar() {
                 aria-selected={activeAgent === profile.id}
                 className={
                   `sidebar-agent-tab agent-${profile.id}` +
-                  (activeAgent === profile.id ? " active" : "")
+                  (!showAllAgents && activeAgent === profile.id ? " active" : "")
                 }
-                onClick={() => setUserPickedAgent(profile.id)}
+                onClick={() => {
+                  setShowAllAgents(false);
+                  setUserPickedAgent(profile.id);
+                }}
                 title={`${historyLabel}${status ? ` · ${status.label}` : ""}`}
               >
                 <AgentIcon
@@ -254,57 +428,147 @@ export function Sidebar() {
                   fallbackChar={profile.display_name}
                   size={20}
                 />
+                {countByProfile[profile.id] ? (
+                  <span className="count-badge count-badge-float">
+                    {countByProfile[profile.id]}
+                  </span>
+                ) : null}
               </button>
             );
           })}
+          {hiddenAgentTabs.length > 0 && (
+            <span
+              className="sidebar-agent-more"
+              title={hiddenAgentTabs.map((a) => a.display_name).join(" · ")}
+            >
+              +{hiddenAgentTabs.length}
+            </span>
+          )}
         </div>
       </div>
-      <div className="sidebar-section-heading">
-        <span>Recent sessions</span>
-        {activeAgentProfile && (
-          <span className="sidebar-section-context">
-            {activeAgentProfile.display_name}
-          </span>
-        )}
-      </div>
-      <div className="sidebar-content">
-        {!activeProject ? (
-          <div className="empty">
-            No project selected.
-            <br />
-            Create one with <em>+</em> in the top bar.
+
+      {/* One list, two sources. A session ycode started and the transcript it
+          wrote are the same conversation, so they're merged on the CLI
+          session id rather than shown as two lists the user has to
+          cross-reference. See lib/sessionList.ts for why that id is the right
+          join key — and why the resumed-session duplicates disappear with it.
+
+          Everything below scrolls as one column: with up to four groups, a
+          per-group scroller would slice the sidebar into equal strips. */}
+      <div className="sidebar-scroll">
+      {waitingRows.length > 0 && (
+        <div className="needs-you">
+          <div className="sidebar-section-heading needs-you-head">
+            <span>等你处理</span>
+            <span className="sidebar-section-context">{waitingRows.length}</span>
           </div>
-        ) : (
-          <DiscoveredSessionsPanel
-            items={items}
-            profile={activeAgentProfile}
-            loading={scanning}
-            error={scanError}
-            onResume={(d) => activeProject && onResume(d, activeProject)}
-            resuming={creating}
-          />
-        )}
-      </div>
-      {pickerVisible ? null : (
-        <div className="sidebar-footer">
-          <Button
-            size="sm"
-            variant="primary"
-            onPress={() => activeProject && onCreate(activeProject, activeAgent)}
-            isDisabled={!activeProject || creating || atCap}
-            className="sidebar-new-session"
-            aria-label={
-              atCap
-                ? `Close a pane to add another (limit ${LAYOUT_CAP})`
-                : `New ${activeAgentProfile?.display_name ?? activeAgent ?? "session"}`
-            }
-          >
-            <PlusIcon />
-            <span>{creating ? "Starting…" : "New session"}</span>
-            <kbd aria-hidden>⌘N</kbd>
-          </Button>
+          {waitingRows.map((row) => (
+            <SessionRowButton key={row.key} row={row} onOpen={openRow} />
+          ))}
         </div>
       )}
+
+      {buckets.active.length > 0 && (
+        <>
+          <div className="sidebar-section-heading">
+            <span>进行中</span>
+            <span className="sidebar-section-context">
+              {activeProject?.name ?? ""}
+            </span>
+          </div>
+          <div className="sidebar-live">
+            {buckets.active.map((row) => (
+              <SessionRowButton key={row.key} row={row} onOpen={openRow} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {buckets.recent.length > 0 && (
+        <>
+          <div className="sidebar-section-heading">
+            <span>最近 7 天</span>
+            <span className="sidebar-section-context">
+              {buckets.recent.length}
+            </span>
+          </div>
+          <div className="sidebar-live">
+            {buckets.recent.map((row) => (
+              <SessionRowButton key={row.key} row={row} onOpen={openRow} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Collapsed by default: a project with two months of history has
+          dozens of these, and none of them is what you came for. */}
+      {buckets.older.length > 0 && (
+        <>
+          <button
+            type="button"
+            className={
+              "sidebar-section-heading is-toggle" + (historyOpen ? " open" : "")
+            }
+            onClick={() => {
+              historyPinnedRef.current = true;
+              setHistoryOpen((v) => !v);
+            }}
+            aria-expanded={historyOpen}
+          >
+            <ChevronIcon open={historyOpen} />
+            <span title="更早的会话,点开可恢复继续">更早</span>
+            <span className="sidebar-section-context">
+              {buckets.older.length}
+            </span>
+          </button>
+          <div className="sidebar-live" hidden={!historyOpen}>
+            {buckets.older.map((row) => (
+              <SessionRowButton key={row.key} row={row} onOpen={openRow} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {scanError && (
+        <div className="sidebar-scan-error" title={scanError}>
+          扫描 transcript 失败,列表可能不全
+        </div>
+      )}
+      {!scanning && mergedRows.length === 0 && waitingRows.length === 0 && (
+        <div className="sidebar-live-empty">
+          {activeProject
+            ? "这个项目还没有会话。用下面的按钮开一个。"
+            : "还没有选中项目。"}
+        </div>
+      )}
+      </div>
+      {/* Always present, even while the picker fills the canvas: the button
+          is where a user's hand goes for "another one", and hiding it made
+          that depend on what the middle column happened to be showing. */}
+      <div className="sidebar-footer">
+        <button
+          type="button"
+          className="new-session-btn"
+          onClick={showNewSessionPicker}
+          disabled={!activeProject || creating || atCap}
+          aria-label={
+            atCap
+              ? `已达 ${LAYOUT_CAP} 个面板上限,先关一个`
+              : "新建会话"
+          }
+          title={
+            atCap
+              ? `已达 ${LAYOUT_CAP} 个面板上限,先关一个`
+              : "新建会话 —— 打开 agent 选择器"
+          }
+        >
+          <span className="nsb-plus" aria-hidden>
+            <PlusIcon />
+          </span>
+          <span className="nsb-label">{creating ? "启动中…" : "新建会话"}</span>
+          <kbd aria-hidden>⇧⌘N</kbd>
+        </button>
+      </div>
     </aside>
   );
 }
@@ -326,125 +590,62 @@ function PlusIcon() {
   );
 }
 
-/// Filtered History list. Pure renderer — parent owns the data.
-function DiscoveredSessionsPanel({
-  items,
-  profile,
-  loading,
-  error,
-  onResume,
-  resuming,
+/// One row in the merged list. Renders the same shape whether it came from
+/// the DB, the transcript scan, or both — which is the whole point: the user
+/// is looking at a conversation, not at our two storage mechanisms.
+function SessionRowButton({
+  row,
+  onOpen,
 }: {
-  items: DiscoveredSessionView[];
-  profile: AgentProfileView | null;
-  loading: boolean;
-  error: string | null;
-  onResume: (d: DiscoveredSessionView) => void;
-  resuming: boolean;
+  row: MergedSession;
+  onOpen: (row: MergedSession) => void;
 }) {
-  const agents = useStore((s) => s.agents);
-  // introspect id → first matching profile, so each row's `d.agent` can be
-  // resolved to a launch profile (and thus an icon / display name).
-  const profileByIntrospect = useMemo(() => {
-    const map: Record<string, AgentProfileView> = {};
-    for (const a of agents) {
-      if (a.introspect && !(a.introspect in map)) map[a.introspect] = a;
-    }
-    return map;
-  }, [agents]);
-
-  // The discovered rows carry the title baked into the jsonl on disk, which
-  // doesn't change when the user renames a live session (that only updates the
-  // DB row). Index any live session's user-set title by its CLI session id so a
-  // rename is reflected here too, keeping this list in sync with the pane header.
-  const sessions = useStore((s) => s.sessions);
-  const titleByAgentSession = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const s of Object.values(sessions)) {
-      if (s.agent_session_id && s.title.trim()) map[s.agent_session_id] = s.title;
-    }
-    return map;
-  }, [sessions]);
-
-  // Only profiles bound to a jsonl parser have a meaningful history list;
-  // PTY-only agents (Cursor, Aider, etc.) show an explanatory empty state.
-  const introspectId = profile?.introspect ?? null;
-  const filtered = useMemo(
-    () =>
-      introspectId ? items.filter((d) => d.agent === introspectId) : [],
-    [items, introspectId],
-  );
-
+  const status = row.light ? statusFromLight(row.light) : "idle";
+  const stateLabel = row.light
+    ? SESSION_LIGHT_LABEL[row.light]
+    : "可恢复";
+  // 焦点会话的背景高亮(预览稿 .sess.active)。琥珀指示条回答的是
+  // 「在不在画布上」,这个背景回答的是「键盘现在打到谁」—— 两件事。
+  const isActive = useStore((s) => row.live != null && s.activeId === row.live.id);
   return (
-    <div className="discovered-panel">
-      {loading && <div className="project-empty">Scanning…</div>}
-      {error && <div className="project-empty error">Scan failed: {error}</div>}
-      {!loading && !error && filtered.length === 0 && (
-        <div className="project-empty">
-          {!profile
-            ? "No agent selected."
-            : !profile.introspect
-              ? `${profile.display_name} runs PTY-only — no session history is tracked.`
-              : items.length === 0
-                ? "No sessions on disk for this project yet."
-                : `No ${profile.display_name} sessions for this cwd.`}
-        </div>
+    <button
+      type="button"
+      className={
+        "live-row" +
+        (row.paneIdx >= 0 ? " is-open" : "") +
+        (isActive ? " is-active" : "")
+      }
+      onClick={() => onOpen(row)}
+      title={`${row.title} · ${stateLabel}`}
+    >
+      <span className="live-agent">
+        <AgentIcon
+          icon={row.profile?.icon}
+          variant={row.profile?.icon_variant}
+          fallbackChar={row.profile?.display_name ?? row.title}
+          size={18}
+        />
+      </span>
+      <span className="live-main">
+        <span className="live-title">{row.title}</span>
+        <span className="live-sub">
+          {stateLabel}
+          {" · "}
+          {relativeTime(row.updatedAtMs)}
+          {row.hasWorktree && (
+            <span className="live-worktree" title="运行在独立的 git worktree 里">
+              {" · "}
+              worktree
+            </span>
+          )}
+        </span>
+      </span>
+      {row.paneIdx >= 0 && (
+        <span className="live-pane" title={`面板 ${row.paneIdx + 1}`}>
+          {row.paneIdx + 1}
+        </span>
       )}
-      {filtered.map((d) => {
-        // A live rename (DB title) wins over the jsonl's baked-in title.
-        const renamed = d.session_id ? titleByAgentSession[d.session_id] : undefined;
-        const label =
-          renamed?.trim() ||
-          d.title?.trim() ||
-          (d.session_id ? shortId(d.session_id) : "(no id)");
-        const tooltip = d.title
-          ? `Resume: ${d.title}\n${d.jsonl_path}`
-          : `Resume\n${d.jsonl_path}`;
-        return (
-          <button
-            key={d.jsonl_path}
-            type="button"
-            className="discovered-row"
-            onClick={() => onResume(d)}
-            disabled={resuming || !d.session_id}
-            title={tooltip}
-          >
-            <span className={`discovered-row-agent agent-${d.agent}`}>
-              <AgentIcon
-                icon={profileByIntrospect[d.agent]?.icon}
-                variant={profileByIntrospect[d.agent]?.icon_variant}
-                fallbackChar={
-                  profileByIntrospect[d.agent]?.display_name ?? d.agent
-                }
-                size={14}
-              />
-            </span>
-            <span
-              className={
-                "discovered-row-title" + (d.title ? "" : " discovered-row-title-id")
-              }
-            >
-              {label}
-            </span>
-            <span className="discovered-row-time">{relative(d.modified_at_ms)}</span>
-          </button>
-        );
-      })}
-    </div>
+      <StatusDot status={status} labelled={false} />
+    </button>
   );
-}
-
-function shortId(id: string): string {
-  return id.length <= 10 ? id : `${id.slice(0, 10)}…`;
-}
-
-function relative(ms: number): string {
-  if (!ms) return "";
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
-  const days = Math.floor(diff / 86_400_000);
-  if (days < 30) return `${days}d`;
-  return new Date(ms).toLocaleDateString();
 }

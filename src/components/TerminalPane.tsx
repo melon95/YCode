@@ -54,7 +54,7 @@ import {
   attachImeInputBridge,
   isPrintableCharEvent,
 } from "../lib/terminalInput";
-import { getTheme } from "../lib/themes";
+import { resolveTheme } from "../lib/themes";
 import { sessionLight, SESSION_LIGHT_LABEL } from "../lib/types";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
@@ -441,7 +441,10 @@ export function TerminalPane() {
     if (!pool) return;
     const known = terminalsRef.current;
 
-    const currentThemeId = useStore.getState().theme;
+    // 与批量重绘订阅同款的戳记(id + epoch):id 相同但系统明暗翻过的
+    // 池中终端,attach 时也要补一次重绘。
+    const themeState = useStore.getState();
+    const currentThemeId = `${themeState.theme}#${themeState.themeEpoch}`;
     visibleIds.forEach((id) => {
       const cell = cellBodyRefs.current.get(id);
       if (!cell) return;
@@ -493,7 +496,7 @@ export function TerminalPane() {
       // looking at it. `justCreated` terms already booted with the
       // current theme via createTerminal.
       if (!justCreated && inst.lastThemeId !== currentThemeId) {
-        const xterm = getTheme(currentThemeId).xterm;
+        const xterm = resolveTheme(themeState.theme).xterm;
         inst.term.options.theme = xterm;
         inst.container.style.backgroundColor = xterm.background ?? "";
         inst.lastThemeId = currentThemeId;
@@ -627,9 +630,12 @@ export function TerminalPane() {
     // path was as blocking as a direct loop).
     let pending: number | null = null;
     return useStore.subscribe((state, prev) => {
-      if (state.theme === prev.theme) return;
-      const themeId = state.theme;
-      const theme = getTheme(themeId).xterm;
+      // themeEpoch 覆盖「跟随系统」时 OS 明暗翻转:id 仍是 "system",
+      // 但解析出的配色变了,终端一样要重绘。
+      if (state.theme === prev.theme && state.themeEpoch === prev.themeEpoch)
+        return;
+      const themeStamp = `${state.theme}#${state.themeEpoch}`;
+      const theme = resolveTheme(state.theme).xterm;
       const visible = new Set(visibleIdsRef.current);
       if (pending !== null) cancelAnimationFrame(pending);
       pending = requestAnimationFrame(() => {
@@ -638,7 +644,7 @@ export function TerminalPane() {
           if (!visible.has(id)) continue;
           inst.term.options.theme = theme;
           inst.container.style.backgroundColor = theme.background ?? "";
-          inst.lastThemeId = themeId;
+          inst.lastThemeId = themeStamp;
         }
       });
     });
@@ -690,7 +696,11 @@ export function TerminalPane() {
                   }}
                 >
                   <header className="pane-header">
-                    <span className="pane-title">New Session</span>
+                    <span className="pane-idx" aria-hidden>
+                      {slot + 1}
+                    </span>
+                    <span className="pane-title">新建会话</span>
+                    <span className="pane-spacer" />
                     <button
                       type="button"
                       className="pane-close"
@@ -698,8 +708,8 @@ export function TerminalPane() {
                         e.stopPropagation();
                         closeLayoutSlot(slot);
                       }}
-                      aria-label="Close picker"
-                      title="Close"
+                      aria-label="关闭选择器"
+                      title="关闭"
                     >
                       ×
                     </button>
@@ -738,6 +748,9 @@ export function TerminalPane() {
                 }}
               >
                 <header className="pane-header">
+                  <span className="pane-idx" aria-hidden title={`面板 ${slot + 1}`}>
+                    {slot + 1}
+                  </span>
                   <span
                     className={`pane-agent agent-${session?.agent_profile ?? ""}`}
                     aria-hidden
@@ -777,12 +790,12 @@ export function TerminalPane() {
                         if (e.key === "Enter") commitRename();
                         else if (e.key === "Escape") setEditingId(null);
                       }}
-                      aria-label="Rename session"
+                      aria-label="重命名会话"
                     />
                   ) : (
                     <span
                       className="pane-title"
-                      title={`${title} — double-click to rename`}
+                      title={`${title} —— 双击可重命名`}
                       onDoubleClick={() => {
                         if (!session) return;
                         setEditingId(id);
@@ -795,20 +808,35 @@ export function TerminalPane() {
                   {session?.worktree_path && (
                     <span
                       className="pane-branch"
-                      title={`Running in an isolated worktree on ${
+                      title={`运行在独立 worktree 的分支 ${
                         session.branch ?? `ycode/${id}`
-                      }`}
+                      } 上`}
                     >
-                      {session.branch ?? `ycode/${id}`}
+                      <span className="pane-branch-mark" aria-hidden>
+                        ⌥
+                      </span>
+                      <b>{session.branch ?? `ycode/${id}`}</b>
                     </span>
                   )}
-                  {light && (
-                    <span
-                      className={`pane-status-dot light-${light}`}
-                      title={SESSION_LIGHT_LABEL[light]}
-                      aria-label={SESSION_LIGHT_LABEL[light]}
-                    />
-                  )}
+                  {light &&
+                    // 等待态带文字 chip:它是唯一一个「需要你行动」的状态,
+                    // 光靠一颗点在四宫格里不够醒目;其余状态保持安静的点。
+                    (light === "waiting" ? (
+                      <span className="pane-status-chip light-waiting">
+                        <span
+                          className="pane-status-dot light-waiting"
+                          aria-hidden
+                        />
+                        等待中
+                      </span>
+                    ) : (
+                      <span
+                        className={`pane-status-dot light-${light}`}
+                        title={SESSION_LIGHT_LABEL[light]}
+                        aria-label={SESSION_LIGHT_LABEL[light]}
+                      />
+                    ))}
+                  <span className="pane-spacer" />
                   {session?.worktree_path && session.base_branch && (
                     <button
                       type="button"
@@ -818,10 +846,10 @@ export function TerminalPane() {
                         e.stopPropagation();
                         void doMerge(id, session.base_branch!);
                       }}
-                      aria-label={`Merge into ${session.base_branch}`}
-                      title={`Merge this agent's branch into ${session.base_branch}`}
+                      aria-label={`合并到 ${session.base_branch}`}
+                      title={`把这个 agent 的分支合并回 ${session.base_branch}`}
                     >
-                      {mergingId === id ? "Merging…" : "Merge"}
+                      {mergingId === id ? "合并中…" : "合并"}
                     </button>
                   )}
                   <button
@@ -831,8 +859,8 @@ export function TerminalPane() {
                       e.stopPropagation();
                       void closeSessionNow(id);
                     }}
-                    aria-label="Close session"
-                    title="Close session (kills the process)"
+                    aria-label="关闭会话"
+                    title="关闭会话(会结束该进程)"
                   >
                     ×
                   </button>
@@ -898,8 +926,10 @@ function createTerminal(sessionId: string, parent: HTMLElement): TermInstance {
   // pass below handles subsequent swaps. Reading from the store imperatively
   // here (rather than threading the theme through createTerminal's call sites)
   // keeps the existing TermInstance creation contract small.
-  const themeId = useStore.getState().theme;
-  const theme = getTheme(themeId).xterm;
+  const themeState = useStore.getState();
+  // lastThemeId 存「id + epoch」戳记,与两处比较点保持同一格式。
+  const themeId = `${themeState.theme}#${themeState.themeEpoch}`;
+  const theme = resolveTheme(themeState.theme).xterm;
   const term = new Terminal({ ...TERMINAL_BASE_OPTIONS, theme });
   const fit = new FitAddon();
   const search = new SearchAddon();

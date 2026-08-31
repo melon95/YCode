@@ -6,6 +6,7 @@ import {
   type Layout,
   type PanelImperativeHandle,
 } from "react-resizable-panels";
+import { CanvasToolbar } from "./CanvasToolbar";
 import { RightPane } from "./RightPane";
 import { Sidebar } from "./Sidebar";
 import { TerminalPane } from "./TerminalPane";
@@ -15,6 +16,11 @@ interface Props {
   onLayoutChanged: (layout: Layout) => void;
   sidebarRef: RefObject<PanelImperativeHandle | null>;
   rightPaneRef: RefObject<PanelImperativeHandle | null>;
+  sidebarCollapsed: boolean;
+  /// 折叠状态的唯一权威来源:Panel 的 onResize。⌘B、工具条按钮、拖拽分隔条
+  /// 三条路径都汇到这里,不需要各自去镜像状态。
+  onSidebarCollapsedChange: (collapsed: boolean) => void;
+  onToggleSidebar: () => void;
 }
 
 export function WorkspaceCanvas({
@@ -22,6 +28,9 @@ export function WorkspaceCanvas({
   onLayoutChanged,
   sidebarRef,
   rightPaneRef,
+  sidebarCollapsed,
+  onSidebarCollapsedChange,
+  onToggleSidebar,
 }: Props) {
   return (
     <Group
@@ -37,12 +46,17 @@ export function WorkspaceCanvas({
         collapsible
         collapsedSize="0"
         panelRef={sidebarRef}
+        onResize={(size) => onSidebarCollapsedChange(size.inPixels === 0)}
       >
-        <Sidebar />
+        <Sidebar onToggleSidebar={onToggleSidebar} />
       </Panel>
       <Separator className="col-handle" />
       <Panel id="middle" defaultSize="34%" minSize="20%">
         <section className="agent-workspace-widget" aria-label="Agent workspace">
+          <CanvasToolbar
+            onToggleSidebar={onToggleSidebar}
+            sidebarCollapsed={sidebarCollapsed}
+          />
           <TerminalPane />
         </section>
       </Panel>

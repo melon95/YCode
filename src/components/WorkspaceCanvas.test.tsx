@@ -19,6 +19,9 @@ const baseProps = {
   onLayoutChanged: vi.fn(),
   sidebarRef: { current: null },
   rightPaneRef: { current: null },
+  sidebarCollapsed: false,
+  onSidebarCollapsedChange: vi.fn(),
+  onToggleSidebar: vi.fn(),
 };
 
 describe("WorkspaceCanvas", () => {

@@ -1,32 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  Button,
-  Label,
-  Modal,
-  ModalBackdrop,
-  ModalBody,
-  ModalContainer,
-  ModalDialog,
-  ModalFooter,
-  ModalHeader,
-  ModalHeading,
-  toast,
-} from "@heroui/react";
-import { listAgents, createSession, createProject, deleteProject } from "../lib/ipc";
+import { Popover } from "@base-ui/react/popover";
+import { toast } from "@heroui/react";
+import { createProject, deleteProject, gitBranch } from "../lib/ipc";
 import { captureProjectUiSnapshot, useStore } from "../lib/store";
 import {
   projectActivity,
-  SESSION_LIGHT_LABEL,
-  type AgentProfileView,
   type ProjectActivity,
   type ProjectView,
+  type SessionLight,
   type SessionView,
 } from "../lib/types";
 import { confirmDialog } from "../lib/confirm";
-import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { openProjectInNewWindow } from "../lib/multiWindow";
-import { LayoutSwitcher } from "./LayoutSwitcher";
+import { statusFromLight } from "../lib/sessionStatus";
+import { StatusDot } from "./ui/StatusDot";
+import { AttentionInbox } from "./AttentionInbox";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 /// How close to the window's top edge the pointer has to get before the
@@ -39,7 +28,15 @@ const TOPBAR_REVEAL_ZONE_PX = 6;
 /// terminal you're typing into.
 const TOPBAR_PEEK_MS = 1200;
 
-export function TopBar({ settingsActive = false }: { settingsActive?: boolean }) {
+export function TopBar({
+  settingsActive = false,
+  overviewActive = false,
+}: {
+  settingsActive?: boolean;
+  /// 项目总览打开时隐藏项目 tab 条(它是跨项目界面,顶着某个项目的 tab
+  /// 会造成语境误导),但搜索 / 收件箱 / 设置保持可达。
+  overviewActive?: boolean;
+}) {
   const [creatingProject, setCreatingProject] = useState(false);
   const [menu, setMenu] = useState<{
     x: number;
@@ -149,10 +146,13 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
     };
   }, [autoHideTopBar]);
 
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
   // Interactions started from the bar must pin it open: the folder picker
   // and the context menu both move the pointer off the header, which would
   // otherwise collapse the bar out from under the gesture.
-  const pinned = creatingProject || menu !== null || draggedProjectId !== null;
+  const pinned =
+    creatingProject || menu !== null || draggedProjectId !== null || switcherOpen;
   const hidden = autoHideTopBar && !revealed && !pinned && !peeking;
 
   // Listen for global hotkeys dispatched from `useHotkeys`.
@@ -242,7 +242,7 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
       const picked = await open({
         directory: true,
         multiple: false,
-        title: "Choose project repository",
+        title: "选择项目仓库目录",
       });
       if (typeof picked !== "string") return; // user cancelled
       const name = picked.split("/").filter(Boolean).pop() ?? picked;
@@ -250,7 +250,7 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
       upsertProject(view);
       setActiveProjectId(view.id);
     } catch (err) {
-      toast.danger(`Create project failed: ${err}`);
+      toast.danger(`创建项目失败:${err}`);
     } finally {
       setCreatingProject(false);
     }
@@ -258,10 +258,9 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
 
   async function onDeleteProject(p: ProjectView) {
     const ok = await confirmDialog({
-      title: `Delete project "${p.name}"?`,
-      message:
-        "Live sessions block deletion; archived sessions stay but lose their project link.",
-      confirmLabel: "Delete",
+      title: `删除项目「${p.name}」?`,
+      message: "有活跃会话时无法删除;已归档的会话会保留,但会失去项目关联。",
+      confirmLabel: "删除",
       destructive: true,
     });
     if (!ok) return;
@@ -269,7 +268,7 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
       await deleteProject(p.id);
       removeProject(p.id);
     } catch (err) {
-      toast.danger(`Delete failed: ${err}`);
+      toast.danger(`删除失败:${err}`);
     }
   }
 
@@ -281,13 +280,13 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
       y: e.clientY,
       items: [
         {
-          label: "Open in New Window",
+          label: "在新窗口中打开",
           onSelect: () => {
             // Snapshot this project's current panes / editor tabs so the new
             // window inherits the layout instead of resetting to the picker.
             const ui = captureProjectUiSnapshot(p.id) ?? undefined;
             openProjectInNewWindow(p.id, p.name, ui).catch((err) =>
-              toast.danger(`Open in new window failed: ${err}`),
+              toast.danger(`在新窗口打开失败:${err}`),
             );
           },
         },
@@ -312,7 +311,7 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
       {/* Detached windows display the project name in the native window
           title bar (set when we spawn the WebviewWindow), so we hide the
           tab strip here to avoid showing the same name twice. */}
-      {!detached && (
+      {!detached && !overviewActive && (
         <div
           className="project-tabs"
           onPointerMove={onProjectPointerMove}
@@ -347,10 +346,9 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
                 {/* Always render a dot so tabs stay visually consistent even
                     with no live sessions (e.g. right after ⌘W closes the last
                     one). `null` activity → a neutral "idle" dot. */}
-                <span
-                  className={`pane-status-dot light-${activity ? activity.light : "idle"}`}
-                  title={activity ? activityTooltip(activity) : "No active sessions"}
-                  aria-label={activity ? activityTooltip(activity) : "No active sessions"}
+                <StatusDot
+                  status={statusFromLight(activity?.light)}
+                  className="project-tab-dot"
                 />
                 <span
                   className="project-tab-name"
@@ -365,14 +363,30 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
                     };
                     e.currentTarget.setPointerCapture?.(e.pointerId);
                   }}
-                  title={`Drag to reorder · ${p.repo_path}`}
+                  title={`拖动以重新排序 · ${p.repo_path}`}
                 >
                   {p.name}
                 </span>
+                {/* Live session count. Tinted red when any of them is waiting
+                    on the user, so a background project can say "I need you"
+                    without the tab having to be read. */}
+                {activity && activity.total > 0 && (
+                  <span
+                    className={
+                      "count-badge" +
+                      (activity.counts.waiting > 0 ? " count-badge-hot" : "")
+                    }
+                    title={activityTooltip(activity)}
+                  >
+                    {activity.counts.waiting > 0
+                      ? activity.counts.waiting
+                      : activity.total}
+                  </span>
+                )}
                 <span
                   className="project-tab-close"
                   role="button"
-                  aria-label="Delete project"
+                  aria-label="删除项目"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteProject(p);
@@ -388,32 +402,46 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
             className="project-tab-add"
             onClick={onAddProject}
             disabled={creatingProject}
-            aria-label="New project"
-            title="New project"
+            aria-label="打开项目"
+            title="打开项目 (⌘O)"
           >
             <PlusIcon />
           </button>
+          <ProjectSwitcher
+            projects={projectList}
+            activityByProject={activityByProject}
+            open={switcherOpen}
+            onOpenChange={setSwitcherOpen}
+            onPick={(id) => {
+              setActiveProjectId(id);
+              setSwitcherOpen(false);
+            }}
+            onAddProject={() => {
+              setSwitcherOpen(false);
+              void onAddProject();
+            }}
+          />
         </div>
       )}
       <div className="topbar-actions">
-        <LayoutSwitcher />
         <button
           type="button"
           className="topbar-search"
           onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
-          aria-label="Search across sessions (⌘K)"
-          title="Search across sessions (⌘K)"
+          aria-label="搜索或执行命令 (⌘K)"
+          title="搜索或执行命令 (⌘K)"
         >
           <SearchIcon />
-          <span>Search or run command</span>
+          <span>搜索或执行命令</span>
         </button>
+        <AttentionInbox />
         <button
           type="button"
           className={`topbar-gear${settingsActive ? " active" : ""}`}
           onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-settings"))}
-          aria-label="Settings"
+          aria-label="设置"
           aria-pressed={settingsActive}
-          title="Settings"
+          title="设置 (⌘,)"
         >
           <GearIcon />
         </button>
@@ -427,6 +455,142 @@ export function TopBar({ settingsActive = false }: { settingsActive?: boolean })
         />
       )}
     </header>
+  );
+}
+
+/// 预览稿的 `.ptab-more`/`.pswitch`:tab 条右端的项目切换下拉。列出「空闲
+/// 项目」(没有任何活跃会话的项目 —— 有会话的项目已经靠 tab 上的状态点和
+/// 徽章可见,重复列出只会稀释「这里是被遗忘的项目」的含义),底部两条动作
+/// 通向项目总览与打开项目。
+function ProjectSwitcher({
+  projects,
+  activityByProject,
+  open,
+  onOpenChange,
+  onPick,
+  onAddProject,
+}: {
+  projects: ProjectView[];
+  activityByProject: Record<string, ProjectActivity | null>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPick: (id: string) => void;
+  onAddProject: () => void;
+}) {
+  // 分支名按需获取:面板打开时对空闲项目并发取一次 HEAD,失败静默。
+  const [branchById, setBranchById] = useState<Record<string, string>>({});
+  const idle = useMemo(
+    () =>
+      projects.filter((p) => {
+        const activity = activityByProject[p.id];
+        return !activity || activity.total === 0;
+      }),
+    [projects, activityByProject],
+  );
+  useEffect(() => {
+    if (!open || idle.length === 0) return;
+    let cancelled = false;
+    void Promise.allSettled(
+      idle.map((p) =>
+        gitBranch(p.id).then((info) => [p.id, info.head] as const),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled") next[r.value[0]] = r.value[1];
+      }
+      setBranchById(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, idle]);
+
+  return (
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      <Popover.Trigger
+        className="ptab-more"
+        aria-label="切换项目"
+        title="切换项目"
+      >
+        <ChevronDownIcon />
+        <span className="ptab-more-count">{projects.length}</span>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner sideOffset={8} align="start">
+          <Popover.Popup className="pswitch">
+            {idle.length > 0 && (
+              <>
+                <div className="pswitch-head">
+                  <span className="eyebrow">空闲项目</span>
+                </div>
+                {idle.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="pswitch-item"
+                    onClick={() => onPick(p.id)}
+                    title={p.repo_path}
+                  >
+                    <StatusDot status="idle" labelled={false} />
+                    <span className="pswitch-name">{p.name}</span>
+                    {branchById[p.id] && (
+                      <span className="pswitch-branch">{branchById[p.id]}</span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+            <button
+              type="button"
+              className="pswitch-foot"
+              onClick={() => {
+                onOpenChange(false);
+                window.dispatchEvent(new CustomEvent("ycode:open-overview"));
+              }}
+            >
+              <GridIcon />
+              全部项目总览
+              <kbd>⇧⌘P</kbd>
+            </button>
+            <button type="button" className="pswitch-foot" onClick={onAddProject}>
+              <FolderPlusIcon />
+              打开项目…
+              <kbd>⌘O</kbd>
+            </button>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M12 11v5M9.5 13.5h5" />
+    </svg>
   );
 }
 
@@ -465,25 +629,31 @@ function PlusIcon() {
   );
 }
 
-/// Human-readable summary for a project tab's status dot, e.g.
-/// "Agents running · 1 running, 2 waiting". The headline reflects the
-/// aggregate light; the breakdown lists the non-zero per-state counts.
+const LIGHT_LABEL_CN: Record<SessionLight, string> = {
+  running: "进行中",
+  waiting: "等你处理",
+  done: "已结束",
+  error: "出错",
+};
+
+/// 项目 tab 状态点的摘要,如「有 agent 仍在运行 · 1 个进行中,2 个等你处理」。
+/// 首句反映汇总灯色,后面列出非零的各状态计数。
 function activityTooltip(a: ProjectActivity): string {
   const headline =
     a.light === "running"
-      ? "Agents still running"
+      ? "有 agent 仍在运行"
       : a.light === "error"
-        ? "An agent ended in error"
+        ? "有 agent 以错误结束"
         : a.light === "waiting"
-          ? "Agents waiting for input"
-          : "All agents finished";
+          ? "有 agent 在等你输入"
+          : "所有 agent 已完成";
   const parts: string[] = [];
   for (const light of ["running", "waiting", "done", "error"] as const) {
     if (a.counts[light]) {
-      parts.push(`${a.counts[light]} ${SESSION_LIGHT_LABEL[light].toLowerCase()}`);
+      parts.push(`${a.counts[light]} 个${LIGHT_LABEL_CN[light]}`);
     }
   }
-  return `${headline} · ${parts.join(", ")}`;
+  return `${headline} · ${parts.join(",")}`;
 }
 
 function GearIcon() {
@@ -505,116 +675,3 @@ function GearIcon() {
   );
 }
 
-export function NewSessionDialog({
-  project,
-  onClose,
-  onCreated,
-  preferredAgentId,
-}: {
-  project: ProjectView;
-  onClose: () => void;
-  onCreated: (view: SessionView) => void;
-  /// When provided, pre-selects this agent profile in the picker (assuming
-  /// it's installed). Used by the Sidebar's per-agent tab so clicking "+"
-  /// after picking Codex defaults to Codex.
-  preferredAgentId?: string;
-}) {
-  const [agents, setAgents] = useState<AgentProfileView[]>([]);
-  const [agentId, setAgentId] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Escape closes the dialog (dismiss-only, no fullscreen exit). Mounted only
-  // while open, so the guard is always active here.
-  useEscapeGuard(onClose);
-
-  // Lazy-load the agent list the first time the dialog opens. Hide the
-  // `bash` fallback — it's available via the second-terminal panel, not as
-  // a project session.
-  if (agents.length === 0) {
-    listAgents().then((list) => {
-      const filtered = list.filter((a) => a.id !== "bash");
-      setAgents(filtered);
-      const preferred =
-        preferredAgentId &&
-        filtered.find((a) => a.id === preferredAgentId && a.available);
-      const firstAvailable = filtered.find((a) => a.available) ?? filtered[0];
-      const pick = preferred ?? firstAvailable;
-      if (pick) setAgentId(pick.id);
-    });
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const view = await createSession({
-        agent_profile_id: agentId,
-        project_id: project.id,
-        // Title is empty by default — the CLI's OSC title or the user's
-        // double-click rename will fill it in. SessionRow falls back to
-        // "New session" when both are blank.
-        title: "",
-      });
-      onCreated(view);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal isOpen onOpenChange={(open) => !open && onClose()}>
-      <ModalBackdrop>
-        <ModalContainer placement="center" size="md">
-          <ModalDialog>
-            <form onSubmit={submit}>
-              <ModalHeader>
-                <ModalHeading>New session</ModalHeading>
-              </ModalHeader>
-              <ModalBody className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <Label>Project</Label>
-                  <div className="readonly-field">
-                    {project.name}
-                    <span className="text-(--muted) ml-2">{project.repo_path}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label>Agent</Label>
-                  <select
-                    value={agentId}
-                    onChange={(e) => setAgentId(e.target.value)}
-                    className="native-select"
-                  >
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id} disabled={!a.available}>
-                        {a.display_name} ({a.command}
-                        {a.available ? "" : " — not installed"})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {error && <div className="form-error">{error}</div>}
-              </ModalBody>
-              <ModalFooter className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" onPress={onClose}>
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isDisabled={!agentId || submitting}
-                >
-                  {submitting ? "Creating…" : "Create"}
-                </Button>
-              </ModalFooter>
-            </form>
-          </ModalDialog>
-        </ModalContainer>
-      </ModalBackdrop>
-    </Modal>
-  );
-}

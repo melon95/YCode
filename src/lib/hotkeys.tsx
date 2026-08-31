@@ -96,6 +96,15 @@ export function useHotkeys({
         return;
       }
 
+      // ⇧⌘P: the projects overview — the cross-project status board. Sits
+      // next to ⌘O (open a project) because both answer "which project",
+      // one by picking from disk and one by looking at what's running.
+      if (e.key.toLowerCase() === "p" && e.shiftKey) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("ycode:open-overview"));
+        return;
+      }
+
       // ⌘O: open/add a project folder. Routed through TopBar so the dialog
       // flow stays in one place.
       if (e.key.toLowerCase() === "o" && !e.shiftKey) {

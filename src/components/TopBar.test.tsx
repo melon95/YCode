@@ -10,10 +10,10 @@ vi.mock("../lib/ipc", () => ({
   createSession: vi.fn(),
   deleteProject: vi.fn(),
   listAgents: vi.fn(),
+  gitBranch: vi.fn(() => Promise.resolve({ head: "main" })),
 }));
 vi.mock("../lib/confirm", () => ({ confirmDialog: vi.fn() }));
 vi.mock("../lib/multiWindow", () => ({ openProjectInNewWindow: vi.fn() }));
-vi.mock("./LayoutSwitcher", () => ({ LayoutSwitcher: () => null }));
 vi.mock("./ContextMenu", () => ({ ContextMenu: () => null }));
 
 const initialState = useStore.getState();
@@ -90,7 +90,7 @@ describe("TopBar project reorder", () => {
     );
     expect(
       screen
-        .getAllByTitle(/^Drag to reorder/)
+        .getAllByTitle(/^拖动以重新排序/)
         .map((element) => element.textContent),
     ).toEqual(["beta", "gamma", "alpha"]);
   });

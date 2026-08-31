@@ -8,11 +8,9 @@
 // see at a glance which CLIs they still need to install.
 
 import { useMemo, useState } from "react";
-import { Card } from "@heroui/react";
 import { createSession, setProjectIsolateSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
-import ycodeLogoUrl from "../assets/ycode-logo.svg";
 import { AgentIcon } from "./AgentIcon";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
@@ -71,28 +69,23 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
 
   return (
     <div className="new-session-picker-host">
-      <Card variant="default" className="new-session-picker">
-        <div className="picker-icon" aria-hidden>
-          <img src={ycodeLogoUrl} alt="" className="picker-logo" />
-        </div>
-        <h2 className="picker-title">New Session</h2>
-        <p className="picker-subtitle">
-          Pick an agent to start a new session in {project.name}
-        </p>
-        <label className="picker-isolate" title="Each agent gets its own git worktree and branch, so parallel agents don't clobber each other's files.">
-          <input
-            type="checkbox"
-            checked={project.isolate_sessions}
-            onChange={toggleIsolate}
-          />
-          <span>Isolate each agent in its own worktree</span>
-        </label>
+      <div className="composer">
+        <div className="composer-eyebrow">新建会话 · {project.name}</div>
+        {/* No task field here on purpose: the agent CLI has its own input,
+            and pre-typing a prompt would mean injecting it into the PTY —
+            timing-fragile, and it throws away the CLI's own affordances
+            (slash commands, @file, history). Say what you want in the
+            terminal once the agent is up. */}
+        <div className="composer-lede">选一个 agent 启动,任务在终端里直接说</div>
+
         {error && <div className="form-error">{error}</div>}
-        <div className="picker-agents">
+
+        <div className="composer-label">Agent</div>
+        <div className="composer-agents">
           {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
-              No agents configured. Edit
-              <code> ~/.config/ycode/config.json</code> to add one.
+              没有配置任何 agent。编辑
+              <code> ~/.config/ycode/config.json</code> 添加一个。
             </div>
           )}
           {sorted.map((agent) => (
@@ -100,41 +93,67 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
               key={agent.id}
               type="button"
               className={
-                "picker-agent" +
+                "composer-agent" +
                 (agent.available ? "" : " unavailable") +
                 (creatingId === agent.id ? " creating" : "")
               }
               onClick={() => pick(agent)}
               disabled={!agent.available || creatingId !== null}
               title={
-                agent.available
-                  ? `${agent.command}`
-                  : `${agent.command} — not on PATH`
+                agent.available ? agent.command : `${agent.command} — 不在 PATH 中`
               }
             >
-              <div className="picker-agent-avatar">
+              <span className="composer-agent-icon">
                 <AgentIcon
                   icon={agent.icon}
                   variant={agent.icon_variant}
                   fallbackChar={agent.display_name}
-                  size={28}
+                  size={24}
                 />
-              </div>
-              <div className="picker-agent-name">{agent.display_name}</div>
-              {!agent.available && (
-                <span className="picker-agent-status">Not Configured</span>
+              </span>
+              <span className="composer-agent-main">
+                <span className="composer-agent-name">{agent.display_name}</span>
+                <span className="composer-agent-meta">
+                  <code>{agent.command}</code>
+                  {agent.introspect && <span className="chip-ok">历史可读</span>}
+                  {!agent.available && <span className="chip-warn">未安装</span>}
+                </span>
+              </span>
+              {creatingId === agent.id && (
+                <span className="composer-agent-busy">启动中…</span>
               )}
-              <span
-                className={
-                  "picker-agent-dot " +
-                  (agent.available ? "available" : "unavailable")
-                }
-                aria-hidden
-              />
             </button>
           ))}
         </div>
-      </Card>
+
+        <button
+          type="button"
+          className={"composer-opt" + (project.isolate_sessions ? " on" : "")}
+          onClick={toggleIsolate}
+          aria-pressed={project.isolate_sessions}
+        >
+          <span className="composer-switch" aria-hidden>
+            <span className="composer-knob" />
+          </span>
+          <span className="composer-opt-main">
+            <span className="composer-opt-title">隔离到独立 worktree</span>
+            <span className="composer-opt-desc">
+              每个 agent 拿到自己的分支与工作目录,并行时互不覆盖
+            </span>
+          </span>
+        </button>
+
+        {/* 预览稿 .modal-foot 的提示行。「开始 ⏎」主按钮不适用 —— 这里点
+            agent 即启动,没有独立的确认步骤。 */}
+        <div className="composer-foot">
+          <span>
+            <kbd>点击</kbd> 启动会话
+          </span>
+          <span>
+            <kbd>⇧⌘N</kbd> 唤起本界面
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
