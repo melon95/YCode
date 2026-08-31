@@ -4,7 +4,14 @@
 // virtualized rendering + keyboard navigation. File-type / folder-type icons
 // come from `material-icon-theme` via `iconForFile` / `iconForFolder`.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { watchImmediate } from "@tauri-apps/plugin-fs";
 import { toast } from "@heroui/react";
 import { Tree, type NodeRendererProps } from "react-arborist";
@@ -78,12 +85,21 @@ export function FileTreePanel({
   openFilesRef.current = openFiles;
 
   // Measure container so react-arborist knows its viewport size.
+  //
+  // useLayoutEffect(而非 useEffect):测量必须发生在首帧绘制之前。
+  // 之前的 useEffect 版本让第一帧按 400px 的猜测值渲染 —— 虚拟化列表
+  // 只画出 ~16 行,等 effect + ResizeObserver 补上真实高度后剩余的行
+  // 才逐帧冒出来,看起来就是"从上往下慢慢渲染"。
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 240, h: 400 });
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const update = () => {
+      // 卡片被 hidden(保持挂载但不显示)时测到的是 0×0 —— 写进去会让
+      // 重新打开的第一帧渲染成空列表,等观察者下一帧才铺满。保留上一次
+      // 的有效尺寸,重开时首帧就能画满。
+      if (el.clientWidth === 0 && el.clientHeight === 0) return;
       setSize({ w: el.clientWidth, h: el.clientHeight });
     };
     update();
