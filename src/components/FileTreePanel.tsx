@@ -92,21 +92,34 @@ export function FileTreePanel({
   // 才逐帧冒出来,看起来就是"从上往下慢慢渲染"。
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 240, h: 400 });
+  const measure = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // 卡片被 hidden(保持挂载但不显示)时测到的是 0×0 —— 写进去会让
+    // 重新打开的第一帧渲染成空列表,等观察者下一帧才铺满。保留上一次
+    // 的有效尺寸,重开时首帧就能画满。
+    if (el.clientWidth === 0 && el.clientHeight === 0) return;
+    setSize((prev) =>
+      prev.w === el.clientWidth && prev.h === el.clientHeight
+        ? prev
+        : { w: el.clientWidth, h: el.clientHeight },
+    );
+  }, []);
   useLayoutEffect(() => {
     if (!containerRef.current) return;
-    const el = containerRef.current;
-    const update = () => {
-      // 卡片被 hidden(保持挂载但不显示)时测到的是 0×0 —— 写进去会让
-      // 重新打开的第一帧渲染成空列表,等观察者下一帧才铺满。保留上一次
-      // 的有效尺寸,重开时首帧就能画满。
-      if (el.clientWidth === 0 && el.clientHeight === 0) return;
-      setSize({ w: el.clientWidth, h: el.clientHeight });
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, []);
+  }, [measure]);
+  // 数据到达的那次提交是用户看到的第一帧 —— 在绘制前再同步测一次。
+  // 只靠挂载时那一次的话,首次切到新项目时挂载与数据到达之间隔了一次
+  // 网络往返,期间布局可能变过(其他卡片挂载、列宽落定),首帧就会按
+  // 过时的高度只画出十几行,ResizeObserver 下一帧才补齐 —— 视觉上就是
+  // "从上往下慢慢渲染"。
+  useLayoutEffect(() => {
+    measure();
+  }, [entries, loading, measure]);
 
   useEffect(() => {
     let cancelled = false;
