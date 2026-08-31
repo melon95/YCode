@@ -14,3 +14,6 @@ declare module "material-icon-theme/dist/material-icons.json" {
   const manifest: unknown;
   export default manifest;
 }
+
+/// Injected by vite.config.ts from package.json — the running app's version.
+declare const __APP_VERSION__: string;

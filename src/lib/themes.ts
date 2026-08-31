@@ -27,6 +27,43 @@ export interface Theme {
 
 export const DEFAULT_THEME_ID = "foundry";
 
+/// Stored when the user picks 跟随系统. Not a theme itself — it resolves to
+/// one of the two below at render time, and re-resolves when the OS flips.
+export const SYSTEM_THEME_ID = "system";
+
+/// The one theme each mode is represented by in Settings. The registry still
+/// holds ten, and a config file naming any of them keeps working — but the
+/// picker offers 浅色 / 深色 / 跟随系统, because "which of five greys" is a
+/// question the app was asking on the user's behalf without being asked.
+export const MODE_THEME_ID: Record<ThemeMode, string> = {
+  dark: "foundry",
+  light: "snow",
+};
+
+/// True when the OS is currently asking for a dark UI. Defaults to dark
+/// outside a browser (tests) — matching `DEFAULT_THEME_ID`.
+export function prefersDark(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return true;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/// Resolve a stored theme id to a real theme, expanding `system`.
+export function resolveTheme(id: string): Theme {
+  if (id === SYSTEM_THEME_ID) {
+    return getTheme(MODE_THEME_ID[prefersDark() ? "dark" : "light"]);
+  }
+  return getTheme(id);
+}
+
+/// Which of the picker's three cards a stored id belongs to. An id from the
+/// full registry (a theme the user chose before this page was narrowed, or
+/// hand-edited into config.json) still lights up the card for its mode, so
+/// nothing silently looks unselected.
+export function themeChoice(id: string): "light" | "dark" | "system" {
+  if (id === SYSTEM_THEME_ID) return "system";
+  return getTheme(id).mode;
+}
+
 // Singleton <style> element owning the active theme's variables. One
 // stylesheet update = one style invalidation pass for the browser, which is
 // dramatically cheaper than calling `style.setProperty` ~30 times.

@@ -44,6 +44,11 @@ export type { AgentLaunchProfileView } from "@bindings/AgentLaunchProfileView";
 export type { ConfigView } from "@bindings/ConfigView";
 export type { FontSizesView } from "@bindings/FontSizesView";
 export type { NotificationSettingsView } from "@bindings/NotificationSettingsView";
+export type { StartupModeView } from "@bindings/StartupModeView";
+export type { SessionOpenModeView } from "@bindings/SessionOpenModeView";
+export type { WorktreeSettingsView } from "@bindings/WorktreeSettingsView";
+export type { WorktreeCloseActionView } from "@bindings/WorktreeCloseActionView";
+export type { CheckpointSettingsView } from "@bindings/CheckpointSettingsView";
 export type { UiEvent } from "@bindings/UiEvent";
 export type { UiEventKind } from "@bindings/UiEventKind";
 export type { CreateSessionRequest } from "@bindings/CreateSessionRequest";
@@ -161,10 +166,10 @@ export function sessionLight(
 }
 
 export const SESSION_LIGHT_LABEL: Record<SessionLight, string> = {
-  running: "Running",
-  waiting: "Waiting for input",
-  done: "Done",
-  error: "Error",
+  running: "进行中",
+  waiting: "等你处理",
+  done: "已结束",
+  error: "出错",
 };
 
 /// Project-level rollup of every live (non-archived) session's light, so the

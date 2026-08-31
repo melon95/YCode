@@ -1,0 +1,2048 @@
+/*
+ * ycode · redesign layer
+ * ----------------------------------------------------------------
+ * Tokens and primitives introduced by the 2026-08 UI redesign
+ * (preview: spikes/ui-redesign/index.html). Loaded after
+ * design-system.css so it wins on the surfaces it owns, while
+ * leaving the legacy component styles untouched everywhere else.
+ *
+ * Two things live here:
+ *   1. Motion + status tokens that every redesigned surface reads.
+ *   2. The shared primitives (status dot, icon button, toolbar
+ *      geometry) that keep the three toolbars on one grid.
+ */
+
+:root {
+  /* Motion. Three durations, one curve: fast for hover/press, base for
+     popovers and state changes, slow for layout displacement. The curve
+     front-loads the movement so transitions settle rather than glide. */
+  --ease: cubic-bezier(0.22, 0.8, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 110ms;
+  --t-base: 170ms;
+  --t-slow: 260ms;
+
+  /* Session status palette. Derived from the themed tokens so all ten
+     themes get it for free. Attention-ordered: blocked borrows the error
+     hue because it is the only state that halts progress. */
+  --st-working: var(--warning, #d6a95c);
+  --st-working-rgb: var(--warning-rgb, 214, 169, 92);
+  --st-blocked: var(--error, #d46a5f);
+  --st-blocked-rgb: var(--error-rgb, 212, 106, 95);
+  --st-done: var(--running, #8aaa6f);
+  --st-done-rgb: var(--running-rgb, 138, 170, 111);
+  --st-idle: var(--idle, #756d61);
+
+  /* Toolbar geometry. The sidebar's agent bar, the canvas layout bar and
+     the panel header all use these, which is what makes the three columns
+     line up across the top. */
+  --toolbar-h: 46px;
+  --control-size: 30px;
+  --control-size-sm: 26px;
+  --control-icon: 15px;
+}
+
+/* ============================================================
+   Status dot
+   ============================================================ */
+
+.status-dot {
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 50%;
+  transition: background-color var(--t-base) var(--ease);
+}
+.status-md { width: 7px; height: 7px; }
+.status-sm { width: 5px; height: 5px; }
+
+.status-working {
+  background: var(--st-working);
+  animation: status-breathe 2.4s ease-in-out infinite;
+}
+/* The only ring animation in the app. `blocked` means the agent cannot
+   proceed without the user, so it is the one state allowed to nag. */
+.status-blocked {
+  background: var(--st-blocked);
+  animation: status-ring 1.6s ease-out infinite;
+}
+/* `done` means the process exited cleanly — which after an app restart is
+   *every* session. Rendering that in success-green would turn the sidebar
+   into a wall of green ticks, so it stays muted: filled (it ran) but quiet
+   (nothing is happening). Only live states get a real color. */
+.status-done {
+  background: var(--st-idle);
+  opacity: 0.55;
+}
+.status-error { background: var(--st-blocked); }
+.status-idle {
+  background: transparent;
+  border: 1.5px solid var(--st-idle);
+}
+
+@keyframes status-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes status-ring {
+  0% { box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0.55); }
+  75% { box-shadow: 0 0 0 6px rgba(var(--st-blocked-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0); }
+}
+
+/* ============================================================
+   Icon button
+   ============================================================ */
+
+.icon-btn2 {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+.icon-btn2-md { width: var(--control-size); height: var(--control-size); }
+.icon-btn2-sm { width: var(--control-size-sm); height: var(--control-size-sm); }
+
+.icon-btn2:hover:not(:disabled) {
+  background: var(--panel-raised);
+  border-color: var(--rule);
+  color: var(--text);
+}
+.icon-btn2:active:not(:disabled) { transform: scale(0.94); }
+.icon-btn2.is-active {
+  background: rgba(var(--st-working-rgb), 0.14);
+  border-color: transparent;
+  color: var(--st-working);
+}
+.icon-btn2-danger:hover:not(:disabled) {
+  background: rgba(var(--st-blocked-rgb), 0.14);
+  border-color: transparent;
+  color: var(--st-blocked);
+}
+.icon-btn2-accent { color: var(--accent); }
+
+/* Disabled controls stay visible and keep their tooltip: an entry that
+   explains why it is unavailable beats one that silently disappears. */
+.icon-btn2:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   Shared toolbar row
+   ============================================================ */
+
+.toolbar-row {
+  flex: none;
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.toolbar-div {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: var(--rule);
+  margin: 0 4px;
+}
+.toolbar-spacer { flex: 1 1 auto; }
+
+/* ============================================================
+   Count badge — the small number riding on a toggle or tab
+   ============================================================ */
+
+.count-badge {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.1;
+  border-radius: 999px;
+  padding: 1.5px 5px;
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+.count-badge-hot {
+  background: rgba(var(--st-blocked-rgb), 0.16);
+  color: var(--st-blocked);
+}
+.count-badge-float {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ============================================================
+   Motion — global interaction feel
+   ============================================================ */
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Respect the system setting. Without this the status ring and the
+   staggered popovers are actively hostile to motion-sensitive users. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   Top bar — project tabs and the attention inbox
+   ============================================================ */
+
+.project-tab-dot { margin-right: 1px; }
+
+/* The command entry point. The preview draws it as an outlined pill, not bare
+   text — it's a control, and the outline is what says "clickable" before you
+   hover. At 200px wide the ⌘K hint parks at the right edge, where the eye
+   already looks for a shortcut. It stays quiet in `--subtle`: this is a way
+   in, not something demanding attention. */
+.topbar-search {
+  height: var(--control-size);
+  min-width: 200px;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md, 8px);
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.topbar-search:hover {
+  background: transparent;
+  border-color: var(--rule-strong);
+  color: var(--muted);
+}
+.topbar-search::after { margin-left: auto; }
+
+/* Below 900px design-system.css collapses the pill to an icon-sized button.
+   That rule loads first, so it has to be restated here or the block above
+   would win inside the media query and the pill would keep its 200px. */
+@media (max-width: 900px) {
+  .topbar-search {
+    width: var(--control-size);
+    min-width: 0;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .topbar-search::after { margin-left: 0; }
+}
+
+/* The gear sits next to the inbox button, so it follows the same geometry —
+   30px, 8px radius, raised on hover. It used to spin 60° on hover, which is
+   a different vocabulary from every other control in the bar. */
+.topbar-gear {
+  width: var(--control-size);
+  height: var(--control-size);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  color: var(--muted);
+}
+.topbar-gear:hover {
+  background: var(--panel-raised);
+  border-color: var(--rule);
+  color: var(--text);
+  transform: none;
+}
+
+.topbar-inbox {
+  position: relative;
+  flex: none;
+  width: var(--control-size);
+  height: var(--control-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.topbar-inbox:hover,
+.topbar-inbox[data-popup-open] {
+  background: var(--panel-raised);
+  border-color: var(--rule);
+  color: var(--text);
+}
+/* The badge already pulses; the button itself stays calm so a queue of one
+   doesn't turn the whole top bar into an alarm. */
+.topbar-inbox.has-waiting { color: var(--st-blocked); }
+.topbar-inbox .count-badge-float { animation: status-ring 1.6s ease-out infinite; }
+
+.inbox-popup {
+  width: 380px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  box-shadow: var(--elevation-menu);
+  animation: pop-in var(--t-base) var(--ease-out);
+  transform-origin: top right;
+}
+.inbox-head {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px 8px;
+}
+.inbox-head .eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--st-blocked);
+}
+.inbox-hint {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--whisper);
+}
+.inbox-empty {
+  padding: 22px 16px 26px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+.inbox-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: none;
+  border-top: 1px solid var(--rule);
+  border-left: 2px solid var(--st-blocked);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: row-in var(--t-base) var(--ease-out) backwards;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.inbox-item:nth-child(3) { animation-delay: 30ms; }
+.inbox-item:nth-child(4) { animation-delay: 60ms; }
+.inbox-item:nth-child(5) { animation-delay: 90ms; }
+.inbox-item:hover { background: var(--panel-raised); }
+.inbox-agent { flex: none; display: flex; }
+.inbox-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.inbox-title {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inbox-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inbox-arrow { flex: none; color: var(--whisper); }
+.inbox-item:hover .inbox-arrow { color: var(--text); }
+.inbox-foot {
+  padding: 9px 14px;
+  border-top: 1px solid var(--rule);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--whisper);
+}
+
+/* 「刚刚完成」分组:完成项是背景信息,压低存在感,别和红色的等待项抢注意力。 */
+.inbox-done-head {
+  padding: 8px 14px 4px;
+  border-top: 1px solid var(--rule);
+  margin-top: 4px;
+}
+.inbox-item-done { opacity: 0.75; }
+.inbox-item-done:hover { opacity: 1; }
+
+/* 项目切换下拉(预览稿 .ptab-more / .pswitch):tab 条右端的折叠入口,
+   面板列出空闲项目 + 总览 / 打开项目两条动作。 */
+.ptab-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--control-size, 30px);
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--subtle);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.ptab-more:hover,
+.ptab-more[data-popup-open] {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.ptab-more-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+.pswitch {
+  width: 260px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  padding-bottom: 4px;
+  animation: fade-in var(--t-fast) var(--ease-out);
+}
+.pswitch-head {
+  padding: 10px 14px 6px;
+}
+.pswitch-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.pswitch-item:hover { background: var(--panel-raised); }
+.pswitch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pswitch-branch {
+  flex: none;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--whisper);
+}
+.pswitch-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  border-top: 1px solid var(--rule);
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.pswitch-foot:hover { background: var(--panel-raised); color: var(--text); }
+.pswitch-foot kbd { margin-left: auto; }
+
+/* ============================================================
+   Sidebar — agent filter census + live session list
+   ============================================================ */
+
+.sidebar-agent-tab { position: relative; }
+.sidebar-agent-tab .count-badge-float { box-shadow: 0 0 0 2px var(--surface); }
+.sidebar-agent-tab.active .count-badge-float {
+  background: rgba(var(--st-working-rgb), 0.9);
+  color: var(--bg);
+}
+
+/* One scroller for the whole session list. The groups inside it size to
+   their content — the sidebar scrolls, not each group. */
+.sidebar-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+.sidebar-live {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 6px 6px;
+}
+.sidebar-live[hidden] { display: none; }
+
+/* A transcript-only row's extra tag, and the two states the list can be in
+   when it has nothing to show. */
+.live-worktree { color: var(--st-working); }
+.sidebar-live-empty,
+.sidebar-scan-error {
+  padding: 14px 14px 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--subtle);
+}
+.sidebar-scan-error { color: var(--st-working); }
+.sidebar-footer { margin-top: auto; }
+.live-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.live-row:hover { background: var(--panel-raised); }
+/* 焦点会话(预览稿 .sess.active):底色比 hover 更实,回答「键盘在谁那」。 */
+.live-row.is-active { background: var(--panel-raised); }
+/* Sessions currently mounted on the canvas get the accent rail, so the list
+   shows at a glance which of them you are actually looking at. */
+.live-row::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  border-radius: 999px;
+  background: var(--st-working);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: height var(--t-base) var(--ease), opacity var(--t-base) var(--ease);
+}
+.live-row.is-open::before { height: 58%; opacity: 1; }
+.live-row:hover::before { height: 36%; opacity: 0.5; }
+.live-row.is-open:hover::before { height: 58%; opacity: 1; }
+
+.live-agent { flex: none; display: flex; }
+.live-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-row.is-open .live-title { color: var(--text); }
+.live-pane {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--st-working);
+  border: 1px solid var(--st-working);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+
+/* ============================================================
+   Canvas toolbar — layout presets + workspace panel toggles
+   ============================================================ */
+
+.agent-workspace-widget { display: flex; flex-direction: column; min-height: 0; }
+.canvas-toolbar { background: var(--surface); }
+.panel-toggle { position: relative; display: inline-flex; }
+.panel-toggle .count-badge-float { box-shadow: 0 0 0 2px var(--surface); }
+.panel-add { margin-left: 2px; }
+
+.panel-catalog {
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  box-shadow: var(--elevation-menu);
+  overflow: hidden;
+  animation: pop-in var(--t-base) var(--ease-out);
+}
+.panel-catalog-head {
+  padding: 12px 14px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.panel-catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--rule);
+}
+.panel-catalog-row.is-disabled { opacity: 0.5; }
+.pc-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+.pc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pc-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.pc-desc {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--subtle);
+}
+.pc-state {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.pc-state.is-on {
+  color: var(--st-done);
+  border-color: transparent;
+  background: rgba(var(--st-done-rgb), 0.14);
+}
+.panel-catalog-foot {
+  padding: 9px 14px;
+  border-top: 1px solid var(--rule);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--whisper);
+}
+
+/* ============================================================
+   Status bar
+   ============================================================ */
+
+.app-workspace { display: flex; flex-direction: column; min-height: 0; }
+.app-workspace-view { flex: 1; min-height: 0; display: flex; }
+
+.status-bar {
+  flex: none;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px;
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--subtle);
+}
+.sb-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sb-dim { color: var(--whisper); }
+
+/* ============================================================
+   Settings — dialog over the workspace
+   ============================================================ */
+
+.settings-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  animation: fade-in var(--t-base) var(--ease-out);
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.settings-dialog {
+  width: 900px;
+  max-width: 92vw;
+  height: 640px;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 16px;
+  box-shadow: var(--elevation-menu);
+  overflow: hidden;
+  animation: dialog-in var(--t-slow) var(--ease-out);
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.settings-dialog-head {
+  flex: none;
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.settings-dialog-head .sd-title { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.settings-body { flex: 1; min-height: 0; display: flex; }
+
+.settings-dialog .settings-sidebar {
+  width: 210px;
+  flex: none;
+  border-right: 1px solid var(--rule);
+  padding: 12px 10px 18px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+.settings-nav-group + .settings-nav-group { margin-top: 14px; }
+.settings-nav-title {
+  padding: 4px 10px 6px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--whisper);
+}
+.settings-dialog .settings-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.settings-dialog .settings-nav-item:hover:not(:disabled) {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.settings-dialog .settings-nav-item.active {
+  background: var(--panel-raised);
+  color: var(--text);
+  font-weight: 600;
+}
+.settings-dialog .settings-nav-item.pending { opacity: 0.45; cursor: not-allowed; }
+.nav-pending {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  color: var(--whisper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.settings-dialog .settings-main { flex: 1; min-width: 0; overflow-y: auto; }
+.settings-dialog .settings-content { padding: 22px 26px 30px; }
+
+.settings-dialog .settings-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+/* Shared row chrome for the new read-only pages. */
+.settings-section h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.settings-lede { margin: 6px 0 18px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.settings-card {
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--rule);
+}
+.settings-row:first-child { border-top: none; }
+.settings-row.is-pending { opacity: 0.5; }
+.settings-row-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+.settings-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.settings-row-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  /* Rows whose name carries a leading status dot (the notifications page)
+     need it baseline-aligned with the text rather than sitting on it. */
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.settings-row-desc {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--subtle);
+}
+.settings-tag {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.settings-tag.is-on {
+  color: var(--st-done);
+  border-color: transparent;
+  background: rgba(var(--st-done-rgb), 0.14);
+}
+.settings-kbd {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--text-soft);
+  border: 1px solid var(--rule-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  background: var(--panel);
+}
+.settings-row-chevron { flex: none; color: var(--whisper); opacity: 0.5; }
+
+/* ---- card-row primitives (ui/SettingControls.tsx) ---- */
+
+.settings-group-label {
+  margin-bottom: 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 500;
+  /* The preview's 0.14em is tuned for all-caps Latin. These labels are
+     mostly Chinese, where that much tracking pulls the characters apart. */
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--whisper);
+}
+/* Space between a card and the next group's label. Written as sibling rules
+   so a page never has to hand-place margins. `.settings-group` is the opt-in
+   wrapper for pages that need to nest a label + card pair (the keyboard page
+   groups by category, the theme picker isn't a card at all). */
+.settings-card + .settings-group-label { margin-top: 22px; }
+.settings-card + .settings-card { margin-top: 22px; }
+.settings-group + .settings-group > .settings-group-label { margin-top: 22px; }
+.settings-group + .settings-group-label { margin-top: 22px; }
+.settings-note + .settings-group-label { margin-top: 22px; }
+
+.settings-card.is-danger { border-color: rgba(var(--st-blocked-rgb), 0.3); }
+
+.settings-note {
+  margin: 10px 0 0;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.settings-note b { color: var(--text); font-weight: 600; }
+
+/* The preview's `.dsub` is body type, not mono — these are sentences, and
+   mono makes a sentence look like a file path. */
+.settings-row-desc {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--subtle);
+}
+.settings-row-desc code,
+.settings-row-desc .mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+
+.settings-toggle {
+  flex: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 99px;
+  background: var(--panel-raised);
+  cursor: pointer;
+  transition: background-color var(--t-base) var(--ease);
+}
+.settings-toggle.is-on {
+  background: var(--st-working);
+  border-color: transparent;
+}
+.settings-toggle-knob {
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: left var(--t-base) var(--ease);
+}
+.settings-toggle.is-on .settings-toggle-knob { left: 15px; background: #fff; }
+.settings-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.settings-chips { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
+.settings-chip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  color: var(--subtle);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 3px 7px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.settings-chip:hover:not(:disabled):not(.is-on) {
+  border-color: var(--rule-strong);
+  color: var(--muted);
+}
+.settings-chip.is-on {
+  color: var(--st-done);
+  border-color: transparent;
+  background: rgba(var(--st-done-rgb), 0.14);
+  cursor: default;
+}
+.settings-chip:disabled { opacity: 0.45; cursor: not-allowed; }
+.settings-chip.is-static { cursor: default; }
+.settings-chip.is-static.is-on {
+  color: var(--st-done);
+  background: rgba(var(--st-done-rgb), 0.14);
+  border-color: transparent;
+}
+.settings-chip.is-static.is-warn {
+  color: var(--st-working);
+  background: rgba(var(--st-working-rgb), 0.14);
+  border-color: transparent;
+}
+
+.settings-value {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-value.is-end {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  color: var(--subtle);
+}
+
+.settings-action-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: var(--control-size-sm);
+  height: var(--control-size-sm);
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.settings-action-btn:hover:not(:disabled) {
+  background: var(--panel-raised);
+  border-color: var(--rule);
+  color: var(--text);
+}
+.settings-action-btn.is-danger:hover:not(:disabled) {
+  background: rgba(var(--st-blocked-rgb), 0.14);
+  border-color: transparent;
+  color: var(--st-blocked);
+}
+.settings-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* A continuation row — "写入位置" under the agent it belongs to. Lighter
+   than a name so the pair reads as one entry, not two. */
+.settings-row-sub { font-weight: 400; color: var(--subtle); }
+
+.settings-input {
+  flex: none;
+  width: 150px;
+  height: var(--control-size-sm);
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  outline: none;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.settings-input:hover { border-color: var(--rule-strong); }
+.settings-input:focus { border-color: var(--accent); }
+.settings-input::placeholder { color: var(--whisper); }
+
+/* Language-server rows have no brand icon, so they get a two-letter tag —
+   the preview's `.letter-ico`. */
+.lsp-letter {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Three cards, one row. The old grid was `auto-fill minmax(150px)` for ten
+   themes; with three named choices they should sit side by side rather than
+   reflow into a ragged block. */
+.theme-grid-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.theme-grid-modes .theme-card-mode {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  color: var(--whisper);
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* The label row keeps its height whether or not the mode caption is there,
+   so the three cards stay the same size. */
+.theme-grid-modes .theme-card-label { min-height: 18px; }
+.settings-group-label.settings-group-gap { margin-top: 22px; }
+
+
+/* The legacy stylesheet stamps a "SECTIONS" caption above the nav. The
+   dialog's nav is now self-labelling (each group carries its own title),
+   so the extra caption is one heading too many. */
+.settings-dialog .settings-nav::before { content: none; }
+
+/* ============================================================
+   Agent panes — header, focus ring, worktree chip
+   ============================================================ */
+
+/* The preview rings the whole focused pane rather than marking one edge of
+   its header. With four panes on screen the question is "which one takes my
+   keystrokes", and a full outline answers it from anywhere in the grid — the
+   old 2px bar on the header's left edge could be off-screen while you were
+   reading the terminal's bottom rows. Amber, not accent: this is the same
+   "this one is live" language the sidebar and status dots already speak. */
+.app-workspace .pane-cell.focused {
+  border-color: var(--rule);
+  box-shadow: inset 0 0 0 1.5px var(--st-working);
+  z-index: 1;
+}
+.app-workspace .pane-cell.focused .pane-header {
+  background: rgba(var(--st-working-rgb), 0.1);
+  color: var(--text);
+}
+/* The header's own focus marker is now redundant with the ring. */
+.app-workspace .pane-cell.focused .pane-header::before { content: none; }
+
+.app-workspace .pane-header {
+  min-height: var(--toolbar-h);
+  padding: 0 10px 0 12px;
+  gap: 9px;
+}
+
+/* Pane number. Mirrors the badge the sidebar row carries, so the list and
+   the canvas can be read against each other — that pairing is the reason
+   the number is worth the space at all. */
+.pane-idx {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--whisper);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  padding: 2px 5px;
+  transition:
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.pane-cell.focused .pane-idx {
+  color: var(--st-working);
+  border-color: var(--st-working);
+}
+
+/* 等待态的文字 chip(预览稿 header 的 `.chip`):等待是唯一需要用户行动的
+   状态,值得一个词;点保持在 chip 内做颜色锚点。 */
+.pane-status-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.pane-status-chip.light-waiting {
+  color: var(--st-blocked);
+  background: rgba(var(--st-blocked-rgb), 0.12);
+}
+
+.pane-spacer { flex: 1 1 auto; min-width: 0; }
+
+/* Worktree branch chip. The ⌥ is a mark, not a shortcut — it reads as
+   "branched off" at a glance without spending a word on it. */
+.pane-branch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 2px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--muted);
+  overflow: hidden;
+}
+.pane-branch-mark { flex: none; color: var(--whisper); }
+.pane-branch b {
+  font-weight: 500;
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-merge {
+  flex: none;
+  height: var(--control-size-sm);
+  padding: 0 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.app-workspace .pane-merge:hover:not(:disabled) {
+  background: var(--panel-raised);
+  border-color: var(--dim, var(--rule-strong));
+  color: var(--text);
+}
+.pane-merge:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================================================
+   Command palette — jump-to rows
+   ============================================================ */
+
+/* 输入行:包住原本的 input,好在右侧放 `.cmdk-scope` 作用域标签。
+   底边框从 input 上移到这一行(styles.css 里的旧规则在此被覆盖)。 */
+.cmd-palette-input-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.cmd-palette-input-row .cmd-palette-input {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+/* 作用域标签:小胶囊,提示当前搜索/命令作用于哪个项目(预览稿 .cmdk-scope)。 */
+.cmdk-scope {
+  flex: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+
+.cmd-group {
+  padding: 10px 14px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--whisper);
+}
+.cmd-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.cmd-row:hover,
+.cmd-row.focused { background: var(--panel-raised); }
+.cmd-row-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-raised);
+  color: var(--muted);
+}
+.cmd-row.focused .cmd-row-icon { background: var(--panel-sunken); }
+.cmd-row-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--whisper);
+}
+.cmd-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cmd-row-label {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmd-row-detail {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmd-palette-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+  font-size: 10.5px;
+  color: var(--whisper);
+}
+.cmd-foot-right {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+/* ============================================================
+   Right column — stacked panel cards
+   ============================================================ */
+
+.right-pane-body.panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.panel-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  flex: 1 1 0;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--panel-sunken);
+  overflow: hidden;
+  animation: card-in var(--t-slow) var(--ease-out);
+}
+.panel-card[hidden] { display: none; }
+/* Solo: the focused card takes the stack and its siblings shrink to their
+   headers — nothing unmounts, so the terminals keep running behind it. */
+.panel-stack:has(.panel-card.is-solo) .panel-card:not(.is-solo) {
+  flex: none;
+  min-height: 0;
+}
+.panel-stack:has(.panel-card.is-solo) .panel-card:not(.is-solo) .panel-card-body {
+  display: none;
+}
+.panel-card.is-solo { flex: 1 1 auto; }
+
+.panel-card-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.pcard-title { flex: none; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.pcard-bind {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--muted);
+  background: var(--panel-raised);
+  border-radius: 6px;
+  padding: 2px 7px 2px 4px;
+}
+.pcard-bind svg { flex: none; color: var(--whisper); }
+.pcard-bind .mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pcard-count {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgba(var(--st-working-rgb), 0.14);
+  color: var(--st-working);
+}
+.panel-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The hosted panels were written to fill a full column; inside a card they
+   just fill the card. */
+.panel-card-body > * { min-height: 0; }
+
+/* The legacy pane stacked its hosts with `position: absolute; inset: 0`,
+   which only works when exactly one of them is visible. In the card stack
+   each host has to lay out inside its own card instead, so they go back
+   into normal flow. */
+.panel-stack .manual-terminal-host,
+.panel-stack .file-tree-host {
+  position: relative;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+}
+.panel-stack .right-editor-workspace { height: 100%; }
+
+/* ============================================================
+   Projects overview
+   ============================================================ */
+
+/* 总览屏与工作区共用同一根列布局:顶栏在上、状态栏在下,中间由总览填满。
+   总览自身不再绝对定位铺满窗口 —— 那会把顶栏和状态栏一起盖掉。 */
+.app-overview-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.projects-overview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  animation: fade-in var(--t-base) var(--ease-out);
+}
+.po-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 26px 32px 16px;
+}
+.po-head h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+.po-summary {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.po-hot { color: var(--st-blocked); }
+.po-warm { color: var(--st-working); }
+.po-head .icon-btn2 { align-self: center; }
+
+.po-filter { align-self: center; display: flex; gap: 6px; }
+.po-fpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-size-sm);
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--subtle);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.po-fpill:hover:not(.is-active) { border-color: var(--rule-strong); color: var(--muted); }
+.po-fpill.is-active {
+  background: var(--panel-raised);
+  border-color: var(--rule-strong);
+  color: var(--text);
+}
+/* Only the blocked filter earns colour, and only while it has something in
+   it — a permanently red pill stops meaning "look here". */
+.po-fpill.is-hot { color: var(--st-blocked); border-color: rgba(var(--st-blocked-rgb), 0.4); }
+.po-fpill-n {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--whisper);
+}
+.po-fpill.is-hot .po-fpill-n { color: var(--st-blocked); }
+.po-fpill.is-active .po-fpill-n { color: var(--text-soft); }
+
+.po-empty {
+  padding: 8px 32px 20px;
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+
+.po-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 4px 32px 32px;
+  align-content: start;
+}
+.po-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 15px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--panel);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-base) var(--ease),
+    transform var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease);
+}
+.po-card:hover {
+  border-color: var(--rule-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(var(--shadow-rgb, 0, 0, 0), 0.22);
+}
+.po-card:active { transform: scale(0.995); }
+/* A project whose agent is blocked outranks whatever you were looking at,
+   so the card says so before you read its name. */
+.po-card.is-attention { border-color: rgba(var(--st-blocked-rgb), 0.42); }
+
+.po-card-top { display: flex; align-items: center; gap: 9px; }
+.po-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.po-agents { flex: none; display: flex; gap: 4px; }
+
+.po-strip { display: flex; gap: 3px; }
+.po-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--panel-raised);
+}
+.po-seg-working { background: var(--st-working); }
+.po-seg-blocked { background: var(--st-blocked); }
+.po-seg-error { background: var(--st-blocked); opacity: 0.7; }
+.po-seg-done { background: var(--st-idle); opacity: 0.5; }
+
+.po-meta,
+.po-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.po-path { color: var(--whisper); }
+
+/* 卡片名旁的当前分支名 — 等宽小字、subtle(预览稿 .pcard-top .branch)。 */
+.po-branch {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+/* 活跃/空闲摘要行(预览稿 .pcard-live)。 */
+.po-live { display: flex; flex-direction: column; gap: 5px; }
+.po-liverow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.po-liverow.is-empty { color: var(--whisper); }
+
+/* hover 才出现的快捷新建按钮(预览稿 .quick-new)。 */
+.po-quick-new {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--rule-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity var(--t-base) var(--ease),
+    transform var(--t-base) var(--ease),
+    background-color var(--t-fast) var(--ease);
+}
+.po-card:hover .po-quick-new,
+.po-quick-new:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+.po-quick-new:hover { color: var(--text); background: var(--panel-raised); }
+
+/* 网格末尾的虚线「打开项目」卡(预览稿 .pcard-new)。 */
+.po-card-new {
+  border: 1px dashed var(--rule-strong);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 140px;
+  color: var(--whisper);
+  background: none;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    color var(--t-base) var(--ease),
+    background-color var(--t-base) var(--ease);
+}
+.po-card-new:hover {
+  color: var(--text);
+  border-style: solid;
+  background: var(--panel);
+}
+.po-card-new:disabled { opacity: 0.6; cursor: default; }
+
+/* ============================================================
+   Session composer — the empty-canvas "start something" surface
+   ============================================================ */
+
+.new-session-picker-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  overflow-y: auto;
+}
+.composer {
+  width: 460px;
+  max-width: 100%;
+  padding: 20px 22px 18px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--panel);
+  animation: card-in var(--t-slow) var(--ease-out);
+}
+.composer-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.composer-lede { margin-top: 7px; font-size: 12.5px; color: var(--muted); }
+.composer-label {
+  margin: 18px 0 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+.composer-agents { display: flex; flex-direction: column; gap: 8px; }
+.composer-agent {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.composer-agent:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  background: var(--panel-raised);
+}
+.composer-agent:active:not(:disabled) { transform: scale(0.985); }
+.composer-agent:disabled { opacity: 0.45; cursor: not-allowed; }
+.composer-agent-icon { flex: none; display: flex; }
+.composer-agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.composer-agent-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.composer-agent-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.composer-agent-meta code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+}
+.chip-ok,
+.chip-warn {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.chip-ok { color: var(--st-done); background: rgba(var(--st-done-rgb), 0.14); }
+.chip-warn { color: var(--st-working); background: rgba(var(--st-working-rgb), 0.14); }
+.composer-agent-busy {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--st-working);
+}
+
+.composer-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+.composer-opt:hover { border-color: var(--rule-strong); background: var(--surface); }
+.composer-switch {
+  flex: none;
+  margin-top: 1px;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  background: var(--panel-raised);
+  position: relative;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.composer-opt.on .composer-switch { background: var(--st-working); border-color: transparent; }
+.composer-knob {
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: left var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+.composer-opt.on .composer-knob { left: 15px; background: #fff; }
+.composer-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.composer-opt-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
+.composer-opt-desc { font-size: 10.5px; line-height: 1.5; color: var(--subtle); }
+
+/* 预览稿 .modal-foot 的提示行:低声量,贴在卡片底部。 */
+.composer-foot {
+  display: flex;
+  gap: 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-size: 10.5px;
+  color: var(--whisper);
+}
+.composer-foot span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Live session rows carry two lines: the title (or the agent's name when
+   the session was never renamed) and a status + age subline. Without the
+   subline a column of untitled sessions is indistinguishable. */
+.live-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.live-sub {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  color: var(--whisper);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-row { padding-top: 6px; padding-bottom: 6px; }
+
+.workspace-context-bar { gap: 10px; }
+.workspace-context-label {
+  flex: none;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.055em);
+  text-transform: uppercase;
+  color: var(--subtle);
+}
+
+/* Collapsible history section */
+.sidebar-section-heading.is-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--t-fast) var(--ease);
+}
+.sidebar-section-heading.is-toggle:hover { color: var(--text); }
+.sec-chevron {
+  flex: none;
+  color: var(--whisper);
+  transition: transform var(--t-base) var(--ease);
+}
+.sec-chevron.open { transform: rotate(90deg); }
+.sidebar-section-heading.is-toggle .sidebar-section-context { margin-left: auto; }
+
+/* The workspace target picker, now living in the canvas toolbar. */
+.canvas-target { display: inline-flex; align-items: center; min-width: 0; }
+.canvas-target .workspace-target-picker { margin: 0; }
+
+/* ============================================================
+   Sidebar — "needs you" block, ALL filter, new-session button
+   ============================================================ */
+
+/* The agent filter row is the sidebar's share of the app's toolbar band —
+   same height as the canvas toolbar and the panel headers, so the three
+   columns start at one line. Overflow stays visible so the count badges
+   aren't clipped; the pill list is capped instead (see Sidebar.tsx). */
+.sidebar-header {
+  height: var(--toolbar-h);
+  padding: 0 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+}
+/* design-system.css scopes its version under `.app-workspace`, which wins on
+   specificity — so the override has to be scoped the same way. Its
+   `flex-direction: column` is what pushed the filter pills into the middle of
+   the sidebar: on a column, `align-items: center` centres horizontally. And
+   styles.css sets `justify-content: space-between`, which flings the pills to
+   the far edge once the collapse button shares the row. The bar reads left to
+   right, led by the collapse button, like the preview. design-system.css also
+   sizes the pills at 40px; the redesign puts every control on one 30px grid. */
+.app-workspace .sidebar-header {
+  overflow: visible;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  height: var(--toolbar-h);
+  min-height: var(--toolbar-h);
+  padding: 0 12px;
+}
+.app-workspace .sidebar-agent-tabs {
+  overflow: visible;
+  gap: 6px;
+  padding: 0;
+  flex: 0 1 auto;
+}
+.app-workspace .sidebar-agent-tab {
+  width: var(--control-size);
+  height: var(--control-size);
+  max-width: var(--control-size);
+  flex: 0 0 var(--control-size);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md, 8px);
+  color: var(--muted);
+  position: relative;
+}
+.app-workspace .sidebar-agent-tab:hover {
+  background: transparent;
+  border-color: var(--rule-strong);
+  color: var(--text);
+}
+/* A filter is not a status. The selected pill gets neutral raised grey and
+   spends the accent on its count badge instead — an accent-outlined pill
+   reads as "this agent needs you", which is what the status dots mean. */
+.app-workspace .sidebar-agent-tab.active {
+  background: var(--panel-raised);
+  border-color: var(--rule-strong);
+  color: var(--text);
+  box-shadow: none;
+}
+.app-workspace .sidebar-agent-tab.is-all {
+  width: auto;
+  max-width: none;
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 0 8px;
+}
+.sidebar-agent-tab.is-all {
+  width: auto;
+  min-width: 34px;
+  padding: 0 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Blocked sessions get their own block above the list. The tint is the
+   whole point: with 25 sessions the one that stopped has to be reachable
+   without scrolling. */
+.needs-you {
+  margin: 4px 8px 8px;
+  border: 1px solid rgba(var(--st-blocked-rgb), 0.3);
+  border-radius: 12px;
+  background: rgba(var(--st-blocked-rgb), 0.07);
+  overflow: hidden;
+  padding-bottom: 4px;
+}
+.needs-you-head { color: var(--st-blocked); }
+.needs-you .live-row { margin: 0 4px; }
+
+.sidebar-footer { padding: 10px; }
+.new-session-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--panel-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.new-session-btn:hover:not(:disabled) {
+  background: var(--panel-sunken);
+  border-color: var(--muted);
+}
+.new-session-btn:active:not(:disabled) { transform: scale(0.98); }
+.new-session-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.nsb-plus {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--st-working);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nsb-plus svg { width: 12px; height: 12px; }
+.nsb-label { flex: 1; text-align: left; }
+.new-session-btn kbd {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  color: var(--subtle);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* The target picker rendered as a panel-card binding chip. */
+.pcard-bind .workspace-target-picker { margin: 0; }
+.pcard-bind select,
+.pcard-bind .native-select {
+  background: transparent;
+  border: none;
+  font-size: 10.5px;
+  color: var(--muted);
+  padding: 0;
+}
+.sb-version { margin-left: 4px; }
+
+.sidebar-agent-more {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--subtle);
+  padding: 0 4px;
+}
+/* Badges ride above the pill now that the row no longer clips. */
+.sidebar-agent-tab .count-badge-float { top: -6px; right: -6px; }
+
+/* ── 设置:导航搜索与「集成」角标(对照预览稿 .set-search / .nav-warn) ── */
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 7px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  color: var(--whisper);
+  transition: border-color var(--t-fast) var(--ease);
+}
+.settings-search:focus-within { border-color: var(--rule-strong); }
+.settings-search svg { flex: none; }
+.settings-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.settings-search input::placeholder { color: var(--whisper); }
+/* WebKit 给 type=search 自带一个清除小叉,和描边风格打架。 */
+.settings-search input::-webkit-search-cancel-button { display: none; }
+
+/* 未接入集成的计数角标。用 working 琥珀色 —— 它是「有事待办」,
+   不是 blocked 那种「正在拦着你」。 */
+.settings-nav-warn {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  font-weight: 700;
+  background: rgba(var(--st-working-rgb), 0.16);
+  color: var(--st-working);
+  border-radius: 99px;
+  padding: 1.5px 5.5px;
+}
+
+/* 过滤后一无所有时的占位,免得侧栏空得像坏了。 */
+.settings-nav-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--whisper);
+}
