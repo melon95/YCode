@@ -1420,7 +1420,20 @@
   flex: 1;
   min-height: 0;
 }
-.panel-stack .right-editor-workspace { height: 100%; }
+.panel-stack .right-editor-workspace {
+  height: 100%;
+  /* 行高必须钉死在卡片内,不许跟随内容。缺了这条,树的容器被内容越撑
+     越高,ResizeObserver 把更大的高度喂回虚拟化列表,列表再渲染更多行
+     ——一个每帧自增的反馈循环,表现为文件树"从上往下慢慢渲染"。 */
+  grid-template-rows: minmax(0, 1fr);
+}
+/* 旧布局里 host 是 absolute inset:0,天然受父级约束;流内布局里 flex:1
+   要生效,父级必须真的是 flex 列容器 —— styles.css 里它只是 relative。 */
+.panel-stack .right-editor-file-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
 /* ============================================================
    Projects overview
