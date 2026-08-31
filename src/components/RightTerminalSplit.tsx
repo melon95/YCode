@@ -349,8 +349,8 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
               e.stopPropagation();
               props.onClose(props.paneId);
             }}
-            aria-label="Close pane"
-            title="Close pane (shell stops)"
+            aria-label="关闭面板"
+            title="关闭面板(shell 会随之停止)"
           >
             ×
           </button>
@@ -436,7 +436,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("right")}
       >
         <SplitIcon direction="right" />
-        <span>Split Right</span>
+        <span>向右分屏</span>
       </button>
       <button
         type="button"
@@ -444,7 +444,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("left")}
       >
         <SplitIcon direction="left" />
-        <span>Split Left</span>
+        <span>向左分屏</span>
       </button>
       <button
         type="button"
@@ -452,7 +452,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("down")}
       >
         <SplitIcon direction="down" />
-        <span>Split Down</span>
+        <span>向下分屏</span>
       </button>
       <button
         type="button"
@@ -460,7 +460,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("up")}
       >
         <SplitIcon direction="up" />
-        <span>Split Up</span>
+        <span>向上分屏</span>
       </button>
       {props.canClose && (
         <>
@@ -472,7 +472,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
             onClick={() => props.onPick("close")}
           >
             <CloseIcon />
-            <span>Close Pane</span>
+            <span>关闭面板</span>
           </button>
         </>
       )}

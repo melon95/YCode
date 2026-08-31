@@ -8,6 +8,7 @@ import type {
   FontSizesView,
   ProjectView,
   SessionActivity,
+  SessionOpenModeView,
   SessionView,
   TodoView,
 } from "./types";
@@ -50,6 +51,11 @@ export const LAYOUT_CAP = 4;
 export interface ProjectUiSnapshot {
   layout: Layout;
   rightTab: RightTab;
+  /// Which workspace panels are showing. The redesign stacks panels instead
+  /// of switching between them, so "which tools are open" is a set, not a
+  /// single choice. `rightTab` stays as *the focused one* — the ⌘1-4 hotkeys
+  /// and the editor's file selection still need a single answer.
+  openPanels: RightTab[];
   openFiles: string[];
   selectedFilePath: string | null;
   previewFilePath: string | null;
@@ -68,6 +74,7 @@ export interface ProjectUiSnapshot {
 // underneath it — and would leave the tab dead when the path exists in only one
 // of the two trees.
 export interface RightPaneUi {
+  openPanels: RightTab[];
   rightTab: RightTab;
   openFiles: string[];
   selectedFilePath: string | null;
@@ -87,6 +94,7 @@ export function workspaceUiKey(
 /// Snapshot the live right-column fields so they can be stashed.
 function captureRightUi(state: {
   rightTab: RightTab;
+  openPanels: RightTab[];
   openFiles: string[];
   selectedFilePath: string | null;
   previewFilePath: string | null;
@@ -94,6 +102,7 @@ function captureRightUi(state: {
 }): RightPaneUi {
   return {
     rightTab: state.rightTab,
+    openPanels: state.openPanels,
     openFiles: state.openFiles,
     selectedFilePath: state.selectedFilePath,
     previewFilePath: state.previewFilePath,
@@ -103,6 +112,7 @@ function captureRightUi(state: {
 
 const DEFAULT_RIGHT_UI: RightPaneUi = {
   rightTab: "files",
+  openPanels: ["files"],
   openFiles: [],
   selectedFilePath: null,
   previewFilePath: null,
@@ -407,6 +417,7 @@ interface AppState {
   workspaceSessionByProject: Record<string, string | null>;
   /// Which panel the right column is showing.
   rightTab: RightTab;
+  openPanels: RightTab[];
   /// Editor tab strip — paths of all open files, in tab order. The currently
   /// focused file is `selectedFilePath`; tabs persist across right-tab
   /// switches but are cleared when the active project changes.
@@ -438,6 +449,10 @@ interface AppState {
   /// backend config field of the same name; defaults to false until the
   /// initial `getConfig` IPC returns.
   autoHideTopBar: boolean;
+  /// Whether opening a session from the sidebar grows the pane count or
+  /// takes over the focused pane. Mirrors the backend config field; defaults
+  /// to the historical behaviour (`new_pane`) until `getConfig` returns.
+  sessionOpenMode: SessionOpenModeView;
   /// Sessions that fired an `AgentTurnComplete` (turn ended / needs input)
   /// while the user wasn't looking at them. Drives the dot badge on visible
   /// pane headers and cleared when the session becomes the active pane.
@@ -455,6 +470,11 @@ interface AppState {
   /// Todo tab is opened and refreshed on every `TodosChanged` event (which
   /// fires for both UI edits and MCP-driven changes from an AI agent).
   todos: Record<string, TodoView[]>;
+  /// 变更面板当前展示的 diff 文件数。ChangesPanel 挂载期间由 RightPane
+  /// 经 onFileCount 回调写入,面板关闭/卸载时清为 null。画布工具条的
+  /// 「变更」开关角标消费它 —— 角标因此不必自己轮询 git diff,面板
+  /// 不在时角标也随之消失(null 即"没有可信数据")。
+  changesFileCount: number | null;
 
   setAgents: (list: AgentProfileView[]) => void;
   setProjects: (list: ProjectView[]) => void;
@@ -484,7 +504,12 @@ interface AppState {
   /// Release a project that a peer window just closed.
   removeLockedByOther: (id: string) => void;
   setRightTab: (tab: RightTab) => void;
+  /// Show/hide a panel in the stack. Closing the last one leaves the stack
+  /// empty, which the right column reads as "collapse me".
+  togglePanelOpen: (tab: RightTab) => void;
   setTodos: (projectId: string, list: TodoView[]) => void;
+  /// 写入/清除变更面板的 diff 文件数(见 `changesFileCount`)。
+  setChangesFileCount: (count: number | null) => void;
   setSessions: (list: SessionView[]) => void;
   upsertSession: (s: SessionView) => void;
   removeSession: (id: string) => void;
@@ -526,7 +551,12 @@ interface AppState {
   setLiveTitle: (sessionId: string, title: string) => void;
   setFontSizes: (f: FontSizesView) => void;
   setTheme: (id: string) => void;
+  /// 「跟随系统」下 OS 明暗翻转时自增。主题 id 仍是 "system" 没变,靠它
+  /// 通知 xterm 订阅者「解析结果变了,该重绘了」—— 不然终端会保持旧配色。
+  themeEpoch: number;
+  bumpThemeEpoch: () => void;
   setAutoHideTopBar: (on: boolean) => void;
+  setSessionOpenMode: (mode: SessionOpenModeView) => void;
   /// Sidebar publishes the id of the agent profile currently highlighted
   /// in the agent-tab strip — the same one the "+" button creates against.
   /// Used by the ⌘N hotkey, which builds the createSession call itself
@@ -561,6 +591,7 @@ export const useStore = create<AppState>((set) => ({
   activeProjectId: null,
   workspaceSessionByProject: {},
   rightTab: "files",
+  openPanels: ["files"],
   openFiles: [],
   selectedFilePath: null,
   dirtyFiles: {},
@@ -568,13 +599,20 @@ export const useStore = create<AppState>((set) => ({
   fontSizes: DEFAULT_FONT_SIZES,
   theme: DEFAULT_THEME_ID,
   autoHideTopBar: false,
+  sessionOpenMode: "new_pane",
   activeSidebarAgentId: null,
   attentionBySession: {},
   activityBySession: {},
   todos: {},
+  changesFileCount: null,
 
   setTodos: (projectId, list) =>
     set((state) => ({ todos: { ...state.todos, [projectId]: list } })),
+
+  setChangesFileCount: (count) =>
+    set((state) =>
+      state.changesFileCount === count ? state : { changesFileCount: count },
+    ),
 
   markAttention: (sessionId) =>
     set((state) => {
@@ -740,6 +778,7 @@ export const useStore = create<AppState>((set) => ({
         layoutsByProject,
         rightUiByProject,
         rightTab: restored.rightTab,
+        openPanels: restored.openPanels,
         openFiles: restored.openFiles,
         selectedFilePath: restored.selectedFilePath,
         previewFilePath: restored.previewFilePath,
@@ -774,6 +813,7 @@ export const useStore = create<AppState>((set) => ({
         workspaceSessionByProject,
         rightUiByProject,
         rightTab: restored.rightTab,
+        openPanels: restored.openPanels,
         openFiles: restored.openFiles,
         selectedFilePath: restored.selectedFilePath,
         previewFilePath: restored.previewFilePath,
@@ -797,6 +837,7 @@ export const useStore = create<AppState>((set) => ({
       const target = snap.workspaceSessionId ?? null;
       const restored: RightPaneUi = {
         rightTab: snap.rightTab,
+        openPanels: snap.openPanels ?? ["files"],
         openFiles: snap.openFiles,
         selectedFilePath: snap.selectedFilePath,
         previewFilePath: snap.previewFilePath,
@@ -808,6 +849,7 @@ export const useStore = create<AppState>((set) => ({
         layout,
         activeId: activeIdFromLayout(layout),
         rightTab: restored.rightTab,
+        openPanels: restored.openPanels,
         openFiles: restored.openFiles,
         selectedFilePath: restored.selectedFilePath,
         previewFilePath: restored.previewFilePath,
@@ -877,6 +919,7 @@ export const useStore = create<AppState>((set) => ({
           activeId: activeIdFromLayout(layout),
           layout,
           rightTab: restored.rightTab,
+          openPanels: restored.openPanels,
           selectedFilePath: restored.selectedFilePath,
           openFiles: restored.openFiles,
           dirtyFiles: restored.dirtyFiles,
@@ -894,7 +937,31 @@ export const useStore = create<AppState>((set) => ({
       return { lockedByOtherWindows };
     }),
 
-  setRightTab: (tab) => set({ rightTab: tab }),
+  // Focusing a panel implies showing it: ⌘1-4 and "open this file" should
+  // never leave the user looking at a panel that isn't on screen.
+  setRightTab: (tab) =>
+    set((state) => ({
+      rightTab: tab,
+      openPanels: state.openPanels.includes(tab)
+        ? state.openPanels
+        : [...state.openPanels, tab],
+    })),
+
+  togglePanelOpen: (tab) =>
+    set((state) => {
+      const isOpen = state.openPanels.includes(tab);
+      const openPanels = isOpen
+        ? state.openPanels.filter((t) => t !== tab)
+        : [...state.openPanels, tab];
+      return {
+        openPanels,
+        // Keep the focused panel inside the visible set, so the editor and
+        // the hotkeys never point at a closed card.
+        rightTab: isOpen && state.rightTab === tab
+          ? (openPanels[openPanels.length - 1] ?? state.rightTab)
+          : state.rightTab,
+      };
+    }),
 
   setSessions: (list) =>
     set((state) => {
@@ -1075,6 +1142,17 @@ export const useStore = create<AppState>((set) => ({
         visibleIds[layout.focusSlot] = id;
         return { activeId: id, layout: { ...layout, visibleIds } };
       }
+      // `replace_focused` keeps the pane count fixed — the user asked for a
+      // stable layout, so a sidebar click swaps what's in front of them
+      // rather than splitting the canvas.
+      if (
+        state.sessionOpenMode === "replace_focused" &&
+        layout.visibleIds.length > 0
+      ) {
+        const visibleIds = layout.visibleIds.slice();
+        visibleIds[layout.focusSlot] = id;
+        return { activeId: id, layout: { ...layout, visibleIds } };
+      }
       if (layout.visibleIds.length < LAYOUT_CAP) {
         const visibleIds = [...layout.visibleIds, id];
         const focusSlot = visibleIds.length - 1;
@@ -1235,9 +1313,15 @@ export const useStore = create<AppState>((set) => ({
 
   setTheme: (id) =>
     set((state) => (state.theme === id ? state : { theme: id })),
+  themeEpoch: 0,
+  bumpThemeEpoch: () => set((state) => ({ themeEpoch: state.themeEpoch + 1 })),
 
   setAutoHideTopBar: (on) =>
     set((state) => (state.autoHideTopBar === on ? state : { autoHideTopBar: on })),
+  setSessionOpenMode: (mode) =>
+    set((state) =>
+      state.sessionOpenMode === mode ? state : { sessionOpenMode: mode },
+    ),
 
   setActiveSidebarAgentId: (id) => set({ activeSidebarAgentId: id }),
 }));
@@ -1258,6 +1342,7 @@ function buildProjectUiSnapshot(projectId: string): ProjectUiSnapshot | null {
   const ui = isActive
     ? {
         rightTab: s.rightTab,
+        openPanels: s.openPanels,
         openFiles: s.openFiles,
         selectedFilePath: s.selectedFilePath,
         previewFilePath: s.previewFilePath,
@@ -1268,6 +1353,7 @@ function buildProjectUiSnapshot(projectId: string): ProjectUiSnapshot | null {
   return {
     layout,
     rightTab: ui?.rightTab ?? "files",
+    openPanels: ui?.openPanels ?? ["files"],
     openFiles: ui?.openFiles ?? [],
     selectedFilePath: ui?.selectedFilePath ?? null,
     previewFilePath: ui?.previewFilePath ?? null,

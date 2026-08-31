@@ -102,7 +102,7 @@ describe("ChangesPanel review workflow", () => {
       <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
     );
 
-    await user.click(await screen.findByRole("button", { name: "Stage hunk" }));
+    await user.click(await screen.findByRole("button", { name: "暂存代码块" }));
 
     await waitFor(() =>
       expect(gitApplyHunk).toHaveBeenCalledWith(
@@ -122,14 +122,14 @@ describe("ChangesPanel review workflow", () => {
     );
 
     await user.click(
-      screen.getByRole("tab", { name: "Branch vs base" }),
+      screen.getByRole("tab", { name: "分支 vs 基准" }),
     );
 
     await waitFor(() =>
       expect(gitBranchStatus).toHaveBeenCalledWith("project-a", "session-a"),
     );
-    expect(await screen.findByText("Committed change")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Stage hunk" })).toBeNull();
+    expect(await screen.findByText("已提交的变更")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "暂存代码块" })).toBeNull();
   });
 
   it("reviews a completed agent turn without exposing working-tree actions", async () => {
@@ -153,7 +153,7 @@ describe("ChangesPanel review workflow", () => {
       <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
     );
 
-    const agentTurnTab = screen.getByRole("tab", { name: "Agent turn" });
+    const agentTurnTab = screen.getByRole("tab", { name: "Agent 回合" });
     await waitFor(() => expect(agentTurnTab).toBeEnabled());
     await user.click(agentTurnTab);
 
@@ -170,11 +170,11 @@ describe("ChangesPanel review workflow", () => {
         "src/app.ts",
       ),
     );
-    expect(await screen.findByText("Turn snapshot")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent turn snapshot")).toHaveValue(
+    expect(await screen.findByText("回合快照")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent 回合快照")).toHaveValue(
       "checkpoint-1",
     );
-    expect(screen.queryByRole("button", { name: "Stage hunk" })).toBeNull();
-    expect(screen.queryByLabelText("Commit message")).toBeNull();
+    expect(screen.queryByRole("button", { name: "暂存代码块" })).toBeNull();
+    expect(screen.queryByLabelText("提交信息")).toBeNull();
   });
 });

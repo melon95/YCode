@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useStore } from "../lib/store";
+import { displaySessionTitle, useStore, type RightTab } from "../lib/store";
 import type { SessionView } from "../lib/types";
 import { FileTreePanel } from "./FileTreePanel";
 import { EditorPanel } from "./EditorPanel";
 import { ChangesPanel } from "./ChangesPanel";
 import { TodoPanel } from "./TodoPanel";
-import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 import {
   RightTerminalSplit,
   closePane,
@@ -16,6 +15,9 @@ import {
   type SplitDirection,
   type SplitPath,
 } from "./RightTerminalSplit";
+import { PanelCard } from "./ui/PanelCard";
+import { IconButton } from "./ui/IconButton";
+import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
 export function RightPane() {
   const projects = useStore((s) => s.projects);
@@ -25,6 +27,13 @@ export function RightPane() {
   );
   const activeProjectId = useStore((s) => s.activeProjectId);
   const rightTab = useStore((s) => s.rightTab);
+  const openPanels = useStore((s) => s.openPanels);
+  const togglePanelOpen = useStore((s) => s.togglePanelOpen);
+  // Which card, if any, is filling the stack. Local rather than persisted:
+  // maximising is a momentary "let me look at this properly", not a layout
+  // preference worth restoring on the next launch.
+  const [solo, setSolo] = useState<RightTab | null>(null);
+  const isOpen = (tab: RightTab) => openPanels.includes(tab);
   const setRightTab = useStore((s) => s.setRightTab);
   const openFiles = useStore((s) => s.openFiles);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
@@ -47,6 +56,100 @@ export function RightPane() {
   const activeWorkspaceKey = activeProject
     ? `${activeProject.id}:${activeWorkspaceSessionId ?? "main"}`
     : "none";
+
+  // —— 变更面板的绑定目标 ——
+  // 预览稿行为(bindChanges):中栏聚焦哪个 pane,变更卡片就展示哪个会话
+  // 的 diff。优先级:锁定 > 焦点会话(activeId,须属于当前项目)> 右栏
+  // target picker 的手选(workspaceSessionByProject)。锁定后停止跟随,
+  // 固定在锁定那一刻解析出的目标。
+  const activeId = useStore((s) => s.activeId);
+  const liveTitles = useStore((s) => s.liveTitles);
+  // 锁定是"看一会儿这个会话的 diff"的临时动作,放本地 state、不持久化。
+  // 记下项目 id:切到别的项目后锁定自然失效(该项目里恢复跟随/手选)。
+  // sessionId 为 null 表示锁定在主仓库。
+  const [changesLock, setChangesLock] = useState<{
+    projectId: string;
+    sessionId: string | null;
+  } | null>(null);
+
+  // 焦点会话:必须存在且属于当前项目才可跟随。
+  const focusSession =
+    activeId && activeProject && sessions[activeId]?.project_id === activeProject.id
+      ? sessions[activeId]
+      : null;
+
+  // 锁定是否仍然有效:同一项目,且(若指向会话)该会话行还在。会话被
+  // 删除/归档后锁定失效,自动回到跟随逻辑,而不是停在一个空目标上。
+  const validLock =
+    changesLock &&
+    activeProject &&
+    changesLock.projectId === activeProject.id &&
+    (changesLock.sessionId === null || sessions[changesLock.sessionId])
+      ? changesLock
+      : null;
+  const changesLockValid = validLock !== null;
+
+  // 最终绑定的会话(null = 主仓库)。跟随焦点时,无 worktree 的共享会话
+  // 也算合法目标 —— 它的 diff 就是主仓库的 diff。
+  const changesSession = validLock
+    ? validLock.sessionId
+      ? sessions[validLock.sessionId]
+      : null
+    : (focusSession ?? activeWorkspaceSession);
+  // 只有 worktree 会话才把 sessionId 传给 ChangesPanel(它以此定位隔离
+  // 工作树);共享会话与主仓库都走 undefined。
+  const changesSessionId = changesSession?.worktree_path
+    ? changesSession.id
+    : undefined;
+  const changesKey = activeProject
+    ? `${activeProject.id}:${changesSessionId ?? "main"}`
+    : "none";
+
+  // chip 文字如实反映当前跟随的目标:worktree 会话显示其分支,否则显示
+  // 主仓库;tooltip 里补充来源(锁定 / 跟随焦点 / 手选)与会话标题。
+  const changesBindLabel = changesSession?.worktree_path
+    ? (changesSession.branch ?? changesSession.base_branch ?? "worktree")
+    : "主仓库";
+  const changesBindTitle = changesLockValid
+    ? changesSession
+      ? `已锁定:${displaySessionTitle(changesSession, liveTitles)}`
+      : "已锁定:主仓库"
+    : focusSession
+      ? `跟随焦点会话:${displaySessionTitle(focusSession, liveTitles)}`
+      : changesSession
+        ? `手选目标:${displaySessionTitle(changesSession, liveTitles)}`
+        : "主仓库";
+
+  const toggleChangesLock = useCallback(() => {
+    if (!activeProject) return;
+    setChangesLock((cur) =>
+      cur && cur.projectId === activeProject.id
+        ? null
+        : // 锁定捕获"此刻"解析出的目标,而不是持续引用跟随逻辑。
+          {
+            projectId: activeProject.id,
+            sessionId: changesSession?.id ?? null,
+          },
+    );
+  }, [activeProject, changesSession]);
+
+  // —— 卡片头计数 ——
+  // diff 文件数由 ChangesPanel 经 onFileCount 上报进 store(画布工具条
+  // 角标共用);面板关闭/无项目时清空,避免角标挂着过期数字。
+  const changesFileCount = useStore((s) => s.changesFileCount);
+  const setChangesFileCount = useStore((s) => s.setChangesFileCount);
+  const changesMounted = !!activeProject && isOpen("changes");
+  useEffect(() => {
+    if (!changesMounted) setChangesFileCount(null);
+  }, [changesMounted, setChangesFileCount]);
+
+  // 未完成(非 done)todo 数,数据源与工具条角标一致(store.todos)。
+  const todosByProject = useStore((s) => s.todos);
+  const openTodoCount = activeProject
+    ? (todosByProject[activeProject.id] ?? []).filter(
+        (t) => t.status !== "done",
+      ).length
+    : 0;
 
   // File-tree column width, in pixels. Only consulted in the `with-editor`
   // workspace mode — tree-only mode keeps the existing `1fr` rule from CSS.
@@ -236,66 +339,12 @@ export function RightPane() {
 
   return (
     <section className="right-pane">
-      {activeProject && (
-        <div className="workspace-context-bar">
-          <WorkspaceTargetPicker projectId={activeProject.id} />
-          <span className="workspace-context-hint">
-            This workspace target controls Files, Editor, Changes, LSP, and Terminal.
-          </span>
-        </div>
-      )}
-      <div className="right-pane-tabs" role="tablist" aria-label="Right pane views">
-        <button
-          type="button"
-          className={"right-pane-tab" + (rightTab === "terminal" ? " active" : "")}
-          onClick={() => setRightTab("terminal")}
-          aria-label="Terminal"
-          aria-selected={rightTab === "terminal"}
-          role="tab"
-          title="Terminal"
-        >
-          <TerminalIcon />
-          <span className="right-pane-tab-label">Terminal</span>
-        </button>
-        {!hasOpenFiles && (
-          <button
-            type="button"
-            className={"right-pane-tab" + (rightTab === "files" ? " active" : "")}
-            onClick={() => setRightTab("files")}
-            aria-label="Files"
-            aria-selected={rightTab === "files"}
-            role="tab"
-            title="Files"
-          >
-            <FilesIcon />
-            <span className="right-pane-tab-label">Files</span>
-          </button>
-        )}
-        <button
-          type="button"
-          className={"right-pane-tab" + (rightTab === "changes" ? " active" : "")}
-          onClick={() => setRightTab("changes")}
-          aria-label="Changes"
-          aria-selected={rightTab === "changes"}
-          role="tab"
-          title="Changes"
-        >
-          <ChangesIcon />
-          <span className="right-pane-tab-label">Changes</span>
-        </button>
-        <button
-          type="button"
-          className={"right-pane-tab" + (rightTab === "todos" ? " active" : "")}
-          onClick={() => setRightTab("todos")}
-          aria-label="Todos"
-          aria-selected={rightTab === "todos"}
-          role="tab"
-          title="Todos"
-        >
-          <TodosIcon />
-          <span className="right-pane-tab-label">Todos</span>
-        </button>
-        {openFiles.length > 0 && <div className="right-pane-tab-separator" />}
+      {/* Panel switching moved to the canvas toolbar (see CanvasToolbar) —
+          the strip here now only carries open editor files, which are a
+          different axis: *which file*, not *which panel*. With no files open
+          it isn't rendered at all, rather than leaving an empty band. */}
+      {openFiles.length > 0 && (
+      <div className="right-pane-tabs" role="tablist" aria-label="Open files">
         {openFiles.map((path) => {
           const active = rightTab === "editor" && path === selectedFilePath;
           const isPreview = path === previewFilePath;
@@ -337,12 +386,43 @@ export function RightPane() {
           );
         })}
       </div>
-      <div className="right-pane-body">
+      )}
+      <div className="right-pane-body panel-stack">
+        <PanelCard
+          title="文件"
+          // Static label rather than the picker: one editable copy of the
+          // control (in the terminal card) is enough — three would just be
+          // three ways to set the same value.
+          bind={
+            <>
+              <BindArrow />
+              <span className="mono">
+                {/* checked-out 的分支,不是 base_branch —— 与变更卡一致。 */}
+                {activeWorkspaceSession?.worktree_path
+                  ? (activeWorkspaceSession.branch ??
+                    activeWorkspaceSession.base_branch ??
+                    "worktree")
+                  : "主仓库"}
+              </span>
+            </>
+          }
+          open={isOpen("files") || isOpen("editor")}
+          solo={solo === "files"}
+          onToggleSolo={() => setSolo(solo === "files" ? null : "files")}
+          onClose={() => {
+            togglePanelOpen("files");
+            if (isOpen("editor")) togglePanelOpen("editor");
+          }}
+        >
         {(() => {
           const workspaceVisible =
             !!activeProject &&
             ((rightTab === "files" && !hasOpenFiles) ||
-              (rightTab === "editor" && hasOpenFiles && !!selectedFilePath));
+              (rightTab === "editor" && hasOpenFiles && !!selectedFilePath) ||
+              // In the stacked layout the card itself decides visibility, so
+              // the inner surface stays shown whenever the card is open.
+              isOpen("files") ||
+              isOpen("editor"));
           const editorVisible =
             !!activeProject &&
             rightTab === "editor" &&
@@ -431,35 +511,92 @@ export function RightPane() {
             </div>
           );
         })()}
-        {!activeProject && rightTab !== "terminal" && (
+        {!activeProject && (
           <div className="empty">Select a project first.</div>
         )}
-        {rightTab === "editor" &&
-          activeProject &&
-          hasOpenFiles &&
-          !selectedFilePath && (
-            <div className="empty">
-              Pick a file from the <strong>Files</strong> tab.
-            </div>
+        </PanelCard>
+
+        <PanelCard
+          title="变更"
+          open={isOpen("changes")}
+          // 绑定 chip 如实反映当前跟随/锁定的目标(见上方解析逻辑)。
+          bind={
+            <>
+              <BindArrow />
+              <span className="mono" title={changesBindTitle}>
+                {changesBindLabel}
+              </span>
+            </>
+          }
+          // 预览稿的「3 个文件」计数;仅在面板挂载、数字可信时显示。
+          count={
+            changesFileCount != null ? `${changesFileCount} 个文件` : undefined
+          }
+          // 预览稿的 #chg-pin:锁定后停止跟随焦点,固定在锁定那一刻的目标。
+          actions={
+            <IconButton
+              size="sm"
+              active={changesLockValid}
+              onClick={toggleChangesLock}
+              disabled={!activeProject}
+              title={
+                changesLockValid
+                  ? "已锁定 · 点击恢复跟随焦点"
+                  : "锁定到当前会话(不跟随焦点)"
+              }
+              aria-label={
+                changesLockValid ? "解除锁定,恢复跟随焦点" : "锁定到当前会话"
+              }
+            >
+              <PinIcon />
+            </IconButton>
+          }
+          solo={solo === "changes"}
+          onToggleSolo={() => setSolo(solo === "changes" ? null : "changes")}
+          onClose={() => togglePanelOpen("changes")}
+        >
+          {activeProject && isOpen("changes") && (
+            // Key by project so switching projects remounts the panel: its branch
+            // menu, remote-op flags, and any in-flight git requests all belong to
+            // one repo and must not leak into the next (a stale checkout would run
+            // against the wrong repo otherwise).
+            <ChangesPanel
+              key={changesKey}
+              projectId={activeProject.id}
+              sessionId={changesSessionId}
+              baseBranch={changesSession?.base_branch ?? undefined}
+              onFileCount={setChangesFileCount}
+            />
           )}
-        {!activeProject && rightTab === "terminal" && (
-          <div className="empty">Select a project first.</div>
-        )}
-        {rightTab === "changes" && activeProject && (
-          // Key by project so switching projects remounts the panel: its branch
-          // menu, remote-op flags, and any in-flight git requests all belong to
-          // one repo and must not leak into the next (a stale checkout would run
-          // against the wrong repo otherwise).
-          <ChangesPanel
-            key={activeWorkspaceKey}
-            projectId={activeProject.id}
-            sessionId={activeWorkspaceSessionId}
-            baseBranch={activeWorkspaceSession?.base_branch ?? undefined}
-          />
-        )}
-        {rightTab === "todos" && activeProject && (
-          <TodoPanel projectId={activeProject.id} />
-        )}
+        </PanelCard>
+
+        <PanelCard
+          title="待办"
+          open={isOpen("todos")}
+          // 未完成 todo 数,与画布工具条的角标同源(store.todos)。
+          count={openTodoCount > 0 ? openTodoCount : undefined}
+          solo={solo === "todos"}
+          onToggleSolo={() => setSolo(solo === "todos" ? null : "todos")}
+          onClose={() => togglePanelOpen("todos")}
+        >
+          {activeProject && isOpen("todos") && (
+            <TodoPanel projectId={activeProject.id} />
+          )}
+        </PanelCard>
+        <PanelCard
+          title="终端"
+          open={isOpen("terminal")}
+          // The binding label *is* the control: this is where you both see
+          // and change which checkout the right column's tools point at.
+          bind={
+            activeProject ? (
+              <WorkspaceTargetPicker projectId={activeProject.id} />
+            ) : undefined
+          }
+          solo={solo === "terminal"}
+          onToggleSolo={() => setSolo(solo === "terminal" ? null : "terminal")}
+          onClose={() => togglePanelOpen("terminal")}
+        >
         {/* One split tree per visited project, stacked + hidden via
             display:none for the inactive ones. Switching projects flips
             visibility instead of unmounting, so every pane's shell keeps
@@ -469,7 +606,10 @@ export function RightPane() {
           const state = splitStates[pid];
           if (!proj || !state) return null;
           const isActiveProject = pid === activeProject?.id;
-          const visible = isActiveProject && rightTab === "terminal";
+          // Visibility now follows the card, not the old single-tab state:
+          // with a stacked layout the terminal can be on screen alongside
+          // Files, and xterm needs `visible` to be true to fit + repaint.
+          const visible = isActiveProject && isOpen("terminal");
           const targetSession = workspaceSession(
             pid,
             workspaceSessionByProject[pid],
@@ -500,8 +640,29 @@ export function RightPane() {
             </div>
           );
         })}
+        </PanelCard>
       </div>
     </section>
+  );
+}
+
+/// 变更卡片「锁定到当前会话」按钮的图钉图标(与预览稿 #chg-pin 同形)。
+function PinIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 17v5" />
+      <path d="M9 10.8V4h6v6.8a2 2 0 0 0 .6 1.4l1.4 1.4V17H7v-3.4l1.4-1.4a2 2 0 0 0 .6-1.4z" />
+    </svg>
+  );
+}
+
+/// The little arrow that prefixes a panel's binding label.
+function BindArrow() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
   );
 }
 
@@ -527,86 +688,6 @@ function basename(path: string): string {
   return idx >= 0 ? path.slice(idx + 1) : path;
 }
 
-function FilesIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M4 4h6l2 2h8v14H4z" />
-      <path d="M4 9h16" />
-    </svg>
-  );
-}
 
-function ChangesIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="6" cy="6" r="2.5" />
-      <circle cx="6" cy="18" r="2.5" />
-      <circle cx="18" cy="12" r="2.5" />
-      <path d="M6 8.5v7" />
-      <path d="M8.5 6h4.5a3 3 0 0 1 3 3v.5" />
-    </svg>
-  );
-}
 
-function TodosIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M9 6h11" />
-      <path d="M9 12h11" />
-      <path d="M9 18h11" />
-      <path d="M4 6l1 1 1.5-1.5" />
-      <path d="M4 12l1 1 1.5-1.5" />
-      <path d="M4 17.5h1.5" />
-    </svg>
-  );
-}
 
-function TerminalIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M4 5h16v14H4z" />
-      <path d="M8 9l3 3-3 3" />
-      <path d="M13 16h4" />
-    </svg>
-  );
-}

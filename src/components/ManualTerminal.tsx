@@ -28,7 +28,7 @@ import {
 import { useStore } from "../lib/store";
 import { activateFilePath, createFileLinkProvider } from "../lib/fileLinkProvider";
 import { attachImeInputBridge, isPrintableCharEvent } from "../lib/terminalInput";
-import { getTheme } from "../lib/themes";
+import { resolveTheme } from "../lib/themes";
 
 // Non-color options. Theme is grafted on at construction time from
 // `lib/themes.ts`, and a separate effect below re-skins the live term
@@ -91,7 +91,7 @@ export function ManualTerminal({
 
     const term = new Terminal({
       ...TERMINAL_BASE_OPTIONS,
-      theme: getTheme(useStore.getState().theme).xterm,
+      theme: resolveTheme(useStore.getState().theme).xterm,
     });
     // Pick up the user-configured size so a newly-mounted manual terminal
     // doesn't briefly render at the 13px default.
@@ -140,7 +140,7 @@ export function ManualTerminal({
     // height) matches the terminal instead of leaking xterm's hard-coded
     // `#000` viewport background. Kept in sync by the theme effect below.
     container.style.backgroundColor =
-      getTheme(useStore.getState().theme).xterm.background ?? "";
+      resolveTheme(useStore.getState().theme).xterm.background ?? "";
     termRef.current = term;
     fitRef.current = fit;
 
@@ -389,10 +389,12 @@ export function ManualTerminal({
   useEffect(() => {
     let pending: number | null = null;
     return useStore.subscribe((state, prev) => {
-      if (state.theme === prev.theme) return;
+      // themeEpoch 覆盖「跟随系统」时 OS 明暗翻转(id 不变但配色变了)。
+      if (state.theme === prev.theme && state.themeEpoch === prev.themeEpoch)
+        return;
       const term = termRef.current;
       if (!term) return;
-      const theme = getTheme(state.theme).xterm;
+      const theme = resolveTheme(state.theme).xterm;
       if (pending !== null) cancelAnimationFrame(pending);
       pending = requestAnimationFrame(() => {
         pending = null;

@@ -67,10 +67,14 @@ export function ChangesPanel({
   projectId,
   sessionId,
   baseBranch,
+  onFileCount,
 }: {
   projectId: string;
   sessionId?: string;
   baseBranch?: string;
+  /// 变更文件数上报回调:文件列表每次刷新都通知宿主(RightPane),
+  /// 供卡片头计数与画布工具条角标使用 —— 数字只在面板挂载期间可信。
+  onFileCount?: (count: number) => void;
 }) {
   const [changes, setChanges] = useState<GitFileChange[]>([]);
   const [branch, setBranch] = useState<GitBranchInfo | null>(null);
@@ -135,6 +139,11 @@ export function ChangesPanel({
     if (!canReviewBranch && scope === "branch") setScope("working");
     if (!canReviewCheckpoint && scope === "checkpoint") setScope("working");
   }, [canReviewBranch, canReviewCheckpoint, scope]);
+
+  // 每次文件列表变化就把数量上报给宿主(onFileCount 见 props 注释)。
+  useEffect(() => {
+    onFileCount?.(changes.length);
+  }, [changes.length, onFileCount]);
 
   const refreshCheckpoints = useCallback(() => {
     return listReviewCheckpoints(projectId)
@@ -342,7 +351,7 @@ export function ChangesPanel({
           /would be overwritten|commit your changes or stash/i.test(msg);
         setError(
           dirtyTree
-            ? `Commit or stash your changes before switching to “${name}”.`
+            ? `切换到「${name}」前,请先提交或 stash 当前改动。`
             : msg,
         );
       })
@@ -391,12 +400,12 @@ export function ChangesPanel({
 
   const discardFile = async (change: GitFileChange) => {
     const ok = await confirmDialog({
-      title: `Discard changes to ${basename(change.path)}?`,
+      title: `丢弃对 ${basename(change.path)} 的修改?`,
       message:
         change.status === "untracked" || change.status === "added"
-          ? "This deletes the file. This cannot be undone."
-          : "This reverts the file to its last committed state. This cannot be undone.",
-      confirmLabel: "Discard",
+          ? "该文件会被删除,且无法撤销。"
+          : "文件会恢复到最近一次提交的状态,且无法撤销。",
+      confirmLabel: "丢弃",
       destructive: true,
     });
     if (!ok) return;
@@ -419,10 +428,10 @@ export function ChangesPanel({
     }
     if (action === "discard") {
       const ok = await confirmDialog({
-        title: `Discard this hunk from ${basename(selected)}?`,
+        title: `丢弃 ${basename(selected)} 中的这个代码块?`,
         message:
-          "Only the lines in this hunk will be restored. Other edits in the file remain unchanged.",
-        confirmLabel: "Discard hunk",
+          "只会还原这个代码块内的行,文件中的其他修改保持不变。",
+        confirmLabel: "丢弃代码块",
         destructive: true,
       });
       if (!ok) return;
@@ -455,7 +464,7 @@ export function ChangesPanel({
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
-        <div className="changes-review-scope" role="tablist" aria-label="Review scope">
+        <div className="changes-review-scope" role="tablist" aria-label="审阅范围">
           <button
             type="button"
             role="tab"
@@ -463,7 +472,7 @@ export function ChangesPanel({
             className={scope === "working" ? "active" : ""}
             onClick={() => setScope("working")}
           >
-            Working tree
+            工作树
           </button>
           <button
             type="button"
@@ -474,11 +483,11 @@ export function ChangesPanel({
             onClick={() => setScope("branch")}
             title={
               canReviewBranch
-                ? `Review committed changes since ${baseBranch}`
-                : "Select an isolated worktree with a base branch"
+                ? `查看自 ${baseBranch} 以来已提交的变更`
+                : "请先选择带基准分支的隔离 worktree"
             }
           >
-            Branch vs base
+            分支 vs 基准
           </button>
           <button
             type="button"
@@ -489,24 +498,24 @@ export function ChangesPanel({
             onClick={() => setScope("checkpoint")}
             title={
               canReviewCheckpoint
-                ? "Review one completed agent turn"
-                : "No completed agent turns captured yet"
+                ? "回看一个已完成的 agent 回合"
+                : "还没有捕获到已完成的 agent 回合"
             }
           >
-            Agent turn
+            Agent 回合
           </button>
         </div>
         {scope === "checkpoint" && selectedCheckpoint && (
           <label className="changes-checkpoint-picker">
-            <span>Snapshot</span>
+            <span>快照</span>
             <select
-              aria-label="Agent turn snapshot"
+              aria-label="Agent 回合快照"
               value={selectedCheckpoint.id}
               onChange={(event) => setCheckpointId(event.target.value)}
             >
               {reviewableCheckpoints.map((checkpoint) => (
                 <option key={checkpoint.id} value={checkpoint.id}>
-                  {checkpoint.session_title} · Turn {checkpoint.sequence} ·{" "}
+                  {checkpoint.session_title} · 回合 {checkpoint.sequence} ·{" "}
                   {formatCheckpointTime(checkpoint.created_at_ms)}
                 </option>
               ))}
@@ -532,10 +541,10 @@ export function ChangesPanel({
               title={
                 branch
                   ? branch.detached
-                    ? `Detached HEAD at ${branch.head}`
+                    ? `HEAD 已分离,位于 ${branch.head}`
                     : branch.upstream
                       ? `${branch.head} → ${branch.upstream}`
-                      : `${branch.head} (no upstream)`
+                      : `${branch.head}(无上游分支)`
                   : undefined
               }
             >
@@ -545,8 +554,8 @@ export function ChangesPanel({
               </span>
               {branch && (branch.ahead > 0 || branch.behind > 0) && (
                 <span className="changes-panel-branch-track">
-                  {branch.ahead > 0 && <span title="commits ahead of upstream">↑{branch.ahead}</span>}
-                  {branch.behind > 0 && <span title="commits behind upstream">↓{branch.behind}</span>}
+                  {branch.ahead > 0 && <span title="领先上游的提交数">↑{branch.ahead}</span>}
+                  {branch.behind > 0 && <span title="落后上游的提交数">↓{branch.behind}</span>}
                 </span>
               )}
               <span className="changes-panel-branch-caret">
@@ -561,9 +570,9 @@ export function ChangesPanel({
                 />
                 <div className="changes-panel-branch-menu" role="menu">
                   {branchList === null ? (
-                    <div className="changes-panel-branch-empty">Loading…</div>
+                    <div className="changes-panel-branch-empty">加载中…</div>
                   ) : branchList.branches.length === 0 ? (
-                    <div className="changes-panel-branch-empty">No local branches</div>
+                    <div className="changes-panel-branch-empty">没有本地分支</div>
                   ) : (
                     branchList.branches.map((name) => (
                       <button
@@ -597,18 +606,18 @@ export function ChangesPanel({
             <BranchIcon />
             <span>{branch.head}</span>
             {scope === "branch" && baseBranch && (
-              <span className="changes-review-base">from {baseBranch}</span>
+              <span className="changes-review-base">基于 {baseBranch}</span>
             )}
           </span>
         )}
         <span className="changes-panel-count">
           {changes.length === 0
             ? scope === "branch"
-              ? "No branch changes"
+              ? "分支无变更"
               : scope === "checkpoint"
-                ? "No turn changes"
-              : "No changes"
-            : `${changes.length} file${changes.length === 1 ? "" : "s"}`}
+                ? "回合无变更"
+              : "无变更"
+            : `${changes.length} 个文件`}
           {changes.length > 0 &&
             (totals.additions > 0 || totals.deletions > 0) && (
               <span className="changes-panel-totals">
@@ -622,14 +631,14 @@ export function ChangesPanel({
             )}
         </span>
         {scope !== "checkpoint" && (
-        <div className="changes-panel-remote" role="group" aria-label="Remote">
+        <div className="changes-panel-remote" role="group" aria-label="远端操作">
           <button
             type="button"
             className="changes-panel-remote-btn"
             onClick={() => runRemote("fetch", () => gitFetch(projectId, treeSid))}
             disabled={!branch || remoteOp !== null}
-            aria-label="Fetch"
-            title="Fetch from remote"
+            aria-label="获取远端更新"
+            title="获取远端更新 (fetch)"
           >
             <span className={remoteOp === "fetch" ? "spin" : undefined}>
               <FetchIcon />
@@ -642,11 +651,11 @@ export function ChangesPanel({
             disabled={
               !branch || branch.detached || !branch.upstream || remoteOp !== null
             }
-            aria-label="Pull"
+            aria-label="拉取"
             title={
               branch && !branch.detached && !branch.upstream
-                ? "No upstream to pull from"
-                : "Pull (fast-forward only)"
+                ? "没有可拉取的上游分支"
+                : "拉取(仅 fast-forward)"
             }
           >
             <span className={remoteOp === "pull" ? "spin" : undefined}>
@@ -661,11 +670,11 @@ export function ChangesPanel({
             className="changes-panel-remote-btn"
             onClick={() => runRemote("push", () => gitPush(projectId, treeSid))}
             disabled={!branch || branch.detached || remoteOp !== null}
-            aria-label="Push"
+            aria-label="推送"
             title={
               branch && !branch.detached && !branch.upstream
-                ? "Publish branch to origin"
-                : "Push to remote"
+                ? "发布分支到 origin"
+                : "推送到远端"
             }
           >
             <span className={remoteOp === "push" ? "spin" : undefined}>
@@ -677,17 +686,17 @@ export function ChangesPanel({
           </button>
         </div>
         )}
-        <div className="changes-panel-mode" role="tablist" aria-label="View mode">
+        <div className="changes-panel-mode" role="tablist" aria-label="视图模式">
           <button
             type="button"
             className={
               "changes-panel-mode-btn" + (viewMode === "list" ? " active" : "")
             }
             onClick={() => setViewMode("list")}
-            aria-label="List view"
+            aria-label="列表视图"
             aria-selected={viewMode === "list"}
             role="tab"
-            title="List view"
+            title="列表视图"
           >
             <ListIcon />
           </button>
@@ -697,10 +706,10 @@ export function ChangesPanel({
               "changes-panel-mode-btn" + (viewMode === "tree" ? " active" : "")
             }
             onClick={() => setViewMode("tree")}
-            aria-label="Tree view"
+            aria-label="树视图"
             aria-selected={viewMode === "tree"}
             role="tab"
-            title="Tree view"
+            title="树视图"
           >
             <TreeIcon />
           </button>
@@ -709,8 +718,8 @@ export function ChangesPanel({
           type="button"
           className="changes-panel-refresh"
           onClick={refresh}
-          aria-label="Refresh"
-          title="Refresh"
+          aria-label="刷新"
+          title="刷新"
         >
           <RefreshIcon />
         </button>
@@ -729,11 +738,11 @@ export function ChangesPanel({
           }}
           placeholder={
             branch && !branch.detached
-              ? `Message (⌘⏎ to commit on "${branch.head}")`
-              : "Message (⌘⏎ to commit)"
+              ? `提交信息(⌘⏎ 提交到「${branch.head}」)`
+              : "提交信息(⌘⏎ 提交)"
           }
           rows={1}
-          aria-label="Commit message"
+          aria-label="提交信息"
         />
         <button
           type="button"
@@ -742,33 +751,33 @@ export function ChangesPanel({
           disabled={!canCommit}
           title={
             changes.length === 0
-              ? "Nothing to commit"
+              ? "没有可提交的变更"
               : trimmedMsg.length === 0
-                ? "Enter a commit message"
-                : "Commit all changes"
+                ? "请输入提交信息"
+                : "提交全部变更"
           }
         >
           <CommitIcon />
-          <span>{committing ? "Committing…" : "Commit"}</span>
+          <span>{committing ? "提交中…" : "提交"}</span>
         </button>
       </div>}
       <div className="changes-panel-body">
         <div className="changes-file-pane">
           {loadingList && changes.length === 0 && (
-            <div className="changes-empty">Loading…</div>
+            <div className="changes-empty">加载中…</div>
           )}
           {!loadingList && changes.length === 0 && !error && (
             <div className="changes-empty">
               {scope === "branch"
-                ? `No committed changes since ${baseBranch}.`
+                ? `自 ${baseBranch} 以来没有已提交的变更。`
                 : scope === "checkpoint"
-                  ? "This agent turn did not change any files."
-                : "Working tree clean."}
+                  ? "这个 agent 回合没有改动任何文件。"
+                : "工作树是干净的。"}
             </div>
           )}
           {error && <div className="changes-empty error">{error}</div>}
           {changes.length > 0 && viewMode === "list" && (
-            <ul className="changes-file-list" role="listbox" aria-label="Changed files">
+            <ul className="changes-file-list" role="listbox" aria-label="变更文件">
               {changes.map((c) => (
                 <li key={c.path}>
                   <FileRow
@@ -786,7 +795,7 @@ export function ChangesPanel({
             </ul>
           )}
           {changes.length > 0 && viewMode === "tree" && (
-            <ul className="changes-file-tree" role="tree" aria-label="Changed files">
+            <ul className="changes-file-tree" role="tree" aria-label="变更文件">
               {tree.map((node) => (
                 <TreeRow
                   key={nodeKey(node)}
@@ -807,7 +816,7 @@ export function ChangesPanel({
         <div className="changes-diff-pane">
           <div className="changes-diff-header">
             <div className="changes-diff-title">
-              <span>{selected ? basename(selected) : "Review"}</span>
+              <span>{selected ? basename(selected) : "审阅"}</span>
               {selected && dirname(selected) && (
                 <span className="changes-diff-directory">{dirname(selected)}</span>
               )}
@@ -818,13 +827,13 @@ export function ChangesPanel({
               )}
             </div>
             <div className="changes-diff-actions">
-              <div className="changes-diff-layout" role="group" aria-label="Diff layout">
+              <div className="changes-diff-layout" role="group" aria-label="Diff 布局">
                 <button
                   type="button"
                   className={diffLayout === "unified" ? "active" : ""}
                   onClick={() => setDiffLayout("unified")}
-                  aria-label="Unified diff"
-                  title="Unified diff"
+                  aria-label="单栏 diff"
+                  title="单栏 diff"
                 >
                   <UnifiedDiffIcon />
                 </button>
@@ -832,8 +841,8 @@ export function ChangesPanel({
                   type="button"
                   className={diffLayout === "split" ? "active" : ""}
                   onClick={() => setDiffLayout("split")}
-                  aria-label="Side-by-side diff"
-                  title="Side-by-side diff"
+                  aria-label="双栏对照 diff"
+                  title="双栏对照 diff"
                 >
                   <SplitDiffIcon />
                 </button>
@@ -844,20 +853,20 @@ export function ChangesPanel({
                 onClick={openSelectedFile}
                 disabled={!selected}
               >
-                {scope === "checkpoint" ? "Open current file" : "Open file"}
+                {scope === "checkpoint" ? "打开当前文件" : "打开文件"}
               </button>
             </div>
           </div>
           <div className="changes-diff-view">
-            {loadingDiff && <div className="changes-empty">Loading diff…</div>}
+            {loadingDiff && <div className="changes-empty">正在加载 diff…</div>}
             {!loadingDiff && !selected && (
-              <div className="changes-empty">Select a file to review its diff.</div>
+              <div className="changes-empty">选择一个文件查看它的 diff。</div>
             )}
             {!loadingDiff && selected && !hasRenderableDiff && (
               <div className="changes-empty">
                 {fileDiff.patch
-                  ? "Preview not supported for this file type."
-                  : "No diff to display."}
+                  ? "该文件类型不支持预览。"
+                  : "没有可显示的 diff。"}
               </div>
             )}
             {!loadingDiff &&
@@ -916,7 +925,7 @@ function HunkToolbar({
       {source === "unstaged" && (
         <>
           <button type="button" disabled={busy} onClick={() => onAction("discard")}>
-            Discard hunk
+            丢弃代码块
           </button>
           <button
             type="button"
@@ -924,7 +933,7 @@ function HunkToolbar({
             disabled={busy}
             onClick={() => onAction("stage")}
           >
-            {busy ? "Applying…" : "Stage hunk"}
+            {busy ? "应用中…" : "暂存代码块"}
           </button>
         </>
       )}
@@ -935,14 +944,14 @@ function HunkToolbar({
           disabled={busy}
           onClick={() => onAction("unstage")}
         >
-          {busy ? "Applying…" : "Unstage hunk"}
+          {busy ? "应用中…" : "取消暂存代码块"}
         </button>
       )}
       {source === "branch" && (
-        <span className="changes-hunk-readonly">Committed change</span>
+        <span className="changes-hunk-readonly">已提交的变更</span>
       )}
       {source === "checkpoint" && (
-        <span className="changes-hunk-readonly">Turn snapshot</span>
+        <span className="changes-hunk-readonly">回合快照</span>
       )}
     </div>
   );
@@ -951,13 +960,13 @@ function HunkToolbar({
 function diffSourceLabel(source: GitDiffSource): string {
   switch (source) {
     case "staged":
-      return "Staged";
+      return "已暂存";
     case "branch":
-      return "Branch";
+      return "分支";
     case "checkpoint":
-      return "Agent turn";
+      return "Agent 回合";
     default:
-      return "Unstaged";
+      return "未暂存";
   }
 }
 
@@ -1186,8 +1195,8 @@ function FileRow({
             type="button"
             className="changes-file-discard"
             onClick={onDiscard}
-            aria-label={`Discard changes to ${basename(change.path)}`}
-            title="Discard changes"
+            aria-label={`丢弃对 ${basename(change.path)} 的修改`}
+            title="丢弃修改"
           >
             <DiscardIcon />
           </button>
@@ -1198,10 +1207,10 @@ function FileRow({
             onChange={onToggleStage}
             aria-label={
               change.staged
-                ? `Unstage ${basename(change.path)}`
-                : `Stage ${basename(change.path)}`
+                ? `取消暂存 ${basename(change.path)}`
+                : `暂存 ${basename(change.path)}`
             }
-            title={change.staged ? "Unstage" : "Stage"}
+            title={change.staged ? "取消暂存" : "暂存"}
           />
         </>
       )}

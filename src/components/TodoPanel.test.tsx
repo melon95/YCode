@@ -77,20 +77,21 @@ describe("TodoPanel task flow", () => {
     render(<TodoPanel projectId="project-a" />);
 
     expect(await screen.findByText("Polish task workflow")).toBeInTheDocument();
-    expect(screen.getByLabelText("Task summary")).toHaveTextContent(
-      "1Active1Queued1Done",
+    expect(screen.getByLabelText("任务概览")).toHaveTextContent(
+      "1进行中1排队中1已完成",
     );
-    expect(screen.getByText("In progress")).toBeInTheDocument();
-    expect(screen.getByText("Queue")).toBeInTheDocument();
-    expect(screen.getByText(/Started 2h ago/)).toBeInTheDocument();
-    expect(screen.getByText(/Added 30m ago/)).toBeInTheDocument();
+    // 「进行中」同时出现在概览、分组标题和状态标签里,只需确认存在。
+    expect(screen.getAllByText("进行中").length).toBeGreaterThan(0);
+    expect(screen.getByText("队列")).toBeInTheDocument();
+    expect(screen.getByText(/开始于 2 小时前/)).toBeInTheDocument();
+    expect(screen.getByText(/添加于 30 分钟前/)).toBeInTheDocument();
   });
 
   it("adds a task through the capture field", async () => {
     const user = userEvent.setup();
     render(<TodoPanel projectId="project-a" />);
 
-    const input = await screen.findByRole("textbox", { name: "New task" });
+    const input = await screen.findByRole("textbox", { name: "新建 todo" });
     await user.type(input, "  Ship the task panel  ");
     await user.keyboard("{Enter}");
 
@@ -108,7 +109,7 @@ describe("TodoPanel task flow", () => {
     render(<TodoPanel projectId="project-a" />);
 
     const completeButtons = await screen.findAllByRole("button", {
-      name: "Mark completed",
+      name: "标记为已完成",
     });
     await user.click(completeButtons[0]);
 

@@ -44,10 +44,10 @@ describe("WorkspaceTargetPicker", () => {
   it("keeps the control compact without a redundant workspace prefix", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
-    expect(screen.queryByText("Workspace")).toBeNull();
+    expect(screen.queryByText("工作区")).toBeNull();
     expect(
-      screen.getByRole("combobox", { name: "Workspace target" }),
-    ).toHaveDisplayValue("Main checkout");
+      screen.getByRole("combobox", { name: "工作区目标" }),
+    ).toHaveDisplayValue("主仓库");
   });
 
   it("switches the shared workspace target", async () => {
@@ -55,7 +55,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Workspace target" }),
+      screen.getByRole("combobox", { name: "工作区目标" }),
       "session-a",
     );
 
@@ -74,7 +74,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Workspace target" }),
+      screen.getByRole("combobox", { name: "工作区目标" }),
       "",
     );
 
@@ -93,7 +93,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Workspace target" }),
+      screen.getByRole("combobox", { name: "工作区目标" }),
       "session-a",
     );
 

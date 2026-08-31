@@ -166,8 +166,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             e.stopPropagation();
             toggleDone(todo);
           }}
-          aria-label={done ? "Completed — click to reopen" : "Mark completed"}
-          title={done ? "Completed — click to reopen" : "Mark completed"}
+          aria-label={done ? "已完成 — 点击可重新打开" : "标记为已完成"}
+          title={done ? "已完成 — 点击可重新打开" : "标记为已完成"}
         >
           {done ? <CheckIcon /> : null}
         </button>
@@ -200,14 +200,14 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         {!done && (
           <span className={"todo-tag tag-" + status}>
             <span className="todo-tag-dot" aria-hidden />
-            {status === "doing" ? "Active" : "Queued"}
+            {status === "doing" ? "进行中" : "排队中"}
           </span>
         )}
         {canDrag && (
           <span
             className="todo-drag-handle"
             aria-hidden
-            title="Drag to reorder"
+            title="拖动以重新排序"
             onPointerDown={(event) => todoReorder.handlePointerDown(event, todo)}
             onClick={(event) => event.stopPropagation()}
           >
@@ -221,8 +221,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             e.stopPropagation();
             removeTodo(todo.id);
           }}
-          aria-label="Delete todo"
-          title="Delete"
+          aria-label="删除 todo"
+          title="删除"
         >
           <TrashIcon />
         </button>
@@ -273,13 +273,13 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             onClick={() => setShowArchive(false)}
           >
             <BackIcon />
-            <span>Back</span>
+            <span>返回</span>
           </button>
-          <span className="todo-archive-title">All completed</span>
+          <span className="todo-archive-title">全部已完成</span>
           <span className="todo-done-count">{done.length}</span>
         </div>
         {weeks.length === 0 ? (
-          <div className="empty">Nothing completed yet.</div>
+          <div className="empty">还没有已完成的 todo。</div>
         ) : (
           <ul className="todo-week-list">{weeks.map(renderWeek)}</ul>
         )}
@@ -292,25 +292,25 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       {error && <div className="todo-panel-error">{error}</div>}
       <header className="todo-panel-overview">
         <div className="todo-panel-heading">
-          <h2>Task flow</h2>
-          <p>Move work between the queue and active focus.</p>
+          <h2>任务流</h2>
+          <p>在队列与进行中之间流转你的工作。</p>
         </div>
-        <div className="todo-panel-summary" aria-label="Task summary">
+        <div className="todo-panel-summary" aria-label="任务概览">
           <span className="todo-summary-item summary-active">
             <strong>{doing.length}</strong>
-            <span>Active</span>
+            <span>进行中</span>
           </span>
           <span className="todo-summary-rule" aria-hidden />
           <span className="todo-summary-item">
             <strong>{todo.length}</strong>
-            <span>Queued</span>
+            <span>排队中</span>
           </span>
           {done.length > 0 && (
             <>
               <span className="todo-summary-rule" aria-hidden />
               <span className="todo-summary-item">
                 <strong>{done.length}</strong>
-                <span>Done</span>
+                <span>已完成</span>
               </span>
             </>
           )}
@@ -326,16 +326,16 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         <PlusIcon />
         <input
           className="todo-add-input"
-          aria-label="New task"
-          placeholder="Add a task"
+          aria-label="新建 todo"
+          placeholder="新建 todo…"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
         />
         <button
           type="submit"
           className="todo-capture-submit"
-          aria-label="Add task"
-          title="Add task"
+          aria-label="添加 todo"
+          title="添加 todo"
           disabled={!draft.trim()}
         >
           <kbd>↵</kbd>
@@ -344,22 +344,22 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       <ul className="todo-list" {...todoReorder.containerHandlers}>
         {doing.length > 0 && (
           <li className="todo-group-header">
-            <span>In progress</span>
+            <span>进行中</span>
             <span>{doing.length}</span>
           </li>
         )}
         {doing.map((t) => renderTodo(t, { draggable: true }))}
         {todo.length > 0 && (
           <li className="todo-group-header">
-            <span>Queue</span>
+            <span>队列</span>
             <span>{todo.length}</span>
           </li>
         )}
         {todo.map((t) => renderTodo(t, { draggable: true }))}
         {doing.length === 0 && todo.length === 0 && (
           <li className="todo-active-empty">
-            <span>Nothing in flight.</span>
-            <span>Add a task above when you are ready.</span>
+            <span>当前没有进行中的任务。</span>
+            <span>准备好后,在上方新建一个 todo。</span>
           </li>
         )}
       </ul>
@@ -372,7 +372,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             aria-expanded={showDone}
           >
             <ChevronIcon />
-            <span className="todo-done-label">Completed</span>
+            <span className="todo-done-label">已完成</span>
             <span className="todo-done-count">{done.length}</span>
           </button>
           {showDone && (
@@ -384,9 +384,9 @@ export function TodoPanel({ projectId }: { projectId: string }) {
                   className="todo-view-all"
                   onClick={() => setShowArchive(true)}
                 >
-                  View all completed
+                  查看全部已完成
                   <span className="todo-view-all-hint">
-                    +{hiddenWeeks} more {hiddenWeeks === 1 ? "week" : "weeks"}
+                    还有 {hiddenWeeks} 周
                   </span>
                 </button>
               )}
@@ -412,11 +412,11 @@ function weekStartMs(ms: number): number {
   return d.getTime();
 }
 
-/** "This week" / "Last week", else the week's date span (e.g. "Jun 2 – Jun 8"). */
+/** 「本周」/「上周」,更早则显示该周的日期区间(如 "Jun 2 – Jun 8")。 */
 function weekLabel(weekStart: number, currentWeekStart: number): string {
   const weeksAgo = Math.round((currentWeekStart - weekStart) / WEEK_MS);
-  if (weeksAgo <= 0) return "This week";
-  if (weeksAgo === 1) return "Last week";
+  if (weeksAgo <= 0) return "本周";
+  if (weeksAgo === 1) return "上周";
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   const start = new Date(weekStart).toLocaleDateString(undefined, opts);
   const end = new Date(weekStart + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(
@@ -461,14 +461,14 @@ function fmt(ms: number | null): string | null {
   }
 }
 
-/** Multi-line hover tooltip with the per-status timestamps. */
+/** 多行悬停提示,展示各状态对应的时间戳。 */
 function statusDatesTooltip(todo: TodoView): string {
-  const lines = [`Created: ${fmt(todo.created_at_ms) ?? "—"}`];
+  const lines = [`创建于:${fmt(todo.created_at_ms) ?? "—"}`];
   const started = fmt(todo.started_at_ms);
-  if (started) lines.push(`Started: ${started}`);
+  if (started) lines.push(`开始于:${started}`);
   const done = fmt(todo.done_at_ms);
-  if (done) lines.push(`Done: ${done}`);
-  lines.push("", "Double-click to edit");
+  if (done) lines.push(`完成于:${done}`);
+  lines.push("", "双击可编辑");
   return lines.join("\n");
 }
 
@@ -479,7 +479,7 @@ function statusTimeLabel(todo: TodoView, status: Status): string {
       : status === "done"
         ? (todo.done_at_ms ?? todo.updated_at_ms)
         : todo.created_at_ms;
-  const verb = status === "doing" ? "Started" : status === "done" ? "Completed" : "Added";
+  const verb = status === "doing" ? "开始于" : status === "done" ? "完成于" : "添加于";
   return `${verb} ${relativeTime(timestamp)}`;
 }
 
@@ -488,10 +488,10 @@ function relativeTime(ms: number): string {
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (elapsed < minute) return "just now";
-  if (elapsed < hour) return `${Math.floor(elapsed / minute)}m ago`;
-  if (elapsed < day) return `${Math.floor(elapsed / hour)}h ago`;
-  if (elapsed < 7 * day) return `${Math.floor(elapsed / day)}d ago`;
+  if (elapsed < minute) return "刚刚";
+  if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前`;
+  if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前`;
+  if (elapsed < 7 * day) return `${Math.floor(elapsed / day)} 天前`;
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",

@@ -48,16 +48,16 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
         onChange={(event) => {
           const next = event.target.value || null;
           if (dirtyCount > 0) {
-            toast.warning("Save or close edited files before switching workspace.");
+            toast.warning("切换工作区前,请先保存或关闭已编辑的文件。");
             event.currentTarget.value = value;
             return;
           }
           setWorkspaceSessionId(projectId, next);
         }}
-        title="Select the checkout used by Files, Editor, Changes, LSP, and Terminal"
-        aria-label="Workspace target"
+        title="选择「文件、编辑器、变更、LSP、终端」所使用的 checkout"
+        aria-label="工作区目标"
       >
-        <option value="">Main checkout</option>
+        <option value="">主仓库</option>
         {worktrees.map((session) => (
           <option key={session.id} value={session.id}>
             {targetLabel(session)}
