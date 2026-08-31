@@ -43,7 +43,10 @@ pub use ycode_lsp::{
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use ycode_config::{AgentLaunchProfile, FontSizes, NotificationSettings};
+use ycode_config::{
+    AgentLaunchProfile, CheckpointSettings, FontSizes, NotificationSettings, SessionOpenMode,
+    StartupMode, WorktreeCloseAction, WorktreeSettings,
+};
 use ycode_persist::{CheckpointListRow, ProjectRow, SessionRow, TodoRow};
 use ycode_terminal::TerminalStatus;
 
@@ -244,6 +247,156 @@ pub struct ConfigView {
     /// Collapse the top bar into a hover-reveal strip. Mirrors
     /// [`ycode_config::Config::auto_hide_top_bar`].
     pub auto_hide_top_bar: bool,
+    /// What the window opens on. Mirrors [`ycode_config::StartupMode`].
+    pub startup: StartupModeView,
+    pub worktree: WorktreeSettingsView,
+    pub checkpoints: CheckpointSettingsView,
+    pub session_open_mode: SessionOpenModeView,
+}
+
+/// Mirrors [`ycode_config::StartupMode`]. The serde rename keeps the JSON
+/// tag identical on both sides so the config file and the IPC payload read
+/// the same.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupModeView {
+    Resume,
+    Overview,
+    Blank,
+}
+
+impl From<StartupMode> for StartupModeView {
+    fn from(m: StartupMode) -> Self {
+        match m {
+            StartupMode::Resume => Self::Resume,
+            StartupMode::Overview => Self::Overview,
+            StartupMode::Blank => Self::Blank,
+        }
+    }
+}
+
+impl From<StartupModeView> for StartupMode {
+    fn from(v: StartupModeView) -> Self {
+        match v {
+            StartupModeView::Resume => Self::Resume,
+            StartupModeView::Overview => Self::Overview,
+            StartupModeView::Blank => Self::Blank,
+        }
+    }
+}
+
+/// Mirrors [`ycode_config::SessionOpenMode`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionOpenModeView {
+    NewPane,
+    ReplaceFocused,
+}
+
+impl From<SessionOpenMode> for SessionOpenModeView {
+    fn from(m: SessionOpenMode) -> Self {
+        match m {
+            SessionOpenMode::ReplaceFocused => Self::ReplaceFocused,
+            SessionOpenMode::NewPane => Self::NewPane,
+        }
+    }
+}
+
+impl From<SessionOpenModeView> for SessionOpenMode {
+    fn from(v: SessionOpenModeView) -> Self {
+        match v {
+            SessionOpenModeView::ReplaceFocused => Self::ReplaceFocused,
+            SessionOpenModeView::NewPane => Self::NewPane,
+        }
+    }
+}
+
+/// Mirrors [`ycode_config::WorktreeCloseAction`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeCloseActionView {
+    Ask,
+    Merge,
+    Discard,
+}
+
+impl From<WorktreeCloseAction> for WorktreeCloseActionView {
+    fn from(a: WorktreeCloseAction) -> Self {
+        match a {
+            WorktreeCloseAction::Ask => Self::Ask,
+            WorktreeCloseAction::Merge => Self::Merge,
+            WorktreeCloseAction::Discard => Self::Discard,
+        }
+    }
+}
+
+impl From<WorktreeCloseActionView> for WorktreeCloseAction {
+    fn from(v: WorktreeCloseActionView) -> Self {
+        match v {
+            WorktreeCloseActionView::Ask => Self::Ask,
+            WorktreeCloseActionView::Merge => Self::Merge,
+            WorktreeCloseActionView::Discard => Self::Discard,
+        }
+    }
+}
+
+/// Editable mirror of [`ycode_config::WorktreeSettings`].
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WorktreeSettingsView {
+    pub isolate_by_default: bool,
+    pub branch_prefix: String,
+    pub close_action: WorktreeCloseActionView,
+}
+
+impl From<WorktreeSettings> for WorktreeSettingsView {
+    fn from(w: WorktreeSettings) -> Self {
+        Self {
+            isolate_by_default: w.isolate_by_default,
+            branch_prefix: w.branch_prefix,
+            close_action: w.close_action.into(),
+        }
+    }
+}
+
+impl From<WorktreeSettingsView> for WorktreeSettings {
+    fn from(v: WorktreeSettingsView) -> Self {
+        Self {
+            isolate_by_default: v.isolate_by_default,
+            branch_prefix: v.branch_prefix,
+            close_action: v.close_action.into(),
+        }
+    }
+}
+
+/// Editable mirror of [`ycode_config::CheckpointSettings`]. `keep: null`
+/// means "keep every checkpoint".
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CheckpointSettingsView {
+    pub enabled: bool,
+    pub keep: Option<u32>,
+}
+
+impl From<CheckpointSettings> for CheckpointSettingsView {
+    fn from(c: CheckpointSettings) -> Self {
+        Self {
+            enabled: c.enabled,
+            keep: c.keep,
+        }
+    }
+}
+
+impl From<CheckpointSettingsView> for CheckpointSettings {
+    fn from(v: CheckpointSettingsView) -> Self {
+        Self {
+            enabled: v.enabled,
+            keep: v.keep,
+        }
+    }
 }
 
 /// Editable mirror of [`ycode_config::NotificationSettings`].
@@ -311,6 +464,10 @@ impl From<ycode_config::Config> for ConfigView {
             notifications: c.notifications.into(),
             theme: c.theme,
             auto_hide_top_bar: c.auto_hide_top_bar,
+            startup: c.startup.into(),
+            worktree: c.worktree.into(),
+            checkpoints: c.checkpoints.into(),
+            session_open_mode: c.session_open_mode.into(),
         }
     }
 }
@@ -323,6 +480,10 @@ impl From<ConfigView> for ycode_config::Config {
             notifications: v.notifications.into(),
             theme: v.theme,
             auto_hide_top_bar: v.auto_hide_top_bar,
+            startup: v.startup.into(),
+            worktree: v.worktree.into(),
+            checkpoints: v.checkpoints.into(),
+            session_open_mode: v.session_open_mode.into(),
         }
     }
 }
@@ -588,7 +749,11 @@ impl From<CheckpointListRow> for ReviewCheckpointView {
             event_kind: row.event_kind,
             body_preview: row.body_preview,
             created_at_ms: row.created_at,
-            has_previous: row.sequence > 0,
+            // Reviewability means "a lower-sequence row still exists", not
+            // "sequence > 0": pruning deletes the oldest rows, so the oldest
+            // survivor of a trimmed session (e.g. sequence 10) has nothing to
+            // diff against and must not be offered for review.
+            has_previous: row.sequence > row.session_min_sequence,
         }
     }
 }
@@ -783,5 +948,47 @@ impl From<ycode_persist::LspInstallationRow> for LspInstallationView {
             binary_path: row.binary_path,
             installed_at_ms: row.installed_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod config_view_tests {
+    use super::*;
+
+    /// The settings dialog edits a `ConfigView` and hands it straight back to
+    /// `save_config`, which converts it to a `Config` and writes it to disk.
+    /// A field dropped in either `From` impl would silently reset whatever the
+    /// user just changed — with no error to notice.
+    #[test]
+    fn config_round_trips_through_the_view() {
+        let mut original = ycode_config::Config::default();
+        original.theme = "atelier".into();
+        original.auto_hide_top_bar = true;
+        original.startup = StartupMode::Overview;
+        original.session_open_mode = SessionOpenMode::ReplaceFocused;
+        original.worktree = WorktreeSettings {
+            isolate_by_default: true,
+            branch_prefix: "wt/".into(),
+            close_action: WorktreeCloseAction::Merge,
+        };
+        original.checkpoints = CheckpointSettings {
+            enabled: false,
+            keep: None,
+        };
+        original.font_sizes.terminal = 15;
+
+        let back: ycode_config::Config = ConfigView::from(original.clone()).into();
+
+        assert_eq!(back.theme, original.theme);
+        assert_eq!(back.auto_hide_top_bar, original.auto_hide_top_bar);
+        assert_eq!(back.startup, original.startup);
+        assert_eq!(back.session_open_mode, original.session_open_mode);
+        assert_eq!(back.worktree.isolate_by_default, true);
+        assert_eq!(back.worktree.branch_prefix, "wt/");
+        assert_eq!(back.worktree.close_action, WorktreeCloseAction::Merge);
+        assert_eq!(back.checkpoints.enabled, false);
+        assert_eq!(back.checkpoints.keep, None);
+        assert_eq!(back.font_sizes.terminal, 15);
+        assert_eq!(back.agents.len(), original.agents.len());
     }
 }

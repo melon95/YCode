@@ -42,10 +42,19 @@ async fn fixture() -> (Service, tempfile::TempDir, Utf8PathBuf) {
 }
 
 async fn git_fixture() -> (Service, tempfile::TempDir, Utf8PathBuf) {
+    git_fixture_with(|_| {}).await
+}
+
+/// Like [`git_fixture`] but lets the test tweak the config (e.g. a tight
+/// checkpoint `keep`) before the service is built.
+async fn git_fixture_with(
+    tweak: impl FnOnce(&mut Config),
+) -> (Service, tempfile::TempDir, Utf8PathBuf) {
     let db = Db::open_in_memory().await.unwrap();
     let mut config = Config::default();
     config.agents.clear();
     config.agents.push(shell_profile("shell-test"));
+    tweak(&mut config);
 
     let container = tempfile::tempdir().unwrap();
     let repo_path = Utf8PathBuf::from_path_buf(container.path().join("repo")).unwrap();
@@ -559,6 +568,132 @@ async fn checkpoint_review_reads_files_created_inside_the_session_worktree() {
     assert!(diff.patch.contains("+export const x = 1;"));
 
     svc.kill_session(session_id).await.ok();
+}
+
+/// Pruning deletes the low-sequence rows, so the oldest surviving checkpoint
+/// has nothing left to diff against. It must come back with
+/// `has_previous: false` — before the fix it was derived from `sequence > 0`,
+/// so the frontend offered it for review and the diff request failed with
+/// "the initial checkpoint has no previous turn state".
+#[tokio::test(flavor = "multi_thread")]
+async fn pruned_sessions_oldest_survivor_is_not_reviewable() {
+    let (svc, _container, repo) = git_fixture_with(|cfg| {
+        cfg.checkpoints.keep = Some(2);
+    })
+    .await;
+    init_repo_with_commit(&repo);
+
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "checkpoint-prune".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+    // Session creation captures the sequence-0 baseline.
+    let session = svc
+        .create_session(CreateSessionRequest {
+            agent_profile_id: "shell-test".into(),
+            project_id: project.id.clone(),
+            title: "prune".into(),
+            resume: None,
+        })
+        .await
+        .unwrap();
+
+    // Three turns: with keep=2 the baseline and turn 1 get pruned, leaving
+    // sequences 2 and 3.
+    for n in 1..=3 {
+        std::fs::write(
+            repo.join(format!("turn-{n}.txt")).as_std_path(),
+            format!("turn {n}\n"),
+        )
+        .unwrap();
+        svc.capture_agent_checkpoint(
+            session.id.clone(),
+            "shell-test".into(),
+            "turn_complete".into(),
+            None,
+        )
+        .await
+        .unwrap()
+        .expect("checkpoint captured");
+    }
+
+    let listed = svc
+        .list_review_checkpoints(project.id.clone())
+        .await
+        .unwrap();
+    let mut sequences: Vec<_> = listed.iter().map(|c| c.sequence).collect();
+    sequences.sort();
+    assert_eq!(sequences, vec![2, 3], "keep=2 leaves the newest two turns");
+
+    let oldest = listed.iter().find(|c| c.sequence == 2).unwrap();
+    assert!(
+        !oldest.has_previous,
+        "the oldest survivor has no earlier row to diff against"
+    );
+    let newest = listed.iter().find(|c| c.sequence == 3).unwrap();
+    assert!(newest.has_previous, "the newest turn still diffs against 2");
+
+    // The backend agrees with what it advertised: reviewing the newest works,
+    // and the oldest survivor is rejected rather than offered.
+    svc.git_checkpoint_status(project.id.clone(), newest.id.clone())
+        .await
+        .expect("advertised turn must be reviewable");
+    assert!(svc
+        .git_checkpoint_status(project.id.clone(), oldest.id.clone())
+        .await
+        .is_err());
+
+    svc.kill_session(session.id).await.ok();
+}
+
+/// With `keep: 1` the prune that runs right after a capture deletes the new
+/// checkpoint's own predecessor. The view returned from the capture must
+/// reflect the post-prune reality, not the pre-prune sequence number.
+#[tokio::test(flavor = "multi_thread")]
+async fn capture_view_reflects_post_prune_previous() {
+    let (svc, _container, repo) = git_fixture_with(|cfg| {
+        cfg.checkpoints.keep = Some(1);
+    })
+    .await;
+    init_repo_with_commit(&repo);
+
+    let project = svc
+        .create_project(CreateProjectRequest {
+            name: "checkpoint-keep-one".into(),
+            repo_path: repo.to_string(),
+        })
+        .await
+        .unwrap();
+    let session = svc
+        .create_session(CreateSessionRequest {
+            agent_profile_id: "shell-test".into(),
+            project_id: project.id.clone(),
+            title: "keep-one".into(),
+            resume: None,
+        })
+        .await
+        .unwrap();
+
+    std::fs::write(repo.join("only.txt").as_std_path(), "x\n").unwrap();
+    let view = svc
+        .capture_agent_checkpoint(
+            session.id.clone(),
+            "shell-test".into(),
+            "turn_complete".into(),
+            None,
+        )
+        .await
+        .unwrap()
+        .expect("checkpoint captured");
+    assert!(
+        !view.has_previous,
+        "keep=1 pruned the baseline, so this turn has no previous state"
+    );
+
+    svc.kill_session(session.id).await.ok();
 }
 
 /// Archiving keeps the session row, so the checkpoint FK never cascades. The

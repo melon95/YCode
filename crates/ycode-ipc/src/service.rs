@@ -493,7 +493,7 @@ impl Service {
             return Err(IpcError::InvalidRepoPath(req.repo_path));
         }
         let id = ulid::Ulid::new().to_string();
-        let row = self
+        let mut row = self
             .db
             .projects()
             .insert(NewProject {
@@ -502,6 +502,16 @@ impl Service {
                 repo_path: repo.to_string(),
             })
             .await?;
+        // The persist layer opens every project shared — it has no business
+        // knowing the user's config. Applying the preference here keeps that
+        // boundary and costs one extra statement only when it's turned on.
+        if self.config.read().await.worktree.isolate_by_default {
+            self.db
+                .projects()
+                .set_isolate_sessions(&row.id, true)
+                .await?;
+            row.isolate_sessions = true;
+        }
         let view = ProjectView::from_row(row, 0);
         let _ = self.ui_bus.send(UiEvent {
             session_id: view.id.clone(),
@@ -1328,6 +1338,12 @@ impl Service {
         event_kind: Option<String>,
         body_preview: Option<String>,
     ) -> Result<Option<ReviewCheckpointView>, IpcError> {
+        // Same return as a non-git project: no baseline, so the review
+        // timeline is simply absent rather than half-populated.
+        let checkpoint_cfg = self.config.read().await.checkpoints;
+        if !checkpoint_cfg.enabled {
+            return Ok(None);
+        }
         let project = self.db.projects().get(&session.project_id).await?;
         let repo = Utf8PathBuf::from(
             session
@@ -1393,6 +1409,43 @@ impl Service {
                 return Err(error.into());
             }
         };
+        // Trim the tail. Best-effort on purpose: a failed prune leaves extra
+        // history, which is strictly better than failing the capture the user
+        // is actually waiting on.
+        if let Some(keep) = checkpoint_cfg.keep {
+            match self
+                .db
+                .checkpoints()
+                .prune_for_session(&session.id, keep)
+                .await
+            {
+                Ok(stale) if !stale.is_empty() => {
+                    let repo_for_prune = repo.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        for r in stale {
+                            let _ = git_checkpoint_delete_ref_blocking(&repo_for_prune, &r);
+                        }
+                    })
+                    .await;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    warn!(session_id = %session.id, error = %error, "checkpoint prune failed");
+                }
+            }
+        }
+
+        // Reviewability requires an actual lower-sequence row to diff against,
+        // not merely `sequence > 0` — pruning may have just deleted the older
+        // rows (including, with a tight `keep`, this checkpoint's immediate
+        // predecessor). Ask the DB after the prune so the view matches what a
+        // subsequent review request will find.
+        let has_previous = self
+            .db
+            .checkpoints()
+            .previous(&session.id, checkpoint.sequence)
+            .await?
+            .is_some();
         let view = ReviewCheckpointView {
             id: checkpoint.id,
             session_id: session.id.clone(),
@@ -1404,8 +1457,9 @@ impl Service {
             event_kind: checkpoint.event_kind,
             body_preview: checkpoint.body_preview,
             created_at_ms: checkpoint.created_at,
-            has_previous: checkpoint.sequence > 0,
+            has_previous,
         };
+
         let _ = self.ui_bus.send(UiEvent {
             session_id: session.id,
             kind: UiEventKind::CheckpointCreated {
@@ -1455,7 +1509,7 @@ impl Service {
                     // and the second `git worktree add -b` would fail with
                     // "branch already exists". The full id includes the random
                     // tail, so it's unique.
-                    let branch = format!("ycode/{id}");
+                    let branch = self.config.read().await.worktree.branch_for(&id);
                     let wt = self.worktree_root.join(&project_id).join(&id);
                     let (repo_c, wt_c, branch_c) = (repo.clone(), wt.clone(), branch.clone());
                     tokio::task::spawn_blocking(move || {

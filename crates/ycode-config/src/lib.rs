@@ -69,10 +69,139 @@ pub struct Config {
     /// edge. Off by default — the bar is the primary project switcher.
     #[serde(default)]
     pub auto_hide_top_bar: bool,
+    /// What the app opens on at launch.
+    #[serde(default)]
+    pub startup: StartupMode,
+    /// Isolated-worktree behaviour for new sessions.
+    #[serde(default)]
+    pub worktree: WorktreeSettings,
+    /// Pre-write snapshots the user can roll back to.
+    #[serde(default)]
+    pub checkpoints: CheckpointSettings,
+    /// Where a session opened from the sidebar lands on the canvas.
+    #[serde(default)]
+    pub session_open_mode: SessionOpenMode,
 }
 
 fn default_theme() -> String {
     "foundry".into()
+}
+
+/// What the window shows when ycode starts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupMode {
+    /// Back to the workspace if the last run left live sessions, otherwise
+    /// the projects overview. The default because it matches what people
+    /// actually do: resume yesterday's work, or pick a project.
+    #[default]
+    Resume,
+    /// Always the cross-project overview.
+    Overview,
+    /// The last active project's workspace, with nothing restored.
+    Blank,
+}
+
+/// Where a session opened from the sidebar goes on the canvas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionOpenMode {
+    /// Add a pane beside the current ones, up to the layout cap. The default
+    /// because it is what ycode has always done — making this configurable
+    /// shouldn't quietly change the behaviour of every existing install.
+    #[default]
+    NewPane,
+    /// Take over the focused pane, keeping the pane count stable.
+    ReplaceFocused,
+}
+
+/// What happens to an isolated worktree when its session closes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeCloseAction {
+    /// Show the merge/discard prompt. Default: discarding an agent's work
+    /// without asking is not a decision we get to make for the user.
+    #[default]
+    Ask,
+    Merge,
+    Discard,
+}
+
+/// Settings for the per-session git worktree isolation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorktreeSettings {
+    /// Whether a newly added project starts with isolation on. Existing
+    /// projects keep their own stored flag — this is only the initial value.
+    #[serde(default)]
+    pub isolate_by_default: bool,
+    /// Prefix for the branch each isolated session gets. The session ULID is
+    /// appended. Trailing `/` optional; it is normalised on read.
+    #[serde(default = "default_branch_prefix")]
+    pub branch_prefix: String,
+    #[serde(default)]
+    pub close_action: WorktreeCloseAction,
+}
+
+fn default_branch_prefix() -> String {
+    "ycode/".into()
+}
+
+impl Default for WorktreeSettings {
+    fn default() -> Self {
+        Self {
+            isolate_by_default: false,
+            branch_prefix: default_branch_prefix(),
+            close_action: WorktreeCloseAction::default(),
+        }
+    }
+}
+
+impl WorktreeSettings {
+    /// Branch name for a session, guarding against the two ways a
+    /// hand-edited prefix breaks `git worktree add`: an empty string (branch
+    /// would be a bare ULID, indistinguishable from a user branch) and a
+    /// missing separator (`wt` + ULID runs the words together).
+    pub fn branch_for(&self, session_id: &str) -> String {
+        let prefix = self.branch_prefix.trim();
+        if prefix.is_empty() {
+            return format!("ycode/{session_id}");
+        }
+        if prefix.ends_with('/') {
+            format!("{prefix}{session_id}")
+        } else {
+            format!("{prefix}/{session_id}")
+        }
+    }
+}
+
+/// Settings for the pre-write snapshots taken before an agent edits files.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct CheckpointSettings {
+    /// Field-level default so a hand-edited partial object (e.g. just
+    /// `{"keep": 200}`) still parses instead of failing the whole config
+    /// load and blocking startup.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// How many checkpoints to keep per session. `None` keeps every one.
+    #[serde(default = "default_checkpoint_keep")]
+    pub keep: Option<u32>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_checkpoint_keep() -> Option<u32> {
+    Some(50)
+}
+
+impl Default for CheckpointSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            keep: default_checkpoint_keep(),
+        }
+    }
 }
 
 /// Global on/off + focus-gating switches for the agent-turn-complete OS
@@ -84,17 +213,19 @@ fn default_theme() -> String {
 pub struct NotificationSettings {
     /// Master switch. When false the Tauri event pump skips the system
     /// toast entirely, even if the agent's CLI hook fired.
+    #[serde(default = "default_true")]
     pub enabled: bool,
     /// Only fire the toast when no ycode window is focused. Lets users who
     /// keep ycode in the foreground avoid double-signalling.
+    #[serde(default = "default_true")]
     pub only_when_unfocused: bool,
 }
 
 impl Default for NotificationSettings {
     fn default() -> Self {
         Self {
-            enabled: true,
-            only_when_unfocused: true,
+            enabled: default_true(),
+            only_when_unfocused: default_true(),
         }
     }
 }
@@ -105,17 +236,24 @@ impl Default for NotificationSettings {
 /// from making the app unusable, but we re-clamp on load for safety.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct FontSizes {
+    #[serde(default = "default_font_size")]
     pub ui: u16,
+    #[serde(default = "default_font_size")]
     pub editor: u16,
+    #[serde(default = "default_font_size")]
     pub terminal: u16,
+}
+
+fn default_font_size() -> u16 {
+    13
 }
 
 impl Default for FontSizes {
     fn default() -> Self {
         Self {
-            ui: 13,
-            editor: 13,
-            terminal: 13,
+            ui: default_font_size(),
+            editor: default_font_size(),
+            terminal: default_font_size(),
         }
     }
 }
@@ -162,6 +300,10 @@ impl Default for Config {
             notifications: NotificationSettings::default(),
             theme: default_theme(),
             auto_hide_top_bar: false,
+            startup: StartupMode::default(),
+            worktree: WorktreeSettings::default(),
+            checkpoints: CheckpointSettings::default(),
+            session_open_mode: SessionOpenMode::default(),
         }
     }
 }
@@ -356,9 +498,87 @@ mod tests {
         assert!(cfg.agents[0].args.is_empty());
     }
 
+    /// A config file written by an older build has none of the settings the
+    /// redesign added. It must still load — with the shipped defaults — or
+    /// upgrading the app would reset the user's whole config.
     #[test]
-    fn duplicate_id_fails_validation() {
+    fn pre_redesign_config_takes_defaults() {
         let json_src = r#"{
+            "agents": [ { "id": "test", "command": "echo" } ],
+            "theme": "foundry",
+            "auto_hide_top_bar": true
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
+        assert!(cfg.auto_hide_top_bar, "existing fields still round-trip");
+        assert_eq!(cfg.startup, StartupMode::Resume);
+        assert_eq!(cfg.session_open_mode, SessionOpenMode::NewPane);
+        assert_eq!(cfg.worktree.close_action, WorktreeCloseAction::Ask);
+        assert_eq!(cfg.worktree.branch_prefix, "ycode/");
+        assert!(!cfg.worktree.isolate_by_default);
+        assert!(cfg.checkpoints.enabled);
+        assert_eq!(cfg.checkpoints.keep, Some(50));
+    }
+
+    /// A hand-edited partial `checkpoints` object (any subset of fields) must
+    /// parse, with the missing fields taking the shipped defaults. Before the
+    /// field-level defaults this failed the whole config load — and with it,
+    /// app startup.
+    #[test]
+    fn partial_checkpoint_settings_take_defaults() {
+        let json_src = r#"{
+            "agents": [ { "id": "test", "command": "echo" } ],
+            "checkpoints": { "keep": 200 }
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
+        assert!(cfg.checkpoints.enabled, "missing `enabled` defaults to true");
+        assert_eq!(cfg.checkpoints.keep, Some(200));
+
+        // The opposite subset: only `enabled` present.
+        let json_src = r#"{
+            "agents": [],
+            "checkpoints": { "enabled": false }
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
+        assert!(!cfg.checkpoints.enabled);
+        assert_eq!(cfg.checkpoints.keep, Some(50), "missing `keep` defaults");
+
+        // Other partial objects added in the redesign parse the same way.
+        let json_src = r#"{
+            "agents": [],
+            "worktree": { "close_action": "merge" },
+            "notifications": { "enabled": false },
+            "font_sizes": { "terminal": 15 }
+        }"#;
+        let cfg: Config = serde_json::from_str(json_src).unwrap();
+        assert_eq!(cfg.worktree.close_action, WorktreeCloseAction::Merge);
+        assert_eq!(cfg.worktree.branch_prefix, "ycode/");
+        assert!(!cfg.notifications.enabled);
+        assert!(cfg.notifications.only_when_unfocused);
+        assert_eq!(cfg.font_sizes.terminal, 15);
+        assert_eq!(cfg.font_sizes.ui, 13);
+    }
+
+    #[test]
+    fn branch_prefix_always_separates() {
+        let mut w = WorktreeSettings::default();
+        assert_eq!(w.branch_for("01ABC"), "ycode/01ABC");
+
+        // Hand-edited without the trailing slash: we add the separator rather
+        // than producing `wt01ABC`.
+        w.branch_prefix = "wt".into();
+        assert_eq!(w.branch_for("01ABC"), "wt/01ABC");
+
+        w.branch_prefix = "  agents/  ".into();
+        assert_eq!(w.branch_for("01ABC"), "agents/01ABC");
+
+        // Emptied out: fall back rather than emit a bare ULID, which would be
+        // indistinguishable from a branch the user made.
+        w.branch_prefix = "   ".into();
+        assert_eq!(w.branch_for("01ABC"), "ycode/01ABC");
+    }
+
+    #[test]
+    fn duplicate_id_fails_validation() {        let json_src = r#"{
             "agents": [
                 { "id": "dup", "command": "a" },
                 { "id": "dup", "command": "b" }

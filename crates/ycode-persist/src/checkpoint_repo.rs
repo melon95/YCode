@@ -37,6 +37,10 @@ pub struct CheckpointListRow {
     pub created_at: i64,
     pub session_title: String,
     pub agent_profile: String,
+    /// Smallest sequence still stored for this row's session. Pruning deletes
+    /// low-sequence rows, so "is there a previous turn to diff against" must
+    /// compare against what actually survives in the DB, not against zero.
+    pub session_min_sequence: i64,
 }
 
 impl<'a> CheckpointRepo<'a> {
@@ -114,8 +118,11 @@ impl<'a> CheckpointRepo<'a> {
         &self,
         project_id: &str,
     ) -> Result<Vec<CheckpointListRow>, PersistError> {
+        // The window MIN is computed once per partition rather than as a
+        // per-row correlated subquery, keeping the list query a single pass.
         Ok(sqlx::query_as::<_, CheckpointListRow>(
-            "SELECT c.*, s.title AS session_title, s.agent_profile \
+            "SELECT c.*, s.title AS session_title, s.agent_profile, \
+             MIN(c.sequence) OVER (PARTITION BY c.session_id) AS session_min_sequence \
              FROM session_checkpoints c \
              JOIN sessions s ON s.id = c.session_id \
              WHERE c.project_id = ? \
@@ -150,6 +157,45 @@ impl<'a> CheckpointRepo<'a> {
             .execute(self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Drop this session's oldest checkpoints until only `keep` remain, and
+    /// return their git refs so the caller can delete the objects too.
+    ///
+    /// The rows go first and the refs second — losing a ref whose row is gone
+    /// only wastes disk until `git gc`, whereas a row pointing at a deleted
+    /// ref is a checkpoint the user can see in the timeline but not restore.
+    pub async fn prune_for_session(
+        &self,
+        session_id: &str,
+        keep: u32,
+    ) -> Result<Vec<String>, PersistError> {
+        // `keep` of zero would wipe the session's whole timeline on the next
+        // turn — treat it as "keep the current one" rather than as a licence
+        // to delete everything.
+        let keep = keep.max(1);
+        let stale = sqlx::query_scalar::<_, String>(
+            "SELECT ref_name FROM session_checkpoints WHERE session_id = ? \
+             ORDER BY sequence DESC LIMIT -1 OFFSET ?",
+        )
+        .bind(session_id)
+        .bind(keep as i64)
+        .fetch_all(self.pool)
+        .await?;
+        if stale.is_empty() {
+            return Ok(stale);
+        }
+        sqlx::query(
+            "DELETE FROM session_checkpoints WHERE session_id = ? AND id IN (\
+               SELECT id FROM session_checkpoints WHERE session_id = ? \
+               ORDER BY sequence DESC LIMIT -1 OFFSET ?)",
+        )
+        .bind(session_id)
+        .bind(session_id)
+        .bind(keep as i64)
+        .execute(self.pool)
+        .await?;
+        Ok(stale)
     }
 }
 
@@ -237,5 +283,109 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, PersistError::InvalidCheckpointKind(_)));
+    }
+
+    #[tokio::test]
+    async fn prune_drops_oldest_and_returns_their_refs() {
+        let db = fixture().await;
+        db.checkpoints()
+            .insert(new_checkpoint("c0", "initial"))
+            .await
+            .unwrap();
+        for n in 1..5 {
+            db.checkpoints()
+                .insert(new_checkpoint(&format!("c{n}"), "turn"))
+                .await
+                .unwrap();
+        }
+
+        let stale = db.checkpoints().prune_for_session("s1", 2).await.unwrap();
+        assert_eq!(
+            stale,
+            vec![
+                "refs/ycode/checkpoints/s1/c2",
+                "refs/ycode/checkpoints/s1/c1",
+                "refs/ycode/checkpoints/s1/c0",
+            ],
+            "oldest three go, newest first in the returned list"
+        );
+
+        let left = db.checkpoints().refs_for_session("s1").await.unwrap();
+        assert_eq!(left.len(), 2);
+        let newest = db
+            .checkpoints()
+            .latest_for_session("s1")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(newest.id, "c4", "pruning never touches the newest");
+    }
+
+    #[tokio::test]
+    async fn prune_under_the_limit_is_a_no_op() {
+        let db = fixture().await;
+        db.checkpoints()
+            .insert(new_checkpoint("c0", "initial"))
+            .await
+            .unwrap();
+        let stale = db.checkpoints().prune_for_session("s1", 50).await.unwrap();
+        assert!(stale.is_empty());
+        assert_eq!(db.checkpoints().refs_for_session("s1").await.unwrap().len(), 1);
+    }
+
+    /// After pruning, the oldest surviving row is the new floor of the
+    /// timeline: `session_min_sequence` must track what actually remains in
+    /// the DB (not zero), because `has_previous` — and with it the review
+    /// UI's "can I diff this turn" decision — is derived from it.
+    #[tokio::test]
+    async fn list_reports_min_sequence_of_surviving_rows() {
+        let db = fixture().await;
+        db.checkpoints()
+            .insert(new_checkpoint("c0", "initial"))
+            .await
+            .unwrap();
+        for n in 1..5 {
+            db.checkpoints()
+                .insert(new_checkpoint(&format!("c{n}"), "turn"))
+                .await
+                .unwrap();
+        }
+
+        let listed = db.checkpoints().list_for_project("p1").await.unwrap();
+        assert!(listed.iter().all(|row| row.session_min_sequence == 0));
+
+        db.checkpoints().prune_for_session("s1", 2).await.unwrap();
+        let listed = db.checkpoints().list_for_project("p1").await.unwrap();
+        assert_eq!(listed.len(), 2);
+        assert!(
+            listed.iter().all(|row| row.session_min_sequence == 3),
+            "min sequence follows the oldest survivor, got {:?}",
+            listed
+                .iter()
+                .map(|r| (r.sequence, r.session_min_sequence))
+                .collect::<Vec<_>>()
+        );
+        // The oldest survivor has no lower-sequence row left to diff against.
+        let oldest = listed.iter().find(|r| r.sequence == 3).unwrap();
+        assert_eq!(oldest.sequence, oldest.session_min_sequence);
+        let newest = listed.iter().find(|r| r.sequence == 4).unwrap();
+        assert!(newest.sequence > newest.session_min_sequence);
+    }
+
+    /// `keep: 0` would otherwise wipe the timeline on every capture, leaving
+    /// the user with a review panel that is always empty.
+    #[tokio::test]
+    async fn prune_keeps_at_least_one() {
+        let db = fixture().await;
+        db.checkpoints()
+            .insert(new_checkpoint("c0", "initial"))
+            .await
+            .unwrap();
+        db.checkpoints()
+            .insert(new_checkpoint("c1", "turn"))
+            .await
+            .unwrap();
+        db.checkpoints().prune_for_session("s1", 0).await.unwrap();
+        assert_eq!(db.checkpoints().refs_for_session("s1").await.unwrap().len(), 1);
     }
 }
