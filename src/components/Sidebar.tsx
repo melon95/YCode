@@ -601,9 +601,10 @@ function SessionRowButton({
   onOpen: (row: MergedSession) => void;
 }) {
   const status = row.light ? statusFromLight(row.light) : "idle";
-  const stateLabel = row.light
-    ? SESSION_LIGHT_LABEL[row.light]
-    : "可恢复";
+  // 副行只标注仍需注意的状态(进行中 / 等你处理 / 出错)。「已结束」和
+  // 「可恢复」不写 —— 历史会话本来就都可以恢复,逐行重复只是噪音。
+  const activeLabel =
+    row.light && row.light !== "done" ? SESSION_LIGHT_LABEL[row.light] : null;
   // 焦点会话的背景高亮(预览稿 .sess.active)。琥珀指示条回答的是
   // 「在不在画布上」,这个背景回答的是「键盘现在打到谁」—— 两件事。
   const isActive = useStore((s) => row.live != null && s.activeId === row.live.id);
@@ -616,7 +617,7 @@ function SessionRowButton({
         (isActive ? " is-active" : "")
       }
       onClick={() => onOpen(row)}
-      title={`${row.title} · ${stateLabel}`}
+      title={activeLabel ? `${row.title} · ${activeLabel}` : row.title}
     >
       <span className="live-agent">
         <AgentIcon
@@ -629,8 +630,12 @@ function SessionRowButton({
       <span className="live-main">
         <span className="live-title">{row.title}</span>
         <span className="live-sub">
-          {stateLabel}
-          {" · "}
+          {activeLabel && (
+            <>
+              {activeLabel}
+              {" · "}
+            </>
+          )}
           {relativeTime(row.updatedAtMs)}
           {row.hasWorktree && (
             <span className="live-worktree" title="运行在独立的 git worktree 里">

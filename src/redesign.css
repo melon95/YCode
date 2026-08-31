@@ -1331,6 +1331,9 @@
   overflow-y: auto;
   min-height: 0;
 }
+/* 没有入场动画:动画期间(即使只做 opacity)整张卡会被提成独立合成层,
+   文件树这类大内容卡在 WKWebView 里异步分块光栅化,内容呈自上而下扫描式
+   出现。切项目会重挂面板、每次重播动画,这个代价付不起。 */
 .panel-card {
   display: flex;
   flex-direction: column;
@@ -1340,7 +1343,6 @@
   border-radius: 12px;
   background: var(--panel-sunken);
   overflow: hidden;
-  animation: card-in var(--t-slow) var(--ease-out);
 }
 .panel-card[hidden] { display: none; }
 /* Solo: the focused card takes the stack and its siblings shrink to their
