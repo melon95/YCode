@@ -1,0 +1,97 @@
+// Settings → 通用:启动行为与窗口。
+//
+// The window-position row is here rather than in 外观 for the same reason
+// 自动隐藏顶栏 moved out of it: both are about how the window behaves, not
+// how it looks. 外观 is themes and type sizes.
+
+import type { ConfigView, StartupModeView } from "../lib/types";
+import {
+  SettingCard,
+  SettingChip,
+  SettingChips,
+  SettingRow,
+  SettingToggle,
+  type ChipOption,
+} from "./ui/SettingControls";
+
+interface Props {
+  config: ConfigView;
+  onChange: (next: ConfigView) => void;
+}
+
+const STARTUP_OPTIONS: ReadonlyArray<ChipOption<StartupModeView>> = [
+  { value: "resume", label: "智能恢复" },
+  { value: "overview", label: "项目总览" },
+  { value: "blank", label: "空白" },
+];
+
+const LOCALE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
+  { value: "zh", label: "简体中文" },
+  {
+    value: "en",
+    label: "English",
+    disabledReason: "界面文案目前全部硬编码,还没有接入 i18n 框架",
+  },
+  {
+    value: "system",
+    label: "跟随系统",
+    disabledReason: "界面文案目前全部硬编码,还没有接入 i18n 框架",
+  },
+];
+
+export function GeneralSettings({ config, onChange }: Props) {
+  return (
+    <div className="settings-section">
+      <h2>通用</h2>
+      <p className="settings-lede">启动行为与窗口。</p>
+
+      <SettingCard>
+        <SettingRow
+          name="启动时打开"
+          desc="「智能恢复」= 上次留有活跃会话就直接回工作区,否则进项目总览"
+        >
+          <SettingChips
+            label="启动时打开"
+            options={STARTUP_OPTIONS}
+            value={config.startup}
+            onChange={(startup) => onChange({ ...config, startup })}
+          />
+        </SettingRow>
+
+        <SettingRow
+          name="记住窗口位置与大小"
+          desc="退出时记录,下次原样打开"
+        >
+          {/* Handled by tauri-plugin-window-state at the process level, with
+              no runtime switch to expose. Stating that it's on beats an
+              always-checked toggle that does nothing when you click it. */}
+          <SettingChip tone="on" title="由 tauri-plugin-window-state 在窗口关闭时写入">
+            已启用
+          </SettingChip>
+        </SettingRow>
+
+        <SettingRow name="自动隐藏顶栏" desc="鼠标移到窗口顶部时滑出">
+          <SettingToggle
+            label="自动隐藏顶栏"
+            checked={config.auto_hide_top_bar}
+            onChange={(auto_hide_top_bar) =>
+              onChange({ ...config, auto_hide_top_bar })
+            }
+          />
+        </SettingRow>
+
+        <SettingRow
+          name="界面语言"
+          pendingReason="界面文案目前全部硬编码为简体中文,还没有接入 i18n 框架"
+        >
+          <SettingChips
+            label="界面语言"
+            options={LOCALE_OPTIONS}
+            value="zh"
+            disabled
+          />
+        </SettingRow>
+      </SettingCard>
+    </div>
+  );
+}

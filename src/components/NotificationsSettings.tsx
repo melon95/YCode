@@ -1,354 +1,192 @@
-// Settings → Notifications: gates the global agent-turn-complete toast and
-// wires the per-agent CLI hook installers.
+// Settings → 通知:哪些事值得打断你。
 //
-// Two distinct sources of state:
+// This page used to also own the hook installers and MCP registration.
+// Those moved to 集成, where they belong: a hook is how ycode learns what an
+// agent is doing, and that drives the sidebar status lights whether or not
+// you ever want a toast. What's left here is purely "should this interrupt
+// me", which is the question the page's name asks.
 //
-// 1. `config.notifications` (staged in the parent ConfigView; saved on
-//    "Save"). Pure UI gating — enable/disable + only-when-unfocused.
-//
-// 2. Per-agent install state on disk (~/.claude/settings.json hook,
-//    ~/.codex/config.toml notify). Mutated immediately on button press
-//    via the backend's `agent_install_hook` / `agent_uninstall_hook`
-//    commands — these aren't undoable via "Cancel", so we treat them
-//    like the file-tree's add-folder button: side effect on click.
+// Both switches live in the staged `ConfigView` and apply on Save.
 
-import { useCallback, useEffect, useState } from "react";
-import { Button, toast } from "@heroui/react";
-import {
-  agentHookStatus,
-  agentInstallCodexChain,
-  agentInstallHook,
-  agentUninstallHook,
-  mcpInstall,
-  mcpStatus,
-  mcpUninstall,
-  testNotification,
-  type AgentPatchStatus,
-  type McpStatus,
-} from "../lib/ipc";
+import { toast } from "@heroui/react";
+import { testNotification } from "../lib/ipc";
 import type { ConfigView } from "../lib/types";
+import { StatusDot } from "./ui/StatusDot";
+import {
+  SettingAction,
+  SettingCard,
+  SettingChips,
+  SettingGroupLabel,
+  SettingNote,
+  SettingRow,
+  SettingToggle,
+  type ChipOption,
+} from "./ui/SettingControls";
 
 interface Props {
   config: ConfigView;
   onChange: (next: ConfigView) => void;
 }
 
-type AgentId = "claude" | "codex" | "gemini";
+/// The delivery switch is two booleans on the wire but one decision to the
+/// user, so it reads as one three-way picker.
+type Delivery = "always" | "unfocused" | "off";
 
-const AGENT_LABEL: Record<AgentId, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  gemini: "Gemini CLI",
-};
+const DELIVERY_OPTIONS: ReadonlyArray<ChipOption<Delivery>> = [
+  { value: "always", label: "总是" },
+  { value: "unfocused", label: "仅窗口失焦时" },
+  { value: "off", label: "关" },
+];
 
 export function NotificationsSettings({ config, onChange }: Props) {
-  // Mutating helpers for the staged config slice.
-  function set<K extends keyof ConfigView["notifications"]>(
-    key: K,
-    value: ConfigView["notifications"][K],
-  ) {
+  const { enabled, only_when_unfocused } = config.notifications;
+  const delivery: Delivery = !enabled
+    ? "off"
+    : only_when_unfocused
+      ? "unfocused"
+      : "always";
+
+  function setDelivery(next: Delivery) {
     onChange({
       ...config,
-      notifications: { ...config.notifications, [key]: value },
+      notifications: {
+        enabled: next !== "off",
+        // Keep the gate's stored value when switching off, so turning
+        // notifications back on restores the choice rather than resetting it.
+        only_when_unfocused: next === "off" ? only_when_unfocused : next === "unfocused",
+      },
     });
   }
 
-  const enabled = config.notifications.enabled;
-
   return (
-    <div className="appearance-settings">
-      <p className="settings-section-blurb">
-        Surface a system notification when an agent CLI finishes its turn so
-        you don't have to keep an eye on the terminal. Each agent installs a
-        small command in its own config (Claude <code>Stop</code> hook, Codex{" "}
-        <code>notify</code>) that pings YCode.
+    <div className="settings-section">
+      <h2>通知</h2>
+      <p className="settings-lede">
+        agent 回合结束时发一条系统通知,这样你不用一直盯着终端。事件来自
+        「集成」页配置的 hook。
       </p>
 
-      <Field
-        label="Enable notifications"
-        hint="Master switch. When off, agent CLI hooks still fire but YCode swallows the event."
-      >
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => set("enabled", e.target.checked)}
-        />
-      </Field>
-
-      <Field
-        label="Only when YCode is unfocused"
-        hint="If you keep YCode in the foreground, the terminal already shows the agent finishing — silence the toast in that case."
-      >
-        <input
-          type="checkbox"
-          checked={config.notifications.only_when_unfocused}
-          onChange={(e) => set("only_when_unfocused", e.target.checked)}
-          disabled={!enabled}
-        />
-      </Field>
-
-      <div className="field">
-        <Button
-          size="sm"
-          variant="outline"
-          isDisabled={!enabled}
-          onPress={() => {
-            testNotification()
-              .then(() => toast.success("Test notification fired"))
-              .catch((err) => toast.danger(`Test failed: ${err}`));
-          }}
+      <SettingGroupLabel>送达方式</SettingGroupLabel>
+      <SettingCard>
+        <SettingRow
+          name="系统通知"
+          desc="「仅窗口失焦时」= ycode 在前台时不打扰,因为终端里已经看得见"
         >
-          Send test notification
-        </Button>
-        <div className="field-hint">
-          On macOS this prompts for the system notification permission the
-          first time.
-        </div>
-      </div>
-
-      <hr style={{ border: "none", borderTop: "1px solid var(--rule)", margin: "8px 0" }} />
-
-      <p className="settings-section-blurb">
-        Per-agent hook installation. These edit files inside the agent's own
-        config dir; a one-shot backup is written next to each file the first
-        time we touch it (<code>.ycode.bak</code>).
-      </p>
-
-      <AgentRow agent="claude" />
-      <AgentRow agent="codex" />
-      <AgentRow agent="gemini" />
-
-      <hr style={{ border: "none", borderTop: "1px solid var(--rule)", margin: "8px 0" }} />
-
-      <p className="settings-section-blurb">
-        Project todo list over MCP. Registers the bundled <code>ycode-mcp</code>{" "}
-        server in the agent's config (Claude <code>~/.claude.json</code>, Codex{" "}
-        <code>~/.codex/config.toml</code>) so the model can read and edit the
-        current project's todos via <code>list_todos</code> / <code>add_todo</code>{" "}
-        / <code>update_todo</code> / <code>delete_todo</code>. The project is
-        inferred from the terminal — no project id needed.
-      </p>
-
-      <McpAgentRow agent="claude" />
-      <McpAgentRow agent="codex" />
-    </div>
-  );
-}
-
-interface McpAgentRowProps {
-  agent: "claude" | "codex";
-}
-
-function McpAgentRow({ agent }: McpAgentRowProps) {
-  const [status, setStatus] = useState<McpStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(() => {
-    mcpStatus(agent)
-      .then(setStatus)
-      .catch((err) => toast.danger(`${AGENT_LABEL[agent]} MCP status: ${err}`));
-  }, [agent]);
-
-  useEffect(refresh, [refresh]);
-
-  async function onInstall() {
-    setBusy(true);
-    try {
-      setStatus(await mcpInstall(agent));
-      toast.success(`${AGENT_LABEL[agent]} todo MCP registered`);
-    } catch (err) {
-      toast.danger(`Install failed: ${err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onUninstall() {
-    setBusy(true);
-    try {
-      setStatus(await mcpUninstall(agent));
-      toast.success(`${AGENT_LABEL[agent]} todo MCP removed`);
-    } catch (err) {
-      toast.danger(`Uninstall failed: ${err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="field">
-      <label className="field-label">
-        {AGENT_LABEL[agent]}
-        {status === "installed" && (
-          <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-            registered
-          </span>
-        )}
-      </label>
-      {status === null ? (
-        <div className="field-hint">Checking…</div>
-      ) : status === "installed" ? (
-        <Button size="sm" variant="ghost" onPress={onUninstall} isDisabled={busy}>
-          {busy ? "Removing…" : "Remove todo MCP"}
-        </Button>
-      ) : (
-        <Button size="sm" variant="primary" onPress={onInstall} isDisabled={busy}>
-          {busy ? "Registering…" : "Register todo MCP"}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-interface AgentRowProps {
-  agent: AgentId;
-}
-
-function AgentRow({ agent }: AgentRowProps) {
-  const [status, setStatus] = useState<AgentPatchStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(() => {
-    if (agent === "gemini") return; // unsupported in v1
-    setLoading(true);
-    agentHookStatus(agent)
-      .then(setStatus)
-      .catch((err) => toast.danger(`${AGENT_LABEL[agent]} status: ${err}`))
-      .finally(() => setLoading(false));
-  }, [agent]);
-
-  useEffect(refresh, [refresh]);
-
-  async function onInstall() {
-    setBusy(true);
-    try {
-      const next = await agentInstallHook(agent as "claude" | "codex");
-      setStatus(next);
-      if (next.agent === "codex" && next.kind === "conflict_user_set") {
-        toast.warning(
-          "Codex already has a notify command — leaving your config alone.",
-        );
-      } else {
-        toast.success(`${AGENT_LABEL[agent]} hook installed`);
-      }
-    } catch (err) {
-      toast.danger(`Install failed: ${err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onInstallChain() {
-    if (status?.agent !== "codex" || status.kind !== "conflict_user_set") return;
-    setBusy(true);
-    try {
-      const next = await agentInstallCodexChain(status.existing ?? []);
-      setStatus(next);
-      toast.success(`${AGENT_LABEL[agent]} hook installed on top of your notify`);
-    } catch (err) {
-      toast.danger(`Install failed: ${err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onUninstall() {
-    setBusy(true);
-    try {
-      const next = await agentUninstallHook(agent as "claude" | "codex");
-      setStatus(next);
-      toast.success(`${AGENT_LABEL[agent]} hook removed`);
-    } catch (err) {
-      toast.danger(`Uninstall failed: ${err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Gemini is the simplest case: no hook integration in v1.
-  if (agent === "gemini") {
-    return (
-      <div className="field">
-        <label className="field-label">{AGENT_LABEL[agent]}</label>
-        <div
-          className="field-hint"
-          title="Gemini CLI has no Claude-style Stop hook. Planned for a later release."
+          <SettingChips
+            label="系统通知"
+            options={DELIVERY_OPTIONS}
+            value={delivery}
+            onChange={setDelivery}
+          />
+        </SettingRow>
+        <SettingRow
+          name="发一条测试通知"
+          desc="macOS 上首次会弹出系统通知权限申请"
         >
-          Not supported in v1
-        </div>
-      </div>
-    );
-  }
-
-  const inner = (() => {
-    if (loading || !status) return <div className="field-hint">Checking…</div>;
-
-    if (status.agent === "codex" && status.kind === "conflict_user_set") {
-      const existing = status.existing ?? [];
-      return (
-        <>
-          <div className="field-hint">
-            You already set <code>notify</code> in <code>~/.codex/config.toml</code>:{" "}
-            <code>{existing.join(" ")}</code>. YCode can wrap it so both fire
-            on the same Codex event — Uninstall will restore your original.
-          </div>
-          <Button
-            size="sm"
-            variant="primary"
-            onPress={onInstallChain}
-            isDisabled={busy || existing.length === 0}
+          <SettingAction
+            label="发送测试通知"
+            disabled={!enabled}
+            onClick={() => {
+              testNotification()
+                .then(() => toast.success("测试通知已发送"))
+                .catch((err) => toast.danger(`发送失败:${err}`));
+            }}
           >
-            {busy ? "Installing…" : "Install on top of existing"}
-          </Button>
-        </>
-      );
-    }
+            <SendIcon />
+          </SettingAction>
+        </SettingRow>
+        <SettingRow
+          name="提示音"
+          desc="通知送达时播放的声音"
+          pendingReason="提示音播放未实现"
+        >
+          <SettingChips
+            label="提示音"
+            options={[
+              { value: "none", label: "无" },
+              { value: "soft", label: "轻柔" },
+              { value: "loud", label: "明显" },
+            ]}
+            value="none"
+            disabled
+          />
+        </SettingRow>
+        <SettingRow
+          name="Dock 角标显示待处理数"
+          desc="等待授权的会话数显示在应用图标上"
+          pendingReason="Dock 角标需要接入 macOS badge API,未实现"
+        >
+          <SettingToggle
+            label="Dock 角标显示待处理数"
+            checked={false}
+            disabled
+          />
+        </SettingRow>
+      </SettingCard>
 
-    if (status.kind === "installed") {
-      return (
-        <Button size="sm" variant="ghost" onPress={onUninstall} isDisabled={busy}>
-          {busy ? "Removing…" : "Remove hook"}
-        </Button>
-      );
-    }
+      <SettingGroupLabel>触发时机</SettingGroupLabel>
+      <SettingCard>
+        <SettingRow
+          name={<><StatusDot status="done" /> 回合完成</>}
+          desc="agent 结束一轮并把控制权交回给你"
+        >
+          <SettingToggle label="回合完成" checked={enabled} disabled />
+        </SettingRow>
+        <SettingRow
+          name={<><StatusDot status="blocked" /> 需要你授权</>}
+          desc="agent 停下来等确认 —— 最值得立刻知道"
+          pendingReason="需要 PreToolUse hook 才能区分「等授权」和「回合结束」,见 docs/agent-hook-integration-spec.md"
+        >
+          <SettingToggle label="需要你授权" checked={false} disabled />
+        </SettingRow>
+        <SettingRow
+          name={<><StatusDot status="error" /> 运行出错</>}
+          desc="agent 进程非正常退出"
+          pendingReason="退出码目前只反映在会话状态点上,还没有接到通知里"
+        >
+          <SettingToggle label="运行出错" checked={false} disabled />
+        </SettingRow>
+      </SettingCard>
+      <SettingNote>
+        目前只有「回合完成」有事件来源 —— 它就是 hook 报告的那一个事件,
+        所以它跟着上面的总开关走,没有单独的开关。
+      </SettingNote>
 
-    return (
-      <Button size="sm" variant="primary" onPress={onInstall} isDisabled={busy}>
-        {busy ? "Installing…" : "Install hook"}
-      </Button>
-    );
-  })();
-
-  return (
-    <div className="field">
-      <label className="field-label">
-        {AGENT_LABEL[agent]}
-        {status?.kind === "installed" && (
-          <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-            installed
-          </span>
-        )}
-      </label>
-      {inner}
+      <SettingGroupLabel>免打扰</SettingGroupLabel>
+      <SettingCard>
+        <SettingRow
+          name="跟随系统专注模式"
+          desc="开启专注模式时不发通知"
+          pendingReason="macOS 没有公开的专注模式查询接口,需要另找办法"
+        >
+          <SettingToggle label="跟随系统专注模式" checked={false} disabled />
+        </SettingRow>
+        <SettingRow
+          name="同一会话最短间隔"
+          desc="避免连续回合刷屏"
+          pendingReason="需要按会话做节流,尚未实现"
+        >
+          <SettingChips
+            label="同一会话最短间隔"
+            options={[
+              { value: "off", label: "关" },
+              { value: "30s", label: "30 秒" },
+              { value: "2m", label: "2 分钟" },
+            ]}
+            value="off"
+            disabled
+          />
+        </SettingRow>
+      </SettingCard>
     </div>
   );
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function SendIcon() {
   return (
-    <div className="field">
-      <label className="field-label">{label}</label>
-      {hint && <div className="field-hint">{hint}</div>}
-      {children}
-    </div>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M22 2 11 13" />
+      <path d="M22 2l-7 20-4-9-9-4z" />
+    </svg>
   );
 }

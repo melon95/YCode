@@ -38,16 +38,16 @@ export function UsageSettings() {
   }, []);
 
   if (loading) {
-    return <div className="settings-loading">Crunching session logs…</div>;
+    return <div className="settings-loading">正在统计会话日志…</div>;
   }
   if (error) {
-    return <div className="usage-empty">Failed to load usage: {error}</div>;
+    return <div className="usage-empty">读取用量失败:{error}</div>;
   }
   if (!usage || usage.sessions.length === 0) {
     return (
       <div className="usage-empty">
-        No agent usage found yet. Run Claude Code or Codex in one of your
-        projects and it'll show up here.
+        还没有可统计的用量。在任意项目里跑一次 Claude Code 或 Codex,
+        数据就会出现在这里。
       </div>
     );
   }
@@ -97,32 +97,31 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
 
   return (
     <div className="usage-root">
-      <p className="settings-section-blurb">
-        Token usage and estimated cost across all your projects, read from each
-        agent's own session logs. Costs are offline estimates for known model
-        families.
+      <p className="settings-lede">
+        跨全部项目的 token 用量与费用估算,数据来自各 agent 自己的会话日志。
+        费用是对已知模型系列的离线估算,仅供参考。
       </p>
 
       {/* ── Part 1: summary across every project ───────────────────────── */}
       <div className="usage-cards">
-        <UsageCard label="Estimated cost" value={fmtCost(usage.total_cost_usd)} primary />
-        <UsageCard label="Total tokens" value={fmtCompact(totals.total)} />
-        <UsageCard label="Sessions" value={`${usage.sessions.length}`} />
+        <UsageCard label="费用估算" value={fmtCost(usage.total_cost_usd)} primary />
+        <UsageCard label="总 token" value={fmtCompact(totals.total)} />
+        <UsageCard label="会话数" value={`${usage.sessions.length}`} />
       </div>
 
       <div className="usage-breakdown">
-        <BreakdownChip label="Input" value={totals.input} />
-        <BreakdownChip label="Output" value={totals.output} />
-        <BreakdownChip label="Cache write" value={totals.cache_creation} />
-        <BreakdownChip label="Cache read" value={totals.cache_read} />
+        <BreakdownChip label="输入" value={totals.input} />
+        <BreakdownChip label="输出" value={totals.output} />
+        <BreakdownChip label="缓存写入" value={totals.cache_creation} />
+        <BreakdownChip label="缓存读取" value={totals.cache_read} />
         {totals.reasoning > 0 && (
-          <BreakdownChip label="Reasoning" value={totals.reasoning} />
+          <BreakdownChip label="推理" value={totals.reasoning} />
         )}
       </div>
 
       {usage.by_project.length > 0 && (
         <section className="usage-block">
-          <h3 className="usage-block-title">By project</h3>
+          <h3 className="usage-block-title">按项目</h3>
           <div className="usage-projects">
             {usage.by_project.map((p) => {
               const ref = maxProjectCost > 0 ? maxProjectCost : 1;
@@ -155,7 +154,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
       {/* ── Part 2: detail, scoped via the tab selector ────────────────── */}
       <div className="usage-detail">
         <div className="usage-detail-head">
-          <h3 className="usage-block-title">Details</h3>
+          <h3 className="usage-block-title">明细</h3>
           <div className="usage-scope" role="tablist">
             <button
               type="button"
@@ -185,7 +184,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
         </div>
 
         {detailLoading || !scope ? (
-          <div className="settings-loading">Crunching session logs…</div>
+          <div className="settings-loading">正在统计会话日志…</div>
         ) : (
           <UsageDetail usage={scope} showSessions={selected != null} />
         )}
@@ -245,7 +244,7 @@ function UsageDetail({
     <>
       {days.length > 1 && (
         <section className="usage-block">
-          <h3 className="usage-block-title">Daily</h3>
+          <h3 className="usage-block-title">按天</h3>
           <div className="usage-daybars">
             {days.map((d) => {
               const ref = maxDayCost > 0 ? maxDayCost : maxDayTokens;
@@ -273,7 +272,7 @@ function UsageDetail({
 
       {usage.by_model.length > 0 && (
         <section className="usage-block">
-          <h3 className="usage-block-title">By model</h3>
+          <h3 className="usage-block-title">按模型</h3>
           <div className="usage-models">
             {usage.by_model.map((m) => (
               <div className="usage-model-row" key={m.model}>
@@ -291,7 +290,7 @@ function UsageDetail({
       {showSessions && sessionGroups.length > 0 && activeGroup && (
         <section className="usage-block">
           <div className="usage-sessions-head">
-            <h3 className="usage-block-title">Sessions</h3>
+            <h3 className="usage-block-title">会话</h3>
             <div className="usage-agent-tabs" role="tablist" aria-label="Agent CLI">
               {sessionGroups.map((g) => {
                 const meta = agentMeta(g.agent);
@@ -312,7 +311,7 @@ function UsageDetail({
                     />
                     <span className="usage-agent-tab-label">{meta.label}</span>
                     <span className="usage-agent-tab-meta">
-                      {g.sessions.length} · {fmtCompact(g.tokens)} tokens
+                      {g.sessions.length} 个 · {fmtCompact(g.tokens)} token
                     </span>
                   </button>
                 );
@@ -321,11 +320,11 @@ function UsageDetail({
           </div>
           <div className="usage-table">
             <div className="usage-tr usage-th">
-              <span>Session</span>
-              <span>Model</span>
-              <span className="usage-num">Tokens</span>
-              <span className="usage-num">Cost</span>
-              <span className="usage-num">Last active</span>
+              <span>会话</span>
+              <span>模型</span>
+              <span className="usage-num">Token</span>
+              <span className="usage-num">费用</span>
+              <span className="usage-num">最近活动</span>
             </div>
             {activeGroup.sessions.map((s) => (
               <div className="usage-tr" key={s.jsonl_path}>
@@ -388,7 +387,7 @@ function agentMeta(agent: string): { label: string; icon: string } {
     case "gemini":
       return { label: "Gemini CLI", icon: "GeminiCLI" };
     default:
-      return { label: agent || "Unknown", icon: agent };
+      return { label: agent || "未知", icon: agent };
   }
 }
 

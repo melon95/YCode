@@ -8,6 +8,17 @@ vi.mock("../lib/ipc", () => ({
   getConfig: vi.fn(),
   resetConfig: vi.fn(),
   saveConfig: vi.fn(),
+  // Agent 目录的 PATH 探测:测试环境里什么都探不到,「已检测到」分组不出现。
+  probeCommand: vi.fn(() => Promise.resolve(false)),
+  // 「集成」角标的轻量状态查询。都返回已接入 → 角标不出现,
+  // 各条测试不用惦记它。
+  cliStatus: vi.fn(() =>
+    Promise.resolve({ kind: "installed", path: "/usr/local/bin/ycode", target: "/x" }),
+  ),
+  agentHookStatus: vi.fn(() =>
+    Promise.resolve({ agent: "codex", kind: "installed" }),
+  ),
+  mcpStatus: vi.fn(() => Promise.resolve("installed")),
 }));
 vi.mock("../lib/confirm", () => ({ confirmDialog: vi.fn(() => true) }));
 vi.mock("./AgentIcon", () => ({
@@ -47,6 +58,14 @@ const config: ConfigView = {
   notifications: { enabled: true, only_when_unfocused: true },
   theme: "atelier",
   auto_hide_top_bar: false,
+  startup: "resume",
+  worktree: {
+    isolate_by_default: false,
+    branch_prefix: "ycode/",
+    close_action: "ask",
+  },
+  checkpoints: { enabled: true, keep: 50 },
+  session_open_mode: "replace_focused",
 };
 
 describe("SettingsScreen", () => {
@@ -60,27 +79,61 @@ describe("SettingsScreen", () => {
     vi.clearAllMocks();
   });
 
-  it("renders as a standalone settings workspace and switches sections", async () => {
+  it("renders as a dialog over the workspace and switches sections", async () => {
     render(<SettingsScreen onClose={vi.fn()} />);
 
-    expect(await screen.findByRole("heading", { name: "Settings" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Back to workspace" })).toBeVisible();
-    expect(screen.getByText("1 configured")).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "设置" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "关闭设置" })).toBeVisible();
+    expect(screen.getByText("已配置 · 1")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    fireEvent.click(screen.getByRole("button", { name: "外观" }));
     expect(screen.getByText("Appearance panel")).toBeVisible();
   });
 
-  it("stages catalog edits and saves them through the existing config flow", async () => {
+  // Was driven by the "add Gemini CLI" button in the known-agent catalogue.
+  // That catalogue is gone (a static list of thirteen mostly-uninstalled
+  // CLIs), so the same staging path is exercised through the custom form —
+  // which is now the only way to add one.
+  it("stages a custom agent and saves it through the existing config flow", async () => {
     const onClose = vi.fn();
     render(<SettingsScreen onClose={onClose} />);
 
-    fireEvent.click(await screen.findByTitle("Add Gemini CLI"));
-    expect(screen.getByText("Unsaved changes")).toBeVisible();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "添加自定义 agent" }),
+    );
+    fireEvent.change(screen.getByLabelText("命令"), {
+      target: { value: "gemini" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认添加" }));
+    expect(screen.getByText("有未保存的更改")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(saveConfig).mock.calls[0][0].agents).toHaveLength(2);
+    const savedAgents = vi.mocked(saveConfig).mock.calls[0][0].agents;
+    expect(savedAgents).toHaveLength(2);
+    // gemini 没有对应的 introspect 解析器,保持 null。
+    expect(savedAgents[1].introspect).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // 用户删掉默认的 Claude Code 配置后再手动加回来时,introspect 绑定
+  // 必须按命令名自动补上 —— 否则 transcript 历史与 resume 都会失效。
+  it("re-adding claude by command restores its introspect binding", async () => {
+    render(<SettingsScreen onClose={vi.fn()} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "添加自定义 agent" }),
+    );
+    fireEvent.change(screen.getByLabelText("命令"), {
+      target: { value: "claude" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认添加" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
+    const savedAgents = vi.mocked(saveConfig).mock.calls[0][0].agents;
+    expect(savedAgents).toHaveLength(2);
+    expect(savedAgents[1].command).toBe("claude");
+    expect(savedAgents[1].introspect).toBe("claude");
   });
 });

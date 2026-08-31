@@ -1,24 +1,51 @@
-// Settings → Appearance: theme picker, top-bar behavior, font-size editor.
+// Settings → 外观:主题与字号。
+//
+// The top-bar toggle used to live here; it moved to 通用 because hiding a
+// bar is window behaviour, not a look. What's left is genuinely visual.
 //
 // Parent owns the staged ConfigView; this component just nudges the
-// `theme` / `auto_hide_top_bar` / `font_sizes` slices via `onChange`. Font
-// sizes and the top-bar toggle are applied on Save (the actual CSS-var /
-// xterm fit happens in App.tsx, EditorPanel,
+// `theme` / `font_sizes` slices via `onChange`. Font sizes apply on Save
+// (the actual CSS-var / xterm fit happens in App.tsx, EditorPanel,
 // TerminalPane, ManualTerminal). Theme is *live-previewed* — clicking a
 // card writes through to the store immediately so the user sees what
 // they're picking. SettingsModal reverts the preview when the dialog is
 // closed without saving.
 
 import type { ConfigView, FontSizesView } from "../lib/types";
-import { FONT_SIZE_MAX, FONT_SIZE_MIN, useStore } from "../lib/store";
-import { THEMES, type Theme, type ThemeMode } from "../lib/themes";
+import { useStore } from "../lib/store";
+import {
+  getTheme,
+  MODE_THEME_ID,
+  prefersDark,
+  SYSTEM_THEME_ID,
+  themeChoice,
+  type Theme,
+} from "../lib/themes";
+import {
+  SettingCard,
+  SettingChip,
+  SettingChips,
+  SettingGroupLabel,
+  SettingRow,
+  type ChipOption,
+} from "./ui/SettingControls";
 
-// Themes split into Light / Dark lanes (Light first) so the picker reads as
-// two short lists instead of one long mixed grid. Order within each lane
-// follows the registry's declaration order.
-const THEME_GROUPS: Array<{ mode: ThemeMode; label: string }> = [
-  { mode: "light", label: "Light" },
-  { mode: "dark", label: "Dark" },
+// Three cards, matching the preview. The registry still ships ten themes and
+// a config naming any of them still loads — but ten swatches asked the user
+// to pick between five greys, which is a decision the app should be making
+// for them. 跟随系统 previews whichever side the OS is on right now.
+const CHOICES: Array<{
+  choice: "light" | "dark" | "system";
+  label: string;
+  preview: () => Theme;
+}> = [
+  { choice: "light", label: "浅色", preview: () => getTheme(MODE_THEME_ID.light) },
+  { choice: "dark", label: "深色", preview: () => getTheme(MODE_THEME_ID.dark) },
+  {
+    choice: "system",
+    label: "跟随系统",
+    preview: () => getTheme(MODE_THEME_ID[prefersDark() ? "dark" : "light"]),
+  },
 ];
 
 interface Props {
@@ -31,30 +58,53 @@ type Lane = keyof FontSizesView;
 const LANES: Array<{ key: Lane; label: string; hint: string }> = [
   {
     key: "ui",
-    label: "UI",
-    hint: "Sidebar history, file tree, right-pane tab strip.",
+    label: "界面",
+    hint: "侧边栏、文件树、右栏标签条",
   },
   {
     key: "editor",
-    label: "Editor",
-    hint: "CodeMirror code editor in the right pane.",
+    label: "编辑器",
+    hint: "右栏的 CodeMirror 代码编辑器",
   },
   {
     key: "terminal",
-    label: "Terminal",
-    hint: "Main terminal in the middle pane and the right-pane shell.",
+    label: "终端",
+    hint: "中栏的 agent 终端与右栏的手动终端",
   },
 ];
+
+/// The same four steps the terminal page offers. A numeric input let you
+/// type 9 or 40 and then wonder why the app looked broken; the sizes people
+/// actually want are a short list.
+const SIZE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
+  { value: "12", label: "12" },
+  { value: "13", label: "13" },
+  { value: "14", label: "14" },
+  { value: "15", label: "15" },
+];
+
+/// store 仍接受 8–32,老配置里可能存着 16 这类不在预设里的值。直接渲染
+/// 四个预设会让当前值既不可见也没有选中态,一碰就被压回 12–15。所以当
+/// 前值不在预设里时,在末尾追加一个「16(当前)」chip 保住它 —— 只有
+/// 用户主动点了别的 chip 才切换,不静默丢值。
+function sizeOptionsFor(current: number): ReadonlyArray<ChipOption<string>> {
+  const value = String(current);
+  if (SIZE_OPTIONS.some((o) => o.value === value)) return SIZE_OPTIONS;
+  return [...SIZE_OPTIONS, { value, label: `${value}(当前)` }];
+}
 
 export function AppearanceSettings({ config, onChange }: Props) {
   const setTheme = useStore((s) => s.setTheme);
 
-  function pickTheme(theme: Theme) {
-    onChange({ ...config, theme: theme.id });
+  const choice = themeChoice(config.theme);
+
+  function pick(next: "light" | "dark" | "system") {
+    const id = next === "system" ? SYSTEM_THEME_ID : MODE_THEME_ID[next];
+    onChange({ ...config, theme: id });
     // Live-preview through the store so the chrome and xterm panes re-skin
     // immediately. SettingsModal's discard path reverts this if the user
     // bails without saving.
-    setTheme(theme.id);
+    setTheme(id);
   }
 
   function setLane(lane: Lane, raw: string) {
@@ -72,85 +122,95 @@ export function AppearanceSettings({ config, onChange }: Props) {
   }
 
   return (
-    <div className="appearance-settings">
-      <section className="appearance-section">
-        <h3 className="appearance-section-title">Theme</h3>
-        <p className="settings-section-blurb">
-          Switches the chrome palette and the xterm color table in one move.
-          Selection is previewed live; close without saving to revert.
-        </p>
-        {THEME_GROUPS.map((group) => {
-          const themes = THEMES.filter((t) => t.mode === group.mode);
-          if (themes.length === 0) return null;
-          return (
-            <div className="theme-group" key={group.mode}>
-              <div className="theme-group-label">{group.label}</div>
-              <div className="theme-grid">
-                {themes.map((theme) => (
-                  <ThemeCard
-                    key={theme.id}
-                    theme={theme}
-                    selected={config.theme === theme.id}
-                    onSelect={() => pickTheme(theme)}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </section>
+    <div className="settings-section">
+      <h2>外观</h2>
+      <p className="settings-lede">
+        主题会同时换掉界面配色和终端的 xterm 色表。选中即时预览,不保存直接关闭
+        就还原。
+      </p>
 
-      <section className="appearance-section">
-        <h3 className="appearance-section-title">Top bar</h3>
-        <p className="settings-section-blurb">
-          The top bar holds the project tabs, search, and this settings gear.
-        </p>
-        <Field
-          label="Auto-hide the top bar"
-          hint="Collapses the bar and hands its 44px to the workspace. Move the pointer to the very top of the window to slide it back over the content. ⌘K and ⌘O keep working while it's hidden."
-        >
-          <input
-            type="checkbox"
-            checked={config.auto_hide_top_bar}
-            onChange={(e) =>
-              onChange({ ...config, auto_hide_top_bar: e.target.checked })
-            }
+      <SettingGroupLabel>主题</SettingGroupLabel>
+      <div className="theme-grid theme-grid-modes">
+        {CHOICES.map((c) => (
+          <ThemeCard
+            key={c.choice}
+            label={c.label}
+            theme={c.preview()}
+            split={c.choice === "system"}
+            selected={choice === c.choice}
+            onSelect={() => pick(c.choice)}
           />
-        </Field>
-      </section>
-
-      <section className="appearance-section">
-        <h3 className="appearance-section-title">Font sizes</h3>
-        <p className="settings-section-blurb">
-          Font sizes apply on Save. The terminal lane re-fits its grid and
-          resizes the running PTY in one go — no per-keystroke lag.
-        </p>
-        {LANES.map((lane) => (
-          <Field key={lane.key} label={lane.label} hint={lane.hint}>
-            <input
-              type="number"
-              className="native-input"
-              min={FONT_SIZE_MIN}
-              max={FONT_SIZE_MAX}
-              value={config.font_sizes[lane.key]}
-              onChange={(e) => setLane(lane.key, e.target.value)}
-            />
-          </Field>
         ))}
-      </section>
+      </div>
+
+      <SettingGroupLabel className="settings-group-gap">布局</SettingGroupLabel>
+      <SettingCard>
+        <SettingRow
+          name="界面密度"
+          desc="紧凑挤进更多会话行,宽松留更多呼吸空间"
+          pendingReason="密度令牌未接入,全局间距目前固定"
+        >
+          <SettingChips
+            label="界面密度"
+            options={[
+              { value: "compact", label: "紧凑" },
+              { value: "standard", label: "标准" },
+              { value: "relaxed", label: "宽松" },
+            ]}
+            value="standard"
+            disabled
+          />
+        </SettingRow>
+      </SettingCard>
+
+      <SettingGroupLabel className="settings-group-gap">字号</SettingGroupLabel>
+      <SettingCard>
+        {LANES.map((lane) => (
+          <SettingRow key={lane.key} name={lane.label} desc={lane.hint}>
+            <SettingChips
+              label={`${lane.label}字号`}
+              options={sizeOptionsFor(config.font_sizes[lane.key])}
+              value={String(config.font_sizes[lane.key])}
+              onChange={(v) => setLane(lane.key, v)}
+            />
+          </SettingRow>
+        ))}
+      </SettingCard>
+      <p className="settings-note">
+        字号在保存时生效。终端会重新计算网格并同步调整正在运行的 PTY,
+        不会逐字卡顿。
+      </p>
+
+      <SettingGroupLabel>动效</SettingGroupLabel>
+      <SettingCard>
+        <SettingRow
+          name="减少动态效果"
+          desc="跟随系统的辅助功能设置,开启后状态点不再呼吸、弹层不再位移"
+        >
+          <SettingChip tone="on" title="通过 prefers-reduced-motion 媒体查询生效">
+            跟随系统
+          </SettingChip>
+        </SettingRow>
+      </SettingCard>
     </div>
   );
 }
 
-// Mini swatch + name card. The four color dots come straight out of the
-// registry — no curated "marketing" preview — so adding a theme to
-// `themes.ts` automatically gives it a card with no extra plumbing.
+/// A mock window in the theme's own colours. The card is named for the
+/// *choice* (浅色 / 深色 / 跟随系统) rather than the theme's brand name —
+/// which theme backs each mode is an implementation detail now.
 function ThemeCard({
   theme,
+  label,
+  split,
   selected,
   onSelect,
 }: {
   theme: Theme;
+  label: string;
+  /// The 跟随系统 card, which says what the OS currently resolves to instead
+  /// of pretending to be a fixed palette.
+  split?: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -169,7 +229,7 @@ function ThemeCard({
     >
       {selected && (
         <span className="theme-card-active-pill" aria-hidden>
-          Active
+          当前
         </span>
       )}
       <div
@@ -201,8 +261,10 @@ function ThemeCard({
         </div>
       </div>
       <div className="theme-card-label">
-        <span className="theme-card-name">{theme.label}</span>
-        <span className="theme-card-mode">{theme.mode}</span>
+        <span className="theme-card-name">{label}</span>
+        <span className="theme-card-mode">
+          {split ? (theme.mode === "dark" ? "当前:深色" : "当前:浅色") : ""}
+        </span>
       </div>
       <div className="theme-card-swatches" aria-hidden>
         {swatches.map((c, i) => (
@@ -214,23 +276,5 @@ function ThemeCard({
         ))}
       </div>
     </button>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="field">
-      <label className="field-label">{label}</label>
-      {hint && <div className="field-hint">{hint}</div>}
-      {children}
-    </div>
   );
 }

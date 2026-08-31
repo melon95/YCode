@@ -1,164 +1,63 @@
-// Agents settings: a single list of configured agents (added from the
-// catalog) plus the catalog to add more. Agents are catalog-defined — id,
-// command, args, env, introspect and icon all come from the built-in profile,
-// so there's no per-agent detail editor: the panel just lists what's installed
-// and lets you add/remove. Holds no IPC state of its own — the parent owns the
-// staged ConfigView and we mutate via `onChange`.
+// Agents settings: what's configured, plus a way to add any CLI by name.
+//
+// There used to be a second card listing thirteen known agents to add from.
+// It was a static list, not a scan — it advertised Goose and Kilo Code to
+// people who had neither installed, and the two that ship by default were
+// already configured, so the whole block was noise. 现在的「已检测到」分组
+// 是真正的扫描:对一小份已知 agent CLI 名单逐个跑 `probe_command`(即
+// `which`),只列出 PATH 里确实存在、且尚未配置的那些。
+//
+// Holds no IPC state of its own for the config — the parent owns the staged
+// ConfigView and we mutate via `onChange`. The PATH probe is read-only.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { probeCommand } from "../lib/ipc";
 import type { AgentLaunchProfileView, ConfigView } from "../lib/types";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { AgentIcon } from "./AgentIcon";
-
-const KNOWN_AGENTS: AgentLaunchProfileView[] = [
-  {
-    id: "claude-code",
-    display_name: "Claude Code",
-    command: "claude",
-    args: [],
-    env: {},
-    icon: "ClaudeCode",
-    icon_variant: null,
-    color: null,
-    introspect: "claude",
-  },
-  {
-    id: "codex",
-    display_name: "Codex",
-    command: "codex",
-    args: [],
-    env: {},
-    icon: "Codex",
-    icon_variant: null,
-    color: null,
-    introspect: "codex",
-  },
-  {
-    id: "gemini-cli",
-    display_name: "Gemini CLI",
-    command: "gemini",
-    args: [],
-    env: {},
-    icon: "GeminiCLI",
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "opencode",
-    display_name: "OpenCode",
-    command: "opencode",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "cursor-agent",
-    display_name: "Cursor Agent",
-    command: "cursor-agent",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "qwen-code",
-    display_name: "Qwen Code",
-    command: "qwen",
-    args: [],
-    env: {},
-    icon: "Qwen",
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "goose",
-    display_name: "Goose",
-    command: "goose",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "kilo-code",
-    display_name: "Kilo Code",
-    command: "kilo",
-    args: [],
-    env: {},
-    icon: "KiloCode",
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "copilot",
-    display_name: "GitHub Copilot",
-    command: "copilot",
-    args: [],
-    env: {},
-    icon: "GithubCopilot",
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "aider",
-    display_name: "Aider",
-    command: "aider",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "amp",
-    display_name: "Amp",
-    command: "amp",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "crush",
-    display_name: "Crush",
-    command: "crush",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-  {
-    id: "plandex",
-    display_name: "Plandex",
-    command: "plandex",
-    args: [],
-    env: {},
-    icon: null,
-    icon_variant: null,
-    color: null,
-    introspect: null,
-  },
-];
+import {
+  SettingAction,
+  SettingCard,
+  SettingChip,
+  SettingGroupLabel,
+  SettingRow,
+  SettingValue,
+} from "./ui/SettingControls";
 
 interface Props {
   config: ConfigView;
   onChange: (next: ConfigView) => void;
+}
+
+/// 已知的 agent CLI 名单,用来做 PATH 探测。只包含「装了它就八成想接进来」
+/// 的独立 CLI —— 探测是逐个 `which`,名单短一点,页面打开时的开销就小一点。
+/// `icon` 必须是 AgentIcon 白名单里的 key,不在白名单会退回首字母占位。
+const KNOWN_AGENTS: ReadonlyArray<{
+  command: string;
+  displayName: string;
+  icon: string | null;
+}> = [
+  { command: "gemini", displayName: "Gemini CLI", icon: "GeminiCLI" },
+  { command: "cursor-agent", displayName: "Cursor Agent", icon: null },
+  { command: "aider", displayName: "Aider", icon: null },
+  { command: "goose", displayName: "Goose", icon: null },
+];
+
+/// 命令名 → introspect 解析器 id。合法取值以 `ycode-introspect` crate 里
+/// 实现的解析器为准(目前只有 "claude" 与 "codex",见 crate 的
+/// `AgentKind` 注释与 ycode-config 的默认配置)。用户删掉默认的
+/// Claude Code / Codex 配置后再手动加回来时,靠这份映射把 introspect
+/// 绑定补回去 —— 否则 transcript 历史与 resume 都会失效。
+const INTROSPECT_BY_COMMAND: Readonly<Record<string, string>> = {
+  claude: "claude",
+  codex: "codex",
+};
+
+/// 按命令的 basename 推断 introspect id;比如 `/usr/local/bin/claude`
+/// 也能匹配上。没有对应解析器的命令返回 null。
+function introspectFor(command: string): string | null {
+  const base = command.split("/").pop() ?? command;
+  return INTROSPECT_BY_COMMAND[base] ?? null;
 }
 
 export function AgentsSettings({ config, onChange }: Props) {
@@ -168,9 +67,28 @@ export function AgentsSettings({ config, onChange }: Props) {
   const [customName, setCustomName] = useState("");
   const [customCommand, setCustomCommand] = useState("");
 
-  function addKnownAgent(template: AgentLaunchProfileView) {
-    onChange({ ...config, agents: [...config.agents, cloneAgent(template)] });
-  }
+  // PATH 里探测到的已知 agent 命令集合;`null` 表示还在扫。只扫一次 ——
+  // PATH 在应用运行期间基本不会变,变了重开设置页即可。
+  const [detected, setDetected] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      KNOWN_AGENTS.map((k) =>
+        probeCommand(k.command)
+          .then((ok) => (ok ? k.command : null))
+          // 探测失败(比如测试环境没有 Tauri)按「没找到」处理,
+          // 不让整个分组因此报错。
+          .catch(() => null),
+      ),
+    ).then((hits) => {
+      if (cancelled) return;
+      setDetected(new Set(hits.filter((c): c is string => c !== null)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function deleteAgent(idx: number) {
     const agents = config.agents.slice();
@@ -179,6 +97,32 @@ export function AgentsSettings({ config, onChange }: Props) {
   }
 
   const configuredIds = new Set(config.agents.map((a) => a.id));
+  // 排除已配置的按命令比,而不是按 id —— 用户自定义添加的 gemini 可能有
+  // 任意 id,但命令相同就不该再在「已检测到」里重复出现。
+  const configuredCommands = new Set(config.agents.map((a) => a.command));
+  const detectedRows =
+    detected === null
+      ? null
+      : KNOWN_AGENTS.filter(
+          (k) => detected.has(k.command) && !configuredCommands.has(k.command),
+        );
+
+  /// 把探测到的 agent 一键加进已配置分组。走同一条 staged-config 路径,
+  /// 保存时才落盘。
+  function addDetected(k: (typeof KNOWN_AGENTS)[number]) {
+    const agent: AgentLaunchProfileView = {
+      id: uniqueId(kebab(k.command), configuredIds),
+      display_name: k.displayName,
+      command: k.command,
+      args: [],
+      env: {},
+      icon: k.icon,
+      icon_variant: null,
+      color: null,
+      introspect: introspectFor(k.command),
+    };
+    onChange({ ...config, agents: [...config.agents, agent] });
+  }
 
   function confirmCustom() {
     const command = customCommand.trim();
@@ -194,7 +138,7 @@ export function AgentsSettings({ config, onChange }: Props) {
       icon: null,
       icon_variant: null,
       color: null,
-      introspect: null,
+      introspect: introspectFor(command),
     };
     onChange({ ...config, agents: [...config.agents, agent] });
     setCustomName("");
@@ -211,136 +155,174 @@ export function AgentsSettings({ config, onChange }: Props) {
   // Let Escape close the inline editor before the settings workspace itself.
   useEscapeGuard(cancelCustom, adding);
 
-  const availableAgents = KNOWN_AGENTS.filter(
-    (agent) => !configuredIds.has(agent.id),
-  );
-
   return (
-    <div className="agents-settings">
-      <header className="settings-pane-heading">
-        <h2>Agents</h2>
-        <p>Choose which coding agents are available when starting a session.</p>
-        <span>
-          {config.agents.length} configured
-        </span>
-      </header>
+    <div className="settings-section">
+      <h2>Agent 目录</h2>
+      <p className="settings-lede">
+        新建会话时可以选择的 agent。命令要能在 PATH 里找到 ——
+        找不到的会自动从新建会话的选择器里隐藏。
+      </p>
 
-      <section className="agent-group" aria-labelledby="configured-agents">
-        <h3 id="configured-agents">Configured</h3>
-        <div className="agents-list configured">
-          {config.agents.length === 0 && (
-            <p className="agents-list-empty">No agents configured yet.</p>
-          )}
-          {config.agents.map((agent, idx) => {
-            const label = agent.display_name || agent.id;
-            return (
-              <div key={agent.id} className="agent-row configured">
-                <span className="agent-row-icon">
-                  <AgentIcon
-                    icon={agent.icon}
-                    variant={agent.icon_variant}
-                    fallbackChar={label}
-                    size={24}
-                  />
-                </span>
-                <span className="agent-row-name">{label}</span>
-                <code className="agent-row-command">{agent.command}</code>
-                <span className="agent-row-status">Configured</span>
-                <button
-                  type="button"
-                  className="agent-row-delete"
-                  onClick={() => deleteAgent(idx)}
-                  aria-label={`Remove ${label}`}
-                >
-                  Remove
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="agent-group" aria-labelledby="available-agents">
-        <h3 id="available-agents">Available agents</h3>
-        <div className="agents-list available">
-          {availableAgents.map((agent) => {
-            const label = agent.display_name || agent.id;
-            return (
-              <button
-                key={agent.id}
-                type="button"
-                className="agent-row addable"
-                onClick={() => addKnownAgent(agent)}
-                title={`Add ${label}`}
-              >
-                <span className="agent-row-icon">
+      <SettingGroupLabel>已配置 · {config.agents.length}</SettingGroupLabel>
+      <SettingCard>
+        {config.agents.length === 0 && (
+          <SettingRow
+            name="还没有配置任何 agent"
+            desc="用下面的自定义 agent 加一个"
+          />
+        )}
+        {config.agents.map((agent, idx) => {
+          const label = agent.display_name || agent.id;
+          return (
+            <SettingRow
+              key={agent.id}
+              name={label}
+              icon={
                 <AgentIcon
                   icon={agent.icon}
                   variant={agent.icon_variant}
                   fallbackChar={label}
-                  size={24}
+                  size={22}
                 />
-                </span>
-                <span className="agent-row-name">{label}</span>
-                <span className="agent-row-add">+ Add</span>
-              </button>
-            );
-          })}
-
-          {adding ? (
-            <div className="agent-custom-form">
-              <input
-                type="text"
-                className="native-input"
-                placeholder="Display name (optional)"
-                value={customName}
-                autoFocus
-                onChange={(e) => setCustomName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") confirmCustom();
-                }}
-              />
-              <input
-                type="text"
-                className="native-input mono"
-                placeholder="command (binary on PATH)"
-                value={customCommand}
-                onChange={(e) => setCustomCommand(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") confirmCustom();
-                }}
-              />
-              <button
-                type="button"
-                className="agent-custom-confirm"
-                onClick={confirmCustom}
-                disabled={!customCommand.trim()}
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                className="agent-custom-cancel"
-                onClick={cancelCustom}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="agent-row addable agent-row-custom"
-              onClick={() => setAdding(true)}
-              title="Add a custom agent CLI"
+              }
             >
-              <span className="agent-row-icon agent-row-custom-icon">+</span>
-              <span className="agent-row-name">Custom agent…</span>
-              <span className="agent-row-add">+ Add</span>
-            </button>
-          )}
-        </div>
-      </section>
+              <SettingValue align="end">{agent.command}</SettingValue>
+              {agent.introspect && (
+                <SettingChip title="ycode 能读取这个 agent 的会话记录">
+                  历史可读
+                </SettingChip>
+              )}
+              <SettingAction
+                label={`移除 ${label}`}
+                tone="danger"
+                onClick={() => deleteAgent(idx)}
+              >
+                <TrashIcon />
+              </SettingAction>
+            </SettingRow>
+          );
+        })}
+      </SettingCard>
+
+      {/* 只在真的扫到东西时才出现 —— 空分组只会引人去想「为什么没检测到」,
+          而答案(PATH 里没有)页首已经说过了。 */}
+      {detectedRows !== null && detectedRows.length > 0 && (
+        <>
+          <SettingGroupLabel>已检测到 · {detectedRows.length}</SettingGroupLabel>
+          <SettingCard>
+            {detectedRows.map((k) => (
+              <SettingRow
+                key={k.command}
+                name={k.displayName}
+                desc="PATH 中找到,尚未配置"
+                icon={
+                  <AgentIcon
+                    icon={k.icon}
+                    variant={null}
+                    fallbackChar={k.displayName}
+                    size={22}
+                  />
+                }
+              >
+                <SettingValue align="end">{k.command}</SettingValue>
+                <SettingAction
+                  label={`添加 ${k.displayName}`}
+                  onClick={() => addDetected(k)}
+                >
+                  <PlusIcon />
+                </SettingAction>
+              </SettingRow>
+            ))}
+          </SettingCard>
+        </>
+      )}
+
+      <SettingCard>
+        {adding ? (
+          <SettingRow
+            name="自定义 agent"
+            desc="任何能在终端里跑的 CLI 都可以加进来"
+          >
+            <input
+              type="text"
+              className="settings-input"
+              placeholder="显示名(可选)"
+              aria-label="显示名"
+              value={customName}
+              autoFocus
+              onChange={(e) => setCustomName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmCustom();
+              }}
+            />
+            <input
+              type="text"
+              className="settings-input"
+              placeholder="PATH 中的命令"
+              aria-label="命令"
+              value={customCommand}
+              onChange={(e) => setCustomCommand(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmCustom();
+              }}
+            />
+            <SettingAction
+              label="确认添加"
+              disabled={!customCommand.trim()}
+              onClick={confirmCustom}
+            >
+              <CheckIcon />
+            </SettingAction>
+            <SettingAction label="取消" onClick={cancelCustom}>
+              <CloseIcon />
+            </SettingAction>
+          </SettingRow>
+        ) : (
+          <SettingRow
+            name="自定义 agent"
+            desc="任何能在终端里跑的 CLI 都可以加进来"
+          >
+            <SettingAction
+              label="添加自定义 agent"
+              onClick={() => setAdding(true)}
+            >
+              <PlusIcon />
+            </SettingAction>
+          </SettingRow>
+        )}
+      </SettingCard>
     </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+function CheckIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m5 13 4 4L19 7" />
+    </svg>
+  );
+}
+function CloseIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
   );
 }
 
@@ -360,12 +342,4 @@ function uniqueId(base: string, taken: Set<string>): string {
   let n = 2;
   while (taken.has(`${base}-${n}`)) n++;
   return `${base}-${n}`;
-}
-
-function cloneAgent(agent: AgentLaunchProfileView): AgentLaunchProfileView {
-  return {
-    ...agent,
-    args: [...agent.args],
-    env: { ...agent.env },
-  };
 }
