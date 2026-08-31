@@ -14,7 +14,7 @@ import {
 } from "./lib/ipc";
 import { useStore } from "./lib/store";
 import { useEscapeGuard } from "./lib/useEscapeGuard";
-import { applyTheme, getTheme } from "./lib/themes";
+import { applyTheme, resolveTheme, SYSTEM_THEME_ID } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
 import { TopBar } from "./components/TopBar";
 import { CommandPalette } from "./components/CommandPalette";
@@ -22,6 +22,8 @@ import { HistoryTab } from "./components/HistoryTab";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { SettingsScreen } from "./components/SettingsModal";
 import { WorkspaceCanvas } from "./components/WorkspaceCanvas";
+import { StatusBar } from "./components/StatusBar";
+import { ProjectsOverview } from "./components/ProjectsOverview";
 import {
   bindUnlockOnClose,
   listenPeerLockEvents,
@@ -54,6 +56,7 @@ export function App() {
   const setFontSizes = useStore((s) => s.setFontSizes);
   const setTheme = useStore((s) => s.setTheme);
   const setAutoHideTopBar = useStore((s) => s.setAutoHideTopBar);
+  const setSessionOpenMode = useStore((s) => s.setSessionOpenMode);
   const setLockedProjectId = useStore((s) => s.setLockedProjectId);
   const setLockedByOtherWindows = useStore((s) => s.setLockedByOtherWindows);
   const addLockedByOther = useStore((s) => s.addLockedByOther);
@@ -93,9 +96,11 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [history, setHistory] = useState<HistoryView | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
   // The session-history overlay had no Escape handling at all — add it, and
   // like every other modal make it dismiss-only (no fullscreen exit).
   useEscapeGuard(() => setHistory(null), !!history);
+  useEscapeGuard(() => setOverviewOpen(false), overviewOpen);
 
   // Persist column widths across reloads. Panel ids must match the literal
   // ids passed to <Panel> below or the restored layout won't apply.
@@ -107,6 +112,37 @@ export function App() {
   // Imperative handles for collapse/expand hotkeys.
   const sidebarRef = usePanelRef();
   const rightPaneRef = usePanelRef();
+  // Mirrored so the canvas toolbar's toggle can show the right arrow
+  // direction. `usePanelRef` is imperative and doesn't re-render on collapse.
+  // 由 Panel 自己的 onResize 派生(见 WorkspaceCanvas),而不是在 toggle 里
+  // 手工翻转 —— ⌘B(hotkeys 直接调 panel.collapse())和拖拽分隔条到底这两条
+  // 折叠路径都不经过按钮,手镜像的布尔会在那之后指向错误的方向,收起的侧栏
+  // 就没有任何可点的入口找回来了。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const toggleSidebar = useCallback(() => {
+    const panel = sidebarRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.expand();
+    else panel.collapse();
+  }, [sidebarRef]);
+  // Closing the last workspace panel should give the space back to the
+  // agents rather than leaving an empty column with a lone target picker.
+  // Driven off the store's vanilla subscribe so App doesn't re-render on
+  // every panel toggle.
+  useEffect(() => {
+    const apply = (openPanels: string[]) => {
+      const panel = rightPaneRef.current;
+      if (!panel) return;
+      const shouldCollapse = openPanels.length === 0;
+      if (shouldCollapse && !panel.isCollapsed()) panel.collapse();
+      else if (!shouldCollapse && panel.isCollapsed()) panel.expand();
+    };
+    apply(useStore.getState().openPanels);
+    return useStore.subscribe((state, prev) => {
+      if (state.openPanels !== prev.openPanels) apply(state.openPanels);
+    });
+  }, [rightPaneRef]);
+
   const openCommandPalette = useCallback(() => setPaletteOpen(true), []);
   useHotkeys({
     sidebarRef,
@@ -142,6 +178,8 @@ export function App() {
       if (detail) setHistory(detail);
     };
     const onOpenSettings = () => setSettingsOpen(true);
+    const onOpenOverview = () => setOverviewOpen((v) => !v);
+    window.addEventListener("ycode:open-overview", onOpenOverview);
     window.addEventListener("ycode:open-palette", onOpen);
     window.addEventListener("ycode:open-history", onOpenHistory);
     window.addEventListener("ycode:open-settings", onOpenSettings);
@@ -149,6 +187,7 @@ export function App() {
       window.removeEventListener("ycode:open-palette", onOpen);
       window.removeEventListener("ycode:open-history", onOpenHistory);
       window.removeEventListener("ycode:open-settings", onOpenSettings);
+      window.removeEventListener("ycode:open-overview", onOpenOverview);
     };
   }, []);
 
@@ -283,6 +322,10 @@ export function App() {
   // One-shot guard for the detached-window UI hydration: `refresh` re-runs on
   // every PtyExit, but the snapshot must replay exactly once, on first load.
   const hydratedRef = useRef(false);
+  // Startup preference applies to the first load only. `refresh` re-runs on
+  // every PtyExit, and re-opening the overview under someone mid-session
+  // because their last session just ended would be its own bug.
+  const startupAppliedRef = useRef(false);
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -297,6 +340,22 @@ export function App() {
           setFontSizes(config.font_sizes);
           setTheme(config.theme);
           setAutoHideTopBar(config.auto_hide_top_bar);
+          setSessionOpenMode(config.session_open_mode);
+          // Startup behaviour, applied once. `resume` is a judgement call
+          // rather than a stored view: with live sessions the workspace is
+          // where you left off, without them the overview is the only screen
+          // with anything on it.
+          if (!startupAppliedRef.current) {
+            startupAppliedRef.current = true;
+            const wantsOverview =
+              config.startup === "overview" ||
+              (config.startup === "resume" && sessions.length === 0);
+            // A detached window carries its own target in the URL — it is
+            // opened *at* something, so the global preference doesn't apply.
+            if (wantsOverview && !useStore.getState().lockedProjectId) {
+              setOverviewOpen(true);
+            }
+          }
           // Detached windows replay the layout snapshot carried in their URL
           // (so "Open in New Window" keeps the panes the user had). The main
           // window deliberately does NOT restore on plain relaunch. Guarded so
@@ -386,6 +445,7 @@ export function App() {
     setFontSizes,
     setTheme,
     setAutoHideTopBar,
+    setSessionOpenMode,
     setLiveTitle,
     initialLoad,
   ]);
@@ -416,12 +476,29 @@ export function App() {
   // `theme` themselves because they need to reach into live `term.options`
   // when the theme moves — a CSS swap alone can't repaint xterm.
   useEffect(() => {
-    applyTheme(getTheme(useStore.getState().theme));
-    return useStore.subscribe((state, prev) => {
+    applyTheme(resolveTheme(useStore.getState().theme));
+    const unsubscribe = useStore.subscribe((state, prev) => {
       if (state.theme !== prev.theme) {
-        applyTheme(getTheme(state.theme));
+        applyTheme(resolveTheme(state.theme));
       }
     });
+    // "跟随系统" has to keep following it. Without this the choice would
+    // resolve once at launch and then sit on whatever the OS happened to be
+    // at that moment — which is the one behaviour its name rules out.
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const onSystemFlip = () => {
+      if (useStore.getState().theme === SYSTEM_THEME_ID) {
+        applyTheme(resolveTheme(SYSTEM_THEME_ID));
+        // xterm 不走 CSS 变量,终端的重绘订阅比较的是 theme id ——
+        // 它仍是 "system" 没变。用 epoch 通知它们解析结果变了。
+        useStore.getState().bumpThemeEpoch();
+      }
+    };
+    mq?.addEventListener("change", onSystemFlip);
+    return () => {
+      unsubscribe();
+      mq?.removeEventListener("change", onSystemFlip);
+    };
   }, []);
 
   // Drop any attention badge on the now-active session — the user is visibly
@@ -454,23 +531,37 @@ export function App() {
 
   return (
     <>
-      <TopBar settingsActive={settingsOpen} />
+      {/* The overview is a cross-project surface: the bar stays (search,
+          inbox and settings must remain reachable there), but the project
+          tab strip hides — leaving it would pose the same "which project
+          am I in?" question the settings screen used to. */}
+      <TopBar settingsActive={settingsOpen} overviewActive={overviewOpen} />
       {/* Settings covers the workspace instead of replacing it. Unmounting
           would tear down every ManualTerminal, and those kill their PTY on
           cleanup (they have no session row keeping them alive backend-side),
           so a long-running `npm run dev` would die just because the user
           opened Settings. Hiding matches how project switching already keeps
           background terminals alive. */}
-      <div className="app-workspace" hidden={settingsOpen}>
+      <div className="app-workspace" hidden={settingsOpen || overviewOpen}>
         <div className="app-workspace-view">
           <WorkspaceCanvas
             defaultLayout={defaultLayout}
             onLayoutChanged={onLayoutChanged}
             sidebarRef={sidebarRef}
             rightPaneRef={rightPaneRef}
+            sidebarCollapsed={sidebarCollapsed}
+            onSidebarCollapsedChange={setSidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
           />
         </div>
+        <StatusBar />
       </div>
+      {overviewOpen && (
+        <div className="app-overview-host">
+          <ProjectsOverview onClose={() => setOverviewOpen(false)} />
+          <StatusBar />
+        </div>
+      )}
       {settingsOpen && (
         <SettingsScreen onClose={() => setSettingsOpen(false)} />
       )}

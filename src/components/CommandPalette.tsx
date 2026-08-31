@@ -5,6 +5,9 @@
 //   • `>` prefix → cross-session text search across claude + codex jsonl
 //     (per plan §8.13 / §9.2). Selecting a hit opens it in a HistoryTab
 //     dialog rendered by App.tsx via the `onPick` callback.
+//   • `@` 前缀 → 只显示「会话」组(不截断到 8 条),用于快速跳转会话。
+//     注意:预览稿里 `>` 是命令前缀,但现网 `>` 一直是历史搜索,用户已
+//     习惯,这里保持不变;`#` 与 `>` 语义重复,不再引入。
 //
 // Session mode is debounced 200ms (it's an IPC call); file mode runs
 // synchronously on each keystroke against an in-memory list cached on open.
@@ -15,12 +18,17 @@ import { listFiles, searchSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { iconForFile } from "../lib/fileIcons";
-import type { AgentProfileView, SearchHit } from "../lib/types";
+import { sessionLight, type AgentProfileView, type SearchHit } from "../lib/types";
+import { statusFromLight, STATUS_RANK, type StatusKind } from "../lib/sessionStatus";
 import { AgentIcon } from "./AgentIcon";
+import { StatusDot } from "./ui/StatusDot";
 
 const LIMIT = 50;
 const SESSION_DEBOUNCE_MS = 200;
-const SESSION_PREFIX = ">";
+/// `>` = 搜索历史记录(既有行为,保持不变)。
+const HISTORY_PREFIX = ">";
+/// `@` = 只过滤「会话」组,方便快速跳转。
+const SESSION_LIST_PREFIX = "@";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -30,7 +38,24 @@ interface CommandPaletteProps {
 
 type FileHit = { kind: "file"; path: string; score: number };
 type SessionHitWrapped = { kind: "session"; hit: SearchHit };
-type Hit = FileHit | SessionHitWrapped;
+/// Jump-to / do-this rows. They share the result list with files so one
+/// keystroke stream reaches every destination in the app — the palette is
+/// the only surface that can answer "take me to the blocked Codex session"
+/// without first knowing which project it lives in.
+type ActionHit = {
+  kind: "action";
+  id: string;
+  group: string;
+  label: string;
+  detail?: string;
+  icon?: AgentProfileView;
+  status?: StatusKind;
+  score: number;
+  run: () => void;
+  /// ⌘⏎ 的变体:强制在新面板打开(只有会话条目提供)。
+  runNewPane?: () => void;
+};
+type Hit = FileHit | SessionHitWrapped | ActionHit;
 
 export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const activeProjectId = useStore((s) => s.activeProjectId);
@@ -58,6 +83,160 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
     }
     return out;
   }, [agents]);
+  const sessions = useStore((s) => s.sessions);
+  const projects = useStore((s) => s.projects);
+  const activityBySession = useStore((s) => s.activityBySession);
+  const setActiveProjectId = useStore((s) => s.setActiveProjectId);
+  const openSessionInLayout = useStore((s) => s.openSessionInLayout);
+  const appendSessionToLayout = useStore((s) => s.appendSessionToLayout);
+  const setLayoutMode = useStore((s) => s.setLayoutMode);
+  // `.cmdk-scope` 作用域标签:当前活跃项目名(纯展示)。
+  const activeProjectName = activeProjectId
+    ? (projects[activeProjectId]?.name ?? null)
+    : null;
+  const agentByProfileId = useMemo(() => {
+    const out: Record<string, AgentProfileView> = {};
+    for (const a of agents) out[a.id] = a;
+    return out;
+  }, [agents]);
+
+  // 会话条目单独成一份「全量」列表:默认模式截断到 8 条防止淹没
+  // 项目/命令组,`@` 前缀模式则展示全部。
+  const sessionActions = useMemo<ActionHit[]>(() => {
+    return Object.values(sessions)
+      .filter((se) => se.archived_at_ms == null)
+      .map((se) => ({
+        se,
+        // Fixtures (and any future partial row) may not carry a status —
+        // fall back to idle rather than throwing inside the palette.
+        status: se.status
+          ? statusFromLight(sessionLight(se.status, activityBySession[se.id]))
+          : ("idle" as StatusKind),
+      }))
+      .sort(
+        (a, b) =>
+          STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+          b.se.updated_at_ms - a.se.updated_at_ms,
+      )
+      .map(({ se, status }): ActionHit => ({
+        kind: "action",
+        id: `session:${se.id}`,
+        group: "会话",
+        label:
+          se.title?.trim() ||
+          se.agent_thread_name?.trim() ||
+          agentByProfileId[se.agent_profile]?.display_name ||
+          "未命名会话",
+        detail: projects[se.project_id]?.name,
+        icon: agentByProfileId[se.agent_profile],
+        status,
+        score: 0,
+        run: () => {
+          setActiveProjectId(se.project_id);
+          openSessionInLayout(se.id);
+        },
+        // ⌘⏎:无视 session_open_mode,总是新开一个面板放这个会话。
+        runNewPane: () => {
+          setActiveProjectId(se.project_id);
+          appendSessionToLayout(se.id);
+        },
+      }));
+  }, [
+    sessions,
+    projects,
+    activityBySession,
+    agentByProfileId,
+    setActiveProjectId,
+    openSessionInLayout,
+    appendSessionToLayout,
+  ]);
+
+  // Everything the palette can *do*, as opposed to everything it can find.
+  // Sessions come first and are ordered attention-first, so an empty query
+  // already answers "who needs me".
+  const actions = useMemo<ActionHit[]>(() => {
+    const out: ActionHit[] = [];
+
+    // Deliberately short. The palette is for jumping and running things,
+    // not for browsing every session — and 30 rows buried the 项目 and
+    // 命令 groups below the fold on an empty query. Typing filters the
+    // full set (and `@` shows every session), so nothing is unreachable.
+    out.push(...sessionActions.slice(0, 8));
+
+    for (const p of Object.values(projects)) {
+      if (p.id === activeProjectId) continue;
+      out.push({
+        kind: "action",
+        id: `project:${p.id}`,
+        group: "项目",
+        label: p.name,
+        detail: p.repo_path,
+        score: 0,
+        run: () => setActiveProjectId(p.id),
+      });
+    }
+
+    const fire = (name: string) => () =>
+      window.dispatchEvent(new CustomEvent(name));
+    out.push(
+      {
+        kind: "action",
+        id: "cmd:new-session",
+        group: "命令",
+        label: "新建会话",
+        detail: "⌘N",
+        score: 0,
+        // 与侧边栏新建按钮同一条 store 路径 —— 之前派发的
+        // "ycode:new-session" 事件没有任何监听者,命令是个哑弹。
+        run: () => useStore.getState().showNewSessionPicker(),
+      },
+      {
+        kind: "action",
+        id: "cmd:open-project",
+        group: "命令",
+        label: "打开项目…",
+        detail: "⌘O",
+        score: 0,
+        run: fire("ycode:new-project"),
+      },
+      {
+        kind: "action",
+        id: "cmd:overview",
+        group: "命令",
+        label: "全部项目总览",
+        detail: "⇧⌘P",
+        score: 0,
+        run: fire("ycode:open-overview"),
+      },
+      {
+        kind: "action",
+        id: "cmd:settings",
+        group: "命令",
+        label: "打开设置",
+        detail: "⌘,",
+        score: 0,
+        run: fire("ycode:open-settings"),
+      },
+      {
+        kind: "action",
+        id: "cmd:layout-columns",
+        group: "命令",
+        label: "切换布局:并排两栏",
+        detail: "Columns",
+        score: 0,
+        // setLayoutMode 对当前面板数不合法的模式会静默忽略,
+        // 所以这条命令始终可以安全执行。
+        run: () => setLayoutMode("columns"),
+      },
+    );
+    return out;
+  }, [
+    sessionActions,
+    projects,
+    activeProjectId,
+    setLayoutMode,
+  ]);
+
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,10 +245,14 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const reqIdRef = useRef(0);
 
-  const sessionMode = query.startsWith(SESSION_PREFIX);
-  const trimmedQuery = sessionMode
-    ? query.slice(SESSION_PREFIX.length).trim()
-    : query.trim();
+  // `>` = 历史搜索;`@` = 只看会话组;其余为默认(命令 + 文件)模式。
+  const historyMode = query.startsWith(HISTORY_PREFIX);
+  const sessionListMode = !historyMode && query.startsWith(SESSION_LIST_PREFIX);
+  const trimmedQuery = historyMode
+    ? query.slice(HISTORY_PREFIX.length).trim()
+    : sessionListMode
+      ? query.slice(SESSION_LIST_PREFIX.length).trim()
+      : query.trim();
 
   // Auto-focus + reset state when opened.
   useEffect(() => {
@@ -113,7 +296,7 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
       return;
     }
 
-    if (sessionMode) {
+    if (historyMode) {
       if (trimmedQuery.length < 2) {
         setHits([]);
         setLoading(false);
@@ -142,10 +325,39 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
       return () => window.clearTimeout(t);
     }
 
-    // File mode.
+    // `@` 模式:只显示会话组(全量,不截断到 8 条),按查询过滤。
+    if (sessionListMode) {
+      setLoading(false);
+      const matched = sessionActions
+        .map((a) => {
+          if (trimmedQuery.length === 0) return { ...a, score: 0 };
+          const score = fuzzyScore(trimmedQuery, `${a.label} ${a.detail ?? ""}`);
+          return score === null ? null : { ...a, score };
+        })
+        .filter((a): a is ActionHit => a !== null)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, LIMIT);
+      setHits(matched);
+      setFocusedIdx(0);
+      return;
+    }
+
+    // Default mode: actions first, then fuzzy file matches. With an empty
+    // query we show the actions alone — that is the "where do I go" case,
+    // and listing every file in the repo would bury it.
     setLoading(false);
+    const matchedActions = actions
+      .map((a) => {
+        if (trimmedQuery.length === 0) return { ...a, score: 0 };
+        const score = fuzzyScore(trimmedQuery, `${a.label} ${a.detail ?? ""}`);
+        return score === null ? null : { ...a, score };
+      })
+      .filter((a): a is ActionHit => a !== null)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+
     if (trimmedQuery.length === 0) {
-      setHits([]);
+      setHits(matchedActions);
       setFocusedIdx(0);
       return;
     }
@@ -155,12 +367,27 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
       if (score !== null) scored.push({ kind: "file", path, score });
     }
     scored.sort((a, b) => b.score - a.score);
-    setHits(scored.slice(0, LIMIT));
+    setHits([...matchedActions, ...scored.slice(0, LIMIT)]);
     setFocusedIdx(0);
-  }, [open, activeProjectId, sessionMode, trimmedQuery, allFiles]);
+  }, [
+    open,
+    activeProjectId,
+    historyMode,
+    sessionListMode,
+    trimmedQuery,
+    allFiles,
+    actions,
+    sessionActions,
+  ]);
 
-  function pick(hit: Hit) {
-    if (hit.kind === "file") {
+  // `newPane` 由 ⌘⏎ 触发:会话条目强制在新面板打开;
+  // 其他条目没有 runNewPane,回落到默认行为。
+  function pick(hit: Hit, newPane = false) {
+    if (hit.kind === "action") {
+      if (newPane && hit.runNewPane) hit.runNewPane();
+      else hit.run();
+      onClose();
+    } else if (hit.kind === "file") {
       openFile(hit.path, { preview: true });
       setRightTab("editor");
       onClose();
@@ -185,22 +412,26 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
     }
     if (e.key === "Enter" && hits[focusedIdx]) {
       e.preventDefault();
-      pick(hits[focusedIdx]);
+      // ⌘⏎(或 Ctrl⏎)= 在新面板打开。
+      pick(hits[focusedIdx], e.metaKey || e.ctrlKey);
     }
   }
 
   const statusText = useMemo(() => {
-    if (sessionMode) {
-      if (loading) return "Searching…";
-      if (trimmedQuery.length < 2) return "Type at least 2 characters to search sessions.";
-      if (hits.length === 0) return "No matches.";
+    if (historyMode) {
+      if (loading) return "正在搜索…";
+      if (trimmedQuery.length < 2) return "至少输入 2 个字符才能搜索历史记录。";
+      if (hits.length === 0) return "没有匹配的历史记录。";
       return null;
     }
-    if (trimmedQuery.length === 0)
-      return "Type to search files. Use `>` to search session history.";
-    if (hits.length === 0) return "No matching files.";
+    if (sessionListMode) {
+      if (hits.length === 0) return "没有匹配的会话。";
+      return null;
+    }
+    if (trimmedQuery.length === 0) return null;
+    if (hits.length === 0) return "没有匹配项 —— 试试 > 历史、@ 会话";
     return null;
-  }, [sessionMode, loading, trimmedQuery, hits.length]);
+  }, [historyMode, sessionListMode, loading, trimmedQuery, hits.length]);
 
   useEscapeGuard(onClose, open);
 
@@ -208,26 +439,85 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   return (
     <div className="cmd-palette-backdrop" onClick={onClose}>
       <div className="cmd-palette" onClick={(e) => e.stopPropagation()}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKey}
-          placeholder={
-            sessionMode
-              ? "Search session transcripts…"
-              : "Search files. Start with `>` to search sessions…"
-          }
-          className="cmd-palette-input"
-          aria-label={sessionMode ? "Search sessions" : "Search files"}
-          autoComplete="off"
-          spellCheck={false}
-        />
+        <div className="cmd-palette-input-row">
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKey}
+            placeholder={
+              historyMode
+                ? "搜索会话记录…"
+                : sessionListMode
+                  ? "过滤会话…"
+                  : "跳转会话、切换项目、执行命令,或用 > 搜索历史记录…"
+            }
+            className="cmd-palette-input"
+            aria-label={
+              historyMode
+                ? "搜索会话记录"
+                : sessionListMode
+                  ? "过滤会话"
+                  : "搜索或执行命令"
+            }
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {/* 作用域标签:提示搜索/命令作用在哪个项目上(纯展示)。 */}
+          {activeProjectName && (
+            <span className="cmdk-scope" title="当前项目">
+              {activeProjectName}
+            </span>
+          )}
+        </div>
         <div className="cmd-palette-results" role="listbox">
           {statusText && <div className="cmd-palette-status">{statusText}</div>}
-          {hits.map((hit, i) =>
-            hit.kind === "file" ? (
+          {hits.map((hit, i) => {
+            if (hit.kind === "action") {
+              // A group caption is printed once, on the first row of each
+              // run — cheaper to read than repeating the label per row.
+              const prev = hits[i - 1];
+              const newGroup =
+                !prev || prev.kind !== "action" || prev.group !== hit.group;
+              return (
+                <div key={hit.id}>
+                  {newGroup && <div className="cmd-group">{hit.group}</div>}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === focusedIdx}
+                    className={`cmd-row${i === focusedIdx ? " focused" : ""}`}
+                    onMouseEnter={() => setFocusedIdx(i)}
+                    // ⌘+点击与 ⌘⏎ 同义:在新面板打开。
+                    onClick={(e) => pick(hit, e.metaKey || e.ctrlKey)}
+                  >
+                    <span className="cmd-row-icon">
+                      {hit.icon ? (
+                        <AgentIcon
+                          icon={hit.icon.icon}
+                          variant={hit.icon.icon_variant}
+                          fallbackChar={hit.label}
+                          size={16}
+                        />
+                      ) : (
+                        <span className="cmd-row-dot" aria-hidden />
+                      )}
+                    </span>
+                    <span className="cmd-row-main">
+                      <span className="cmd-row-label">{hit.label}</span>
+                      {hit.detail && (
+                        <span className="cmd-row-detail">{hit.detail}</span>
+                      )}
+                    </span>
+                    {hit.status && (
+                      <StatusDot status={hit.status} size="sm" labelled={false} />
+                    )}
+                  </button>
+                </div>
+              );
+            }
+            return hit.kind === "file" ? (
               <FileHitRow
                 key={`file:${hit.path}`}
                 hit={hit}
@@ -245,8 +535,17 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
                 onHover={() => setFocusedIdx(i)}
                 onClick={() => pick(hit)}
               />
-            ),
-          )}
+            );
+          })}
+        </div>
+        {/* 底部提示条:说明这里生效的按键(⏎ 与 ⌘⏎ 不同,靠猜猜不到),
+            并如实列出前缀 —— `>` 历史搜索、`@` 会话过滤。 */}
+        <div className="cmd-palette-foot">
+          <span>↑↓ 选择</span>
+          <span>⏎ 打开</span>
+          <span>⌘⏎ 在新面板打开</span>
+          <span>esc 关闭</span>
+          <span className="cmd-foot-right">&gt; 历史 · @ 会话</span>
         </div>
       </div>
     </div>

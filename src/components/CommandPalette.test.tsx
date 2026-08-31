@@ -6,6 +6,7 @@ import { useStore } from "../lib/store";
 import type {
   AgentProfileView,
   FileEntry,
+  ProjectView,
   SearchHit,
   SessionView,
 } from "../lib/types";
@@ -51,6 +52,31 @@ function agent(overrides: Partial<AgentProfileView> = {}): AgentProfileView {
     bundled: false,
     ...overrides,
   } as AgentProfileView;
+}
+
+function project(overrides: Partial<ProjectView> = {}): ProjectView {
+  return {
+    id: "project-a",
+    name: "internal-portal-frontend",
+    repo_path: "/tmp/project-a",
+    created_at_ms: 0,
+    session_count: 0,
+    isolate_sessions: false,
+    ...overrides,
+  } as ProjectView;
+}
+
+function session(overrides: Partial<SessionView> = {}): SessionView {
+  return {
+    id: "session-a",
+    project_id: "project-a",
+    agent_profile: "codex",
+    title: "修复登录问题",
+    status: { type: "Running" },
+    archived_at_ms: null,
+    updated_at_ms: 1_700_000_000_000,
+    ...overrides,
+  } as SessionView;
 }
 
 function searchHit(overrides: Partial<SearchHit> = {}): SearchHit {
@@ -108,7 +134,7 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(listFilesMock).toHaveBeenCalledWith("project-a", undefined),
     );
-    await user.type(screen.getByRole("textbox", { name: "Search files" }), "cmd");
+    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), "cmd");
     await user.keyboard("{Enter}");
 
     const state = useStore.getState();
@@ -144,8 +170,8 @@ describe("CommandPalette", () => {
     searchSessionsMock.mockResolvedValue([hit]);
     const { onClose, onPick } = renderPalette();
 
-    await user.type(screen.getByRole("textbox", { name: "Search files" }), ">tree");
-    expect(screen.getByRole("textbox", { name: "Search sessions" })).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), ">tree");
+    expect(screen.getByRole("textbox", { name: "搜索会话记录" })).toBeInTheDocument();
     expect(searchSessionsMock).not.toHaveBeenCalled();
 
     await waitFor(() =>
@@ -161,11 +187,110 @@ describe("CommandPalette", () => {
   it("closes on escape without selecting a hit", async () => {
     const user = userEvent.setup();
     const { onClose, onPick } = renderPalette();
-    screen.getByRole("textbox", { name: "Search files" }).focus();
+    screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
 
     await user.keyboard("{Escape}");
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("shows Chinese status text for empty results and short history queries", async () => {
+    const user = userEvent.setup();
+    renderPalette();
+    const input = screen.getByRole("textbox", { name: "搜索或执行命令" });
+
+    // 默认模式无匹配 → 中文空态,提示可用前缀。
+    await user.type(input, "zzzzzz不存在的东西qqq");
+    expect(
+      await screen.findByText("没有匹配项 —— 试试 > 历史、@ 会话"),
+    ).toBeInTheDocument();
+
+    // `>` 历史模式:不足 2 字符的提示也是中文。
+    await user.clear(input);
+    await user.type(input, ">a");
+    expect(
+      screen.getByText("至少输入 2 个字符才能搜索历史记录。"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the active project name as a scope tag and the ⌘⏎ footer hint", () => {
+    useStore.setState({ projects: { "project-a": project() } });
+    renderPalette();
+
+    expect(screen.getByText("internal-portal-frontend")).toBeInTheDocument();
+    expect(screen.getByText("⌘⏎ 在新面板打开")).toBeInTheDocument();
+    expect(screen.getByText("> 历史 · @ 会话")).toBeInTheDocument();
+  });
+
+  it("opens a session in a new pane on ⌘⏎ instead of replacing the focused slot", async () => {
+    const user = userEvent.setup();
+    useStore.setState({
+      projects: { "project-a": project() },
+      sessions: {
+        "session-a": session(),
+        "session-b": session({
+          id: "session-b",
+          title: "另一个会话",
+          updated_at_ms: 1_600_000_000_000,
+        }),
+      },
+      // replace_focused 模式下普通 ⏎ 会替换当前槽;⌘⏎ 必须仍然新开面板。
+      sessionOpenMode: "replace_focused",
+      layout: { mode: "single", visibleIds: ["session-b"], focusSlot: 0 },
+      activeId: "session-b",
+    });
+    renderPalette();
+
+    // 空查询下会话组排最前;session-a 更新时间更晚排第一。
+    await screen.findByText("修复登录问题");
+    screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+
+    const state = useStore.getState();
+    expect(state.layout.visibleIds).toEqual(["session-b", "session-a"]);
+    expect(state.activeId).toBe("session-a");
+  });
+
+  it("filters to the session group with the @ prefix", async () => {
+    const user = userEvent.setup();
+    useStore.setState({
+      projects: { "project-a": project() },
+      sessions: { "session-a": session() },
+    });
+    renderPalette();
+
+    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), "@");
+    expect(
+      screen.getByRole("textbox", { name: "过滤会话" }),
+    ).toBeInTheDocument();
+    // 只剩会话组:命令条目消失,会话条目还在。
+    expect(screen.getByText("修复登录问题")).toBeInTheDocument();
+    expect(screen.queryByText("新建会话")).not.toBeInTheDocument();
+
+    // 继续输入按标题过滤。
+    await user.type(
+      screen.getByRole("textbox", { name: "过滤会话" }),
+      "不存在的标题xyz",
+    );
+    expect(screen.getByText("没有匹配的会话。")).toBeInTheDocument();
+  });
+
+  it("switches the layout to columns via the palette command", async () => {
+    const user = userEvent.setup();
+    useStore.setState({
+      layout: { mode: "stack", visibleIds: ["s1", "s2"], focusSlot: 0 },
+    });
+    const { onClose } = renderPalette();
+
+    await user.type(
+      screen.getByRole("textbox", { name: "搜索或执行命令" }),
+      "并排两栏",
+    );
+    await screen.findByText("切换布局:并排两栏");
+    await user.keyboard("{Enter}");
+
+    expect(useStore.getState().layout.mode).toBe("columns");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
