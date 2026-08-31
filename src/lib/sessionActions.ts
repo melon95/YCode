@@ -38,34 +38,33 @@ export async function closeSessionNow(sessionId: string): Promise<void> {
   try {
     state = await stopSessionForClose(sessionId);
   } catch (err) {
-    toast.danger(`Close failed: ${err}`);
+    toast.danger(`关闭失败:${err}`);
     return;
   }
 
   if (state.uncommitted || state.unmerged_commits > 0) {
-    const branch = sess.branch ?? "its branch";
-    const base = sess.base_branch ?? "its base";
+    const branch = sess.branch ?? "它的分支";
+    const base = sess.base_branch ?? "基准分支";
     const n = state.unmerged_commits;
-    const commits = `${n} commit${n === 1 ? "" : "s"}`;
     let message: string;
     if (state.uncommitted && n > 0) {
       message =
-        `The agent is stopped. Its worktree has uncommitted changes and ${commits} not merged into ${base}. ` +
-        `Removing the worktree discards the uncommitted changes; the branch "${branch}" is kept but goes orphan ` +
-        `(no worktree, hidden from the UI). Merge first to keep everything.`;
+        `agent 已停止。它的 worktree 有未提交的改动,另有 ${n} 个提交尚未合并到 ${base}。` +
+        `移除 worktree 会丢弃未提交的改动;分支「${branch}」会保留但成为孤儿分支` +
+        `(没有 worktree,不再显示在界面里)。想全部保留请先合并。`;
     } else if (state.uncommitted) {
       message =
-        "The agent is stopped. Its worktree has uncommitted changes. Removing the worktree discards them — " +
-        "commit or merge first to keep them.";
+        "agent 已停止。它的 worktree 有未提交的改动,移除 worktree 会把它们丢弃 —— " +
+        "想保留请先提交或合并。";
     } else {
       message =
-        `The agent is stopped. Its branch "${branch}" has ${commits} not merged into ${base}. ` +
-        `Removing the worktree keeps the branch but orphans it (hidden from the UI) — merge first to keep the work in view.`;
+        `agent 已停止。分支「${branch}」有 ${n} 个提交尚未合并到 ${base}。` +
+        `移除 worktree 会保留分支但使其成为孤儿(不再显示在界面里)—— 想让工作可见请先合并。`;
     }
     const ok = await confirmDialog({
-      title: "Remove this agent's worktree?",
+      title: "移除这个 agent 的 worktree?",
       message,
-      confirmLabel: "Remove worktree",
+      confirmLabel: "移除 worktree",
       destructive: true,
     });
     // Agent's already stopped; cancelling just keeps the worktree.
@@ -76,7 +75,7 @@ export async function closeSessionNow(sessionId: string): Promise<void> {
     await archiveSession(sessionId);
     useStore.getState().removeSession(sessionId);
   } catch (err) {
-    toast.danger(`Close failed: ${err}`);
+    toast.danger(`关闭失败:${err}`);
   }
 }
 
@@ -86,11 +85,11 @@ export async function archiveSessionWithConfirm(sessionId: string): Promise<void
   const { sessions, liveTitles } = useStore.getState();
   const sess = sessions[sessionId];
   if (!sess) return;
-  const label = displaySessionTitle(sess, liveTitles) || "this session";
+  const label = displaySessionTitle(sess, liveTitles) || "这个会话";
   const ok = await confirmDialog({
-    title: `Close "${label}"?`,
-    message: "The agent's live process will be killed.",
-    confirmLabel: "Close session",
+    title: `关闭「${label}」?`,
+    message: "agent 的运行进程会被结束。",
+    confirmLabel: "关闭会话",
     destructive: true,
   });
   if (!ok) return;

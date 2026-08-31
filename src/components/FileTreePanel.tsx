@@ -219,11 +219,11 @@ export function FileTreePanel({
   const doDelete = useCallback(
     async (node: TreeNode) => {
       const ok = await confirmDialog({
-        title: `Delete ${node.name}?`,
+        title: `删除 ${node.name}?`,
         message: node.is_dir
-          ? "This will permanently remove the directory and all of its contents."
-          : "This will permanently remove the file from disk.",
-        confirmLabel: "Delete",
+          ? "目录及其全部内容会被永久删除。"
+          : "文件会从磁盘上永久删除。",
+        confirmLabel: "删除",
         destructive: true,
       });
       if (!ok) return;

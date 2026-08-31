@@ -723,6 +723,84 @@
   to { opacity: 1; transform: none; }
 }
 
+/* 确认弹窗(lib/confirm.tsx)—— 与设置 dialog 同一套面板令牌,
+   z-index 高于设置(180):确认可能从设置页里弹出。 */
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  animation: fade-in var(--t-base) var(--ease-out);
+}
+.confirm-dialog {
+  width: 420px;
+  max-width: 90vw;
+  padding: 20px 22px 16px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  box-shadow: var(--elevation-menu);
+  animation: dialog-in var(--t-slow) var(--ease-out);
+}
+.confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.confirm-message {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.confirm-btn {
+  height: var(--control-size, 30px);
+  padding: 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.confirm-btn:hover {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.confirm-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.confirm-btn.is-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--bg);
+}
+.confirm-btn.is-primary:hover { opacity: 0.9; color: var(--bg); }
+.confirm-btn.is-danger {
+  border-color: rgba(var(--st-blocked-rgb), 0.5);
+  color: var(--st-blocked);
+}
+.confirm-btn.is-danger:hover {
+  background: rgba(var(--st-blocked-rgb), 0.12);
+  border-color: transparent;
+  color: var(--st-blocked);
+}
+
 .settings-dialog-head {
   flex: none;
   height: var(--toolbar-h);

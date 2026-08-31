@@ -234,9 +234,9 @@ export function TerminalPane() {
 
   const doMerge = useCallback(async (sid: string, base: string) => {
     const ok = await confirmDialog({
-      title: `Merge into ${base}?`,
-      message: `Merge this agent's branch into "${base}" on the project's main working tree. The main tree must be checked out on "${base}" and clean.`,
-      confirmLabel: "Merge",
+      title: `合并到 ${base}?`,
+      message: `把这个 agent 的分支合并到主工作树的「${base}」。主工作树必须已检出「${base}」且没有未提交的改动。`,
+      confirmLabel: "合并",
     });
     if (!ok) return;
     setMergingId(sid);

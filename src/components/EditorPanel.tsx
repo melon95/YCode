@@ -485,9 +485,9 @@ export function EditorPanel({
       const fs = filesRef.current.get(path);
       if (fs && fs.loaded && fs.value !== fs.original) {
         const ok = await confirmDialog({
-          title: `Close ${basename(path)} with unsaved changes?`,
-          message: "Your edits since the last save will be discarded.",
-          confirmLabel: "Discard changes",
+          title: `关闭 ${basename(path)}?它有未保存的修改`,
+          message: "自上次保存以来的编辑会被丢弃。",
+          confirmLabel: "丢弃修改",
           destructive: true,
         });
         if (!ok) return;
