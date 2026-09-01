@@ -16,6 +16,7 @@ import {
 import type { RightTab } from "../lib/store";
 import { IconButton } from "./ui/IconButton";
 import { SidebarToggle } from "./ui/SidebarToggle";
+import { AttentionInbox } from "./AttentionInbox";
 
 const LAYOUT_LABEL: Record<LayoutMode, string> = {
   single: "单栏",
@@ -28,9 +29,16 @@ const LAYOUT_LABEL: Record<LayoutMode, string> = {
 interface Props {
   onToggleSidebar: () => void;
   sidebarCollapsed: boolean;
+  /// 设置 dialog 是否打开 —— 齿轮按钮的按压态。顶栏移除后全局入口
+  /// (搜索/收件箱/设置)落在这条工具条右端。
+  settingsActive?: boolean;
 }
 
-export function CanvasToolbar({ onToggleSidebar, sidebarCollapsed }: Props) {
+export function CanvasToolbar({
+  onToggleSidebar,
+  sidebarCollapsed,
+  settingsActive = false,
+}: Props) {
   const mode = useStore((s) => s.layout.mode);
   const count = useStore((s) => s.layout.visibleIds.length);
   const setLayoutMode = useStore((s) => s.setLayoutMode);
@@ -127,6 +135,25 @@ export function CanvasToolbar({ onToggleSidebar, sidebarCollapsed }: Props) {
       </PanelToggle>
 
       <PanelCatalog />
+
+      {/* 全局入口(原顶栏):搜索 / 收件箱 / 设置。 */}
+      <span className="toolbar-div" />
+      <IconButton
+        onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
+        title="搜索或执行命令 (⌘K)"
+        aria-label="搜索或执行命令 (⌘K)"
+      >
+        <SearchIcon />
+      </IconButton>
+      <AttentionInbox />
+      <IconButton
+        active={settingsActive}
+        onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-settings"))}
+        title="设置 (⌘,)"
+        aria-label="设置"
+      >
+        <GearIcon />
+      </IconButton>
     </div>
   );
 }
@@ -253,6 +280,24 @@ function LayoutGlyph({ mode }: { mode: LayoutMode }) {
       {mode === "columns" && <path d="M12 4v16" />}
       {mode === "grid2x2" && <path d="M12 4v16M3 12h18" />}
       {mode === "main-side" && <path d="M15 4v16M15 12h6" />}
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

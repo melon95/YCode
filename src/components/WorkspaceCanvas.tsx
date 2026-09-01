@@ -21,6 +21,7 @@ interface Props {
   /// 三条路径都汇到这里,不需要各自去镜像状态。
   onSidebarCollapsedChange: (collapsed: boolean) => void;
   onToggleSidebar: () => void;
+  settingsActive?: boolean;
 }
 
 export function WorkspaceCanvas({
@@ -31,6 +32,7 @@ export function WorkspaceCanvas({
   sidebarCollapsed,
   onSidebarCollapsedChange,
   onToggleSidebar,
+  settingsActive,
 }: Props) {
   return (
     <Group
@@ -58,6 +60,7 @@ export function WorkspaceCanvas({
           <CanvasToolbar
             onToggleSidebar={onToggleSidebar}
             sidebarCollapsed={sidebarCollapsed}
+            settingsActive={settingsActive}
           />
           <TerminalPane />
         </section>

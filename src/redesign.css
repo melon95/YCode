@@ -555,6 +555,27 @@
    Sidebar — 项目分组(项目从顶栏迁入)
    ============================================================ */
 
+/* 侧边栏头部的全局按钮(打开项目 / 总览)—— 与工具条 30px 网格一致。 */
+.sidebar-top-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-size, 30px);
+  height: var(--control-size, 30px);
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.sidebar-top-btn:hover:not(:disabled) {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+.sidebar-top-btn:disabled { opacity: 0.4; cursor: default; }
+
 .sb-project { margin-bottom: 2px; }
 .sb-project-head {
   display: flex;
@@ -1104,15 +1125,18 @@
   font-size: 10.5px;
 }
 
+/* 唯一的开关组件样式 —— 设置页与 composer 共用,可见性/几何只在
+   这里改。关闭态用下沉底色:panel-raised 在浅色卡片上几乎隐形。 */
 .settings-toggle {
   flex: none;
+  display: inline-block;
   position: relative;
   width: 32px;
   height: 18px;
   padding: 0;
   border: 1px solid var(--rule-strong);
   border-radius: 99px;
-  background: var(--panel-raised);
+  background: var(--panel-sunken);
   cursor: pointer;
   transition: background-color var(--t-base) var(--ease);
 }
@@ -1122,7 +1146,9 @@
 }
 .settings-toggle-knob {
   position: absolute;
-  top: 1.5px;
+  /* 轨道内高 16px(18 - 2×1px 边框),13px 圆 → 上下各 1.5px。 */
+  top: 50%;
+  transform: translateY(-50%);
   left: 2px;
   width: 13px;
   height: 13px;
@@ -1995,29 +2021,8 @@
   transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
 .composer-opt:hover { border-color: var(--rule-strong); background: var(--surface); }
-.composer-switch {
-  flex: none;
-  margin-top: 1px;
-  width: 32px;
-  height: 18px;
-  border-radius: 999px;
-  border: 1px solid var(--rule-strong);
-  background: var(--panel-raised);
-  position: relative;
-  transition: background-color var(--t-fast) var(--ease);
-}
-.composer-opt.on .composer-switch { background: var(--st-working); border-color: transparent; }
-.composer-knob {
-  position: absolute;
-  top: 1.5px;
-  left: 2px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--bg);
-  transition: left var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
-}
-.composer-opt.on .composer-knob { left: 15px; background: #fff; }
+/* composer 的开关直接复用 .settings-toggle(见设置区块)—— 组件唯一,
+   几何与可见性只改一处。 */
 .composer-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .composer-opt-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
 .composer-opt-desc { font-size: 10.5px; line-height: 1.5; color: var(--subtle); }

@@ -8,9 +8,10 @@
 // transcript 扫描按分组懒加载,见 SidebarProjectGroup。
 
 import { useEffect, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "@heroui/react";
 import { LAYOUT_CAP, useStore } from "../lib/store";
-import { createSession } from "../lib/ipc";
+import { createProject, createSession } from "../lib/ipc";
 import type {
   DiscoveredSessionView,
   ProjectView,
@@ -28,8 +29,10 @@ interface SidebarProps {
 
 export function Sidebar({ onToggleSidebar }: SidebarProps) {
   const [creating, setCreating] = useState(false);
+  const [creatingProject, setCreatingProject] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(true);
   const [userPickedAgent, setUserPickedAgent] = useState<string | null>(null);
+  const upsertProject = useStore((s) => s.upsertProject);
   const upsertSession = useStore((s) => s.upsertSession);
   const openSessionInLayout = useStore((s) => s.openSessionInLayout);
   const showNewSessionPicker = useStore((s) => s.showNewSessionPicker);
@@ -153,6 +156,36 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
     });
   }
 
+  // 打开项目(原顶栏 + 按钮)。⌘O 经 ycode:new-project 事件也走这里。
+  async function onAddProject() {
+    if (creatingProject) return;
+    setCreatingProject(true);
+    try {
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        title: "选择项目仓库目录",
+      });
+      if (typeof picked !== "string") return; // user cancelled
+      const name = picked.split("/").filter(Boolean).pop() ?? picked;
+      const view = await createProject({ name, repo_path: picked });
+      upsertProject(view);
+      setActiveProjectId(view.id);
+    } catch (err) {
+      toast.danger(`创建项目失败:${err}`);
+    } finally {
+      setCreatingProject(false);
+    }
+  }
+  useEffect(() => {
+    const onNewProject = () => {
+      if (!lockedProjectId) void onAddProject();
+    };
+    window.addEventListener("ycode:new-project", onNewProject);
+    return () => window.removeEventListener("ycode:new-project", onNewProject);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedProjectId, creatingProject]);
+
   /// 点任意项目组里的会话行:先切活跃项目(画布/右栏跟着换),再
   /// 打开已有 pane 或恢复 transcript —— 对用户是一步。
   function openRow(project: ProjectView, row: MergedSession) {
@@ -169,6 +202,31 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
       <div className="sidebar-header">
         {onToggleSidebar && (
           <SidebarToggle collapsed={false} onToggle={onToggleSidebar} />
+        )}
+        {!lockedProjectId && (
+          <>
+            <button
+              type="button"
+              className="sidebar-top-btn"
+              onClick={onAddProject}
+              disabled={creatingProject}
+              aria-label="打开项目"
+              title="打开项目 (⌘O)"
+            >
+              <FolderPlusIcon />
+            </button>
+            <button
+              type="button"
+              className="sidebar-top-btn"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("ycode:open-overview"))
+              }
+              aria-label="全部项目总览 (⇧⌘P)"
+              title="全部项目总览 (⇧⌘P)"
+            >
+              <GridIcon />
+            </button>
+          </>
         )}
         <div className="sidebar-agent-tabs" role="tablist" aria-label="Agent filter">
           <button
@@ -276,6 +334,26 @@ function PlusIcon() {
       aria-hidden
     >
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M12 11v5M9.5 13.5h5" />
+    </svg>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </svg>
   );
 }

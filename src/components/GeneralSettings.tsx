@@ -10,7 +10,6 @@ import {
   SettingChip,
   SettingChips,
   SettingRow,
-  SettingToggle,
   type ChipOption,
 } from "./ui/SettingControls";
 
@@ -70,15 +69,8 @@ export function GeneralSettings({ config, onChange }: Props) {
           </SettingChip>
         </SettingRow>
 
-        <SettingRow name="自动隐藏顶栏" desc="鼠标移到窗口顶部时滑出">
-          <SettingToggle
-            label="自动隐藏顶栏"
-            checked={config.auto_hide_top_bar}
-            onChange={(auto_hide_top_bar) =>
-              onChange({ ...config, auto_hide_top_bar })
-            }
-          />
-        </SettingRow>
+        {/* 「自动隐藏顶栏」已随顶栏一起移除:全局入口迁到了侧边栏头部
+            与画布工具条,没有可隐藏的横条了。config 字段保留兼容老配置。 */}
 
         <SettingRow
           name="界面语言"

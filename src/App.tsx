@@ -16,7 +16,6 @@ import { useStore } from "./lib/store";
 import { useEscapeGuard } from "./lib/useEscapeGuard";
 import { applyTheme, resolveTheme, SYSTEM_THEME_ID } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
-import { TopBar } from "./components/TopBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { HistoryTab } from "./components/HistoryTab";
 import { UpdateNotice } from "./components/UpdateNotice";
@@ -531,11 +530,8 @@ export function App() {
 
   return (
     <>
-      {/* The overview is a cross-project surface: the bar stays (search,
-          inbox and settings must remain reachable there), but the project
-          tab strip hides — leaving it would pose the same "which project
-          am I in?" question the settings screen used to. */}
-      <TopBar settingsActive={settingsOpen} overviewActive={overviewOpen} />
+      {/* 顶栏已移除:打开项目/总览在侧边栏头部,搜索/收件箱/设置在
+          画布工具条右端。 */}
       {/* Settings covers the workspace instead of replacing it. Unmounting
           would tear down every ManualTerminal, and those kill their PTY on
           cleanup (they have no session row keeping them alive backend-side),
@@ -552,6 +548,7 @@ export function App() {
             sidebarCollapsed={sidebarCollapsed}
             onSidebarCollapsedChange={setSidebarCollapsed}
             onToggleSidebar={toggleSidebar}
+            settingsActive={settingsOpen}
           />
         </div>
         <StatusBar />

@@ -19,7 +19,9 @@ import { StatusDot } from "./ui/StatusDot";
 /// can never drift from the shipped build.
 const APP_VERSION = __APP_VERSION__;
 
-const SHOWN: StatusKind[] = ["blocked", "working", "error", "idle", "done"];
+/// 只显示需要注意的状态。「N 个已完成」「N 个空闲」不构成行动信号 ——
+/// 91 个历史会话全是已完成时,那个数字只是噪音。
+const SHOWN: StatusKind[] = ["blocked", "working", "error"];
 
 export function StatusBar() {
   const sessions = useStore((s) => s.sessions);
@@ -89,16 +91,13 @@ export function StatusBar() {
         {worktrees > 0 ? `worktree ×${worktrees}` : "无 worktree"}
       </span>
       <span className="toolbar-spacer" />
-      {total === 0 ? (
-        <span className="sb-group sb-dim">没有活跃会话</span>
-      ) : (
+      {total > 0 &&
         SHOWN.filter((k) => counts[k] > 0).map((k) => (
           <span className="sb-group" key={k}>
             <StatusDot status={k} size="sm" labelled={false} />
             {counts[k]} 个{STATUS_LABEL[k]}
           </span>
-        ))
-      )}
+        ))}
       <span className="sb-group sb-dim sb-version">v{APP_VERSION}</span>
     </footer>
   );

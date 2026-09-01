@@ -76,7 +76,6 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
             timing-fragile, and it throws away the CLI's own affordances
             (slash commands, @file, history). Say what you want in the
             terminal once the agent is up. */}
-        <div className="composer-lede">选一个 agent 启动,任务在终端里直接说</div>
 
         {error && <div className="form-error">{error}</div>}
 
@@ -132,27 +131,24 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
           onClick={toggleIsolate}
           aria-pressed={project.isolate_sessions}
         >
-          <span className="composer-switch" aria-hidden>
-            <span className="composer-knob" />
+          {/* 与设置页同一套开关样式 —— 组件级统一,别再各处自绘。 */}
+          <span
+            className={
+              "settings-toggle" + (project.isolate_sessions ? " is-on" : "")
+            }
+            aria-hidden
+          >
+            <span className="settings-toggle-knob" />
           </span>
           <span className="composer-opt-main">
-            <span className="composer-opt-title">隔离到独立 worktree</span>
-            <span className="composer-opt-desc">
-              每个 agent 拿到自己的分支与工作目录,并行时互不覆盖
+            <span
+              className="composer-opt-title"
+              title="每个 agent 拿到自己的分支与工作目录,并行时互不覆盖"
+            >
+              Worktree
             </span>
           </span>
         </button>
-
-        {/* 预览稿 .modal-foot 的提示行。「开始 ⏎」主按钮不适用 —— 这里点
-            agent 即启动,没有独立的确认步骤。 */}
-        <div className="composer-foot">
-          <span>
-            <kbd>点击</kbd> 启动会话
-          </span>
-          <span>
-            <kbd>⇧⌘N</kbd> 唤起本界面
-          </span>
-        </div>
       </div>
     </div>
   );
