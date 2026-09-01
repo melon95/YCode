@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { useStore } from "../lib/store";
 import type { ProjectView } from "../lib/types";
 import { TopBar } from "./TopBar";
@@ -7,14 +7,7 @@ import { TopBar } from "./TopBar";
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("../lib/ipc", () => ({
   createProject: vi.fn(),
-  createSession: vi.fn(),
-  deleteProject: vi.fn(),
-  listAgents: vi.fn(),
-  gitBranch: vi.fn(() => Promise.resolve({ head: "main" })),
 }));
-vi.mock("../lib/confirm", () => ({ confirmDialog: vi.fn() }));
-vi.mock("../lib/multiWindow", () => ({ openProjectInNewWindow: vi.fn() }));
-vi.mock("./ContextMenu", () => ({ ContextMenu: () => null }));
 
 const initialState = useStore.getState();
 
@@ -29,103 +22,40 @@ function project(id: string, createdAt: number): ProjectView {
   };
 }
 
-describe("TopBar project reorder", () => {
+describe("TopBar global entries", () => {
   beforeEach(() => {
     localStorage.clear();
     useStore.setState(initialState, true);
-    useStore.getState().setProjects([
-      project("alpha", 1),
-      project("beta", 2),
-      project("gamma", 3),
-    ]);
+    useStore.getState().setProjects([project("alpha", 1)]);
   });
 
   afterEach(cleanup);
 
-  it("starts with project tabs instead of a product brand block", () => {
+  it("renders global entries only — project tabs live in the sidebar now", () => {
     render(<TopBar />);
 
-    expect(screen.queryByLabelText("ycode workspace")).not.toBeInTheDocument();
-    expect(document.querySelector(".topbar-brand")).toBeNull();
-    expect(screen.getByText("alpha")).toBeInTheDocument();
-  });
-
-  it("moves a project after the tab whose right half receives the drop", async () => {
-    render(<TopBar />);
-    const source = screen.getByText("alpha");
-    const targetName = screen.getByText("gamma");
-    const target = targetName.closest(".project-tab");
-    expect(target).not.toBeNull();
-    Object.defineProperty(target, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100 }),
-    });
-    const originalElementFromPoint = document.elementFromPoint;
-    document.elementFromPoint = vi.fn(() => target);
-
-    fireEvent.pointerDown(source, {
-      button: 0,
-      pointerId: 1,
-      clientX: 10,
-      clientY: 10,
-    });
-    fireEvent.pointerMove(source, {
-      pointerId: 1,
-      clientX: 80,
-      clientY: 10,
-    });
-    expect(target).toHaveClass("drop-after");
-    fireEvent.pointerUp(source, {
-      pointerId: 1,
-      clientX: 80,
-      clientY: 10,
-    });
-    document.elementFromPoint = originalElementFromPoint;
-
-    await waitFor(() =>
-      expect(useStore.getState().projectOrder).toEqual([
-        "beta",
-        "gamma",
-        "alpha",
-      ]),
-    );
+    // 项目 tab 条已迁入侧边栏。
+    expect(document.querySelector(".project-tabs")).toBeNull();
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    // 全局入口仍在:打开项目 / 总览 / 搜索 / 设置。
+    expect(screen.getByRole("button", { name: "打开项目" })).toBeInTheDocument();
     expect(
-      screen
-        .getAllByTitle(/^拖动以重新排序/)
-        .map((element) => element.textContent),
-    ).toEqual(["beta", "gamma", "alpha"]);
+      screen.getByRole("button", { name: "全部项目总览 (⇧⌘P)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "搜索或执行命令 (⌘K)" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设置" })).toBeInTheDocument();
   });
 
-  it("does not reorder when the pointer gesture is cancelled", () => {
+  it("dispatches the overview event from the grid button", () => {
+    const handler = vi.fn();
+    window.addEventListener("ycode:open-overview", handler);
     render(<TopBar />);
-    const source = screen.getByText("alpha");
-    const target = screen.getByText("gamma").closest(".project-tab");
-    expect(target).not.toBeNull();
-    Object.defineProperty(target, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100 }),
-    });
-    const originalElementFromPoint = document.elementFromPoint;
-    document.elementFromPoint = vi.fn(() => target);
 
-    fireEvent.pointerDown(source, {
-      button: 0,
-      pointerId: 1,
-      clientX: 10,
-      clientY: 10,
-    });
-    fireEvent.pointerMove(source, {
-      pointerId: 1,
-      clientX: 80,
-      clientY: 10,
-    });
-    fireEvent.pointerCancel(source, { pointerId: 1 });
-    document.elementFromPoint = originalElementFromPoint;
-
-    expect(useStore.getState().projectOrder).toEqual([
-      "alpha",
-      "beta",
-      "gamma",
-    ]);
-    expect(target).not.toHaveClass("drop-after");
+    fireEvent.click(screen.getByRole("button", { name: "全部项目总览 (⇧⌘P)" }));
+    expect(handler).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ycode:open-overview", handler);
   });
 });
 
@@ -161,7 +91,7 @@ describe("TopBar auto-hide", () => {
     await waitFor(() => expect(header).toHaveClass("hidden"));
   });
 
-  it("peeks open on a keyboard project switch, then settles back", async () => {
+  it("peeks open on the peek event, then settles back", async () => {
     vi.useFakeTimers();
     useStore.getState().setAutoHideTopBar(true);
     render(<TopBar />);

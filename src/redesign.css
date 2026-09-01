@@ -552,6 +552,38 @@
 .app-workspace .right-pane-body.panel-stack { padding: 8px; }
 
 /* ============================================================
+   Sidebar — 项目分组(项目从顶栏迁入)
+   ============================================================ */
+
+.sb-project { margin-bottom: 2px; }
+.sb-project-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px 7px 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.sb-project-head:hover { background: var(--panel-raised); color: var(--text); }
+.sb-project.is-current .sb-project-head { color: var(--text); }
+.sb-project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-project-body { padding-left: 4px; }
+
+/* ============================================================
    Sidebar — agent filter census + live session list
    ============================================================ */
 

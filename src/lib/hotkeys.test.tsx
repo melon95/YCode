@@ -5,7 +5,6 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useHotkeys } from "./hotkeys";
 import { createSession } from "./ipc";
 import { PICKER_SLOT, useStore } from "./store";
-import type { ProjectView } from "./types";
 
 vi.mock("@heroui/react", () => ({
   toast: {
@@ -25,17 +24,6 @@ vi.mock("./confirm", () => ({
 }));
 
 const initialState = useStore.getState();
-
-function project(id: string, createdAt: number): ProjectView {
-  return {
-    id,
-    name: id,
-    repo_path: `/tmp/${id}`,
-    created_at_ms: createdAt,
-    session_count: 0,
-    isolate_sessions: true,
-  };
-}
 
 function HotkeyHost() {
   const panel = {
@@ -100,30 +88,6 @@ describe("useHotkeys", () => {
     expect(useStore.getState().rightTab).toBe("editor");
   });
 
-  it("switches projects with shift command brackets (braces when shifted)", () => {
-    const project = (id: string, createdAt: number) => ({
-      id,
-      name: id,
-      repo_path: `/repo/${id}`,
-      created_at_ms: createdAt,
-      session_count: 0,
-      isolate_sessions: true,
-    });
-    useStore.setState({
-      projects: { a: project("a", 1), b: project("b", 2) },
-      activeProjectId: "a",
-    });
-    render(<HotkeyHost />);
-
-    // Shift+] arrives as "}" on macOS/US layouts — next project.
-    press("}", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("b");
-
-    // Shift+[ arrives as "{" — previous project (wraps back to a).
-    press("{", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("a");
-  });
-
   it("focuses visible agent panes with shift command number shortcuts", () => {
     useStore.setState({
       activeId: "s1",
@@ -178,67 +142,6 @@ describe("useHotkeys", () => {
     });
     press("n");
     expect(createSession).not.toHaveBeenCalled();
-  });
-
-  it("switches projects with shift command brackets", () => {
-    useStore.setState({
-      projects: {
-        "project-a": project("project-a", 1),
-        "project-b": project("project-b", 2),
-        "project-c": project("project-c", 3),
-      },
-      activeProjectId: "project-b",
-    });
-    render(<HotkeyHost />);
-
-    press("]", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("project-c");
-
-    press("[", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("project-b");
-  });
-
-  it("walks projects in the top bar's drag order, not creation order", () => {
-    // `projectOrder` is what the tab strip renders; a user who dragged the
-    // newest project to the front expects ⇧⌘] to follow the tabs they see.
-    useStore.setState({
-      projects: {
-        "project-a": project("project-a", 1),
-        "project-b": project("project-b", 2),
-        "project-c": project("project-c", 3),
-      },
-      projectOrder: ["project-c", "project-a", "project-b"],
-      activeProjectId: "project-c",
-    });
-    render(<HotkeyHost />);
-
-    press("]", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("project-a");
-
-    press("]", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("project-b");
-
-    // Wraps around the end of the strip, back to the leftmost tab.
-    press("]", { shiftKey: true });
-    expect(useStore.getState().activeProjectId).toBe("project-c");
-  });
-
-  it("peeks the top bar so a keyboard project switch is visible when hidden", () => {
-    const handler = vi.fn();
-    window.addEventListener("ycode:peek-topbar", handler);
-    useStore.setState({
-      projects: {
-        "project-a": project("project-a", 1),
-        "project-b": project("project-b", 2),
-      },
-      activeProjectId: "project-a",
-    });
-    render(<HotkeyHost />);
-
-    press("]", { shiftKey: true });
-
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener("ycode:peek-topbar", handler);
   });
 
   it("dispatches a new-project event with command o", () => {

@@ -77,8 +77,11 @@ describe("Sidebar agent filter", () => {
 
     const claudeTab = screen.getByRole("tab", { name: "Claude Code" });
     const codexTab = screen.getByRole("tab", { name: "Codex" });
+    const allTab = screen.getByRole("tab", { name: "全部 agent" });
 
-    expect(claudeTab).toHaveAttribute("aria-selected", "true");
+    // 默认是 ALL:项目分组形态下不再自动选中"最近使用的 agent"。
+    expect(allTab).toHaveAttribute("aria-selected", "true");
+    expect(claudeTab).toHaveAttribute("aria-selected", "false");
     expect(claudeTab.querySelector("[data-agent-icon='Claude Code']")).not.toBeNull();
     expect(claudeTab.querySelector(".sidebar-agent-name")).toBeNull();
     expect(claudeTab.querySelector(".sidebar-agent-status")).toBeNull();
@@ -86,10 +89,8 @@ describe("Sidebar agent filter", () => {
     fireEvent.click(codexTab);
 
     expect(codexTab).toHaveAttribute("aria-selected", "true");
-    // Picking a filter deselects the others. This used to also assert that
-    // the history section's heading echoed the agent name — that heading is
-    // gone, along with the separate history list it labelled.
     expect(claudeTab).toHaveAttribute("aria-selected", "false");
+    expect(allTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("keeps the new-session shortcut available even with no sessions yet", () => {

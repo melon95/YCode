@@ -250,15 +250,6 @@ export function useHotkeys({
         return;
       }
 
-      // ⇧⌘[ / ⇧⌘] — previous / next project. Holding Shift turns the bracket
-      // glyphs into braces (Shift+[ → "{", Shift+] → "}") on macOS/US layouts,
-      // so match both pairs or this never fires.
-      if (e.shiftKey && (key === "[" || key === "]" || key === "{" || key === "}")) {
-        e.preventDefault();
-        switchProject(key === "]" || key === "}" ? 1 : -1);
-        return;
-      }
-
       if (shouldSkip(e)) return;
 
       if (key === "[" || key === "]") {
@@ -328,28 +319,3 @@ function togglePanel(ref: RefObject<PanelImperativeHandle | null>) {
   else panel.collapse();
 }
 
-function switchProject(delta: 1 | -1) {
-  const s = useStore.getState();
-  if (s.lockedProjectId) return;
-  // Must match the top bar's tab order exactly — same `projectOrder`-first
-  // sort as TopBar's `projectList`. Sorting by `created_at_ms` here (as this
-  // did originally) meant ⇧⌘] walked a different sequence than the tabs the
-  // user sees, which is merely confusing with the bar visible and completely
-  // disorienting once it's auto-hidden.
-  const orderById = new Map(s.projectOrder.map((id, index) => [id, index]));
-  const list = Object.values(s.projects)
-    .filter((p) => !s.lockedByOtherWindows[p.id])
-    .sort((a, b) => {
-      const aOrder = orderById.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-      const bOrder = orderById.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-      return aOrder - bOrder || a.created_at_ms - b.created_at_ms;
-    });
-  if (list.length <= 1) return;
-  const idx = list.findIndex((p) => p.id === s.activeProjectId);
-  const base = idx >= 0 ? idx : 0;
-  const next = (base + delta + list.length) % list.length;
-  s.setActiveProjectId(list[next].id);
-  // Flash the tab strip so a blind ⇧⌘] still shows where it landed. No-op
-  // unless the bar is auto-hidden — otherwise the tabs are already on screen.
-  window.dispatchEvent(new CustomEvent("ycode:peek-topbar"));
-}
