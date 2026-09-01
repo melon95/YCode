@@ -536,9 +536,14 @@ export function App() {
           would tear down every ManualTerminal, and those kill their PTY on
           cleanup (they have no session row keeping them alive backend-side),
           so a long-running `npm run dev` would die just because the user
-          opened Settings. Hiding matches how project switching already keeps
-          background terminals alive. */}
-      <div className="app-workspace" hidden={settingsOpen || overviewOpen}>
+          opened Settings. 设置打开时工作区保持可见(半透明遮罩要能透出
+          它),只用 inert 挡掉交互;hidden 是 display:none,遮罩后面
+          会只剩一片窗口底色。 */}
+      <div
+        className="app-workspace"
+        hidden={overviewOpen}
+        inert={settingsOpen}
+      >
         <div className="app-workspace-view">
           <WorkspaceCanvas
             defaultLayout={defaultLayout}
