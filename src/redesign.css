@@ -2135,6 +2135,9 @@
   height: var(--toolbar-h);
   min-height: var(--toolbar-h);
   padding: 0 12px;
+  /* design-system.css 给它 var(--panel)——侧栏其余部分已通铺 --bg,
+     这条横带不跟上就会显出一截色差。 */
+  background: var(--bg);
 }
 .app-workspace .sidebar-agent-tabs {
   overflow: visible;
