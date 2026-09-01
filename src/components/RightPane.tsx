@@ -16,6 +16,7 @@ import {
   type SplitPath,
 } from "./RightTerminalSplit";
 import { PanelCard } from "./ui/PanelCard";
+import { StackResizer } from "./ui/StackResizer";
 import { IconButton } from "./ui/IconButton";
 import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
@@ -34,6 +35,16 @@ export function RightPane() {
   // preference worth restoring on the next launch.
   const [solo, setSolo] = useState<RightTab | null>(null);
   const isOpen = (tab: RightTab) => openPanels.includes(tab);
+  // 拖拽调高(StackResizer)把权重写在卡片的行内 flex 上。面板组合一变
+  // (开/关/solo),旧权重对新组合就没有意义了 —— 清掉,回到均分。
+  const stackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) return;
+    for (const el of stack.querySelectorAll<HTMLElement>(".panel-card")) {
+      el.style.flex = "";
+    }
+  }, [openPanels, solo]);
   const setRightTab = useStore((s) => s.setRightTab);
   const openFiles = useStore((s) => s.openFiles);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
@@ -387,7 +398,12 @@ export function RightPane() {
         })}
       </div>
       )}
-      <div className="right-pane-body panel-stack">
+      <div
+        className="right-pane-body panel-stack"
+        ref={(el) => {
+          stackRef.current = el;
+        }}
+      >
         <PanelCard
           title="文件"
           // Static label rather than the picker: one editable copy of the
@@ -515,7 +531,7 @@ export function RightPane() {
           <div className="empty">Select a project first.</div>
         )}
         </PanelCard>
-
+        <StackResizer />
         <PanelCard
           title="变更"
           open={isOpen("changes")}
@@ -569,7 +585,7 @@ export function RightPane() {
             />
           )}
         </PanelCard>
-
+        <StackResizer />
         <PanelCard
           title="待办"
           open={isOpen("todos")}
@@ -583,6 +599,7 @@ export function RightPane() {
             <TodoPanel projectId={activeProject.id} />
           )}
         </PanelCard>
+        <StackResizer />
         <PanelCard
           title="终端"
           open={isOpen("terminal")}

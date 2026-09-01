@@ -504,11 +504,38 @@
   width: 10px;
   background: var(--bg);
 }
-.app-workspace .col-handle-gap::after { left: 0; right: 0; }
+.app-workspace .col-handle-gap::after { left: -3px; right: -3px; }
+/* Claude Desktop 式手柄:平时不动声色,hover / 拖拽时在指针附近浮出
+   一枚居中短胶囊 —— 不再整条染色(那个大色块的反馈过重)。 */
 .app-workspace .col-handle:hover,
 .app-workspace .col-handle[data-resize-handle-active] {
-  background: rgba(var(--accent-rgb), 0.3);
   box-shadow: none;
+}
+.app-workspace .col-handle-line:hover,
+.app-workspace .col-handle-line[data-resize-handle-active] {
+  background: var(--rule);
+}
+.app-workspace .col-handle-gap:hover,
+.app-workspace .col-handle-gap[data-resize-handle-active] {
+  background: var(--bg);
+}
+.app-workspace .col-handle::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 44px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--rule-strong);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+  pointer-events: none;
+}
+.app-workspace .col-handle:hover::before,
+.app-workspace .col-handle[data-resize-handle-active]::before {
+  opacity: 1;
 }
 /* 右栏没有整体外壳:每张 panel-card 自己是浮动卡片(见下),
    多卡时各自独立堆叠 —— Claude Desktop 的形态。容器保持透明。 */
@@ -631,7 +658,11 @@
    ============================================================ */
 
 .agent-workspace-widget { display: flex; flex-direction: column; min-height: 0; }
-.canvas-toolbar { background: var(--surface); }
+/* 画布工具条与画布同底、无下边线 —— 通铺。 */
+.canvas-toolbar {
+  background: var(--bg);
+  border-bottom: none;
+}
 .panel-toggle { position: relative; display: inline-flex; }
 .panel-toggle .count-badge-float { box-shadow: 0 0 0 2px var(--surface); }
 .panel-add { margin-left: 2px; }
@@ -1467,6 +1498,51 @@
   overflow: hidden;
 }
 .panel-card[hidden] { display: none; }
+
+/* 卡片之间的横向拖拽手柄(ui/StackResizer)。占据 panel-stack 原本
+   8px gap 的位置(stack 的 gap 由它替代,见下),平时透明,hover /
+   拖拽浮出居中胶囊 —— 与列手柄同一套语言。
+   紧跟在隐藏卡后面的 resizer 没有"上邻居",直接藏掉;连续多个
+   resizer(中间的卡关了)只留一个。 */
+.stack-resizer {
+  flex: none;
+  height: 8px;
+  position: relative;
+  cursor: row-resize;
+  touch-action: none;
+}
+.stack-resizer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--rule-strong);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+  pointer-events: none;
+}
+.stack-resizer:hover::before,
+.stack-resizer[data-active]::before { opacity: 1; }
+/* 命中区比 8px 高一点,好抓。 */
+.stack-resizer::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  bottom: -3px;
+}
+.panel-card[hidden] + .stack-resizer,
+.stack-resizer + .stack-resizer,
+.stack-resizer:last-child,
+/* 后面再没有可见卡片的 resizer(只剩第一张卡打开时)也不显示。 */
+.stack-resizer:not(:has(~ .panel-card:not([hidden]))) { display: none; }
+/* 卡片间距由 resizer 的 8px 高度承担,gap 归零避免叠加成 16px。 */
+.right-pane-body.panel-stack { gap: 0; }
 /* Solo: the focused card takes the stack and its siblings shrink to their
    headers — nothing unmounts, so the terminals keep running behind it. */
 .panel-stack:has(.panel-card.is-solo) .panel-card:not(.is-solo) {
@@ -1484,8 +1560,9 @@
   align-items: center;
   gap: 8px;
   padding: 7px 8px 7px 12px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--surface);
+  /* 通铺:header 与卡身同色、无分隔线(Claude Desktop 的卡片语言)。
+     标题行靠留白和字重与内容区分,不靠色块。 */
+  background: transparent;
   flex-wrap: nowrap;
   min-width: 0;
 }
