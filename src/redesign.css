@@ -496,6 +496,18 @@
 /* Claude Desktop 式的两种分隔:侧栏|画布是同一底色上的细线;
    画布|右栏是留白 —— 右栏整体是一张浮动圆角卡片(见下),它和
    画布之间靠背景色的空隙分隔,不需要线。 */
+/* 通铺:侧栏与画布同一底色 —— 细线是唯一的分界,两块不同深浅的
+   底色会让分界变成"色块拼接"。styles/design-system 里侧栏是
+   --panel,在 app-workspace 作用域统一覆盖为 --bg;头部工具行、
+   底部新建区和状态栏同理。 */
+.app-workspace .sidebar { background: var(--bg); }
+.app-workspace .sidebar-footer { background: var(--bg); }
+.app-workspace .status-bar { background: var(--bg); }
+/* 文件树选中行的 accent 左条去掉:它和整个中性色系统格格不入,
+   选中态靠底色已经足够。设置导航的同款竖条一并移除。 */
+.app-workspace .file-row.file.selected,
+.app-workspace .file-row.dir.selected { box-shadow: none; }
+.settings-dialog .settings-nav-item.active::before { content: none; }
 .app-workspace .col-handle-line {
   width: 1px;
   background: var(--rule);
@@ -820,7 +832,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(3px);
   animation: fade-in var(--t-base) var(--ease-out);
 }
@@ -854,7 +866,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(3px);
   animation: fade-in var(--t-base) var(--ease-out);
 }
