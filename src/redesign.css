@@ -501,10 +501,10 @@
   background: var(--rule);
 }
 .app-workspace .col-handle-gap {
-  width: 10px;
+  width: 2px;
   background: var(--bg);
 }
-.app-workspace .col-handle-gap::after { left: -3px; right: -3px; }
+.app-workspace .col-handle-gap::after { left: -5px; right: -5px; }
 /* Claude Desktop 式手柄:平时不动声色,hover / 拖拽时在指针附近浮出
    一枚居中短胶囊 —— 不再整条染色(那个大色块的反馈过重)。 */
 .app-workspace .col-handle:hover,
@@ -547,8 +547,9 @@
 /* 右栏本来就是卡片堆叠,外壳不再需要自己的边框底色;
    panel-stack 的 padding 已经提供了与邻居的间隔。 */
 .app-workspace .right-pane { background: var(--bg); }
-/* 卡片四周留白:上下右 8px;左侧由画布|右栏的 10px 间隙分隔条提供。 */
-.app-workspace .right-pane-body.panel-stack { padding: 8px 8px 8px 0; }
+/* 卡片四周留白 8px:左侧不能为 0 —— overflow-x hidden 会把贴边
+   卡片的左侧阴影整个裁掉。列间距相应由分隔条(收窄)+ 这 8px 组成。 */
+.app-workspace .right-pane-body.panel-stack { padding: 8px; }
 
 /* ============================================================
    Sidebar — agent filter census + live session list
