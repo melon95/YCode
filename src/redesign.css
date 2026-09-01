@@ -493,25 +493,35 @@
    是两套语言。统一成:列间用 8px 留白(拖拽热区仍在),侧栏与
    画布各自是圆角卡片,浮在 --bg 底色上 —— 和 panel-stack 里的
    panel-card 一家人。 */
-/* 只在列与列之间留间隙,四周不留 —— 单列(侧栏收起、右栏关闭)时
-   画布铺满窗口,不会变成悬浮孤岛。间隙本身用下沉底色,与右栏卡片
-   之间的空白间隔同一视觉;1px 硬线由 8px 的"厚分隔带"取代。 */
-.app-workspace .col-handle {
-  width: 8px;
-  background: var(--panel-sunken);
-  transition: background var(--t-base) var(--ease);
+/* Claude Desktop 式的两种分隔:侧栏|画布是同一底色上的细线;
+   画布|右栏是留白 —— 右栏整体是一张浮动圆角卡片(见下),它和
+   画布之间靠背景色的空隙分隔,不需要线。 */
+.app-workspace .col-handle-line {
+  width: 1px;
+  background: var(--rule);
 }
-.app-workspace .col-handle::after { left: 0; right: 0; }
+.app-workspace .col-handle-gap {
+  width: 10px;
+  background: var(--bg);
+}
+.app-workspace .col-handle-gap::after { left: 0; right: 0; }
 .app-workspace .col-handle:hover,
 .app-workspace .col-handle[data-resize-handle-active] {
   background: rgba(var(--accent-rgb), 0.3);
   box-shadow: none;
 }
+/* 右栏没有整体外壳:每张 panel-card 自己是浮动卡片(见下),
+   多卡时各自独立堆叠 —— Claude Desktop 的形态。容器保持透明。 */
+.app-workspace .workspace-dock-widget {
+  background: var(--bg);
+}
+/* 画布保持铺满(单列时没有悬浮孤岛感)。 */
+.app-workspace .agent-workspace-widget { background: var(--bg); }
 /* 右栏本来就是卡片堆叠,外壳不再需要自己的边框底色;
    panel-stack 的 padding 已经提供了与邻居的间隔。 */
-.app-workspace .right-pane { background: transparent; }
-.app-workspace .right-pane-body.panel-stack { padding: 0 0 0 0; }
-/* 打开文件后右栏顶部的 tab 条属于编辑器卡片语境,保持在卡片内。 */
+.app-workspace .right-pane { background: var(--bg); }
+/* 卡片四周留白:上下右 8px;左侧由画布|右栏的 10px 间隙分隔条提供。 */
+.app-workspace .right-pane-body.panel-stack { padding: 8px 8px 8px 0; }
 
 /* ============================================================
    Sidebar — agent filter census + live session list
@@ -1434,6 +1444,9 @@
   gap: 8px;
   padding: 8px;
   overflow-y: auto;
+  /* 必须显式:只写 overflow-y 时 overflow-x 会被隐式提升为 auto,
+     内部稍宽的内容(xterm 固定列宽)就会撑出一根横向滚动条。 */
+  overflow-x: hidden;
   min-height: 0;
 }
 /* 没有入场动画:动画期间(即使只做 opacity)整张卡会被提成独立合成层,
@@ -1444,9 +1457,13 @@
   flex-direction: column;
   min-height: 140px;
   flex: 1 1 0;
-  border: 1px solid var(--rule);
   border-radius: 12px;
-  background: var(--panel-sunken);
+  background: var(--surface);
+  /* 浮起感来自阴影,不描边(Claude Desktop 的卡片语言)。 */
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.05),
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 .panel-card[hidden] { display: none; }

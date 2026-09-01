@@ -50,7 +50,9 @@ export function WorkspaceCanvas({
       >
         <Sidebar onToggleSidebar={onToggleSidebar} />
       </Panel>
-      <Separator className="col-handle" />
+      {/* 侧栏|画布:细线分隔;画布|右栏:留白间隔(右栏是浮动卡片)。
+          两条分隔线的身份不同,class 区分。 */}
+      <Separator className="col-handle col-handle-line" />
       <Panel id="middle" defaultSize="34%" minSize="20%">
         <section className="agent-workspace-widget" aria-label="Agent workspace">
           <CanvasToolbar
@@ -60,7 +62,7 @@ export function WorkspaceCanvas({
           <TerminalPane />
         </section>
       </Panel>
-      <Separator className="col-handle" />
+      <Separator className="col-handle col-handle-gap" />
       <Panel
         id="right"
         defaultSize="47%"
