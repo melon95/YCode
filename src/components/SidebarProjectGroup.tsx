@@ -244,9 +244,6 @@ export function SidebarProjectGroup({
             <>
               <div className="sidebar-section-heading">
                 <span>最近 7 天</span>
-                <span className="sidebar-section-context">
-                  {buckets.recent.length}
-                </span>
               </div>
               <div className="sidebar-live">
                 {buckets.recent.map((row) => (
@@ -272,9 +269,6 @@ export function SidebarProjectGroup({
               >
                 <ChevronIcon open={olderOpen} />
                 <span title="更早的会话,点开可恢复继续">更早</span>
-                <span className="sidebar-section-context">
-                  {buckets.older.length}
-                </span>
               </button>
               <div className="sidebar-live" hidden={!olderOpen}>
                 {buckets.older.map((row) => (

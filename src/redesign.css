@@ -2870,3 +2870,9 @@
 .live-row-wrap:hover > .live-row,
 .live-row-wrap.is-active > .live-row,
 .live-row-wrap > .live-row:hover { background: none; }
+
+/* 分组小标题去掉计数后,space-between 会把仅剩的那个词推到右端 ——
+   「更早」跑到和项目名对不齐的位置。改左对齐;需要靠右的元素
+   (「等你处理」的计数)自己用 margin-left: auto。 */
+.sidebar-section-heading { justify-content: flex-start; }
+.needs-you-head .sidebar-section-context { margin-left: auto; }
