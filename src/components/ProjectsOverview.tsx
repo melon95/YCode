@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "../lib/toast";
+import { OverflowMenu } from "./ui/OverflowMenu";
+import { removeProjectWithConfirm } from "../lib/projectActions";
 import { useStore } from "../lib/store";
 import { createProject, gitBranch } from "../lib/ipc";
 import {
@@ -314,6 +316,17 @@ export function ProjectsOverview({ onClose }: Props) {
               >
                 <PlusIcon />
               </span>
+              <OverflowMenu
+                label={`${r.name} 的更多操作`}
+                asSpan
+                actions={[
+                  {
+                    label: "删除",
+                    destructive: true,
+                    onClick: () => void removeProjectWithConfirm(r.id),
+                  },
+                ]}
+              />
             </span>
 
             {/* Session shape. Empty projects get a single flat rail so every

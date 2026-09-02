@@ -23,6 +23,9 @@ import {
 } from "../lib/sessionList";
 import { AgentIcon } from "./AgentIcon";
 import { StatusDot } from "./ui/StatusDot";
+import { OverflowMenu, type MenuAction } from "./ui/OverflowMenu";
+import { archiveSessionWithConfirm } from "../lib/sessionActions";
+import { removeProjectWithConfirm } from "../lib/projectActions";
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -179,23 +182,33 @@ export function SidebarProjectGroup({
 
   // 组头的会话数:展开前用 DB 里的活会话数(便宜且总有),展开扫过后
   // 用合并后的总数。
-  const headCount = scanned ? allRows.length : liveSessions.length;
 
   return (
     <div className={"sb-project" + (isActiveProject ? " is-current" : "")}>
-      <button
-        type="button"
-        className="sb-project-head"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        title={project.repo_path}
-      >
-        <ChevronIcon open={expanded} />
-        <span className="sb-project-name">{project.name}</span>
-        {headCount > 0 && (
-          <span className="sidebar-section-context">{headCount}</span>
-        )}
-      </button>
+      {/* ⋮ 不能嵌在展开按钮里(button 套 button 无效),所以行是一个
+          容器,展开按钮和菜单并排住在里面。 */}
+      <div className="sb-project-head-row">
+        <button
+          type="button"
+          className="sb-project-head"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          title={project.repo_path}
+        >
+          <ChevronIcon open={expanded} />
+          <span className="sb-project-name">{project.name}</span>
+        </button>
+        <OverflowMenu
+          label={`${project.name} 的更多操作`}
+          actions={[
+            {
+              label: "删除",
+              destructive: true,
+              onClick: () => void removeProjectWithConfirm(project.id),
+            },
+          ]}
+        />
+      </div>
 
       {expanded && (
         <div className="sb-project-body">
@@ -310,7 +323,25 @@ function SessionRowButton({
   // 焦点会话的背景高亮。琥珀指示条回答的是「在不在画布上」,这个背景
   // 回答的是「键盘现在打到谁」—— 两件事。
   const isActive = useStore((s) => row.live != null && s.activeId === row.live.id);
+  // 归档只对 ycode 自己的行有意义 —— 纯 transcript 行(live 为 null)是
+  // 磁盘上 agent 写的文件,ycode 没有可归档的东西,也不该去删别人的记录。
+  const rowActions: MenuAction[] = row.live
+    ? [
+        {
+          label: "归档",
+          destructive: true,
+          onClick: () => void archiveSessionWithConfirm(row.live!.id),
+        },
+      ]
+    : [];
+
   return (
+    <div
+      className={
+        "live-row-wrap" + (row.paneIdx >= 0 ? " is-open" : "") +
+        (isActive ? " is-active" : "")
+      }
+    >
     <button
       type="button"
       className={
@@ -354,5 +385,7 @@ function SessionRowButton({
       )}
       <StatusDot status={status} labelled={false} />
     </button>
+      <OverflowMenu label={`${row.title} 的更多操作`} actions={rowActions} />
+    </div>
   );
 }

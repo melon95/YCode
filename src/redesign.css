@@ -609,12 +609,9 @@
 /* 当前项目 —— 「新建会话会落在哪」的答案。原来只把字提亮一档,在
    一列同样加粗的项目名里根本读不出来。用琥珀底 + 左侧竖条:和 pane
    焦点环、状态点是同一套「这个是活的」语言,不引入新颜色。 */
-.sb-project.is-current .sb-project-head {
-  position: relative;
-  color: var(--text);
-  background: rgba(var(--st-working-rgb), 0.1);
-}
-.sb-project.is-current .sb-project-head::before {
+.sb-project.is-current .sb-project-head { color: var(--text); }
+.sb-project.is-current .sb-project-head-row { position: relative; }
+.sb-project.is-current .sb-project-head-row::before {
   content: "";
   position: absolute;
   left: 0;
@@ -2761,3 +2758,115 @@
   white-space: nowrap;
 }
 .project-switcher-chevron { flex: none; color: var(--whisper); }
+
+/* ============================================================
+   行尾 ⋮ 溢出菜单
+   ------------------------------------------------------------
+   归档/移除这类低频又不可逆的动作收进 ⋮:常驻就得占位置挤掉标题,
+   而且越顺手越容易误触。平时隐身,hover 或菜单打开时才浮出来。
+   ============================================================ */
+.overflow-menu-trigger {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--subtle);
+  cursor: pointer;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+/* 隐身用 opacity 而不是 display:none —— 后者会让行在 hover 时突然
+   变宽,文字跟着抖一下。 */
+.overflow-menu-trigger.is-hover-only { opacity: 0; }
+.sb-project-head-row:hover .overflow-menu-trigger,
+.live-row-wrap:hover .overflow-menu-trigger,
+.overflow-menu-trigger[data-popup-open],
+.overflow-menu-trigger:focus-visible {
+  opacity: 1;
+}
+.overflow-menu-trigger:hover,
+.overflow-menu-trigger[data-popup-open] {
+  background: var(--panel-raised);
+  color: var(--text);
+}
+
+.overflow-menu {
+  min-width: 168px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  box-shadow: var(--elevation-menu);
+  animation: pop-in var(--t-base) var(--ease-out);
+}
+.overflow-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+.overflow-menu-item[data-highlighted] { background: var(--panel-raised); }
+.overflow-menu-item[data-disabled] { opacity: 0.4; cursor: default; }
+.overflow-menu-item.is-destructive { color: var(--st-blocked); }
+.overflow-menu-item.is-destructive[data-highlighted] {
+  background: rgba(var(--st-blocked-rgb), 0.12);
+}
+/* 与上面的常规动作之间拉一道线,免得手滑从「重命名」划到「移除」。 */
+.overflow-menu-item.has-rule {
+  margin-top: 5px;
+  border-top: 1px solid var(--rule);
+  padding-top: 9px;
+  border-radius: 0 0 8px 8px;
+}
+
+/* ⋮ 要和行并排,所以行本体外面套了一层容器。容器接管原来的圆角和
+   底色,行本身退成一个透明的弹性子项。 */
+.sb-project-head-row,
+.live-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  border-radius: 8px;
+}
+.sb-project-head-row > .sb-project-head,
+.live-row-wrap > .live-row {
+  flex: 1;
+  min-width: 0;
+}
+/* hover / 选中的底色移到容器上。留在内层的话,⋮ 所在的那一截不着色,
+   整行的高亮会缺一块右边。 */
+.sb-project-head-row:hover { background: var(--panel-raised); }
+.sb-project-head-row:hover > .sb-project-head { background: none; }
+.sb-project.is-current .sb-project-head-row {
+  background: rgba(var(--st-working-rgb), 0.1);
+}
+.sb-project.is-current .sb-project-head-row:hover {
+  background: rgba(var(--st-working-rgb), 0.16);
+}
+.sb-project.is-current .sb-project-head,
+.sb-project.is-current .sb-project-head:hover {
+  background: none;
+}
+
+.live-row-wrap:hover,
+.live-row-wrap.is-active { background: var(--panel-raised); }
+.live-row-wrap:hover > .live-row,
+.live-row-wrap.is-active > .live-row,
+.live-row-wrap > .live-row:hover { background: none; }
