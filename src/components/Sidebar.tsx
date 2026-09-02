@@ -18,7 +18,6 @@ import type {
 } from "../lib/types";
 import { SidebarToggle } from "./ui/SidebarToggle";
 import { AgentFilterMenu } from "./ui/AgentFilterMenu";
-import { ProjectSwitcher } from "./ui/ProjectSwitcher";
 import type { MergedSession } from "../lib/sessionList";
 import { SidebarProjectGroup } from "./SidebarProjectGroup";
 
@@ -235,14 +234,6 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
           }}
         />
       </div>
-
-      {/* 当前项目 —— 回答「新建会话会落在哪」。下面的分组列表仍是全部
-          项目,那是「翻谁的历史」,两个问题分开问。 */}
-      <ProjectSwitcher
-        projects={projectList}
-        activeProjectId={activeProjectId}
-        onPick={setActiveProjectId}
-      />
 
       {/* 项目分组列表:一根滚动列,组内不再各自滚。 */}
       <div className="sidebar-scroll">

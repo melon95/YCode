@@ -606,7 +606,27 @@
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .sb-project-head:hover { background: var(--panel-raised); color: var(--text); }
-.sb-project.is-current .sb-project-head { color: var(--text); }
+/* 当前项目 —— 「新建会话会落在哪」的答案。原来只把字提亮一档,在
+   一列同样加粗的项目名里根本读不出来。用琥珀底 + 左侧竖条:和 pane
+   焦点环、状态点是同一套「这个是活的」语言,不引入新颜色。 */
+.sb-project.is-current .sb-project-head {
+  position: relative;
+  color: var(--text);
+  background: rgba(var(--st-working-rgb), 0.1);
+}
+.sb-project.is-current .sb-project-head::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--st-working);
+}
+.sb-project.is-current .sb-project-head:hover {
+  background: rgba(var(--st-working-rgb), 0.16);
+}
 .sb-project-name {
   flex: 1;
   min-width: 0;
