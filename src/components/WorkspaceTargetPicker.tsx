@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
 import type { SessionView } from "../lib/types";
 

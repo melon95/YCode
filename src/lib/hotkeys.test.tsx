@@ -6,7 +6,7 @@ import { useHotkeys } from "./hotkeys";
 import { createSession } from "./ipc";
 import { PICKER_SLOT, useStore } from "./store";
 
-vi.mock("@heroui/react", () => ({
+vi.mock("./toast", () => ({
   toast: {
     danger: vi.fn(),
     warning: vi.fn(),

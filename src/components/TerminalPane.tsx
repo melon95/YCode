@@ -30,7 +30,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import {
   listenSessionEvents,
   mergeSessionWorktree,
@@ -882,15 +882,22 @@ export function TerminalPane() {
                 : splits.rows[g.splitIdx];
             const startPct = g.startPct ?? 0;
             const endPct = g.endPct ?? 100;
+            // The grid's tracks are pure percentages; the gap is extra width
+            // *between* them. So the split percentage marks the gap's leading
+            // edge, not its middle — centring the handle on the raw percentage
+            // parks half of it on the preceding pane. Offset by half a gap to
+            // land in the gutter itself. `--pane-gap` is the same variable the
+            // grid's `gap` reads, so the two can't drift apart.
+            const mid = `calc(${splitPct}% + var(--pane-gap) / 2)`;
             const style: React.CSSProperties =
               g.axis === "col"
                 ? {
-                    left: `${splitPct}%`,
+                    left: mid,
                     top: `${startPct}%`,
                     height: `${endPct - startPct}%`,
                   }
                 : {
-                    top: `${splitPct}%`,
+                    top: mid,
                     left: `${startPct}%`,
                     width: `${endPct - startPct}%`,
                   };

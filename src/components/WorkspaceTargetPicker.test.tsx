@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
 import type { SessionView } from "../lib/types";
 import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
-vi.mock("@heroui/react", () => ({
+vi.mock("../lib/toast", () => ({
   toast: { warning: vi.fn() },
 }));
 

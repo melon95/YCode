@@ -11,7 +11,7 @@
 //     highlight is off.
 
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
-import { toast } from "@heroui/react";
+import { toast } from "./toast";
 import { resolveTerminalPath } from "./ipc";
 import { useStore } from "./store";
 

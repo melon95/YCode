@@ -21,7 +21,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import {
   agentHookStatus,
   cliStatus,

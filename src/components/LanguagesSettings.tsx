@@ -4,7 +4,7 @@
 // SQLite `lsp_installations` table, not in `ConfigView`.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import {
   listenSessionEvents,
   lspInstall,

@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
@@ -14,7 +13,7 @@ const pkg = JSON.parse(
 // Tauri 2 conventions: fixed port 1420, no screen-clear so the Cargo build
 // log stays visible, and ignore the Rust workspace from the file watcher.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   clearScreen: false,
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   resolve: {

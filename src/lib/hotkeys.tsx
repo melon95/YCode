@@ -29,7 +29,7 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { toast } from "@heroui/react";
+import { toast } from "./toast";
 import {
   isNewSessionPickerVisible,
   LAYOUT_CAP,

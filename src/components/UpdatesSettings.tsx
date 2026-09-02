@@ -6,7 +6,7 @@
 // path swallows.
 
 import { useEffect, useState } from "react";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 import { checkForUpdate } from "../lib/updater";
 import { openUrl } from "../lib/ipc";

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { watch } from "@tauri-apps/plugin-fs";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import {
   EditorView,

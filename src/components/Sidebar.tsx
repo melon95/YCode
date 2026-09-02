@@ -9,15 +9,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { LAYOUT_CAP, useStore } from "../lib/store";
 import { createProject, createSession } from "../lib/ipc";
 import type {
   DiscoveredSessionView,
   ProjectView,
 } from "../lib/types";
-import { AgentIcon } from "./AgentIcon";
 import { SidebarToggle } from "./ui/SidebarToggle";
+import { AgentFilterMenu } from "./ui/AgentFilterMenu";
+import { ProjectSwitcher } from "./ui/ProjectSwitcher";
 import type { MergedSession } from "../lib/sessionList";
 import { SidebarProjectGroup } from "./SidebarProjectGroup";
 
@@ -44,9 +45,6 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
   const lockedByOtherWindows = useStore((s) => s.lockedByOtherWindows);
   const agents = useStore((s) => s.agents);
   const agentTabs = useMemo(() => agents.filter((a) => a.available), [agents]);
-  const AGENT_PILL_CAP = 4;
-  const shownAgentTabs = agentTabs.slice(0, AGENT_PILL_CAP);
-  const hiddenAgentTabs = agentTabs.slice(AGENT_PILL_CAP);
   const visibleCount = useStore((s) => s.layout.visibleIds.length);
   const atCap = visibleCount >= LAYOUT_CAP;
 
@@ -228,53 +226,23 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
             </button>
           </>
         )}
-        <div className="sidebar-agent-tabs" role="tablist" aria-label="Agent filter">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={showAllAgents}
-            className={"sidebar-agent-tab is-all" + (showAllAgents ? " active" : "")}
-            onClick={() => setShowAllAgents(true)}
-            aria-label="全部 agent"
-            title="全部 agent"
-          >
-            ALL
-          </button>
-          {shownAgentTabs.map((profile) => (
-            <button
-              key={profile.id}
-              type="button"
-              role="tab"
-              aria-label={profile.display_name}
-              aria-selected={!showAllAgents && userPickedAgent === profile.id}
-              className={
-                `sidebar-agent-tab agent-${profile.id}` +
-                (!showAllAgents && userPickedAgent === profile.id ? " active" : "")
-              }
-              onClick={() => {
-                setShowAllAgents(false);
-                setUserPickedAgent(profile.id);
-              }}
-              title={`只看 ${profile.display_name} 的会话`}
-            >
-              <AgentIcon
-                icon={profile.icon}
-                variant={profile.icon_variant}
-                fallbackChar={profile.display_name}
-                size={20}
-              />
-            </button>
-          ))}
-          {hiddenAgentTabs.length > 0 && (
-            <span
-              className="sidebar-agent-more"
-              title={hiddenAgentTabs.map((a) => a.display_name).join(" · ")}
-            >
-              +{hiddenAgentTabs.length}
-            </span>
-          )}
-        </div>
+        <AgentFilterMenu
+          agents={agentTabs}
+          value={activeAgent}
+          onChange={(id) => {
+            setShowAllAgents(id === null);
+            setUserPickedAgent(id);
+          }}
+        />
       </div>
+
+      {/* 当前项目 —— 回答「新建会话会落在哪」。下面的分组列表仍是全部
+          项目,那是「翻谁的历史」,两个问题分开问。 */}
+      <ProjectSwitcher
+        projects={projectList}
+        activeProjectId={activeProjectId}
+        onPick={setActiveProjectId}
+      />
 
       {/* 项目分组列表:一根滚动列,组内不再各自滚。 */}
       <div className="sidebar-scroll">
@@ -283,7 +251,13 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
             key={p.id}
             project={p}
             expanded={expandedIds.has(p.id)}
-            onToggle={() => toggleExpanded(p.id)}
+            onToggle={() => {
+              // 点组头同时把这个项目设为活跃 —— 否则切项目只剩「点一个
+              // 已有会话行」这一条路,而空项目根本没有行可点,底部的
+              // 「新建会话」也就一直建在上一个项目里。
+              if (p.id !== activeProjectId) setActiveProjectId(p.id);
+              toggleExpanded(p.id);
+            }}
             onOpenRow={openRow}
             agentFilter={activeAgent}
           />

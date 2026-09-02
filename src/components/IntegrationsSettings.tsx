@@ -12,7 +12,7 @@
 // back, so the buttons say what they did via a toast instead.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { platform } from "@tauri-apps/plugin-os";
 import {
   agentHookStatus,

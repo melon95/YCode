@@ -11,7 +11,7 @@
 // for updates" button surfaces errors via toast.
 
 import { useEffect, useState } from "react";
-import { Button, toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { checkForUpdate, installUpdate, type InstallPhase } from "../lib/updater";
 
@@ -105,12 +105,20 @@ export function UpdateNotice() {
         <div className="update-notice-progress">{progressLabel(progress)}</div>
       ) : (
         <div className="update-notice-actions">
-          <Button variant="ghost" size="sm" onPress={() => setDismissed(true)}>
+          <button
+            type="button"
+            className="button button--ghost button--sm"
+            onClick={() => setDismissed(true)}
+          >
             Later
-          </Button>
-          <Button variant="primary" size="sm" onPress={onInstall}>
+          </button>
+          <button
+            type="button"
+            className="button button--primary button--sm"
+            onClick={onInstall}
+          >
             Install &amp; restart
-          </Button>
+          </button>
         </div>
       )}
     </div>

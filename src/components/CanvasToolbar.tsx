@@ -208,7 +208,7 @@ function PanelCatalog() {
         <PlusIcon />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={8} align="end">
+        <Popover.Positioner className="popover-layer" sideOffset={8} align="end">
           <Popover.Popup className="panel-catalog">
             <div className="panel-catalog-head">面板</div>
             <div className="panel-catalog-row">

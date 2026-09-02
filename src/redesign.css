@@ -2316,3 +2316,428 @@
   font-size: 12px;
   color: var(--whisper);
 }
+
+/* ============================================================
+   Toast — Base UI 堆叠通知
+   ------------------------------------------------------------
+   停靠右下,和 `.update-notice` 共用一套卡片语言(同底、同描边、
+   同投影),差别只在左侧那道按严重度着色的竖条 —— 一眼分清是报错
+   还是完成,不用读完整句。
+   ============================================================ */
+.toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+}
+
+.toast {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  /* 折叠态下每张都贴合最前一张的高度,堆叠边缘才是齐的。 */
+  height: var(--toast-frontmost-height, var(--toast-height));
+  z-index: calc(1000 - var(--toast-index));
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.28s ease;
+  transform: translateY(calc(var(--toast-index) * -14%))
+    scale(calc(max(0, 1 - (var(--toast-index) * 0.05))));
+}
+
+/* 悬停展开:堆叠散成一列,由 Base UI 量出的偏移驱动。 */
+.toast[data-expanded] {
+  height: var(--toast-height);
+  transform: translateY(var(--toast-offset-y));
+}
+
+.toast[data-swiping] {
+  transition: none;
+  transform: translateX(var(--toast-swipe-movement-x))
+    translateY(calc(var(--toast-swipe-movement-y) + var(--toast-offset-y, 0px)));
+}
+
+.toast[data-starting-style],
+.toast[data-ending-style] {
+  opacity: 0;
+  transform: translateY(20px) scale(0.97);
+}
+
+.toast[data-ending-style][data-swipe-direction="right"] {
+  transform: translateX(calc(var(--toast-swipe-movement-x) + 130%));
+}
+
+.toast[data-ending-style][data-swipe-direction="down"] {
+  transform: translateY(calc(var(--toast-swipe-movement-y) + 130%));
+}
+
+.toast-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px 11px 14px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--subtle);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.35);
+  transition: opacity 0.25s ease;
+}
+
+/* 被压在下面的那几张只留一个轮廓,文字叠字会糊成一团。 */
+.toast-content[data-behind] {
+  opacity: 0;
+}
+
+.toast-content[data-expanded] {
+  opacity: 1;
+}
+
+/* `data-type` 落在 Root 上,不在 Content 上 —— Content 只带 data-behind
+   和 data-expanded,所以严重度必须从 Root 往下选。 */
+.toast[data-type="danger"] .toast-content {
+  border-left-color: var(--st-blocked);
+}
+
+.toast[data-type="warning"] .toast-content {
+  border-left-color: var(--st-working);
+}
+
+.toast[data-type="success"] .toast-content {
+  border-left-color: var(--st-done);
+}
+
+.toast-description {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+  /* 报错信息常常很长(带路径、带 Rust error chain),给个上限免得
+     一条 toast 铺满半屏;完整内容仍在 title 属性里。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  flex: none;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-xs, 4px);
+  background: transparent;
+  color: var(--subtle);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.toast-close:hover {
+  color: var(--text);
+  background: var(--control-hover, rgba(var(--highlight-rgb), 0.055));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: opacity 0.2s ease;
+  }
+}
+
+/* ============================================================
+   Pane 卡片 —— 跟右栏 `.panel-card` 对齐
+   ------------------------------------------------------------
+   画布上的 pane 和右栏的面板卡是同一层级的东西,之前一个靠描边、
+   一个靠阴影,并排看是两套语言。统一到阴影这套:浮起感来自投影,
+   header 与卡身通铺、不拉分隔线,层次交给留白和字重。
+   焦点环保留 —— 它不是装饰,是「键盘打到哪个 pane」的唯一答案。
+   ============================================================ */
+.docked-workspace .pane-cell {
+  border: none;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.05),
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* 焦点态:琥珀内环叠在基础投影之上,不替换它 —— 换掉的话失焦的
+   pane 会瞬间塌下去一层,整个画布跟着抖。 */
+.docked-workspace .pane-cell.focused {
+  box-shadow:
+    inset 0 0 0 1.5px var(--st-working),
+    0 0 0 0.5px rgba(0, 0, 0, 0.05),
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.docked-workspace .pane-header {
+  background: transparent;
+  border-bottom: none;
+}
+
+/* 焦点 header 的琥珀底色跟着去掉:内环已经说清楚了是哪个 pane,
+   再加一条色带就是同一句话说两遍。标题字重照常提亮。 */
+.docked-workspace .pane-cell.focused .pane-header {
+  background: transparent;
+  color: var(--text);
+}
+
+/* pane 标题与右栏卡头同一字号字重,两栏的标题行才在一条水平线上读。 */
+/* 标题只占自己需要的宽度。原来是 `flex: 1 1 auto`,加上后面那个同样
+   `flex: 1` 的 `.pane-spacer`,两者平分剩余空间 —— 结果状态点被推到
+   header 正中,读起来像个独立的东西,而不是跟着标题的状态。收缩靠
+   max-width 兜底,长标题照样省略号。 */
+.docked-workspace .pane-title {
+  flex: 0 1 auto;
+  max-width: 46%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ============================================================
+   Session composer —— 同上,去描边改阴影
+   ============================================================ */
+.composer {
+  border: none;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.05),
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* 卡内的可选项:内嵌元素不该有和外层卡一样强的投影,给一层极浅的
+   贴底阴影就够 —— 它要表达的是「可点」,不是「浮在上面」。 */
+.composer-agent,
+.composer-opt {
+  border: none;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.composer-agent:hover:not(:disabled),
+.composer-opt:hover {
+  background: var(--panel-raised);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.06),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.composer-foot {
+  border-top: none;
+}
+
+/* 卡片语言下 pane 之间要靠留白分隔,不再有描边划界。浅色主题里
+   `--bg` 和 `--surface` 只差一档,原来的 8px 缝隙在通铺后基本读不
+   出来 —— 相邻两个 pane 看着像连在一起。拉到 14px,并让画布四周的
+   内缩跟上,免得贴边的 pane 比中间的挤。
+   `--pane-gap` 同时被 TerminalPane 的拖拽手柄读去算居中偏移;改这里
+   就够,不要在两处各写一遍 px。 */
+.docked-workspace .terminal-grid {
+  --pane-gap: 14px;
+  inset: 12px;
+  gap: var(--pane-gap);
+}
+
+/* ============================================================
+   Pane 拖拽手柄 —— 与三栏的 `.col-handle` 统一
+   ------------------------------------------------------------
+   手柄横跨在 gap 上,自身必须完全透明:一染底色就变成一条贯穿画布
+   的色带,把刚拉开的留白又填回去了。反馈只由中间那枚胶囊承担 ——
+   和三栏分隔条同一句话。accent(当前主题是蓝的)在这里已经不合群:
+   焦点态归琥珀、其余中性,手柄没有理由是全画布唯一的蓝。
+   ============================================================ */
+.docked-workspace .gutter:hover,
+.docked-workspace .gutter:active {
+  background: transparent;
+}
+
+.docked-workspace .gutter::after {
+  background: var(--rule-strong);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.docked-workspace .gutter:hover::after,
+.docked-workspace .gutter:active::after {
+  background: var(--rule-strong);
+  opacity: 1;
+}
+
+/* 胶囊尺寸对齐 `.col-handle::before`(5px × 44px),让横竖两种手柄
+   摸上去是同一个东西。 */
+.docked-workspace .gutter-col::after,
+.docked-workspace .gutter-col:hover::after,
+.docked-workspace .gutter-col:active::after {
+  width: 5px;
+  height: 44px;
+  max-height: 60%;
+  border-radius: 999px;
+}
+
+.docked-workspace .gutter-row::after,
+.docked-workspace .gutter-row:hover::after,
+.docked-workspace .gutter-row:active::after {
+  height: 5px;
+  width: 44px;
+  max-width: 60%;
+  border-radius: 999px;
+}
+
+/* 抓取区跟着 gap 走:比缝隙略宽一点才好抓,但不必再像原来那样
+   固定 12px —— gap 变了它就该跟着变。 */
+.docked-workspace .gutter-col { width: calc(var(--pane-gap) + 4px); }
+.docked-workspace .gutter-row { height: calc(var(--pane-gap) + 4px); }
+
+/* ============================================================
+   浮层层级 —— popover / 菜单要压过画布
+   ------------------------------------------------------------
+   Base UI 的 Positioner 是 `position: fixed` 且不自带 z-index。
+   画布里有几个带正 z-index 的元素(focused pane 是 1、拖拽手柄是
+   50),它们各自开了 stacking context,于是这些无 z-index 的浮层
+   反而被压在下面 —— 表现为面板目录、收件箱弹窗被 agent 的终端挡住。
+   统一钉在 240:高过画布的一切,低于设置弹窗(300)和命令面板。
+   ============================================================ */
+/* 钉在 Positioner(真正 fixed 定位的那层)上,不是 Popup —— Popup 是
+   它的静态子元素,给子元素设 z-index 不会把整个浮层抬起来。 */
+.popover-layer {
+  z-index: 240;
+}
+
+/* ============================================================
+   Agent 过滤器 —— 下拉取代图标 pill 行
+   ------------------------------------------------------------
+   原来一个 agent 一格 pill,装到第五个就溢出、侧栏窄一点整条横向
+   滚动 —— 侧栏宽度是用户拖出来的,不该被过滤器绑架。收进下拉后
+   触发器宽度恒定,agent 再多只是菜单变长。
+   ============================================================ */
+.agent-filter-trigger {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--control-size, 30px);
+  padding: 0 7px 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+.agent-filter-trigger:hover,
+.agent-filter-trigger[data-popup-open] {
+  border-color: var(--rule-strong);
+  color: var(--text);
+}
+.agent-filter-chevron { flex: none; color: var(--whisper); }
+/* ALL 用等宽小字,和 agent 图标同宽 —— 触发器不会在两种状态间跳宽。 */
+.agent-filter-all {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.agent-filter-menu,
+.project-menu {
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  box-shadow: var(--elevation-menu);
+  animation: pop-in var(--t-base) var(--ease-out);
+}
+
+.agent-filter-item,
+.project-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.agent-filter-item:hover,
+.project-menu-item:hover {
+  background: var(--panel-raised);
+}
+/* 选中态靠底色 + 字重,不加对勾 —— 菜单里每行左边已经有图标了,
+   再塞一列勾会把名字挤出去。 */
+.agent-filter-item.is-on,
+.project-menu-item.is-on {
+  background: rgba(var(--st-working-rgb), 0.12);
+  color: var(--text);
+  font-weight: 600;
+}
+.agent-filter-name,
+.project-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   项目切换器 —— 侧栏头部下方的一行
+   ------------------------------------------------------------
+   它回答「新建会话会落在哪」。下面的分组列表回答的是另一个问题
+   (翻谁的历史),所以两者并存而不是二选一。
+   ============================================================ */
+.project-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 24px);
+  margin: 0 12px 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.project-switcher:hover,
+.project-switcher[data-popup-open] {
+  background: var(--panel-raised);
+}
+.project-switcher-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-switcher-chevron { flex: none; color: var(--whisper); }

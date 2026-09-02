@@ -8,7 +8,7 @@
 //
 // Both switches live in the staged `ConfigView` and apply on Save.
 
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { testNotification } from "../lib/ipc";
 import type { ConfigView } from "../lib/types";
 import { StatusDot } from "./ui/StatusDot";

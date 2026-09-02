@@ -72,25 +72,22 @@ describe("Sidebar agent filter", () => {
 
   afterEach(cleanup);
 
-  it("renders the agent switcher as icon-only tabs and keeps filtering accessible", () => {
+  // 过滤器从一行图标 pill 换成了下拉:pill 每多一个 agent 就多占一格
+  // 宽度,窄侧栏下会横向滚动。触发器的可访问名字带着当前选中项,所以
+  // 「现在筛的是谁」不用打开菜单就能读到。
+  it("filters by agent through the dropdown and defaults to ALL", () => {
     render(<Sidebar />);
 
-    const claudeTab = screen.getByRole("tab", { name: "Claude Code" });
-    const codexTab = screen.getByRole("tab", { name: "Codex" });
-    const allTab = screen.getByRole("tab", { name: "全部 agent" });
+    const trigger = screen.getByRole("button", {
+      name: "筛选 agent —— 当前 全部 agent",
+    });
 
-    // 默认是 ALL:项目分组形态下不再自动选中"最近使用的 agent"。
-    expect(allTab).toHaveAttribute("aria-selected", "true");
-    expect(claudeTab).toHaveAttribute("aria-selected", "false");
-    expect(claudeTab.querySelector("[data-agent-icon='Claude Code']")).not.toBeNull();
-    expect(claudeTab.querySelector(".sidebar-agent-name")).toBeNull();
-    expect(claudeTab.querySelector(".sidebar-agent-status")).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
 
-    fireEvent.click(codexTab);
-
-    expect(codexTab).toHaveAttribute("aria-selected", "true");
-    expect(claudeTab).toHaveAttribute("aria-selected", "false");
-    expect(allTab).toHaveAttribute("aria-selected", "false");
+    expect(
+      screen.getByRole("button", { name: "筛选 agent —— 当前 Codex" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps the new-session shortcut available even with no sessions yet", () => {

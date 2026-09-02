@@ -2,7 +2,7 @@
 // pane close button (TerminalPane) and the ⌘W hotkey stay in lockstep instead
 // of drifting into two subtly different "close" behaviours.
 
-import { toast } from "@heroui/react";
+import { toast } from "./toast";
 import { archiveSession, stopSessionForClose } from "./ipc";
 import type { WorktreeCloseState } from "./types";
 import { confirmDialog } from "./confirm";

@@ -7,7 +7,7 @@ import type { ProjectView, SessionView } from "./types";
 vi.mock("./ipc", () => ({
   resolveTerminalPath: vi.fn(async () => "src/foo.ts"),
 }));
-vi.mock("@heroui/react", () => ({
+vi.mock("./toast", () => ({
   toast: { warning: vi.fn(), danger: vi.fn() },
 }));
 

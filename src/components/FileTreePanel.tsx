@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 import { watchImmediate } from "@tauri-apps/plugin-fs";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { Tree, type NodeRendererProps } from "react-arborist";
 import {
   createPath,

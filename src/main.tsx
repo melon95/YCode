@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ToastProvider } from "@heroui/react";
 import { App } from "./App";
+import { Toaster } from "./components/ui/Toaster";
 import "./styles.css";
 import "./design-system.css";
 import "./redesign.css";
@@ -11,6 +11,6 @@ if (!root) throw new Error("root element missing");
 createRoot(root).render(
   <StrictMode>
     <App />
-    <ToastProvider placement="bottom end" />
+    <Toaster />
   </StrictMode>,
 );

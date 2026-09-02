@@ -92,7 +92,7 @@ export function AttentionInbox() {
         )}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={8} align="end">
+        <Popover.Positioner className="popover-layer" sideOffset={8} align="end">
           <Popover.Popup className="inbox-popup">
             <div className="inbox-head">
               <span className="eyebrow">等你处理{count > 0 ? ` · ${count}` : ""}</span>

@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { toast } from "@heroui/react";
+import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
 import { createProject, gitBranch } from "../lib/ipc";
 import {
