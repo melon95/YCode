@@ -65,6 +65,8 @@
   --color-st-idle: var(--st-idle);
   --color-st-working-tint: rgba(var(--st-working-rgb), 0.14);
   --color-st-blocked-tint: rgba(var(--st-blocked-rgb), 0.14);
+  --color-st-blocked-edge: rgba(var(--st-blocked-rgb), 0.3);
+  --color-st-done-tint: rgba(var(--st-done-rgb), 0.14);
 
   /* Chat role labels */
   --color-role-user: var(--role-user);

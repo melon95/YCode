@@ -922,62 +922,9 @@
 /* Shared row chrome for the new read-only pages. */
 .settings-section h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .settings-lede { margin: 6px 0 18px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
-.settings-card {
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  overflow: hidden;
-  background: var(--surface);
-}
-.settings-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-top: 1px solid var(--rule);
-}
-.settings-row:first-child { border-top: none; }
-.settings-row.is-pending { opacity: 0.5; }
-.settings-row-icon {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-raised);
-  color: var(--muted);
-}
-.settings-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.settings-row-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  /* Rows whose name carries a leading status dot (the notifications page)
-     need it baseline-aligned with the text rather than sitting on it. */
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-.settings-row-desc {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--subtle);
-}
-.settings-tag {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--subtle);
-  border: 1px solid var(--rule);
-  border-radius: 5px;
-  padding: 2px 6px;
-}
-.settings-tag.is-on {
-  color: var(--st-done);
-  border-color: transparent;
-  background: rgba(var(--st-done-rgb), 0.14);
-}
+/* 卡片、行、开关、chip 等已迁到 ui/SettingControls.tsx 的 Tailwind utility。
+   这里只留 Tailwind 表达不了的东西:相邻兄弟间距(元素看不见自己前面是
+   什么),以及尚未迁移的页面还在用的零散钩子。 */
 .settings-kbd {
   flex: none;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -993,17 +940,6 @@
 
 /* ---- card-row primitives (ui/SettingControls.tsx) ---- */
 
-.settings-group-label {
-  margin-bottom: 8px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  font-weight: 500;
-  /* The preview's 0.14em is tuned for all-caps Latin. These labels are
-     mostly Chinese, where that much tracking pulls the characters apart. */
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--whisper);
-}
 /* Space between a card and the next group's label. Written as sibling rules
    so a page never has to hand-place margins. `.settings-group` is the opt-in
    wrapper for pages that need to nest a label + card pair (the keyboard page
@@ -1013,155 +949,6 @@
 .settings-group + .settings-group > .settings-group-label { margin-top: 22px; }
 .settings-group + .settings-group-label { margin-top: 22px; }
 .settings-note + .settings-group-label { margin-top: 22px; }
-
-.settings-card.is-danger { border-color: rgba(var(--st-blocked-rgb), 0.3); }
-
-.settings-note {
-  margin: 10px 0 0;
-  padding: 11px 13px;
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.settings-note b { color: var(--text); font-weight: 600; }
-
-/* The preview's `.dsub` is body type, not mono — these are sentences, and
-   mono makes a sentence look like a file path. */
-.settings-row-desc {
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.45;
-  color: var(--subtle);
-}
-.settings-row-desc code,
-.settings-row-desc .mono {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-}
-
-/* 唯一的开关组件样式 —— 设置页与 composer 共用,可见性/几何只在
-   这里改。关闭态用下沉底色:panel-raised 在浅色卡片上几乎隐形。 */
-.settings-toggle {
-  flex: none;
-  display: inline-block;
-  position: relative;
-  width: 32px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid var(--rule-strong);
-  border-radius: 99px;
-  background: var(--panel-sunken);
-  cursor: pointer;
-  transition: background-color var(--t-base) var(--ease);
-}
-.settings-toggle.is-on {
-  background: var(--st-working);
-  border-color: transparent;
-}
-.settings-toggle-knob {
-  position: absolute;
-  /* 轨道内高 16px(18 - 2×1px 边框),13px 圆 → 上下各 1.5px。 */
-  top: 50%;
-  transform: translateY(-50%);
-  left: 2px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--bg);
-  transition: left var(--t-base) var(--ease);
-}
-.settings-toggle.is-on .settings-toggle-knob { left: 15px; background: #fff; }
-.settings-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.settings-chips { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
-.settings-chip {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  color: var(--subtle);
-  border: 1px solid var(--rule);
-  border-radius: 5px;
-  padding: 3px 7px;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.settings-chip:hover:not(:disabled):not(.is-on) {
-  border-color: var(--rule-strong);
-  color: var(--muted);
-}
-.settings-chip.is-on {
-  color: var(--st-done);
-  border-color: transparent;
-  background: rgba(var(--st-done-rgb), 0.14);
-  cursor: default;
-}
-.settings-chip:disabled { opacity: 0.45; cursor: not-allowed; }
-.settings-chip.is-static { cursor: default; }
-.settings-chip.is-static.is-on {
-  color: var(--st-done);
-  background: rgba(var(--st-done-rgb), 0.14);
-  border-color: transparent;
-}
-.settings-chip.is-static.is-warn {
-  color: var(--st-working);
-  background: rgba(var(--st-working-rgb), 0.14);
-  border-color: transparent;
-}
-
-.settings-value {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.settings-value.is-end {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-  color: var(--subtle);
-}
-
-.settings-action-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-width: var(--control-size-sm);
-  height: var(--control-size-sm);
-  padding: 0 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--muted);
-  font-size: 11.5px;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.settings-action-btn:hover:not(:disabled) {
-  background: var(--panel-raised);
-  border-color: var(--rule);
-  color: var(--text);
-}
-.settings-action-btn.is-danger:hover:not(:disabled) {
-  background: rgba(var(--st-blocked-rgb), 0.14);
-  border-color: transparent;
-  color: var(--st-blocked);
-}
-.settings-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* A continuation row — "写入位置" under the agent it belongs to. Lighter
    than a name so the pair reads as one entry, not two. */
@@ -1481,38 +1268,8 @@
    拖拽浮出居中胶囊 —— 与列手柄同一套语言。
    紧跟在隐藏卡后面的 resizer 没有"上邻居",直接藏掉;连续多个
    resizer(中间的卡关了)只留一个。 */
-.stack-resizer {
-  flex: none;
-  height: 8px;
-  position: relative;
-  cursor: row-resize;
-  touch-action: none;
-}
-.stack-resizer::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 44px;
-  height: 5px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  background: var(--rule-strong);
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease);
-  pointer-events: none;
-}
-.stack-resizer:hover::before,
-.stack-resizer[data-active]::before { opacity: 1; }
-/* 命中区比 8px 高一点,好抓。 */
-.stack-resizer::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -3px;
-  bottom: -3px;
-}
+/* 手柄本身的样式在 ui/StackResizer.tsx;这里只留 Tailwind 表达不了的
+   兄弟/`:has()` 显隐规则。 */
 .panel-card[hidden] + .stack-resizer,
 .stack-resizer + .stack-resizer,
 .stack-resizer:last-child,
@@ -1906,7 +1663,7 @@
   transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
 }
 .composer-opt:hover { border-color: var(--rule-strong); background: var(--surface); }
-/* composer 的开关直接复用 .settings-toggle(见设置区块)—— 组件唯一,
+/* composer 的开关直接复用 ui/SettingControls 的 ToggleTrack —— 组件唯一,
    几何与可见性只改一处。 */
 .composer-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .composer-opt-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
@@ -2197,135 +1954,7 @@
    同投影),差别只在左侧那道按严重度着色的竖条 —— 一眼分清是报错
    还是完成,不用读完整句。
    ============================================================ */
-.toast-viewport {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 1000;
-  width: 340px;
-  display: flex;
-  flex-direction: column;
-}
-
-.toast {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  /* 折叠态下每张都贴合最前一张的高度,堆叠边缘才是齐的。 */
-  height: var(--toast-frontmost-height, var(--toast-height));
-  z-index: calc(1000 - var(--toast-index));
-  transition:
-    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.28s ease;
-  transform: translateY(calc(var(--toast-index) * -14%))
-    scale(calc(max(0, 1 - (var(--toast-index) * 0.05))));
-}
-
-/* 悬停展开:堆叠散成一列,由 Base UI 量出的偏移驱动。 */
-.toast[data-expanded] {
-  height: var(--toast-height);
-  transform: translateY(var(--toast-offset-y));
-}
-
-.toast[data-swiping] {
-  transition: none;
-  transform: translateX(var(--toast-swipe-movement-x))
-    translateY(calc(var(--toast-swipe-movement-y) + var(--toast-offset-y, 0px)));
-}
-
-.toast[data-starting-style],
-.toast[data-ending-style] {
-  opacity: 0;
-  transform: translateY(20px) scale(0.97);
-}
-
-.toast[data-ending-style][data-swipe-direction="right"] {
-  transform: translateX(calc(var(--toast-swipe-movement-x) + 130%));
-}
-
-.toast[data-ending-style][data-swipe-direction="down"] {
-  transform: translateY(calc(var(--toast-swipe-movement-y) + 130%));
-}
-
-.toast-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 11px 12px 11px 14px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-left: 3px solid var(--subtle);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 12px 32px rgba(var(--shadow-rgb), 0.35);
-  transition: opacity 0.25s ease;
-}
-
-/* 被压在下面的那几张只留一个轮廓,文字叠字会糊成一团。 */
-.toast-content[data-behind] {
-  opacity: 0;
-}
-
-.toast-content[data-expanded] {
-  opacity: 1;
-}
-
-/* `data-type` 落在 Root 上,不在 Content 上 —— Content 只带 data-behind
-   和 data-expanded,所以严重度必须从 Root 往下选。 */
-.toast[data-type="danger"] .toast-content {
-  border-left-color: var(--st-blocked);
-}
-
-.toast[data-type="warning"] .toast-content {
-  border-left-color: var(--st-working);
-}
-
-.toast[data-type="success"] .toast-content {
-  border-left-color: var(--st-done);
-}
-
-.toast-description {
-  flex: 1;
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--text-soft);
-  /* 报错信息常常很长(带路径、带 Rust error chain),给个上限免得
-     一条 toast 铺满半屏;完整内容仍在 title 属性里。 */
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-
-.toast-close {
-  flex: none;
-  padding: 0;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: var(--radius-xs, 4px);
-  background: transparent;
-  color: var(--subtle);
-  font-size: 10px;
-  line-height: 1;
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
-}
-
-.toast-close:hover {
-  color: var(--text);
-  background: var(--control-hover, rgba(var(--highlight-rgb), 0.055));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toast {
-    transition: opacity 0.2s ease;
-  }
-}
+/* Toast 已迁到 components/ui/Toaster.tsx 的 Tailwind utility。 */
 
 /* ============================================================
    Pane 卡片 —— 跟右栏 `.panel-card` 对齐

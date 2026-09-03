@@ -67,7 +67,19 @@ export function StackResizer() {
   return (
     <div
       ref={ref}
-      className="stack-resizer"
+      // `stack-resizer` 是选择器钩子,不带样式:相邻兄弟 / `:has()` 的显隐
+      // 规则在 redesign.css 里,Tailwind 表达不了「后面没有可见卡片就藏起来」。
+      // 视觉部分(胶囊、命中区)在这里用 utility。
+      //
+      // ::before 是那颗平时透明、hover / 拖拽浮出的居中胶囊;
+      // ::after 把命中区从 8px 上下各撑 3px,好抓。
+      className="stack-resizer flex-none h-2 relative cursor-row-resize touch-none
+        before:content-[''] before:absolute before:left-1/2 before:top-1/2
+        before:w-11 before:h-[5px] before:rounded-full before:-translate-x-1/2 before:-translate-y-1/2
+        before:bg-rule-strong before:opacity-0 before:pointer-events-none
+        before:transition-opacity before:duration-[var(--t-fast)] before:ease-smooth
+        hover:before:opacity-100 data-[active]:before:opacity-100
+        after:content-[''] after:absolute after:left-0 after:right-0 after:-top-[3px] after:-bottom-[3px]"
       role="separator"
       aria-orientation="horizontal"
       aria-label="调整面板高度"

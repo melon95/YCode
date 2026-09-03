@@ -12,6 +12,7 @@ import { createSession, setProjectIsolateSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
 import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
+import { ToggleTrack } from "./ui/SettingControls";
 import { AgentIcon } from "./AgentIcon";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
@@ -137,15 +138,8 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
           onClick={toggleIsolate}
           aria-pressed={project.isolate_sessions}
         >
-          {/* 与设置页同一套开关样式 —— 组件级统一,别再各处自绘。 */}
-          <span
-            className={
-              "settings-toggle" + (project.isolate_sessions ? " is-on" : "")
-            }
-            aria-hidden
-          >
-            <span className="settings-toggle-knob" />
-          </span>
+          {/* 与设置页同一套开关外观 —— 组件级统一,别再各处自绘。 */}
+          <ToggleTrack checked={project.isolate_sessions} />
           <span className="composer-opt-main">
             <span
               className="composer-opt-title"
