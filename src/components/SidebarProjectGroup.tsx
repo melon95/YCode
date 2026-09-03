@@ -70,7 +70,6 @@ export function SidebarProjectGroup({
   /// null = 全部 agent;否则只显示该 launch-profile 的会话。
   agentFilter: string | null;
 }) {
-  const isActiveProject = useStore((s) => s.activeProjectId === project.id);
   const sessions = useStore((s) => s.sessions);
   const activityBySession = useStore((s) => s.activityBySession);
   const agents = useStore((s) => s.agents);
@@ -184,7 +183,7 @@ export function SidebarProjectGroup({
   // 用合并后的总数。
 
   return (
-    <div className={"sb-project" + (isActiveProject ? " is-current" : "")}>
+    <div className="sb-project">
       {/* ⋮ 不能嵌在展开按钮里(button 套 button 无效),所以行是一个
           容器,展开按钮和菜单并排住在里面。 */}
       <div className="sb-project-head-row">

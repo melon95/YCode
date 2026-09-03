@@ -62,18 +62,13 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
     return all.filter((p) => !lockedByOtherWindows[p.id]);
   }, [projects, projectOrder, lockedProjectId, lockedByOtherWindows]);
 
-  // 展开状态:活跃项目默认展开;其余手动。切活跃项目时把新的也展开
-  // (用户点了它组里的会话行,自然还想看着这个组)。
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    if (!activeProjectId) return;
-    setExpandedIds((prev) => {
-      if (prev.has(activeProjectId)) return prev;
-      const next = new Set(prev);
-      next.add(activeProjectId);
-      return next;
-    });
-  }, [activeProjectId]);
+  // 展开状态完全由用户掌握,和「当前是哪个项目」解耦 —— 想同时摊开
+  // 几个项目的历史来对照是常事,而切项目会顺带展开的话,这个列表就
+  // 总在自作主张地变形。首次进来展开当前项目(不然是一列全收起的
+  // 名字),之后再不干预。
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
+    activeProjectId ? new Set([activeProjectId]) : new Set(),
+  );
   const toggleExpanded = (id: string) =>
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -242,13 +237,9 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
             key={p.id}
             project={p}
             expanded={expandedIds.has(p.id)}
-            onToggle={() => {
-              // 点组头同时把这个项目设为活跃 —— 否则切项目只剩「点一个
-              // 已有会话行」这一条路,而空项目根本没有行可点,底部的
-              // 「新建会话」也就一直建在上一个项目里。
-              if (p.id !== activeProjectId) setActiveProjectId(p.id);
-              toggleExpanded(p.id);
-            }}
+            // 只管展开/收起。切项目走状态栏和 composer 标题上的下拉 ——
+            // 展开一个组是「我想翻翻它的历史」,不该顺带把工作区也搬过去。
+            onToggle={() => toggleExpanded(p.id)}
             onOpenRow={openRow}
             agentFilter={activeAgent}
           />

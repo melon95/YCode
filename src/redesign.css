@@ -606,24 +606,6 @@
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .sb-project-head:hover { background: var(--panel-raised); color: var(--text); }
-/* 当前项目 —— 「新建会话会落在哪」的答案。原来只把字提亮一档,在
-   一列同样加粗的项目名里根本读不出来。用琥珀底 + 左侧竖条:和 pane
-   焦点环、状态点是同一套「这个是活的」语言,不引入新颜色。 */
-.sb-project.is-current .sb-project-head { color: var(--text); }
-.sb-project.is-current .sb-project-head-row { position: relative; }
-.sb-project.is-current .sb-project-head-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--st-working);
-}
-.sb-project.is-current .sb-project-head:hover {
-  background: rgba(var(--st-working-rgb), 0.16);
-}
 .sb-project-name {
   flex: 1;
   min-width: 0;
@@ -1815,7 +1797,9 @@
 .po-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* 三行(名字 / 标签 / 路径)之间用 6px —— 原来的 10px 是给「名字 +
+     色条 + 两行计数」那版排的,行数减半后同样的间距会把卡片撑空。 */
+  gap: 6px;
   padding: 14px 15px 13px;
   border: 1px solid var(--rule);
   border-radius: 14px;
@@ -1849,20 +1833,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.po-agents { flex: none; display: flex; gap: 4px; }
-
-.po-strip { display: flex; gap: 3px; }
-.po-seg {
-  flex: 1;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--panel-raised);
-}
-.po-seg-working { background: var(--st-working); }
-.po-seg-blocked { background: var(--st-blocked); }
-.po-seg-error { background: var(--st-blocked); opacity: 0.7; }
-.po-seg-done { background: var(--st-idle); opacity: 0.5; }
-
 .po-meta,
 .po-path {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -1874,6 +1844,23 @@
 }
 .po-path { color: var(--whisper); }
 
+/* 中间一行:分支 + worktree/隔离。各卡片的这一行都从左边同一处起排,
+   所以扫一列卡片时这些标签是对齐的。 */
+.po-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.po-tag {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--whisper);
+  white-space: nowrap;
+}
+
 /* 卡片名旁的当前分支名 — 等宽小字、subtle(预览稿 .pcard-top .branch)。 */
 .po-branch {
   flex: none;
@@ -1883,45 +1870,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
 }
-
-/* 活跃/空闲摘要行(预览稿 .pcard-live)。 */
-.po-live { display: flex; flex-direction: column; gap: 5px; }
-.po-liverow {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.po-liverow.is-empty { color: var(--whisper); }
-
-/* hover 才出现的快捷新建按钮(预览稿 .quick-new)。 */
-.po-quick-new {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--rule-strong);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  opacity: 0;
-  transform: scale(0.85);
-  transition:
-    opacity var(--t-base) var(--ease),
-    transform var(--t-base) var(--ease),
-    background-color var(--t-fast) var(--ease);
-}
-.po-card:hover .po-quick-new,
-.po-quick-new:focus-visible {
-  opacity: 1;
-  transform: scale(1);
-}
-.po-quick-new:hover { color: var(--text); background: var(--panel-raised); }
 
 /* 网格末尾的虚线「打开项目」卡(预览稿 .pcard-new)。 */
 .po-card-new {
@@ -1931,7 +1880,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 140px;
+  /* 不自己定高 —— 卡片内容精简过一轮,写死的 140px 会让这张虚线卡比
+     旁边的项目卡高出一截。让网格行高来决定,它自然和同行对齐。 */
   color: var(--whisper);
   background: none;
   font-size: 12.5px;
@@ -2788,6 +2738,7 @@
 .overflow-menu-trigger.is-hover-only { opacity: 0; }
 .sb-project-head-row:hover .overflow-menu-trigger,
 .live-row-wrap:hover .overflow-menu-trigger,
+.po-card:hover .overflow-menu-trigger,
 .overflow-menu-trigger[data-popup-open],
 .overflow-menu-trigger:focus-visible {
   opacity: 1;
@@ -2854,16 +2805,6 @@
    整行的高亮会缺一块右边。 */
 .sb-project-head-row:hover { background: var(--panel-raised); }
 .sb-project-head-row:hover > .sb-project-head { background: none; }
-.sb-project.is-current .sb-project-head-row {
-  background: rgba(var(--st-working-rgb), 0.1);
-}
-.sb-project.is-current .sb-project-head-row:hover {
-  background: rgba(var(--st-working-rgb), 0.16);
-}
-.sb-project.is-current .sb-project-head,
-.sb-project.is-current .sb-project-head:hover {
-  background: none;
-}
 
 .live-row-wrap:hover,
 .live-row-wrap.is-active { background: var(--panel-raised); }
@@ -2876,3 +2817,53 @@
    (「等你处理」的计数)自己用 margin-left: auto。 */
 .sidebar-section-heading { justify-content: flex-start; }
 .needs-you-head .sidebar-section-context { margin-left: auto; }
+
+/* ============================================================
+   项目选择器 —— 让已有的项目名文本变成可点
+   ------------------------------------------------------------
+   状态栏和 composer 标题本来就各写着一次项目名。触发器要保持成原来
+   那行文字的样子(继承字号/字重/颜色),只在 hover 时透出一点底色和
+   一枚小箭头 —— 让它可点,但不要在版面上多出一个控件。
+   ============================================================ */
+.project-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  margin: -1px -2px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  /* 继承所在位置的排版,而不是自带一套 —— 状态栏是 10px 等宽,
+     composer eyebrow 是 9.5px 字距放开的小型大写,两处都不该被
+     这个组件改掉。 */
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+.project-picker-trigger:hover,
+.project-picker-trigger[data-popup-open] {
+  background: var(--panel-raised);
+}
+/* 箭头平时几乎看不见,hover 才实起来 —— 常驻一个实心箭头会让这行
+   文字看着像个下拉框控件,而它首先是一句话。 */
+.project-picker-chevron {
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+.project-picker-trigger:hover .project-picker-chevron,
+.project-picker-trigger[data-popup-open] .project-picker-chevron {
+  opacity: 0.55;
+}
+
+.project-picker-menu { min-width: 190px; }
+/* 当前项目:琥珀底 + 加粗。 */
+.project-picker-menu .overflow-menu-item.is-on {
+  background: rgba(var(--st-working-rgb), 0.12);
+  color: var(--text);
+  font-weight: 600;
+}

@@ -112,7 +112,10 @@ function captureRightUi(state: {
 
 const DEFAULT_RIGHT_UI: RightPaneUi = {
   rightTab: "files",
-  openPanels: ["files"],
+  // 右栏默认全关。开哪个面板是随手边的活儿变的,替用户预设一个,第一
+  // 眼看到的就是一棵和当前任务无关的文件树 —— rightTab 仍记着「再打开
+  // 时默认落到哪一个」。
+  openPanels: [],
   openFiles: [],
   selectedFilePath: null,
   previewFilePath: null,
@@ -591,7 +594,7 @@ export const useStore = create<AppState>((set) => ({
   activeProjectId: null,
   workspaceSessionByProject: {},
   rightTab: "files",
-  openPanels: ["files"],
+  openPanels: [],
   openFiles: [],
   selectedFilePath: null,
   dirtyFiles: {},

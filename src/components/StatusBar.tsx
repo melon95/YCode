@@ -13,6 +13,7 @@ import { gitBranch } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { sessionLight, type SessionLight } from "../lib/types";
 import { statusFromLight, STATUS_LABEL, type StatusKind } from "../lib/sessionStatus";
+import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
 import { StatusDot } from "./ui/StatusDot";
 
 /// Shown in the status bar; sourced from package.json at build time so it
@@ -83,7 +84,7 @@ export function StatusBar() {
     <footer className="status-bar" aria-label="Workspace status">
       {activeProject && (
         <span className="sb-group" title={activeProject.repo_path}>
-          {activeProject.name}
+          <ProjectPickerMenu>{activeProject.name}</ProjectPickerMenu>
           <span className="sb-dim">· {checkout}</span>
         </span>
       )}

@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { createSession, setProjectIsolateSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
+import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
 import { AgentIcon } from "./AgentIcon";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
@@ -70,7 +71,12 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
   return (
     <div className="new-session-picker-host">
       <div className="composer">
-        <div className="composer-eyebrow">新建会话 · {project.name}</div>
+        <div className="composer-eyebrow">
+          新建会话 ·{" "}
+          <ProjectPickerMenu className="is-eyebrow">
+            {project.name}
+          </ProjectPickerMenu>
+        </div>
         {/* No task field here on purpose: the agent CLI has its own input,
             and pre-typing a prompt would mean injecting it into the PTY —
             timing-fragile, and it throws away the CLI's own affordances
