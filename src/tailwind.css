@@ -1,0 +1,139 @@
+/*
+ * ycode · Tailwind entry
+ * ----------------------------------------------------------------
+ * Bridges the hand-rolled design tokens into Tailwind's theme so
+ * utilities read the *same* variables that `lib/themes.ts` rewrites
+ * at runtime. `@theme inline` is load-bearing here: it expands to
+ * `background-color: var(--panel)` rather than snapshotting the
+ * value, so a theme swap keeps working with zero rebuild.
+ *
+ * Only tokens that components actually consume are mapped. The
+ * diff/xterm variables stay out — those are read by third-party
+ * stylesheets directly, not by utilities.
+ */
+
+@import "tailwindcss";
+
+/* The legacy stylesheets are unlayered, so they'd beat Tailwind's
+   `@layer utilities` on every shared property. Each component's rules
+   are deleted as it migrates, which is what keeps this honest — but
+   until a given surface is converted, legacy still owns it. */
+@source "./";
+
+@theme inline {
+  /* Surfaces */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-panel-sunken: var(--panel-sunken);
+
+  /* Rules / borders */
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-rule-accent: var(--rule-accent);
+
+  /* Type */
+  --color-text: var(--text);
+  --color-text-soft: var(--text-soft);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-whisper: var(--whisper);
+  --color-text-on-accent: var(--text-on-accent);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-tint-hover: var(--accent-tint-hover);
+
+  /* Status */
+  --color-idle: var(--idle);
+  --color-running: var(--running);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+
+  /* Session status (redesign layer). The `-tint` pairs are pre-composed
+     because the `--st-*-rgb` tokens are comma-separated triples: Tailwind's
+     `/alpha` modifier emits `rgb(var(--x)/0.14)`, which is invalid against a
+     legacy `r, g, b` list. Naming the composed color here keeps call sites
+     free of arbitrary-value escapes. */
+  --color-st-working: var(--st-working);
+  --color-st-blocked: var(--st-blocked);
+  --color-st-done: var(--st-done);
+  --color-st-idle: var(--st-idle);
+  --color-st-working-tint: rgba(var(--st-working-rgb), 0.14);
+  --color-st-blocked-tint: rgba(var(--st-blocked-rgb), 0.14);
+
+  /* Chat role labels */
+  --color-role-user: var(--role-user);
+  --color-role-thinking: var(--role-thinking);
+  --color-role-tool: var(--role-tool);
+  --color-role-plan: var(--role-plan);
+
+  /* Control surfaces */
+  --color-control-hover: var(--control-hover);
+  --color-control-active: var(--control-active);
+
+  /* Type stacks */
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-mono: var(--font-mono);
+
+  /* Radii — the design system only ships three steps. */
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+
+  /* Motion. Tailwind v4 has no `--duration-*` theme namespace — `duration-*`
+     only takes bare numbers or arbitrary values — so the `--t-*` scale is
+     reached via `duration-[var(--t-base)]` at call sites. Only the easing
+     curves are mappable. */
+  --ease-out: var(--ease-out);
+  --ease-smooth: var(--ease);
+
+  /* Layout geometry shared by the three columns. */
+  --spacing-toolbar: var(--toolbar-h);
+  --spacing-control: var(--control-size);
+  --spacing-control-sm: var(--control-size-sm);
+  --spacing-pane-header: var(--pane-header-h);
+
+  /* Editorial tracking presets. */
+  --tracking-caps: var(--tracking-caps);
+  --tracking-caps-tight: var(--tracking-caps-tight);
+
+  /* Elevation. */
+  --shadow-menu: var(--elevation-menu);
+  --shadow-accent-glow: var(--accent-glow);
+}
+
+/* Status animations. Declared outside `@theme inline` so the keyframes are
+   emitted as real `@keyframes` blocks rather than being treated as token
+   values. `status-ring` is the only nagging animation in the app — see the
+   StatusDot component for why `blocked` alone earns it. */
+@theme {
+  --animate-status-breathe: status-breathe 2.4s ease-in-out infinite;
+  --animate-status-ring: status-ring 1.6s ease-out infinite;
+
+  @keyframes status-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes status-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0.55);
+    }
+    75% {
+      box-shadow: 0 0 0 6px rgba(var(--st-blocked-rgb), 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0);
+    }
+  }
+}

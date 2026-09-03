@@ -230,7 +230,12 @@ export function ProjectsOverview({ onClose }: Props) {
             最近
           </FilterPill>
         </div>
-        <IconButton onClick={onClose} title="返回工作区 (esc)" aria-label="返回工作区">
+        <IconButton
+          className="self-center"
+          onClick={onClose}
+          title="返回工作区 (esc)"
+          aria-label="返回工作区"
+        >
           <CloseIcon />
         </IconButton>
       </header>

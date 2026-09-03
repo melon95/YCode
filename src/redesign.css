@@ -42,102 +42,9 @@
   --control-icon: 15px;
 }
 
-/* ============================================================
-   Status dot
-   ============================================================ */
-
-.status-dot {
-  flex: 0 0 auto;
-  display: block;
-  border-radius: 50%;
-  transition: background-color var(--t-base) var(--ease);
-}
-.status-md { width: 7px; height: 7px; }
-.status-sm { width: 5px; height: 5px; }
-
-.status-working {
-  background: var(--st-working);
-  animation: status-breathe 2.4s ease-in-out infinite;
-}
-/* The only ring animation in the app. `blocked` means the agent cannot
-   proceed without the user, so it is the one state allowed to nag. */
-.status-blocked {
-  background: var(--st-blocked);
-  animation: status-ring 1.6s ease-out infinite;
-}
-/* `done` means the process exited cleanly — which after an app restart is
-   *every* session. Rendering that in success-green would turn the sidebar
-   into a wall of green ticks, so it stays muted: filled (it ran) but quiet
-   (nothing is happening). Only live states get a real color. */
-.status-done {
-  background: var(--st-idle);
-  opacity: 0.55;
-}
-.status-error { background: var(--st-blocked); }
-.status-idle {
-  background: transparent;
-  border: 1.5px solid var(--st-idle);
-}
-
-@keyframes status-breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-@keyframes status-ring {
-  0% { box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0.55); }
-  75% { box-shadow: 0 0 0 6px rgba(var(--st-blocked-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--st-blocked-rgb), 0); }
-}
-
-/* ============================================================
-   Icon button
-   ============================================================ */
-
-.icon-btn2 {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md, 8px);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 0;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease),
-    opacity var(--t-fast) var(--ease);
-}
-.icon-btn2-md { width: var(--control-size); height: var(--control-size); }
-.icon-btn2-sm { width: var(--control-size-sm); height: var(--control-size-sm); }
-
-.icon-btn2:hover:not(:disabled) {
-  background: var(--panel-raised);
-  border-color: var(--rule);
-  color: var(--text);
-}
-.icon-btn2:active:not(:disabled) { transform: scale(0.94); }
-.icon-btn2.is-active {
-  background: rgba(var(--st-working-rgb), 0.14);
-  border-color: transparent;
-  color: var(--st-working);
-}
-.icon-btn2-danger:hover:not(:disabled) {
-  background: rgba(var(--st-blocked-rgb), 0.14);
-  border-color: transparent;
-  color: var(--st-blocked);
-}
-.icon-btn2-accent { color: var(--accent); }
-
-/* Disabled controls stay visible and keep their tooltip: an entry that
-   explains why it is unavailable beats one that silently disappears. */
-.icon-btn2:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-}
+/* Status dot and icon button now live in their components as Tailwind
+   utilities (components/ui/StatusDot.tsx, components/ui/IconButton.tsx);
+   their keyframes moved to tailwind.css. */
 
 /* ============================================================
    Shared toolbar row
@@ -1740,7 +1647,6 @@
 }
 .po-hot { color: var(--st-blocked); }
 .po-warm { color: var(--st-working); }
-.po-head .icon-btn2 { align-self: center; }
 
 .po-filter { align-self: center; display: flex; gap: 6px; }
 .po-fpill {
