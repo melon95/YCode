@@ -1,6 +1,17 @@
 import { Popover } from "@base-ui/react/popover";
 import { AgentIcon } from "../AgentIcon";
 import type { AgentProfileView } from "../../lib/types";
+import { MENU_ITEM_ON, MENU_POPUP, POPOVER_LAYER } from "./menuStyles";
+
+/// ALL 用等宽小字,和 agent 图标同宽 —— 触发器不会在两种状态间跳宽。
+const ALL_BADGE = "font-mono text-[9px] font-bold tracking-[0.04em]";
+
+/// 这里的条目比 MENU_ITEM 多一个图标列,gap 和 MENU_ITEM 不同,所以没走
+/// 共享常量。
+const ITEM = `flex items-center gap-[9px] w-full py-[7px] px-[9px] border-none rounded-lg
+  bg-none text-text-soft text-[12.5px] text-left cursor-pointer
+  transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`
+  .replace(/\s+/g, " ");
 
 interface Props {
   agents: AgentProfileView[];
@@ -21,7 +32,11 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
   return (
     <Popover.Root>
       <Popover.Trigger
-        className="agent-filter-trigger"
+        className="group flex-none ml-auto inline-flex items-center gap-[5px]
+          h-control pr-[7px] pl-2 border border-rule rounded-lg bg-none text-muted cursor-pointer
+          transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
+          hover:border-rule-strong hover:text-text
+          data-[popup-open]:border-rule-strong data-[popup-open]:text-text"
         title={`筛选:${label}`}
         aria-label={`筛选 agent —— 当前 ${label}`}
       >
@@ -33,26 +48,28 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
             size={16}
           />
         ) : (
-          <span className="agent-filter-all">ALL</span>
+          <span className={ALL_BADGE}>ALL</span>
         )}
         <ChevronIcon />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner className="popover-layer" sideOffset={6} align="start">
-          <Popover.Popup className="agent-filter-menu">
+        <Popover.Positioner className={POPOVER_LAYER} sideOffset={6} align="start">
+          <Popover.Popup
+            className={`${MENU_POPUP} min-w-[180px] max-h-[60vh] overflow-y-auto`}
+          >
             <Popover.Close
-              className={"agent-filter-item" + (value === null ? " is-on" : "")}
+              className={`${ITEM} ${value === null ? MENU_ITEM_ON : ""}`}
               onClick={() => onChange(null)}
             >
-              <span className="agent-filter-all">ALL</span>
-              <span className="agent-filter-name">全部 agent</span>
+              <span className={ALL_BADGE}>ALL</span>
+              <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                全部 agent
+              </span>
             </Popover.Close>
             {agents.map((profile) => (
               <Popover.Close
                 key={profile.id}
-                className={
-                  "agent-filter-item" + (value === profile.id ? " is-on" : "")
-                }
+                className={`${ITEM} ${value === profile.id ? MENU_ITEM_ON : ""}`}
                 onClick={() => onChange(profile.id)}
               >
                 <AgentIcon
@@ -61,7 +78,9 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
                   fallbackChar={profile.display_name}
                   size={16}
                 />
-                <span className="agent-filter-name">{profile.display_name}</span>
+                <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                  {profile.display_name}
+                </span>
               </Popover.Close>
             ))}
           </Popover.Popup>
@@ -74,7 +93,7 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
 function ChevronIcon() {
   return (
     <svg
-      className="agent-filter-chevron"
+      className="flex-none text-whisper"
       width="10"
       height="10"
       viewBox="0 0 24 24"

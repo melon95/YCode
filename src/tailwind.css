@@ -67,6 +67,9 @@
   --color-st-blocked-tint: rgba(var(--st-blocked-rgb), 0.14);
   --color-st-blocked-edge: rgba(var(--st-blocked-rgb), 0.3);
   --color-st-done-tint: rgba(var(--st-done-rgb), 0.14);
+  /* 菜单选中态比 chip 的 tint 淡一档 —— 整行着色,0.14 会太抢。 */
+  --color-st-working-wash: rgba(var(--st-working-rgb), 0.12);
+  --color-st-blocked-wash: rgba(var(--st-blocked-rgb), 0.12);
 
   /* Chat role labels */
   --color-role-user: var(--role-user);
@@ -117,6 +120,9 @@
 @theme {
   --animate-status-breathe: status-breathe 2.4s ease-in-out infinite;
   --animate-status-ring: status-ring 1.6s ease-out infinite;
+  /* 浮层入场。keyframes 本体仍在 redesign.css(尚未迁移的浮层还在用),
+     这里只把它包成一个可用的 `animate-pop-in`。 */
+  --animate-pop-in: pop-in var(--t-base) var(--ease-out);
 
   @keyframes status-breathe {
     0%,

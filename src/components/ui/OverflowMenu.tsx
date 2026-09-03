@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
+import {
+  MENU_ITEM,
+  MENU_POPUP,
+  POPOVER_LAYER,
+} from "./menuStyles";
 
 export interface MenuAction {
   label: string;
@@ -40,7 +45,19 @@ export function OverflowMenu({
   return (
     <Menu.Root>
       <Menu.Trigger
-        className={"overflow-menu-trigger" + (hoverOnly ? " is-hover-only" : "")}
+        // `overflow-menu-trigger` 是选择器钩子:hover 显形由祖先行
+        // (`.sb-project-head-row` / `.live-row-wrap` / `.po-card`)驱动,
+        // 那些行本身还没迁移。隐身用 opacity 而不是 display:none ——
+        // 后者会让行在 hover 时突然变宽,文字跟着抖一下。
+        className={`overflow-menu-trigger flex-none inline-flex items-center justify-center
+          size-[22px] p-0 border-none rounded-md bg-none text-subtle cursor-pointer
+          transition-[opacity,background-color,color] duration-[var(--t-fast)] ease-smooth
+          hover:bg-panel-raised hover:text-text
+          data-[popup-open]:bg-panel-raised data-[popup-open]:text-text
+          data-[popup-open]:opacity-100 focus-visible:opacity-100
+          ${hoverOnly ? "opacity-0" : ""}`
+          .replace(/\s+/g, " ")
+          .trim()}
         aria-label={label}
         title={label}
         nativeButton={!asSpan}
@@ -53,20 +70,24 @@ export function OverflowMenu({
         {children ?? <DotsIcon />}
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner className="popover-layer" sideOffset={4} align="end">
-          <Menu.Popup className="overflow-menu">
+        <Menu.Positioner className={POPOVER_LAYER} sideOffset={4} align="end">
+          <Menu.Popup className={`${MENU_POPUP} min-w-[168px]`}>
             {actions.map((a, i) => (
               <Menu.Item
                 key={a.label}
-                className={
-                  "overflow-menu-item" +
-                  (a.destructive ? " is-destructive" : "") +
+                className={[
+                  MENU_ITEM,
+                  a.destructive &&
+                    "text-st-blocked data-highlighted:bg-st-blocked-wash",
                   // 破坏性动作与上面的常规动作之间拉一道线,免得手滑
                   // 从「重命名」直接划到「删除」。
-                  (a.destructive && i > 0 && !actions[i - 1].destructive
-                    ? " has-rule"
-                    : "")
-                }
+                  a.destructive &&
+                    i > 0 &&
+                    !actions[i - 1].destructive &&
+                    "mt-[5px] border-t border-rule pt-[9px] rounded-t-none",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 disabled={a.disabled}
                 onClick={a.onClick}
               >

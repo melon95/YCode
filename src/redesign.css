@@ -2115,9 +2115,6 @@
    ============================================================ */
 /* 钉在 Positioner(真正 fixed 定位的那层)上,不是 Popup —— Popup 是
    它的静态子元素,给子元素设 z-index 不会把整个浮层抬起来。 */
-.popover-layer {
-  z-index: 240;
-}
 
 /* ============================================================
    Agent 过滤器 —— 下拉取代图标 pill 行
@@ -2126,87 +2123,9 @@
    滚动 —— 侧栏宽度是用户拖出来的,不该被过滤器绑架。收进下拉后
    触发器宽度恒定,agent 再多只是菜单变长。
    ============================================================ */
-.agent-filter-trigger {
-  flex: none;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: var(--control-size, 30px);
-  padding: 0 7px 0 8px;
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.agent-filter-trigger:hover,
-.agent-filter-trigger[data-popup-open] {
-  border-color: var(--rule-strong);
-  color: var(--text);
-}
-.agent-filter-chevron { flex: none; color: var(--whisper); }
-/* ALL 用等宽小字,和 agent 图标同宽 —— 触发器不会在两种状态间跳宽。 */
-.agent-filter-all {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.agent-filter-menu,
-.project-menu {
-  min-width: 180px;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 5px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 12px;
-  box-shadow: var(--elevation-menu);
-  animation: pop-in var(--t-base) var(--ease-out);
-}
-
-.agent-filter-item,
-.project-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-soft);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease);
-}
-.agent-filter-item:hover,
-.project-menu-item:hover {
-  background: var(--panel-raised);
-}
-/* 选中态靠底色 + 字重,不加对勾 —— 菜单里每行左边已经有图标了,
-   再塞一列勾会把名字挤出去。 */
-.agent-filter-item.is-on,
-.project-menu-item.is-on {
-  background: rgba(var(--st-working-rgb), 0.12);
-  color: var(--text);
-  font-weight: 600;
-}
-.agent-filter-name,
-.project-menu-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* Agent 过滤器已迁到 ui/AgentFilterMenu.tsx;共享的菜单外壳在
+   ui/menuStyles.ts。同段里的 `.project-menu*` 一并删掉 —— tsx 里
+   已经没有引用了。 */
 
 /* ============================================================
    项目切换器 —— 侧栏头部下方的一行
@@ -2250,77 +2169,13 @@
    归档/移除这类低频又不可逆的动作收进 ⋮:常驻就得占位置挤掉标题,
    而且越顺手越容易误触。平时隐身,hover 或菜单打开时才浮出来。
    ============================================================ */
-.overflow-menu-trigger {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--subtle);
-  cursor: pointer;
-  transition:
-    opacity var(--t-fast) var(--ease),
-    background-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-/* 隐身用 opacity 而不是 display:none —— 后者会让行在 hover 时突然
-   变宽,文字跟着抖一下。 */
-.overflow-menu-trigger.is-hover-only { opacity: 0; }
+/* 触发器与菜单本体已迁到 ui/OverflowMenu.tsx。只留 hover 显形 ——
+   由祖先行驱动,元素自己看不见「鼠标在我所在的那一行上」。 */
 .sb-project-head-row:hover .overflow-menu-trigger,
 .live-row-wrap:hover .overflow-menu-trigger,
-.po-card:hover .overflow-menu-trigger,
-.overflow-menu-trigger[data-popup-open],
-.overflow-menu-trigger:focus-visible {
+.po-card:hover .overflow-menu-trigger {
   opacity: 1;
 }
-.overflow-menu-trigger:hover,
-.overflow-menu-trigger[data-popup-open] {
-  background: var(--panel-raised);
-  color: var(--text);
-}
-
-.overflow-menu {
-  min-width: 168px;
-  padding: 5px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 12px;
-  box-shadow: var(--elevation-menu);
-  animation: pop-in var(--t-base) var(--ease-out);
-}
-.overflow-menu-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-soft);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-  outline: none;
-}
-.overflow-menu-item[data-highlighted] { background: var(--panel-raised); }
-.overflow-menu-item[data-disabled] { opacity: 0.4; cursor: default; }
-.overflow-menu-item.is-destructive { color: var(--st-blocked); }
-.overflow-menu-item.is-destructive[data-highlighted] {
-  background: rgba(var(--st-blocked-rgb), 0.12);
-}
-/* 与上面的常规动作之间拉一道线,免得手滑从「重命名」划到「移除」。 */
-.overflow-menu-item.has-rule {
-  margin-top: 5px;
-  border-top: 1px solid var(--rule);
-  padding-top: 9px;
-  border-radius: 0 0 8px 8px;
-}
-
 /* ⋮ 要和行并排,所以行本体外面套了一层容器。容器接管原来的圆角和
    底色,行本身退成一个透明的弹性子项。 */
 .sb-project-head-row,
@@ -2360,45 +2215,5 @@
    那行文字的样子(继承字号/字重/颜色),只在 hover 时透出一点底色和
    一枚小箭头 —— 让它可点,但不要在版面上多出一个控件。
    ============================================================ */
-.project-picker-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 4px;
-  margin: -1px -2px;
-  border: none;
-  border-radius: 5px;
-  background: none;
-  /* 继承所在位置的排版,而不是自带一套 —— 状态栏是 10px 等宽,
-     composer eyebrow 是 9.5px 字距放开的小型大写,两处都不该被
-     这个组件改掉。 */
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease);
-}
-.project-picker-trigger:hover,
-.project-picker-trigger[data-popup-open] {
-  background: var(--panel-raised);
-}
-/* 箭头平时几乎看不见,hover 才实起来 —— 常驻一个实心箭头会让这行
-   文字看着像个下拉框控件,而它首先是一句话。 */
-.project-picker-chevron {
-  flex: none;
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease);
-}
-.project-picker-trigger:hover .project-picker-chevron,
-.project-picker-trigger[data-popup-open] .project-picker-chevron {
-  opacity: 0.55;
-}
+/* 项目选择器已迁到 ui/ProjectPickerMenu.tsx。 */
 
-.project-picker-menu { min-width: 190px; }
-/* 当前项目:琥珀底 + 加粗。 */
-.project-picker-menu .overflow-menu-item.is-on {
-  background: rgba(var(--st-working-rgb), 0.12);
-  color: var(--text);
-  font-weight: 600;
-}
