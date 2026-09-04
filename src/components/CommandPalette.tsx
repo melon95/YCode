@@ -637,7 +637,7 @@ function FileHitRow({
       type="button"
       role="option"
       aria-selected={focused}
-      className={`${HIT_ROW} py-[7px] px-3.5 ${focused ? HIT_ROW_ON : ""}`}
+      className={`${HIT_ROW} py-[7px] px-3.5 ${focused ? HIT_ROW_ON : HIT_ROW_OFF}`}
       onMouseEnter={onHover}
       onClick={onClick}
     >
@@ -660,15 +660,20 @@ function FileHitRow({
   );
 }
 
-const HIT_ROW = `block w-full text-left bg-transparent border-none
+/// 注意这里**不写** `bg-transparent`:它和 `bg-panel-raised` 特异性相同,
+/// 而在生成的样式表里排在后面,于是会静静地压掉选中态 —— 表现是键盘上下
+/// 移动时整行不着色(只有图标那个自带底色的小方块在变),鼠标 hover 却正常
+/// (那条带伪类,特异性更高)。背景一律由下面的三元表达式给出。
+const HIT_ROW = `block w-full text-left border-none
   border-b border-b-highlight-hairline text-text cursor-pointer
-  transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`;
+  transition-colors duration-[var(--t-fast)] ease-smooth`;
 
 /// 选中态跟命令行(`.cmd-row`)统一走 `--panel-raised`。原来这里是
 /// `rgba(var(--highlight-rgb), 0.06)`,而 `--highlight-rgb` 在浅色主题下
 /// 仍是白色 —— 白底上叠 6% 白等于没有,键盘选中位置根本看不出来。
 /// `--panel-raised` 是随主题翻转的真实表面色,深浅两侧都读得出。
 const HIT_ROW_ON = "bg-panel-raised";
+const HIT_ROW_OFF = "bg-transparent hover:bg-panel-raised";
 
 function SessionHitRow({
   hit,
@@ -688,7 +693,7 @@ function SessionHitRow({
       type="button"
       role="option"
       aria-selected={focused}
-      className={`${HIT_ROW} py-2.5 px-3.5 ${focused ? HIT_ROW_ON : ""}`}
+      className={`${HIT_ROW} py-2.5 px-3.5 ${focused ? HIT_ROW_ON : HIT_ROW_OFF}`}
       onMouseEnter={onHover}
       onClick={onClick}
     >

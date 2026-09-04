@@ -243,6 +243,32 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("internal-portal-frontend")).toBeNull();
   });
 
+  // 回归防线:文件行的基础 class 串一度同时写着 `bg-transparent`,而它在
+  // 生成的样式表里排在 `bg-panel-raised` 之后、特异性又相同,于是把键盘选中
+  // 的底色整个压掉了 —— 上下移动时只有图标那个自带底色的小方块在变,整行
+  // 不着色;鼠标 hover 因为带伪类、特异性更高反而正常。两者不能共存。
+  it("moves the row highlight with the arrow keys", async () => {
+    const user = userEvent.setup();
+    renderPalette();
+    await waitFor(() => expect(listFilesMock).toHaveBeenCalled());
+    // 两个结果都能匹配 —— 需要至少两行才能验证高亮会移走。
+    await user.type(screen.getByLabelText("搜索或执行命令"), "e");
+
+    const rows = await screen.findAllByRole("option");
+    expect(rows.length).toBeGreaterThan(1);
+
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(rows[0].className).toContain("bg-panel-raised");
+    expect(rows[0].className).not.toContain("bg-transparent");
+
+    // 移开之后底色要交回去,不能两行同时亮着。
+    await user.keyboard("{ArrowDown}");
+    expect(rows[0]).toHaveAttribute("aria-selected", "false");
+    expect(rows[0].className).toContain("bg-transparent");
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    expect(rows[1].className).toContain("bg-panel-raised");
+  });
+
   it("shows the scope tag in history mode, which is always project-scoped", async () => {
     const user = userEvent.setup();
     useStore.setState({ projects: { "project-a": project() } });
