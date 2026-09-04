@@ -90,7 +90,7 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const openSessionInLayout = useStore((s) => s.openSessionInLayout);
   const appendSessionToLayout = useStore((s) => s.appendSessionToLayout);
   const setLayoutMode = useStore((s) => s.setLayoutMode);
-  // 作用域标签:当前活跃项目名(纯展示)。
+  // 作用域标签:当前活跃项目名。
   const activeProjectName = activeProjectId
     ? (projects[activeProjectId]?.name ?? null)
     : null;
@@ -253,6 +253,11 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
     : sessionListMode
       ? query.slice(SESSION_LIST_PREFIX.length).trim()
       : query.trim();
+
+  // 搜索是否真的被限在当前项目里。历史搜索始终是;默认模式只有开始输入
+  // 之后才是(那时文件匹配参与结果,而文件列表只来自当前项目)。`@` 的
+  // 会话列表跨全部项目,不算。
+  const scoped = historyMode || (!sessionListMode && trimmedQuery.length > 0);
 
   // Auto-focus + reset state when opened.
   useEffect(() => {
@@ -463,8 +468,11 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
                   ? "过滤会话…"
                   : "跳转会话、切换项目、执行命令,或用 > 搜索历史记录…"
             }
-            className="flex-1 min-w-0 w-full py-3 px-3.5 text-sm bg-transparent
-              text-text border-none outline-none font-[inherit]"
+            // `cmd-palette-input` 是无样式钩子:全局焦点环画的是 box-shadow
+            // 且规则是 unlayered 的,utility 层压不过它,清除只能写在
+            // styles.css 里(见那里的注释)。
+            className="cmd-palette-input flex-1 min-w-0 w-full py-3 px-3.5 text-sm
+              bg-transparent text-text border-none outline-none font-[inherit]"
             aria-label={
               historyMode
                 ? "搜索会话记录"
@@ -475,8 +483,12 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
             autoComplete="off"
             spellCheck={false}
           />
-          {/* 作用域标签:小胶囊,提示搜索/命令作用在哪个项目上(纯展示)。 */}
-          {activeProjectName && (
+          {/* 作用域标签:提示搜索被限在哪个项目里。
+              只在真的受限时才出现 —— 空查询的默认视图列的是全部项目的会话
+              和全部项目本身,那时挂一个项目名是在说谎(而且当前项目在侧栏和
+              状态栏各已经写了一次)。历史搜索始终限当前项目;默认模式一旦
+              开始输入,文件匹配也只查当前项目的文件列表。 */}
+          {activeProjectName && scoped && (
             <span
               className="flex-none max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap
                 font-mono text-[10.5px] text-accent bg-accent-tint rounded-md py-[3px] px-2"

@@ -188,10 +188,21 @@ body {
 }
 
 
-/* Focus ring — single token, applied via :focus-visible. */
+/* Focus ring — single token, applied via :focus-visible.
+
+   注意它画的是 box-shadow 而不是 outline:组件里写 `outline-none` 挡不住
+   它,要清掉得覆盖 box-shadow。而这条规则是 unlayered 的,永远赢过
+   Tailwind `@layer utilities` 里的 `focus-visible:shadow-none` —— 所以
+   例外只能写在这里,不能写在组件上。 */
 :focus-visible {
   outline: none;
   box-shadow: var(--accent-glow);
+}
+
+/* 面板一打开输入框就是焦点,再套一圈焦点环只是噪音 —— 而且环只包住
+   input、把右侧的作用域标签切在外面,看着像输入框漏了一截。 */
+.cmd-palette-input:focus-visible {
+  box-shadow: none;
 }
 
 #root {

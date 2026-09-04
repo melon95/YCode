@@ -214,13 +214,42 @@ describe("CommandPalette", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the active project name as a scope tag and the ⌘⏎ footer hint", () => {
+  it("renders the footer hints", () => {
     useStore.setState({ projects: { "project-a": project() } });
     renderPalette();
 
-    expect(screen.getByText("internal-portal-frontend")).toBeInTheDocument();
     expect(screen.getByText("⌘⏎ 在新面板打开")).toBeInTheDocument();
     expect(screen.getByText("> 历史 · @ 会话")).toBeInTheDocument();
+  });
+
+  // 作用域标签只在搜索真的被限在当前项目里时出现。空查询的默认视图列的是
+  // 全部项目的会话和全部项目本身,那时挂一个项目名是在说谎。
+  it("hides the scope tag until the search is actually scoped", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ projects: { "project-a": project() } });
+    renderPalette();
+    const input = screen.getByLabelText("搜索或执行命令");
+
+    // 默认视图、空查询 —— 结果跨全部项目。
+    expect(screen.queryByText("internal-portal-frontend")).toBeNull();
+
+    // 开始输入:文件匹配参与结果,而文件列表只来自当前项目。
+    await user.type(input, "src");
+    expect(screen.getByText("internal-portal-frontend")).toBeInTheDocument();
+
+    // `@` 会话列表跨全部项目,标签要重新消失。
+    await user.clear(input);
+    await user.type(input, "@a");
+    expect(screen.queryByText("internal-portal-frontend")).toBeNull();
+  });
+
+  it("shows the scope tag in history mode, which is always project-scoped", async () => {
+    const user = userEvent.setup();
+    useStore.setState({ projects: { "project-a": project() } });
+    renderPalette();
+
+    await user.type(screen.getByLabelText("搜索或执行命令"), ">");
+    expect(screen.getByText("internal-portal-frontend")).toBeInTheDocument();
   });
 
   it("opens a session in a new pane on ⌘⏎ instead of replacing the focused slot", async () => {
