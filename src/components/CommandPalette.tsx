@@ -533,10 +533,13 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
                     type="button"
                     role="option"
                     aria-selected={focused}
+                    // 背景由三元统一给出。基础串里若也写 `bg-transparent`,
+                    // 它和 `bg-panel-raised` 特异性相同、在样式表里又排在
+                    // 后面,会把键盘选中的底色整个压掉(见 HIT_ROW 的注释)。
                     className={`group w-full flex items-center gap-[11px] py-2 px-3.5 border-none
-                      bg-transparent text-[inherit] text-left cursor-pointer
+                      text-[inherit] text-left cursor-pointer
                       transition-colors duration-[var(--t-fast)] ease-smooth
-                      hover:bg-panel-raised ${focused ? "bg-panel-raised" : ""}`}
+                      ${focused ? "bg-panel-raised" : "bg-transparent hover:bg-panel-raised"}`}
                     onMouseEnter={() => setFocusedIdx(i)}
                     // ⌘+点击与 ⌘⏎ 同义:在新面板打开。
                     onClick={(e) => pick(hit, e.metaKey || e.ctrlKey)}
