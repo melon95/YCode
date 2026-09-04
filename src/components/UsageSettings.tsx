@@ -18,9 +18,15 @@ const BLOCK_TITLE =
   "m-0 text-[11px] font-semibold text-muted uppercase tracking-[0.045em]";
 
 /// 作用域选择器与 agent 分组共用的胶囊。窄面板下换行。
-const PILL_TAB = `appearance-none border rounded-full text-[12px] py-1 px-[11px] cursor-pointer whitespace-nowrap
+/// 只放形状与过渡 —— 内边距由调用点给。agent pill 比时间范围 pill 略窄,
+/// 若基础串也写一份 `px-[11px]`,它和调用点的 `px-2.5` 特异性相同、在生成的
+/// 样式表里又排在后面,窄的那份会被压掉。
+const PILL_TAB = `appearance-none border rounded-full text-[12px] cursor-pointer whitespace-nowrap
   transition-[color,background,border-color] duration-[var(--duration-fast)] ease-out`
   .replace(/\s+/g, " ");
+
+/// 时间范围 pill 的内边距。
+const PILL_TAB_PAD = "py-1 px-[11px]";
 const PILL_TAB_ON = "text-accent bg-accent-ring border-accent";
 const PILL_TAB_OFF =
   "text-muted bg-transparent border-rule hover:text-text hover:border-accent";
@@ -30,8 +36,11 @@ const USAGE_TR =
   "grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_64px_64px_70px] gap-2.5 items-center py-[7px] border-b border-rule last:border-b-0";
 const USAGE_NUM = "text-right tabular-nums";
 
-const LOADING =
-  "p-[60px] text-center font-display italic text-[16px] text-subtle [font-variation-settings:'opsz'_36,'SOFT'_100]";
+/// 迁移前这段在 styles.css 里是斜体 Fraunces,但 design-system.css 随后
+/// 把 font-family / font-style / font-variation-settings 三项全重置回了
+/// 正常 —— 后者加载在后、同特异性下胜出,所以实际渲染一直是正体 Geist。
+/// 这里保留的是「实际生效」的那一层。
+const LOADING = "p-[60px] text-center font-ui not-italic text-[16px] text-subtle";
 
 export function UsageSettings() {
   const [usage, setUsage] = useState<WorkspaceUsageView | null>(null);
@@ -180,7 +189,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
               type="button"
               role="tab"
               aria-selected={selected == null}
-              className={`${PILL_TAB} ${selected == null ? PILL_TAB_ON : PILL_TAB_OFF}`}
+              className={`${PILL_TAB} ${PILL_TAB_PAD} ${selected == null ? PILL_TAB_ON : PILL_TAB_OFF}`}
               onClick={() => setSelected(null)}
             >
               All projects
@@ -191,7 +200,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
                 role="tab"
                 key={p.project_id}
                 aria-selected={selected === p.project_id}
-                className={`${PILL_TAB} ${
+                className={`${PILL_TAB} ${PILL_TAB_PAD} ${
                   selected === p.project_id ? PILL_TAB_ON : PILL_TAB_OFF
                 }`}
                 onClick={() => setSelected(p.project_id)}

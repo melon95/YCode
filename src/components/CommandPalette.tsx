@@ -585,8 +585,11 @@ function FileHitRow({
 /// 而在生成的样式表里排在后面,于是会静静地压掉选中态 —— 表现是键盘上下
 /// 移动时整行不着色(只有图标那个自带底色的小方块在变),鼠标 hover 却正常
 /// (那条带伪类,特异性更高)。背景一律由下面的三元表达式给出。
-const HIT_ROW = `block w-full text-left border-none
-  border-b border-b-highlight-hairline text-text cursor-pointer
+/// 别写 `border-none`:它设的是 shorthand `border-style: none`,会抹掉
+/// `border-b` 依赖的 `--tw-border-style`,分隔线整条消失。其余三边用透明
+/// 边框表达「没有」。
+const HIT_ROW = `block w-full text-left border border-transparent
+  border-b-highlight-hairline text-text cursor-pointer
   transition-colors duration-[var(--t-fast)] ease-smooth`;
 
 /// 选中态跟命令行(`.cmd-row`)统一走 `--panel-raised`。原来这里是

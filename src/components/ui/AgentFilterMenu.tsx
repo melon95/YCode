@@ -1,7 +1,7 @@
 import { Popover } from "@base-ui/react/popover";
 import { AgentIcon } from "../AgentIcon";
 import type { AgentProfileView } from "../../lib/types";
-import { MENU_ITEM_ON, MENU_POPUP, POPOVER_LAYER } from "./menuStyles";
+import { MENU_ITEM_ON, MENU_ITEM_REST, MENU_POPUP, POPOVER_LAYER } from "./menuStyles";
 
 /// ALL 用等宽小字,和 agent 图标同宽 —— 触发器不会在两种状态间跳宽。
 const ALL_BADGE = "font-mono text-[9px] font-bold tracking-[0.04em]";
@@ -9,7 +9,7 @@ const ALL_BADGE = "font-mono text-[9px] font-bold tracking-[0.04em]";
 /// 这里的条目比 MENU_ITEM 多一个图标列,gap 和 MENU_ITEM 不同,所以没走
 /// 共享常量。
 const ITEM = `flex items-center gap-[9px] w-full py-[7px] px-[9px] border-none rounded-lg
-  bg-none text-text-soft text-[12.5px] text-left cursor-pointer
+  bg-none text-[12.5px] text-left cursor-pointer
   transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`
   .replace(/\s+/g, " ");
 
@@ -58,7 +58,7 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
             className={`${MENU_POPUP} min-w-[180px] max-h-[60vh] overflow-y-auto`}
           >
             <Popover.Close
-              className={`${ITEM} ${value === null ? MENU_ITEM_ON : ""}`}
+              className={`${ITEM} ${value === null ? MENU_ITEM_ON : MENU_ITEM_REST}`}
               onClick={() => onChange(null)}
             >
               <span className={ALL_BADGE}>ALL</span>
@@ -69,7 +69,7 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
             {agents.map((profile) => (
               <Popover.Close
                 key={profile.id}
-                className={`${ITEM} ${value === profile.id ? MENU_ITEM_ON : ""}`}
+                className={`${ITEM} ${value === profile.id ? MENU_ITEM_ON : MENU_ITEM_REST}`}
                 onClick={() => onChange(profile.id)}
               >
                 <AgentIcon

@@ -43,7 +43,9 @@ const ACTIVE_EMPTY = `flex min-h-40 flex-col items-center justify-center gap-[5p
 );
 
 /// 归档页返回键、「已完成」折叠头、「查看全部」都是同一种低声量文字按钮。
-const QUIET_BTN = `flex items-center border-0 rounded-md bg-transparent cursor-pointer
+/// 6px 而不是 8px —— 迁移前 design-system.css 把这几个的圆角统一压到
+/// `--radius-sm`,它加载在 styles.css 之后,同特异性下胜出。
+const QUIET_BTN = `flex items-center border-0 rounded-sm bg-transparent cursor-pointer
   hover:bg-control-hover`.replace(/\s+/g, " ");
 
 const TODO_LIST = "list-none m-0 p-0 flex flex-col gap-1";
@@ -51,7 +53,7 @@ const TODO_LIST = "list-none m-0 p-0 flex flex-col gap-1";
 const WEEK_LIST = "list-none mt-1 mx-0 mb-0 p-0 flex flex-col gap-2";
 
 const PANEL_ERROR =
-  "mt-1 mx-2 mb-2 py-1.5 px-2.5 rounded-md bg-accent-10 text-accent text-xs";
+  "mt-1 mx-2 mb-2 py-1.5 px-2.5 rounded-sm bg-accent-10 text-accent text-xs";
 
 const SUMMARY_ITEM = `grid grid-cols-[auto_auto] items-baseline gap-[5px] text-subtle
   font-ui text-[9px] font-[650] tracking-[0.04em] uppercase`.replace(/\s+/g, " ");
@@ -70,12 +72,11 @@ const GROUP_HEADER = `list-none flex items-center justify-between mt-2 first:mt-
 /// 「已完成」的周计数、归档页标题旁的总数,同一枚数字。
 const DONE_COUNT = "ml-auto font-bold text-subtle";
 
+/// 焦点态的例外写在 styles.css(`.todo-edit-input` / `.todo-add-input`)
+/// —— 全局 `:focus-visible` 是 unlayered 的,utility 层压不过它。这里的
+/// 类名只是给那两条规则当钩子。
 const INPUT = `flex-1 min-w-0 border-0 bg-transparent text-text-soft font-[inherit] text-[13px]
-  p-0 outline-none appearance-none shadow-none
-  focus:outline-none focus:shadow-none focus-visible:outline-none focus-visible:shadow-none`.replace(
-  /\s+/g,
-  " ",
-);
+  p-0 outline-none appearance-none shadow-none`.replace(/\s+/g, " ");
 
 // How many weeks of completed todos to show inline before the rest is only
 // reachable through the "View all" archive page.
@@ -208,7 +209,10 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         data-todo-reorder-id={canDrag ? todo.id : undefined}
         className={[
           ROW,
-          status === "doing" && "border-accent-12 bg-accent-045",
+          // hover 时也保持强调色边框 —— 迁移前 `.status-doing` 写在
+          // `:hover` 之后、同特异性下胜出,这里靠 `hover:` 变体把优先级追平。
+          status === "doing" &&
+            "border-accent-12 bg-accent-045 hover:border-accent-12",
           // todo/doing 行点哪儿都能切状态。
           !done && !editing && "cursor-pointer",
           canDrag && "hover:cursor-grab [&:hover_[data-title]]:cursor-grab",
@@ -252,9 +256,9 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         <div className="flex-1 min-w-0 flex flex-col gap-[3px]">
           {editing ? (
             // 全局的 `:focus-visible` 光晕在这种无边框矮输入框上会渲染成
-            // 两条游离的横线,所以在 INPUT 里显式关掉。
+            // 两条游离的横线,由 styles.css 里的同名规则关掉。
             <input
-              className={`${INPUT} min-h-[30px]`}
+              className={`todo-edit-input ${INPUT} min-h-[30px]`}
               value={editingText}
               autoFocus
               onChange={(e) => setEditingText(e.target.value)}
@@ -459,7 +463,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       >
         <PlusIcon />
         <input
-          className={`${INPUT} placeholder:text-subtle`}
+          className={`todo-add-input ${INPUT} placeholder:text-subtle`}
           aria-label="新建 todo"
           placeholder="新建 todo…"
           value={draft}

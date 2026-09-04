@@ -192,8 +192,10 @@ function PanelToggle({
         {children}
       </IconButton>
       {count != null && (
-        // 角标的描边跟着所在底色走:工具条上是 surface,别处是 bg。
-        <span className="count-badge count-badge-float shadow-[0_0_0_2px_var(--surface)]">
+        // 光环底色跟着所在底色走(工具条上是 surface,别处是 bg),由
+        // redesign.css 的 `.panel-toggle .count-badge-float` 给出 ——
+        // utility 压不过那条 unlayered 规则。
+        <span className="count-badge count-badge-float">
           {count}
         </span>
       )}

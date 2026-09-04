@@ -80,7 +80,7 @@ function ConfirmInner({
           <button
             ref={cancelRef}
             type="button"
-            className={CONFIRM_BTN}
+            className={`${CONFIRM_BTN} ${CONFIRM_BTN_QUIET}`}
             onClick={() => onResult(false)}
           >
             {opts.cancelLabel ?? "取消"}
@@ -88,9 +88,7 @@ function ConfirmInner({
           <button
             type="button"
             className={`${CONFIRM_BTN} ${
-              opts.destructive
-                ? "border-st-blocked-half text-st-blocked hover:bg-st-blocked-wash hover:border-transparent hover:text-st-blocked"
-                : "bg-accent border-transparent text-bg hover:opacity-90 hover:text-bg"
+              opts.destructive ? CONFIRM_BTN_DANGER : CONFIRM_BTN_PRIMARY
             }`}
             onClick={() => onResult(true)}
           >
@@ -102,9 +100,25 @@ function ConfirmInner({
   );
 }
 
-const CONFIRM_BTN = `h-control py-0 px-3.5 border border-rule-strong rounded-lg
-  bg-transparent text-muted text-[12.5px] cursor-pointer
-  transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
-  hover:bg-panel-raised hover:text-text
-  focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1`
+/// 只放几何与过渡 —— 颜色一律由下面三套完整给出。
+///
+/// 背景/文字色若在这里写一份、再由三元加一份,两条 utility 特异性相同,
+/// 赢的是生成样式表里靠后的那个(跟书写顺序无关),主按钮会被基础串的
+/// `bg-transparent` / `text-muted` 压成幽灵按钮。
+/// `confirm-btn` 是钩子:焦点用实线 outline 而不是全局那圈光晕(遮罩上
+/// 糊成一团),而全局规则 unlayered、utility 压不过,例外写在 styles.css。
+const CONFIRM_BTN = `confirm-btn h-control py-0 px-3.5 border rounded-lg text-[12.5px] cursor-pointer
+  transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth`
   .replace(/\s+/g, " ");
+
+/// 取消:安静的幽灵按钮。
+const CONFIRM_BTN_QUIET =
+  "bg-transparent border-rule-strong text-muted hover:bg-panel-raised hover:text-text";
+
+/// 确定:填充强调色。
+const CONFIRM_BTN_PRIMARY =
+  "bg-accent border-transparent text-bg hover:opacity-90 hover:text-bg";
+
+/// 破坏性确认:红字红边,hover 时补一层淡红底。
+const CONFIRM_BTN_DANGER =
+  "bg-transparent border-st-blocked-half text-st-blocked hover:bg-st-blocked-wash hover:border-transparent hover:text-st-blocked";

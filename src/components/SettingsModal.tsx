@@ -293,7 +293,9 @@ export function SettingsScreen({ onClose }: Props) {
         role="dialog"
         aria-modal
       >
-        <header className="flex-none h-toolbar flex items-center gap-[9px] pr-3 pl-4 border-b border-rule">
+        {/* 内边距沿用迁移前 design-system.css 的 `!important` 覆盖(22px
+            两侧),不是 styles.css 那层 —— 后者被它压掉了。 */}
+        <header className="flex-none h-toolbar flex items-center gap-[9px] px-[22px] border-b border-rule">
           <span className="text-[13px] font-semibold text-text">设置</span>
           <span className="flex-auto" />
           <span
@@ -398,7 +400,9 @@ export function SettingsScreen({ onClose }: Props) {
 
           <main className="flex-1 min-w-0 overflow-y-auto">
             {loading || !staged ? (
-              <div className="p-[60px] text-center font-display italic text-[16px] text-subtle [font-variation-settings:'opsz'_36,'SOFT'_100]">
+              // 正体 Geist —— 迁移前 design-system.css 把 styles.css 那层
+              // 的斜体 Fraunces 重置掉了,这里跟随实际生效的结果。
+              <div className="p-[60px] text-center font-ui not-italic text-[16px] text-subtle">
                 读取设置中…
               </div>
             ) : (
@@ -433,7 +437,7 @@ export function SettingsScreen({ onClose }: Props) {
           </main>
         </div>
 
-        <footer className="flex-none flex items-center gap-2 py-2.5 px-4 border-t border-rule bg-surface">
+        <footer className="flex-none flex items-center gap-2 py-3 px-5 border-t border-rule bg-surface">
           <button
             type="button"
             className={`justify-self-start min-h-[34px] px-2.5 rounded-sm border-0 bg-transparent

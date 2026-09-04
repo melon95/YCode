@@ -78,6 +78,12 @@
   right: -5px;
   box-shadow: 0 0 0 2px var(--bg);
 }
+/* 画布工具条坐在 `--surface` 上,光环得跟着换底色才看不出接缝。这条留在
+   CSS 里而不是写成 utility:上面那条是 unlayered 的,`@layer utilities`
+   压不过它。`panel-toggle` 因此也是个无样式钩子。 */
+.panel-toggle .count-badge-float {
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 /* ============================================================
    Motion — global interaction feel

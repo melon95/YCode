@@ -23,6 +23,11 @@ export function Toaster() {
 ///
 /// 折叠态下每张都贴合最前一张的高度,堆叠边缘才是齐的;悬停展开后堆叠散成
 /// 一列,由 Base UI 量出的偏移驱动。
+///
+/// 每个改变位置的状态都要显式写回 `scale-100`。迁移前用的是 `transform`
+/// 简写,一条声明整个替换掉前一条,缩放顺带就复位了;Tailwind v4 生成的是
+/// 独立的 `translate:` 与 `scale:`,互不影响 —— 漏写的话展开后第二张会
+/// 一直停在 0.95、第三张 0.90。
 const ROOT = `absolute right-0 bottom-0 left-0
   h-[var(--toast-frontmost-height,var(--toast-height))]
   z-[calc(1000-var(--toast-index))]
@@ -31,9 +36,11 @@ const ROOT = `absolute right-0 bottom-0 left-0
   scale-[calc(max(0,1-(var(--toast-index)*0.05)))]
   data-expanded:h-[var(--toast-height)]
   data-expanded:translate-y-[var(--toast-offset-y)]
+  data-expanded:scale-100
   data-swiping:transition-none
   data-swiping:translate-x-[var(--toast-swipe-movement-x)]
   data-swiping:translate-y-[calc(var(--toast-swipe-movement-y)+var(--toast-offset-y,0px))]
+  data-swiping:scale-100
   data-starting-style:opacity-0 data-starting-style:translate-y-5 data-starting-style:scale-97
   data-ending-style:opacity-0 data-ending-style:translate-y-5 data-ending-style:scale-97
   data-ending-style:data-[swipe-direction=right]:translate-x-[calc(var(--toast-swipe-movement-x)+130%)]

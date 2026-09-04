@@ -116,7 +116,7 @@ export function UpdateNotice() {
         <div className="flex justify-end gap-1.5">
           <button
             type="button"
-            className={`${BTN} bg-transparent text-muted border-transparent
+            className={`update-btn ${BTN} bg-transparent text-muted border-transparent
               not-disabled:hover:text-text not-disabled:hover:bg-accent-hover-wash`}
             onClick={() => setDismissed(true)}
           >
@@ -124,7 +124,7 @@ export function UpdateNotice() {
           </button>
           <button
             type="button"
-            className={`${BTN} bg-accent text-text-on-accent border-accent
+            className={`update-btn ${BTN} bg-accent text-text-on-accent border-accent
               not-disabled:hover:bg-accent-soft not-disabled:hover:border-accent-soft
               disabled:bg-rule disabled:border-rule disabled:text-subtle`}
             onClick={onInstall}
@@ -139,8 +139,12 @@ export function UpdateNotice() {
 
 /// 这两枚按钮是 app 里仅剩的 `.button` 用户,所以整套按钮系统跟着这个
 /// 组件走。小号变体(原 `.button--sm`)是唯一在用的尺寸。
-const BTN = `min-h-8 py-[5px] px-2.5 rounded-sm border font-ui text-[10px] font-semibold
-  tracking-caps-tight uppercase cursor-pointer relative
+/// `update-btn` 是钩子:焦点环要贴身 3px 而不是全局那圈 24px 弥散光晕,
+/// 而全局规则 unlayered、utility 压不过,例外写在 styles.css。
+///
+/// 排版跟随迁移前 design-system.css 的 `.button` 覆盖(它加载在 styles.css
+/// 之后,同特异性下胜出):12px / 580 字重 / 正常大小写,不是小型大写。
+const BTN = `min-h-8 py-0 px-3 rounded-sm border font-ui text-xs font-[580]
+  tracking-normal normal-case cursor-pointer relative
   transition-[color,background-color,border-color] duration-[var(--duration-fast)] ease-out
-  focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-accent-edge)]
   disabled:opacity-45 disabled:cursor-not-allowed`.replace(/\s+/g, " ");

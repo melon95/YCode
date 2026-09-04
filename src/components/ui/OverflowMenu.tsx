@@ -2,6 +2,9 @@ import type { ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   MENU_ITEM,
+  MENU_ITEM_DANGER,
+  MENU_ITEM_REST,
+  MENU_ITEM_RULE,
   MENU_POPUP,
   POPOVER_LAYER,
 } from "./menuStyles";
@@ -76,14 +79,11 @@ export function OverflowMenu({
                 key={a.label}
                 className={[
                   MENU_ITEM,
-                  a.destructive &&
-                    "text-st-blocked data-highlighted:bg-st-blocked-wash",
-                  // 破坏性动作与上面的常规动作之间拉一道线,免得手滑
-                  // 从「重命名」直接划到「删除」。
+                  a.destructive ? MENU_ITEM_DANGER : MENU_ITEM_REST,
                   a.destructive &&
                     i > 0 &&
                     !actions[i - 1].destructive &&
-                    "mt-[5px] border-t border-rule pt-[9px] rounded-t-none",
+                    MENU_ITEM_RULE,
                 ]
                   .filter(Boolean)
                   .join(" ")}

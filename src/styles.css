@@ -205,6 +205,30 @@ body {
   box-shadow: none;
 }
 
+/* 这些无边框的矮输入框上,那圈光晕会渲染成上下两道游离的横线而不是一个
+   环。组件里写的 `focus-visible:shadow-none` 在 `@layer utilities` 里,
+   压不过上面那条 unlayered 规则,所以例外写在这儿。 */
+.todo-edit-input:focus,
+.todo-edit-input:focus-visible,
+.todo-add-input:focus,
+.todo-add-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* 更新提示卡的两枚按钮要的是一圈贴身的 3px 描边,不是 24px 的弥散光晕。 */
+.update-btn:focus-visible {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+
+/* 确认框按钮用实线 outline 而不是光晕 —— 它盖在半透明遮罩上,光晕糊成
+   一团看不出焦点在哪。 */
+.confirm-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
 #root {
   height: 100vh;
   display: flex;

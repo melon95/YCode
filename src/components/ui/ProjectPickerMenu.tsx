@@ -4,6 +4,7 @@ import { useStore } from "../../lib/store";
 import {
   MENU_ITEM,
   MENU_ITEM_ON,
+  MENU_ITEM_REST,
   MENU_POPUP,
   POPOVER_LAYER,
 } from "./menuStyles";
@@ -75,7 +76,7 @@ export function ProjectPickerMenu({ children, className, asSpan }: Props) {
               <Menu.Item
                 key={p.id}
                 className={`${MENU_ITEM} ${
-                  p.id === activeProjectId ? MENU_ITEM_ON : ""
+                  p.id === activeProjectId ? MENU_ITEM_ON : MENU_ITEM_REST
                 }`}
                 onClick={() => setActiveProjectId(p.id)}
               >

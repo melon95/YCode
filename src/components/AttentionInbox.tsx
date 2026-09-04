@@ -11,8 +11,13 @@ import { POPOVER_LAYER } from "./ui/menuStyles";
 ///
 /// `inbox-item` 作为选择器钩子留着:前几行的入场动画是错开的
 /// (`:nth-child`),元素自己数不出「我是第几个」。
+// 不能写 `border-none`:它设的是 shorthand `border-style: none`,会连同
+// 后面 `border-t` / `border-l-2` 依赖的 `--tw-border-style` 一起抹掉 ——
+// 手写 CSS 里 `border: none; border-top: …` 靠声明顺序生效,utility 之间
+// 没有这个关系。左右下三边用透明边框表达「没有」。
 const ITEM = `inbox-item w-full flex items-center gap-2.5 py-[11px] px-3.5
-  border-none border-t border-t-rule border-l-2 bg-transparent text-[inherit] text-left cursor-pointer
+  border border-transparent border-t-rule border-l-2 border-l-st-blocked
+  bg-transparent text-[inherit] text-left cursor-pointer
   transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`
   .replace(/\s+/g, " ");
 
