@@ -1009,13 +1009,6 @@ select {
   text-transform: none;
 }
 
-/* History, command palette and tasks */
-.history-modal,
-.command-palette,
-.command-dialog {
-  border-radius: var(--radius-md);
-}
-
 .changes-empty {
   font-family: var(--font-ui);
   font-style: normal;

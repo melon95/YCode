@@ -17,7 +17,6 @@ import { useEscapeGuard } from "./lib/useEscapeGuard";
 import { applyTheme, resolveTheme, SYSTEM_THEME_ID } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
 import { CommandPalette } from "./components/CommandPalette";
-import { HistoryTab } from "./components/HistoryTab";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { SettingsScreen } from "./components/SettingsModal";
 import { WorkspaceCanvas } from "./components/WorkspaceCanvas";
@@ -31,17 +30,8 @@ import {
   snapshotPeerLockedProjects,
 } from "./lib/multiWindow";
 import type { CliOpenPayload } from "./lib/ipc";
-import type { SearchHit } from "./lib/types";
 
 const COLUMN_PANEL_IDS = ["sidebar", "middle", "right"];
-
-export interface HistoryView {
-  agent: string;
-  sessionId: string;
-  jsonlPath: string;
-  focusSeq?: number;
-  title?: string;
-}
 
 export function App() {
   const setSessions = useStore((s) => s.setSessions);
@@ -93,12 +83,8 @@ export function App() {
   }, [setLockedProjectId, setLockedByOtherWindows, addLockedByOther, removeLockedByOther]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [history, setHistory] = useState<HistoryView | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  // The session-history overlay had no Escape handling at all — add it, and
-  // like every other modal make it dismiss-only (no fullscreen exit).
-  useEscapeGuard(() => setHistory(null), !!history);
   useEscapeGuard(() => setOverviewOpen(false), overviewOpen);
 
   // Persist column widths across reloads. Panel ids must match the literal
@@ -172,19 +158,13 @@ export function App() {
   // the palette without prop-drilling. Mirrors `ycode:close-file` pattern.
   useEffect(() => {
     const onOpen = () => setPaletteOpen(true);
-    const onOpenHistory = (event: Event) => {
-      const detail = (event as CustomEvent<HistoryView>).detail;
-      if (detail) setHistory(detail);
-    };
     const onOpenSettings = () => setSettingsOpen(true);
     const onOpenOverview = () => setOverviewOpen((v) => !v);
     window.addEventListener("ycode:open-overview", onOpenOverview);
     window.addEventListener("ycode:open-palette", onOpen);
-    window.addEventListener("ycode:open-history", onOpenHistory);
     window.addEventListener("ycode:open-settings", onOpenSettings);
     return () => {
       window.removeEventListener("ycode:open-palette", onOpen);
-      window.removeEventListener("ycode:open-history", onOpenHistory);
       window.removeEventListener("ycode:open-settings", onOpenSettings);
       window.removeEventListener("ycode:open-overview", onOpenOverview);
     };
@@ -396,7 +376,7 @@ export function App() {
         return;
       }
       if (kind.type === "JsonlChanged") {
-        // HistoryTab subscribes directly; nothing to do here.
+        // 历史视图已移除;jsonl 变化目前没有订阅者。
         return;
       }
       if (kind.type === "TodosChanged") {
@@ -519,15 +499,6 @@ export function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  function onPickHit(hit: SearchHit) {
-    setHistory({
-      agent: hit.agent,
-      sessionId: hit.session_id,
-      jsonlPath: hit.jsonl_path,
-      focusSeq: hit.seq,
-    });
-  }
-
   return (
     <>
       {/* 顶栏已移除:打开项目/总览在侧边栏头部,搜索/收件箱/设置在
@@ -567,26 +538,8 @@ export function App() {
       {settingsOpen && (
         <SettingsScreen onClose={() => setSettingsOpen(false)} />
       )}
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onPick={onPickHit}
-      />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <UpdateNotice />
-      {history && (
-        <div className="history-backdrop" onClick={() => setHistory(null)}>
-          <div className="history-modal" onClick={(e) => e.stopPropagation()}>
-            <HistoryTab
-              agent={history.agent}
-              sessionId={history.sessionId}
-              jsonlPath={history.jsonlPath}
-              focusSeq={history.focusSeq}
-              title={history.title}
-              onClose={() => setHistory(null)}
-            />
-          </div>
-        </div>
-      )}
     </>
   );
 }

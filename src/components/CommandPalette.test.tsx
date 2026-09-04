@@ -2,20 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { listFiles, searchSessions } from "../lib/ipc";
+import { listFiles } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type {
   AgentProfileView,
   FileEntry,
   ProjectView,
-  SearchHit,
   SessionView,
 } from "../lib/types";
 import { CommandPalette } from "./CommandPalette";
 
 vi.mock("../lib/ipc", () => ({
   listFiles: vi.fn(),
-  searchSessions: vi.fn(),
 }));
 
 vi.mock("./AgentIcon", () => ({
@@ -25,7 +23,6 @@ vi.mock("./AgentIcon", () => ({
 }));
 
 const listFilesMock = vi.mocked(listFiles);
-const searchSessionsMock = vi.mocked(searchSessions);
 const initialState = useStore.getState();
 
 function file(path: string, isDir = false): FileEntry {
@@ -80,31 +77,10 @@ function session(overrides: Partial<SessionView> = {}): SessionView {
   } as SessionView;
 }
 
-function searchHit(overrides: Partial<SearchHit> = {}): SearchHit {
-  return {
-    agent: "codex",
-    session_id: "session-123456789",
-    jsonl_path: "/tmp/codex.jsonl",
-    seq: 7,
-    ts_ms: 1_700_000_000_000,
-    role: "assistant",
-    preview: "Implemented the file tree",
-    ...overrides,
-  } as SearchHit;
-}
-
 function renderPalette(props: Partial<Parameters<typeof CommandPalette>[0]> = {}) {
   const onClose = vi.fn();
-  const onPick = vi.fn();
-  render(
-    <CommandPalette
-      open
-      onClose={onClose}
-      onPick={onPick}
-      {...props}
-    />,
-  );
-  return { onClose, onPick };
+  render(<CommandPalette open onClose={onClose} {...props} />);
+  return { onClose };
 }
 
 describe("CommandPalette", () => {
@@ -165,38 +141,17 @@ describe("CommandPalette", () => {
     );
   });
 
-  it("debounces session history search and returns the picked hit", async () => {
-    const user = userEvent.setup();
-    const hit = searchHit();
-    searchSessionsMock.mockResolvedValue([hit]);
-    const { onClose, onPick } = renderPalette();
-
-    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), ">tree");
-    expect(screen.getByRole("textbox", { name: "搜索会话记录" })).toBeInTheDocument();
-    expect(searchSessionsMock).not.toHaveBeenCalled();
-
-    await waitFor(() =>
-      expect(searchSessionsMock).toHaveBeenCalledWith("project-a", "tree", 50),
-    );
-    await screen.findByText("Implemented the file tree");
-    await user.keyboard("{Enter}");
-
-    expect(onPick).toHaveBeenCalledWith(hit);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
   it("closes on escape without selecting a hit", async () => {
     const user = userEvent.setup();
-    const { onClose, onPick } = renderPalette();
+    const { onClose } = renderPalette();
     screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
 
     await user.keyboard("{Escape}");
 
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(onPick).not.toHaveBeenCalled();
   });
 
-  it("shows Chinese status text for empty results and short history queries", async () => {
+  it("shows Chinese status text for empty results", async () => {
     const user = userEvent.setup();
     renderPalette();
     const input = screen.getByRole("textbox", { name: "搜索或执行命令" });
@@ -204,23 +159,40 @@ describe("CommandPalette", () => {
     // 默认模式无匹配 → 中文空态,提示可用前缀。
     await user.type(input, "zzzzzz不存在的东西qqq");
     expect(
-      await screen.findByText("没有匹配项 —— 试试 > 历史、@ 会话"),
+      await screen.findByText("没有匹配项 —— 试试 @ 只看会话"),
     ).toBeInTheDocument();
 
-    // `>` 历史模式:不足 2 字符的提示也是中文。
+    // `@` 模式的空态。
     await user.clear(input);
-    await user.type(input, ">a");
-    expect(
-      screen.getByText("至少输入 2 个字符才能搜索历史记录。"),
-    ).toBeInTheDocument();
+    await user.type(input, "@zzzz不存在qqq");
+    expect(screen.getByText("没有匹配的会话。")).toBeInTheDocument();
   });
 
   it("renders the footer hints", () => {
     useStore.setState({ projects: { "project-a": project() } });
     renderPalette();
 
+    expect(screen.getByText("↑↓ 选择")).toBeInTheDocument();
+    expect(screen.getByText("@ 只看会话")).toBeInTheDocument();
+  });
+
+  // ⌘⏎ 只对会话条目有意义 —— 别的条目按了会回落成普通 ⏎。常驻一条按下去
+  // 没反应的提示比不提示更糟,所以它跟着选中项走。
+  it("shows the ⌘⏎ hint only while a session row is selected", async () => {
+    const user = userEvent.setup();
+    useStore.setState({
+      projects: { "project-a": project(), "project-b": project({ id: "project-b", name: "另一个项目" }) },
+      sessions: { "session-a": session() },
+    });
+    renderPalette();
+
+    // 第一行是会话 —— 会话是唯一提供 runNewPane 的条目。
     expect(screen.getByText("⌘⏎ 在新面板打开")).toBeInTheDocument();
-    expect(screen.getByText("> 历史 · @ 会话")).toBeInTheDocument();
+
+    // 移到项目行,提示要消失。
+    await user.click(screen.getByLabelText("搜索或执行命令"));
+    await user.keyboard("{ArrowDown}");
+    expect(screen.queryByText("⌘⏎ 在新面板打开")).toBeNull();
   });
 
   // 作用域标签只在搜索真的被限在当前项目里时出现。空查询的默认视图列的是

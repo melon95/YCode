@@ -2408,34 +2408,6 @@ textarea.native-input {
 
 /* 命令面板已迁到 components/CommandPalette.tsx 的 Tailwind utility。 */
 
-/* ── HistoryTab (read-only structured session viewer) ──────────────────── */
-
-.history-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(var(--shadow-rgb), 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 150;
-}
-
-.history-modal {
-  width: min(900px, 94vw);
-  height: min(85vh, 920px);
-  background: var(--surface, #1c1b18);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 16px 48px rgba(var(--shadow-rgb), 0.6);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* HistoryTab 已迁到 components/HistoryTab.tsx 的 Tailwind utility。
-   `.history-backdrop` / `.history-modal`(上面)留着 —— 那是 App.tsx
-   的遮罩与弹窗外壳,不在本次范围内。 */
-
 .diff-add {
   color: var(--running);
 }

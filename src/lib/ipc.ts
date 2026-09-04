@@ -337,6 +337,10 @@ export const getWorkspaceUsage = (
 export const getAllUsage = (): Promise<WorkspaceUsageView> =>
   invoke("get_all_usage");
 
+/// 目前前端没有调用方 —— 唯一的消费者 HistoryTab 随 `>` 历史搜索一起
+/// 移除了(见 CommandPalette 顶部注释)。后端命令与 Rust 侧实现都还在,
+/// 保留这两个包装是为了让「能力还在,只是没接入口」这件事看得见;要重新
+/// 做历史浏览,从这里接。
 export const loadSessionHistory = (
   agent: string,
   sessionId: string,
