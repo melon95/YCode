@@ -57,6 +57,14 @@ type ActionHit = {
 };
 type Hit = FileHit | SessionHitWrapped | ActionHit;
 
+/// 一条结果归在哪个分组标题下。action 自带 `group`;文件和会话各只有一
+/// 种归属,所以在这里给出固定标题 —— 「历史记录」是 `>` 模式的产物,那
+/// 时列表里只有 session,不会和默认模式的会话组混在一起。
+function groupCaption(hit: Hit): string {
+  if (hit.kind === "action") return hit.group;
+  return hit.kind === "file" ? "文件" : "历史记录";
+}
+
 export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const activeProjectId = useStore((s) => s.activeProjectId);
   const workspaceSessionId = useStore((s) =>
@@ -503,20 +511,24 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
             <div className="py-3.5 px-4 text-muted text-xs">{statusText}</div>
           )}
           {hits.map((hit, i) => {
+            // A group caption is printed once, on the first row of each run —
+            // cheaper to read than repeating the label per row. 文件与会话
+            // 结果原本没有标题:默认模式下命令组带着标题、文件却直接跟在
+            // 后面,读起来像是上一组的延续。
+            const caption = groupCaption(hit);
+            const prev = hits[i - 1];
+            const newGroup = !prev || groupCaption(prev) !== caption;
+            const heading = newGroup && (
+              <div className="pt-2.5 px-3.5 pb-[5px] text-[9px] font-bold tracking-caps uppercase text-whisper">
+                {caption}
+              </div>
+            );
+
             if (hit.kind === "action") {
-              // A group caption is printed once, on the first row of each
-              // run — cheaper to read than repeating the label per row.
-              const prev = hits[i - 1];
-              const newGroup =
-                !prev || prev.kind !== "action" || prev.group !== hit.group;
               const focused = i === focusedIdx;
               return (
                 <div key={hit.id}>
-                  {newGroup && (
-                    <div className="pt-2.5 px-3.5 pb-[5px] text-[9px] font-bold tracking-caps uppercase text-whisper">
-                      {hit.group}
-                    </div>
-                  )}
+                  {heading}
                   <button
                     type="button"
                     role="option"
@@ -565,23 +577,27 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
               );
             }
             return hit.kind === "file" ? (
-              <FileHitRow
-                key={`file:${hit.path}`}
-                hit={hit}
-                query={trimmedQuery}
-                focused={i === focusedIdx}
-                onHover={() => setFocusedIdx(i)}
-                onClick={() => pick(hit)}
-              />
+              <div key={`file:${hit.path}`}>
+                {heading}
+                <FileHitRow
+                  hit={hit}
+                  query={trimmedQuery}
+                  focused={i === focusedIdx}
+                  onHover={() => setFocusedIdx(i)}
+                  onClick={() => pick(hit)}
+                />
+              </div>
             ) : (
-              <SessionHitRow
-                key={`session:${hit.hit.jsonl_path}:${hit.hit.seq}`}
-                hit={hit.hit}
-                profile={profileByIntrospect[hit.hit.agent]}
-                focused={i === focusedIdx}
-                onHover={() => setFocusedIdx(i)}
-                onClick={() => pick(hit)}
-              />
+              <div key={`session:${hit.hit.jsonl_path}:${hit.hit.seq}`}>
+                {heading}
+                <SessionHitRow
+                  hit={hit.hit}
+                  profile={profileByIntrospect[hit.hit.agent]}
+                  focused={i === focusedIdx}
+                  onHover={() => setFocusedIdx(i)}
+                  onClick={() => pick(hit)}
+                />
+              </div>
             );
           })}
         </div>
@@ -645,9 +661,14 @@ function FileHitRow({
 }
 
 const HIT_ROW = `block w-full text-left bg-transparent border-none
-  border-b border-b-highlight-hairline text-text cursor-pointer`;
+  border-b border-b-highlight-hairline text-text cursor-pointer
+  transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`;
 
-const HIT_ROW_ON = "bg-highlight-wash";
+/// 选中态跟命令行(`.cmd-row`)统一走 `--panel-raised`。原来这里是
+/// `rgba(var(--highlight-rgb), 0.06)`,而 `--highlight-rgb` 在浅色主题下
+/// 仍是白色 —— 白底上叠 6% 白等于没有,键盘选中位置根本看不出来。
+/// `--panel-raised` 是随主题翻转的真实表面色,深浅两侧都读得出。
+const HIT_ROW_ON = "bg-panel-raised";
 
 function SessionHitRow({
   hit,
