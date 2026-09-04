@@ -13,6 +13,13 @@ import { useAgentByIntrospect } from "../lib/store";
 
 const HISTORY_LIMIT = 5000;
 
+const STATUS = "p-4 text-muted text-xs";
+
+const CARD_TEXT = "font-mono text-xs m-0 whitespace-pre-wrap break-words";
+const CARD_TEXT_DIM = `${CARD_TEXT} text-muted`;
+const CARD_ROLE = "font-ui text-[11px] uppercase tracking-[0.4px] text-muted";
+const CARD_LIST = "list-none p-0 mt-1 mr-0 mb-0 ml-0 text-xs";
+
 interface HistoryTabProps {
   agent: string;
   sessionId: string;
@@ -96,9 +103,13 @@ export function HistoryTab({
   const filtered = useMemo(() => events.filter(matchesFilter(filter)), [events, filter]);
 
   return (
-    <div className="history-tab" role="dialog" aria-label="Session history">
-      <div className="history-tab-header">
-        <span className={`history-tab-agent agent-${agent}`}>
+    <div
+      className="flex flex-col h-full"
+      role="dialog"
+      aria-label="Session history"
+    >
+      <div className="flex items-center gap-3 py-2.5 px-3.5 border-b border-rule bg-surface text-xs">
+        <span className="inline-flex items-center gap-1.5">
           <AgentIcon
             icon={profile?.icon}
             variant={profile?.icon_variant}
@@ -108,36 +119,54 @@ export function HistoryTab({
           {profile?.display_name ?? agent}
         </span>
         {title ? (
-          <span className="history-tab-title" title={sessionId}>
+          <span
+            className="flex-[0_1_auto] min-w-0 max-w-1/2 font-ui text-text overflow-hidden text-ellipsis whitespace-nowrap font-medium"
+            title={sessionId}
+          >
             {title}
           </span>
         ) : (
-          <span className="history-tab-session" title={sessionId}>
+          <span className="font-mono text-muted" title={sessionId}>
             {sessionId.slice(0, 12)}…
           </span>
         )}
-        <span className="history-tab-count">{events.length} events</span>
-        <div className="history-tab-filter" role="tablist" aria-label="Filter events">
+        <span className="text-muted">{events.length} events</span>
+        <div
+          className="ml-auto flex gap-1"
+          role="tablist"
+          aria-label="Filter events"
+        >
           {(["all", "messages", "tools"] as Filter[]).map((f) => (
             <button
               key={f}
               type="button"
               role="tab"
               aria-selected={filter === f}
-              className={"history-tab-filter-btn" + (filter === f ? " active" : "")}
+              className={`py-[3px] px-2.5 border border-rule rounded-[3px] text-text text-[11px] lowercase cursor-pointer ${
+                filter === f
+                  ? "bg-[rgba(var(--highlight-rgb),0.08)]"
+                  : "bg-transparent"
+              }`}
               onClick={() => setFilter(f)}
             >
               {f}
             </button>
           ))}
         </div>
-        <button type="button" className="history-tab-close" onClick={onClose} aria-label="Close">
+        <button
+          type="button"
+          className="size-[26px] bg-transparent border border-rule rounded-[3px] text-text cursor-pointer text-base leading-none"
+          onClick={onClose}
+          aria-label="Close"
+        >
           ×
         </button>
       </div>
-      <div className="history-tab-body">
-        {loading && <div className="history-tab-status">Loading session…</div>}
-        {error && <div className="history-tab-status error">Failed: {error}</div>}
+      <div className="flex-1 min-h-0 overflow-y-auto py-3 px-3.5 flex flex-col gap-2.5">
+        {loading && <div className={STATUS}>Loading session…</div>}
+        {error && (
+          <div className={`${STATUS} text-error`}>Failed: {error}</div>
+        )}
         {!loading &&
           filtered.map((ev) => (
             <EventCard
@@ -148,7 +177,7 @@ export function HistoryTab({
             />
           ))}
         {!loading && !error && filtered.length === 0 && (
-          <div className="history-tab-status">No events match this filter.</div>
+          <div className={STATUS}>No events match this filter.</div>
         )}
       </div>
     </div>
@@ -179,12 +208,18 @@ function EventCard({
   return (
     <div
       ref={focusRef}
-      className={"history-card" + (highlighted ? " highlighted" : "")}
+      className={`border rounded-md py-2 px-2.5 flex flex-col gap-1 ${
+        highlighted
+          ? "border-accent bg-accent-ring"
+          : "border-rule bg-surface"
+      }`}
       data-kind={event.kind.kind}
     >
       <CardBody kind={event.kind} />
       {event.ts_ms > 0 && (
-        <div className="history-card-ts">{new Date(event.ts_ms).toLocaleTimeString()}</div>
+        <div className="self-end font-mono text-[10px] text-muted">
+          {new Date(event.ts_ms).toLocaleTimeString()}
+        </div>
       )}
     </div>
   );
@@ -195,40 +230,52 @@ function CardBody({ kind }: { kind: UnifiedEventKind }) {
     case "message":
       return (
         <>
-          <div className={`history-card-role role-${kind.role}`}>
+          <div
+            className={`${CARD_ROLE} ${
+              kind.role === "user"
+                ? "text-role-user"
+                : kind.role === "assistant"
+                  ? "text-accent"
+                  : ""
+            }`}
+          >
             {kind.role === "user" ? "👤 you" : kind.role === "assistant" ? "🤖 assistant" : `📎 ${kind.role}`}
           </div>
-          <pre className="history-card-text">{kind.text}</pre>
+          <pre className={CARD_TEXT}>{kind.text}</pre>
         </>
       );
     case "thinking":
       return (
         <>
-          <div className="history-card-role role-thinking">💭 thinking</div>
-          <pre className="history-card-text dim">{kind.text}</pre>
+          <div className={`${CARD_ROLE} text-role-thinking`}>💭 thinking</div>
+          <pre className={CARD_TEXT_DIM}>{kind.text}</pre>
         </>
       );
     case "tool_use":
       return (
         <>
-          <div className="history-card-role role-tool">🔧 {kind.tool}</div>
-          <pre className="history-card-text dim">{prettyJson(kind.input_json)}</pre>
+          <div className={`${CARD_ROLE} text-role-tool`}>🔧 {kind.tool}</div>
+          <pre className={CARD_TEXT_DIM}>{prettyJson(kind.input_json)}</pre>
         </>
       );
     case "tool_result":
       return (
         <>
-          <div className="history-card-role role-tool">
+          <div className={`${CARD_ROLE} text-role-tool`}>
             {kind.status === "error" ? "❌" : "✓"} {kind.tool}
           </div>
-          <pre className="history-card-text dim">{kind.output_excerpt}</pre>
+          <pre className={CARD_TEXT_DIM}>{kind.output_excerpt}</pre>
         </>
       );
     case "plan":
       return (
         <>
-          <div className="history-card-role role-plan">📋 plan</div>
-          <ul className="history-card-plan">
+          <div className={`${CARD_ROLE} text-role-plan`}>📋 plan</div>
+          <ul
+            className={`${CARD_LIST} [&_li[data-state=done]]:before:content-['☑_']
+              [&_li[data-state=in_progress]]:before:content-['→_']
+              [&_li[data-state=todo]]:before:content-['☐_']`}
+          >
             {kind.steps.map((s, i) => (
               <li key={i} data-state={s.state}>
                 {s.text}
@@ -240,8 +287,8 @@ function CardBody({ kind }: { kind: UnifiedEventKind }) {
     case "edits":
       return (
         <>
-          <div className="history-card-role role-edits">📝 edits</div>
-          <ul className="history-card-edits">
+          <div className={CARD_ROLE}>📝 edits</div>
+          <ul className={CARD_LIST}>
             {kind.files.map((f, i) => (
               <li key={i}>
                 <code>{f.file}</code>{" "}
@@ -255,17 +302,19 @@ function CardBody({ kind }: { kind: UnifiedEventKind }) {
     case "permission":
       return (
         <>
-          <div className="history-card-role role-permission">⚠ permission</div>
-          <div className="history-card-text">
+          <div className={CARD_ROLE}>⚠ permission</div>
+          <div className={CARD_TEXT}>
             <strong>{kind.tool}</strong>: {kind.summary}
-            {kind.decided && <span className="history-card-decision"> → {kind.decided}</span>}
+            {kind.decided && (
+              <span className="text-role-plan ml-1"> → {kind.decided}</span>
+            )}
           </div>
         </>
       );
     case "unknown":
     default:
       return (
-        <div className="history-card-role role-unknown">?? {(kind as { raw_type: string }).raw_type}</div>
+        <div className={CARD_ROLE}>?? {(kind as { raw_type: string }).raw_type}</div>
       );
   }
 }

@@ -42,8 +42,17 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
   const value = validSelection ? selectedSessionId ?? "" : "";
 
   return (
-    <label className="workspace-target-picker">
+    // `workspace-target-picker` 留作钩子:嵌在 canvas 工具条和 panel-card
+    // 绑定标签里时要去掉 margin,那两处宿主还没迁移。
+    <label
+      className="workspace-target-picker h-8 min-w-0 max-w-[150px] px-2 inline-flex items-center
+        flex-[0_1_150px] max-[1200px]:max-w-[124px] max-[1200px]:flex-[0_1_124px]
+        border border-rule rounded-sm bg-panel-sunken text-muted
+        focus-within:border-accent-half focus-within:shadow-[0_0_0_2px_var(--color-accent-ring)]"
+    >
       <select
+        className="min-w-0 w-full pr-3.5 pl-0.5 py-0 border-0 outline-0 bg-transparent
+          text-text-soft text-[10.5px] font-[560] text-ellipsis cursor-pointer"
         value={value}
         onChange={(event) => {
           const next = event.target.value || null;

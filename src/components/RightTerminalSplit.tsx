@@ -26,6 +26,32 @@ export type SplitOrientation = "horizontal" | "vertical";
 export type SplitDirection = "left" | "right" | "up" | "down";
 export type SplitPath = Array<"first" | "second">;
 
+// Visual language matches TerminalPane's gutters but positioned with %
+// coordinates over the host. z-index 50 keeps it above xterm's helper
+// textarea (z-index 11). The ::after bar is what the user actually sees —
+// it thickens and lengthens on hover so a 8px hit area reads as a handle.
+const SPLIT_GUTTER = `absolute z-50 select-none touch-none flex items-center justify-center
+  transition-[background-color] duration-[120ms] ease-[ease]
+  hover:bg-accent-edge active:bg-accent-edge
+  after:content-[''] after:block after:bg-rule-strong after:rounded-[2px]
+  after:transition-[background-color,width,height] after:duration-[120ms] after:ease-[ease]
+  hover:after:bg-accent active:after:bg-accent`;
+
+const SPLIT_GUTTER_V = `${SPLIT_GUTTER} w-2 -translate-x-1/2 cursor-col-resize
+  after:w-[2px] after:h-9 after:max-h-[60%]
+  hover:after:w-[3px] hover:after:max-h-[80%]
+  active:after:w-[3px] active:after:max-h-[80%]`;
+
+const SPLIT_GUTTER_H = `${SPLIT_GUTTER} h-2 -translate-y-1/2 cursor-row-resize
+  after:h-[2px] after:w-9 after:max-w-[60%]
+  hover:after:h-[3px] hover:after:max-w-[80%]
+  active:after:h-[3px] active:after:max-w-[80%]`;
+
+// Mirrors TerminalPane's close button so the look matches across panes.
+const PANE_CLOSE = `flex-none size-6 inline-flex items-center justify-center
+  border-0 rounded-xs bg-transparent text-muted cursor-pointer text-base/none p-0
+  hover:bg-control-hover hover:text-text`;
+
 export type SplitTree =
   | { kind: "leaf"; paneId: string }
   | {
@@ -259,7 +285,7 @@ export function RightTerminalSplit(props: RightTerminalSplitProps) {
   }
 
   return (
-    <div ref={hostRef} className="split-host">
+    <div ref={hostRef} className="absolute inset-0">
       {layout.leaves.map((leaf) => (
         <TerminalPaneCard
           key={leaf.paneId}
@@ -290,7 +316,9 @@ export function RightTerminalSplit(props: RightTerminalSplitProps) {
         return (
           <div
             key={`g-${g.axis}-${g.path.join("/")}`}
-            className={`split-gutter split-gutter-${g.axis}`}
+            className={
+              g.axis === "vertical" ? SPLIT_GUTTER_V : SPLIT_GUTTER_H
+            }
             style={style}
             onPointerDown={(e) => startGutterDrag(e, g)}
             role="separator"
@@ -333,18 +361,31 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
   };
 
   return (
+    // `terminal-pane-card` 留作钩子:卡片的表面(底色/描边/圆角)与
+    // TerminalPane 的 `.pane-cell` 是成组写的,且 `.app-workspace` 下还有
+    // 一层祖先覆盖(design-system.css)—— 那个祖先在 WorkspaceCanvas 上。
     <div
-      className={
-        "terminal-pane-card" + (props.canClose ? " with-header" : "")
-      }
+      className="terminal-pane-card absolute overflow-hidden"
       style={style}
       onContextMenu={handleContextMenu}
     >
+      {/* Header only renders when there is more than one pane; single-pane
+          state keeps the original chrome-less look.
+
+          Absolute (not flex): percentage heights inside flex items aren't
+          always "definite" enough at first paint for xterm's FitAddon to read
+          accurate container dimensions, so the initial fit would compute wrong
+          cols/rows. Pixel offsets sidestep that.
+
+          `--pane-header-h` is the single source of truth for how far the body
+          is pushed down. Any theme that restyles the header must override the
+          variable rather than setting a height directly — the header paints
+          over the xterm, so a mismatch hides the terminal's top rows. */}
       {props.canClose && (
-        <header className="terminal-pane-card-header">
+        <header className="terminal-pane-card-header absolute top-0 left-0 right-0 h-pane-header z-5 flex items-center justify-end py-1 px-2 gap-2 bg-surface border-b border-rule text-muted select-none">
           <button
             type="button"
-            className="pane-close"
+            className={PANE_CLOSE}
             onClick={(e) => {
               e.stopPropagation();
               props.onClose(props.paneId);
@@ -356,7 +397,11 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
           </button>
         </header>
       )}
-      <div className="terminal-pane-card-body">
+      <div
+        className={`absolute inset-x-0 bottom-0 ${
+          props.canClose ? "top-pane-header" : "top-0"
+        }`}
+      >
         <ManualTerminal
           cwd={props.cwd}
           projectId={props.projectId}
@@ -426,13 +471,14 @@ function SplitContextMenu(props: SplitContextMenuProps) {
 
   return createPortal(
     <div
-      className="split-menu"
+      className="fixed z-1000 min-w-[188px] p-1 bg-panel-raised border border-rule-strong rounded-lg shadow-[0_12px_32px_rgba(var(--shadow-rgb),0.45)] font-ui"
       style={{ left: Math.max(8, left), top: Math.max(8, top) }}
       role="menu"
     >
       <button
         type="button"
         role="menuitem"
+        className={SPLIT_MENU_ITEM}
         onClick={() => props.onPick("right")}
       >
         <SplitIcon direction="right" />
@@ -441,6 +487,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
       <button
         type="button"
         role="menuitem"
+        className={SPLIT_MENU_ITEM}
         onClick={() => props.onPick("left")}
       >
         <SplitIcon direction="left" />
@@ -449,6 +496,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
       <button
         type="button"
         role="menuitem"
+        className={SPLIT_MENU_ITEM}
         onClick={() => props.onPick("down")}
       >
         <SplitIcon direction="down" />
@@ -457,6 +505,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
       <button
         type="button"
         role="menuitem"
+        className={SPLIT_MENU_ITEM}
         onClick={() => props.onPick("up")}
       >
         <SplitIcon direction="up" />
@@ -464,11 +513,12 @@ function SplitContextMenu(props: SplitContextMenuProps) {
       </button>
       {props.canClose && (
         <>
-          <div className="split-menu-sep" />
+          <div className="h-px bg-rule my-1 mx-1.5" />
           <button
             type="button"
             role="menuitem"
-            className="split-menu-danger"
+            className={`${SPLIT_MENU_ITEM_BASE} text-error [&_svg]:text-error
+              hover:bg-error hover:text-text-on-accent hover:[&_svg]:text-text-on-accent`}
             onClick={() => props.onPick("close")}
           >
             <CloseIcon />
@@ -480,6 +530,13 @@ function SplitContextMenu(props: SplitContextMenuProps) {
     document.body,
   );
 }
+
+const SPLIT_MENU_ITEM_BASE = `flex items-center gap-2.5 w-full py-1.5 px-2.5
+  bg-transparent border-none text-[13px]/5 cursor-pointer rounded-[5px] text-left
+  [&_svg]:flex-none`;
+
+const SPLIT_MENU_ITEM = `${SPLIT_MENU_ITEM_BASE} text-text [&_svg]:text-text-soft
+  hover:bg-accent hover:text-text-on-accent hover:[&_svg]:text-text-on-accent`;
 
 function SplitIcon({ direction }: { direction: SplitDirection }) {
   // 18×14 outer rect; one filled half indicates where the NEW pane will land.

@@ -24,6 +24,8 @@ const APP_VERSION = __APP_VERSION__;
 /// 91 个历史会话全是已完成时,那个数字只是噪音。
 const SHOWN: StatusKind[] = ["blocked", "working", "error"];
 
+const SB_GROUP = "inline-flex items-center gap-1.5 whitespace-nowrap";
+
 export function StatusBar() {
   const sessions = useStore((s) => s.sessions);
   const projects = useStore((s) => s.projects);
@@ -81,25 +83,31 @@ export function StatusBar() {
   }, [sessions, activityBySession]);
 
   return (
-    <footer className="status-bar" aria-label="Workspace status">
+    <footer
+      // `status-bar` 是选择器钩子:通铺时侧栏与画布同底色,这条横带的
+      // `--bg` 覆盖写在 `.app-workspace .status-bar` 上 —— 状态栏在总览屏
+      // (`.app-overview-host`)里也渲染一份,只有工作区里那份该跟着变。
+      className="status-bar flex-none h-7 flex items-center gap-4 px-3.5 border-t border-rule bg-surface font-mono text-[10.5px] text-subtle"
+      aria-label="Workspace status"
+    >
       {activeProject && (
-        <span className="sb-group" title={activeProject.repo_path}>
+        <span className={SB_GROUP} title={activeProject.repo_path}>
           <ProjectPickerMenu>{activeProject.name}</ProjectPickerMenu>
-          <span className="sb-dim">· {checkout}</span>
+          <span className="text-whisper">· {checkout}</span>
         </span>
       )}
-      <span className="sb-group sb-dim">
+      <span className={`${SB_GROUP} text-whisper`}>
         {worktrees > 0 ? `worktree ×${worktrees}` : "无 worktree"}
       </span>
       <span className="toolbar-spacer" />
       {total > 0 &&
         SHOWN.filter((k) => counts[k] > 0).map((k) => (
-          <span className="sb-group" key={k}>
+          <span className={SB_GROUP} key={k}>
             <StatusDot status={k} size="sm" labelled={false} />
             {counts[k]} 个{STATUS_LABEL[k]}
           </span>
         ))}
-      <span className="sb-group sb-dim sb-version">v{APP_VERSION}</span>
+      <span className={`${SB_GROUP} text-whisper ml-1`}>v{APP_VERSION}</span>
     </footer>
   );
 }

@@ -13,6 +13,26 @@ import { getAllUsage, getWorkspaceUsage } from "../lib/ipc";
 import type { SessionUsageView, WorkspaceUsageView } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
 
+/// 这一页自成一套排版:它是只读报表,不是设置行,所以没走 SettingCard。
+const BLOCK_TITLE =
+  "m-0 text-[11px] font-semibold text-muted uppercase tracking-[0.045em]";
+
+/// 作用域选择器与 agent 分组共用的胶囊。窄面板下换行。
+const PILL_TAB = `appearance-none border rounded-full text-[12px] py-1 px-[11px] cursor-pointer whitespace-nowrap
+  transition-[color,background,border-color] duration-[var(--duration-fast)] ease-out`
+  .replace(/\s+/g, " ");
+const PILL_TAB_ON = "text-accent bg-accent-ring border-accent";
+const PILL_TAB_OFF =
+  "text-muted bg-transparent border-rule hover:text-text hover:border-accent";
+
+/// 会话表的列宽。表头与数据行必须同宽,写成一处才不会飘。
+const USAGE_TR =
+  "grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_64px_64px_70px] gap-2.5 items-center py-[7px] border-b border-rule last:border-b-0";
+const USAGE_NUM = "text-right tabular-nums";
+
+const LOADING =
+  "p-[60px] text-center font-display italic text-[16px] text-subtle [font-variation-settings:'opsz'_36,'SOFT'_100]";
+
 export function UsageSettings() {
   const [usage, setUsage] = useState<WorkspaceUsageView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,14 +58,14 @@ export function UsageSettings() {
   }, []);
 
   if (loading) {
-    return <div className="settings-loading">正在统计会话日志…</div>;
+    return <div className={LOADING}>正在统计会话日志…</div>;
   }
   if (error) {
-    return <div className="usage-empty">读取用量失败:{error}</div>;
+    return <div className="text-muted text-[13px]/[1.5] py-6 px-1">读取用量失败:{error}</div>;
   }
   if (!usage || usage.sessions.length === 0) {
     return (
-      <div className="usage-empty">
+      <div className="text-muted text-[13px]/[1.5] py-6 px-1">
         还没有可统计的用量。在任意项目里跑一次 Claude Code 或 Codex,
         数据就会出现在这里。
       </div>
@@ -96,20 +116,20 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
   );
 
   return (
-    <div className="usage-root">
-      <p className="settings-lede">
+    <div className="flex flex-col gap-[18px] py-[22px] px-6 max-w-[760px]">
+      <p className="mt-1.5 mx-0 mb-[18px] text-[12.5px]/[1.55] text-muted">
         跨全部项目的 token 用量与费用估算,数据来自各 agent 自己的会话日志。
         费用是对已知模型系列的离线估算,仅供参考。
       </p>
 
       {/* ── Part 1: summary across every project ───────────────────────── */}
-      <div className="usage-cards">
+      <div className="grid grid-cols-3 gap-2.5">
         <UsageCard label="费用估算" value={fmtCost(usage.total_cost_usd)} primary />
         <UsageCard label="总 token" value={fmtCompact(totals.total)} />
         <UsageCard label="会话数" value={`${usage.sessions.length}`} />
       </div>
 
-      <div className="usage-breakdown">
+      <div className="flex flex-wrap gap-2">
         <BreakdownChip label="输入" value={totals.input} />
         <BreakdownChip label="输出" value={totals.output} />
         <BreakdownChip label="缓存写入" value={totals.cache_creation} />
@@ -120,27 +140,27 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
       </div>
 
       {usage.by_project.length > 0 && (
-        <section className="usage-block">
-          <h3 className="usage-block-title">按项目</h3>
-          <div className="usage-projects">
+        <section className="flex flex-col gap-2.5">
+          <h3 className={BLOCK_TITLE}>按项目</h3>
+          <div className="flex flex-col gap-3">
             {usage.by_project.map((p) => {
               const ref = maxProjectCost > 0 ? maxProjectCost : 1;
               const val = p.cost_usd > 0 ? p.cost_usd : p.tokens.total;
               const pct = Math.max(2, (val / ref) * 100);
               return (
-                <div className="usage-project-row" key={p.project_id}>
-                  <div className="usage-project-head">
-                    <span className="usage-project-name">{p.name}</span>
-                    <span className="usage-project-meta">
+                <div className="flex flex-col gap-[5px]" key={p.project_id}>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-baseline text-[12px]">
+                    <span className="text-text font-medium overflow-hidden text-ellipsis whitespace-nowrap">{p.name}</span>
+                    <span className="text-muted text-[11px] tabular-nums whitespace-nowrap">
                       {fmtCompact(p.tokens.total)} tokens ·{" "}
                       {Math.round(p.session_count)}{" "}
                       {p.session_count === 1 ? "session" : "sessions"}
                     </span>
-                    <span className="usage-project-cost">{fmtCost(p.cost_usd)}</span>
+                    <span className="text-text tabular-nums min-w-[56px] text-right">{fmtCost(p.cost_usd)}</span>
                   </div>
-                  <div className="usage-project-track">
+                  <div className="h-1.5 rounded-[3px] bg-rule overflow-hidden">
                     <div
-                      className="usage-project-fill"
+                      className="h-full min-w-0.5 rounded-[3px] bg-accent transition-[width] duration-[var(--duration-fast)] ease-out"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -152,15 +172,15 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
       )}
 
       {/* ── Part 2: detail, scoped via the tab selector ────────────────── */}
-      <div className="usage-detail">
-        <div className="usage-detail-head">
-          <h3 className="usage-block-title">明细</h3>
-          <div className="usage-scope" role="tablist">
+      <div className="flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-2.5">
+          <h3 className={BLOCK_TITLE}>明细</h3>
+          <div className="flex flex-wrap gap-1.5" role="tablist">
             <button
               type="button"
               role="tab"
               aria-selected={selected == null}
-              className={"usage-scope-tab" + (selected == null ? " is-active" : "")}
+              className={`${PILL_TAB} ${selected == null ? PILL_TAB_ON : PILL_TAB_OFF}`}
               onClick={() => setSelected(null)}
             >
               All projects
@@ -171,10 +191,9 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
                 role="tab"
                 key={p.project_id}
                 aria-selected={selected === p.project_id}
-                className={
-                  "usage-scope-tab" +
-                  (selected === p.project_id ? " is-active" : "")
-                }
+                className={`${PILL_TAB} ${
+                  selected === p.project_id ? PILL_TAB_ON : PILL_TAB_OFF
+                }`}
                 onClick={() => setSelected(p.project_id)}
               >
                 {p.name}
@@ -184,7 +203,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
         </div>
 
         {detailLoading || !scope ? (
-          <div className="settings-loading">正在统计会话日志…</div>
+          <div className={LOADING}>正在统计会话日志…</div>
         ) : (
           <UsageDetail usage={scope} showSessions={selected != null} />
         )}
@@ -243,26 +262,26 @@ function UsageDetail({
   return (
     <>
       {days.length > 1 && (
-        <section className="usage-block">
-          <h3 className="usage-block-title">按天</h3>
-          <div className="usage-daybars">
+        <section className="flex flex-col gap-2.5">
+          <h3 className={BLOCK_TITLE}>按天</h3>
+          <div className="flex items-end gap-1 h-24">
             {days.map((d) => {
               const ref = maxDayCost > 0 ? maxDayCost : maxDayTokens;
               const val = maxDayCost > 0 ? d.cost_usd : d.tokens.total;
               const pct = ref > 0 ? Math.max(2, (val / ref) * 100) : 0;
               return (
                 <div
-                  className="usage-daybar"
+                  className="flex-1 flex flex-col items-center gap-1 min-w-0 h-full"
                   key={d.date}
                   title={`${d.date} · ${fmtCost(d.cost_usd)} · ${fmtCompact(d.tokens.total)} tokens`}
                 >
-                  <div className="usage-daybar-track">
+                  <div className="flex-1 w-full flex items-end">
                     <div
-                      className="usage-daybar-fill"
+                      className="w-full min-h-0.5 rounded-t-[3px] bg-accent transition-[height] duration-[var(--duration-fast)] ease-out"
                       style={{ height: `${pct}%` }}
                     />
                   </div>
-                  <span className="usage-daybar-label">{d.date.slice(5)}</span>
+                  <span className="text-[9px] text-muted whitespace-nowrap rotate-[-45deg] origin-center">{d.date.slice(5)}</span>
                 </div>
               );
             })}
@@ -271,16 +290,16 @@ function UsageDetail({
       )}
 
       {usage.by_model.length > 0 && (
-        <section className="usage-block">
-          <h3 className="usage-block-title">按模型</h3>
-          <div className="usage-models">
+        <section className="flex flex-col gap-2.5">
+          <h3 className={BLOCK_TITLE}>按模型</h3>
+          <div className="flex flex-col">
             {usage.by_model.map((m) => (
-              <div className="usage-model-row" key={m.model}>
-                <span className="usage-model-name">{m.model}</span>
-                <span className="usage-model-tokens">
+              <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-[7px] border-b border-rule last:border-b-0 text-[12px]" key={m.model}>
+                <span className="font-mono text-text overflow-hidden text-ellipsis whitespace-nowrap">{m.model}</span>
+                <span className="text-muted tabular-nums">
                   {fmtCompact(m.tokens.total)} tokens
                 </span>
-                <span className="usage-model-cost">{fmtCost(m.cost_usd)}</span>
+                <span className="text-text tabular-nums min-w-[56px] text-right">{fmtCost(m.cost_usd)}</span>
               </div>
             ))}
           </div>
@@ -288,10 +307,10 @@ function UsageDetail({
       )}
 
       {showSessions && sessionGroups.length > 0 && activeGroup && (
-        <section className="usage-block">
-          <div className="usage-sessions-head">
-            <h3 className="usage-block-title">会话</h3>
-            <div className="usage-agent-tabs" role="tablist" aria-label="Agent CLI">
+        <section className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5">
+            <h3 className={BLOCK_TITLE}>会话</h3>
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Agent CLI">
               {sessionGroups.map((g) => {
                 const meta = agentMeta(g.agent);
                 const selected = g.agent === activeAgent;
@@ -301,7 +320,7 @@ function UsageDetail({
                     role="tab"
                     key={g.agent}
                     aria-selected={selected}
-                    className={"usage-agent-tab" + (selected ? " is-active" : "")}
+                    className={`${PILL_TAB} inline-flex items-center gap-[7px] min-w-0 max-w-full px-2.5 py-[5px] group ${selected ? PILL_TAB_ON : PILL_TAB_OFF}`}
                     onClick={() => setSelectedAgent(g.agent)}
                   >
                     <AgentIcon
@@ -309,8 +328,8 @@ function UsageDetail({
                       fallbackChar={meta.label}
                       size={14}
                     />
-                    <span className="usage-agent-tab-label">{meta.label}</span>
-                    <span className="usage-agent-tab-meta">
+                    <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap text-text group-aria-selected:text-accent">{meta.label}</span>
+                    <span className="text-muted text-[11px] tabular-nums whitespace-nowrap">
                       {g.sessions.length} 个 · {fmtCompact(g.tokens)} token
                     </span>
                   </button>
@@ -318,28 +337,28 @@ function UsageDetail({
               })}
             </div>
           </div>
-          <div className="usage-table">
-            <div className="usage-tr usage-th">
+          <div className="flex flex-col text-[12px]">
+            <div className={`${USAGE_TR} text-muted text-[10px] uppercase tracking-caps`}>
               <span>会话</span>
               <span>模型</span>
-              <span className="usage-num">Token</span>
-              <span className="usage-num">费用</span>
-              <span className="usage-num">最近活动</span>
+              <span className={USAGE_NUM}>Token</span>
+              <span className={USAGE_NUM}>费用</span>
+              <span className={USAGE_NUM}>最近活动</span>
             </div>
             {activeGroup.sessions.map((s) => (
-              <div className="usage-tr" key={s.jsonl_path}>
-                <span className="usage-session">
+              <div className={USAGE_TR} key={s.jsonl_path}>
+                <span className="flex items-center gap-2 min-w-0">
                   <span
-                    className="usage-session-title"
+                    className="overflow-hidden text-ellipsis whitespace-nowrap text-text"
                     title={s.title ?? s.session_id ?? ""}
                   >
                     {s.title || shortId(s.session_id) || "(untitled)"}
                   </span>
                 </span>
-                <span className="usage-model-cell">{s.model ?? "—"}</span>
-                <span className="usage-num">{fmtCompact(s.tokens.total)}</span>
-                <span className="usage-num">{fmtCost(s.cost_usd)}</span>
-                <span className="usage-num usage-dim">
+                <span className="font-mono text-muted overflow-hidden text-ellipsis whitespace-nowrap">{s.model ?? "—"}</span>
+                <span className={USAGE_NUM}>{fmtCompact(s.tokens.total)}</span>
+                <span className={USAGE_NUM}>{fmtCost(s.cost_usd)}</span>
+                <span className={`${USAGE_NUM} text-muted`}>
                   {fmtDate(s.last_ts_ms)}
                 </span>
               </div>
@@ -361,18 +380,24 @@ function UsageCard({
   primary?: boolean;
 }) {
   return (
-    <div className={"usage-card" + (primary ? " usage-card-primary" : "")}>
-      <div className="usage-card-value">{value}</div>
-      <div className="usage-card-label">{label}</div>
+    <div
+      className={`flex flex-col gap-1 p-3.5 border rounded-md ${
+        primary
+          ? "border-accent-40 bg-accent-tint"
+          : "border-rule bg-panel-sunken"
+      }`}
+    >
+      <div className="font-ui text-[22px] font-semibold text-text tracking-[-0.01em]">{value}</div>
+      <div className="text-[11px] text-muted uppercase tracking-[0.045em]">{label}</div>
     </div>
   );
 }
 
 function BreakdownChip({ label, value }: { label: string; value: number }) {
   return (
-    <div className="usage-chip">
-      <span className="usage-chip-label">{label}</span>
-      <span className="usage-chip-value">{fmtCompact(value)}</span>
+    <div className="flex items-baseline gap-1.5 py-[5px] px-2.5 border border-rule rounded-full text-[12px]">
+      <span className="text-muted">{label}</span>
+      <span className="font-mono text-text">{fmtCompact(value)}</span>
     </div>
   );
 }

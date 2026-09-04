@@ -20,6 +20,7 @@ import { SidebarToggle } from "./ui/SidebarToggle";
 import { AgentFilterMenu } from "./ui/AgentFilterMenu";
 import type { MergedSession } from "../lib/sessionList";
 import { SidebarProjectGroup } from "./SidebarProjectGroup";
+import { LIST_NOTE, NEW_SESSION_BTN, TOP_BTN } from "./sidebarStyles";
 
 interface SidebarProps {
   /// Hides the sidebar. Optional so the component still renders standalone
@@ -190,8 +191,12 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
+    // 通铺:侧栏与画布同一底色 —— 细线是唯一的分界,两块不同深浅的底色
+    // 会让分界变成「色块拼接」。
+    <aside className="h-full bg-bg flex flex-col min-h-0 min-w-0 relative">
+      {/* 头部工具行读的是和另外两条工具条同一套 30px 网格,所以三列的顶端
+          在一条线上。溢出保持可见,免得计数徽章被裁掉。 */}
+      <div className="flex-none h-toolbar px-3 flex flex-row items-center justify-start gap-[7px] overflow-visible border-b border-rule">
         {onToggleSidebar && (
           <SidebarToggle collapsed={false} onToggle={onToggleSidebar} />
         )}
@@ -199,7 +204,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
           <>
             <button
               type="button"
-              className="sidebar-top-btn"
+              className={TOP_BTN}
               onClick={onAddProject}
               disabled={creatingProject}
               aria-label="打开项目"
@@ -209,7 +214,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
             </button>
             <button
               type="button"
-              className="sidebar-top-btn"
+              className={TOP_BTN}
               onClick={() =>
                 window.dispatchEvent(new CustomEvent("ycode:open-overview"))
               }
@@ -231,7 +236,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
       </div>
 
       {/* 项目分组列表:一根滚动列,组内不再各自滚。 */}
-      <div className="sidebar-scroll">
+      <div className="flex-1 basis-0 min-h-0 overflow-y-auto flex flex-col pb-1.5">
         {projectList.map((p) => (
           <SidebarProjectGroup
             key={p.id}
@@ -245,16 +250,16 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
           />
         ))}
         {projectList.length === 0 && (
-          <div className="sidebar-live-empty">
+          <div className={LIST_NOTE}>
             还没有项目。用顶栏的「打开项目」添加一个。
           </div>
         )}
       </div>
 
-      <div className="sidebar-footer">
+      <div className="flex-none mt-auto p-2.5 border-t border-rule bg-bg">
         <button
           type="button"
-          className="new-session-btn"
+          className={NEW_SESSION_BTN}
           onClick={showNewSessionPicker}
           disabled={!activeProjectId || creating || atCap}
           aria-label={
@@ -266,11 +271,21 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
               : "新建会话 —— 打开 agent 选择器"
           }
         >
-          <span className="nsb-plus" aria-hidden>
+          <span
+            className="flex-none size-[18px] rounded-md bg-st-working text-bg flex items-center justify-center [&_svg]:size-3"
+            aria-hidden
+          >
             <PlusIcon />
           </span>
-          <span className="nsb-label">{creating ? "启动中…" : "新建会话"}</span>
-          <kbd aria-hidden>⇧⌘N</kbd>
+          <span className="flex-1 text-left">
+            {creating ? "启动中…" : "新建会话"}
+          </span>
+          <kbd
+            className="flex-none font-mono text-[9.5px] text-subtle border border-rule-strong rounded-[4px] py-px px-1"
+            aria-hidden
+          >
+            ⇧⌘N
+          </kbd>
         </button>
       </div>
     </aside>

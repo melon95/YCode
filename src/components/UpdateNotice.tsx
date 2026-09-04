@@ -92,29 +92,41 @@ export function UpdateNotice() {
   }
 
   return (
-    <div className="update-notice" role="status">
-      <div className="update-notice-title">
+    <div
+      className="fixed right-4 bottom-4 z-900 w-80 py-3 px-3.5 bg-panel
+        border border-rule-strong rounded-md
+        shadow-[0_12px_32px_rgba(var(--shadow-rgb),0.35)]
+        flex flex-col gap-2"
+      role="status"
+    >
+      <div className="font-semibold text-[13px]">
         Update available — v{update.version}
       </div>
       {update.body && (
-        <div className="update-notice-body" title={update.body}>
+        <div
+          className="text-muted text-xs/[1.4] whitespace-pre-line max-h-[60px] overflow-hidden"
+          title={update.body}
+        >
           {update.body.split("\n").slice(0, 3).join("\n")}
         </div>
       )}
       {installing ? (
-        <div className="update-notice-progress">{progressLabel(progress)}</div>
+        <div className="text-muted text-xs">{progressLabel(progress)}</div>
       ) : (
-        <div className="update-notice-actions">
+        <div className="flex justify-end gap-1.5">
           <button
             type="button"
-            className="button button--ghost button--sm"
+            className={`${BTN} bg-transparent text-muted border-transparent
+              not-disabled:hover:text-text not-disabled:hover:bg-accent-hover-wash`}
             onClick={() => setDismissed(true)}
           >
             Later
           </button>
           <button
             type="button"
-            className="button button--primary button--sm"
+            className={`${BTN} bg-accent text-text-on-accent border-accent
+              not-disabled:hover:bg-accent-soft not-disabled:hover:border-accent-soft
+              disabled:bg-rule disabled:border-rule disabled:text-subtle`}
             onClick={onInstall}
           >
             Install &amp; restart
@@ -124,3 +136,11 @@ export function UpdateNotice() {
     </div>
   );
 }
+
+/// 这两枚按钮是 app 里仅剩的 `.button` 用户,所以整套按钮系统跟着这个
+/// 组件走。小号变体(原 `.button--sm`)是唯一在用的尺寸。
+const BTN = `min-h-8 py-[5px] px-2.5 rounded-sm border font-ui text-[10px] font-semibold
+  tracking-caps-tight uppercase cursor-pointer relative
+  transition-[color,background-color,border-color] duration-[var(--duration-fast)] ease-out
+  focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--color-accent-edge)]
+  disabled:opacity-45 disabled:cursor-not-allowed`.replace(/\s+/g, " ");

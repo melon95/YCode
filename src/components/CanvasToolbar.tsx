@@ -15,8 +15,11 @@ import {
 } from "../lib/store";
 import type { RightTab } from "../lib/store";
 import { IconButton } from "./ui/IconButton";
+import { POPOVER_LAYER } from "./ui/menuStyles";
 import { SidebarToggle } from "./ui/SidebarToggle";
 import { AttentionInbox } from "./AttentionInbox";
+
+const TOOLBAR_DIV = "flex-none w-px h-[18px] bg-rule my-0 mx-1";
 
 const LAYOUT_LABEL: Record<LayoutMode, string> = {
   single: "单栏",
@@ -62,7 +65,9 @@ export function CanvasToolbar({
     : 0;
 
   return (
-    <div className="canvas-toolbar toolbar-row">
+    // 画布工具条与画布同底、无下边线 —— 通铺。共享的 `.toolbar-row` 几何
+    // (高度/间距)在这里展开成 utility;边线由 `border-b-0` 收掉。
+    <div className="flex-none h-toolbar flex items-center gap-1.5 py-0 px-3 border-b-0 bg-bg">
       {/* Only while the sidebar is hidden. With it open the toggle sits in
           the sidebar's own toolbar — two buttons for one state would be a
           duplicate entry, and the preview picks the one next to the thing
@@ -70,7 +75,7 @@ export function CanvasToolbar({
       {sidebarCollapsed && (
         <>
           <SidebarToggle collapsed onToggle={onToggleSidebar} />
-          <span className="toolbar-div" />
+          <span className={TOOLBAR_DIV} />
         </>
       )}
 
@@ -137,7 +142,7 @@ export function CanvasToolbar({
       <PanelCatalog />
 
       {/* 全局入口(原顶栏):搜索 / 收件箱 / 设置。 */}
-      <span className="toolbar-div" />
+      <span className={TOOLBAR_DIV} />
       <IconButton
         onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
         title="搜索或执行命令 (⌘K)"
@@ -177,7 +182,7 @@ function PanelToggle({
 }) {
   const active = (matches ?? [tab]).some((t) => open.includes(t));
   return (
-    <span className="panel-toggle">
+    <span className="relative inline-flex">
       <IconButton
         active={active}
         onClick={() => onPick(tab)}
@@ -187,7 +192,10 @@ function PanelToggle({
         {children}
       </IconButton>
       {count != null && (
-        <span className="count-badge count-badge-float">{count}</span>
+        // 角标的描边跟着所在底色走:工具条上是 surface,别处是 bg。
+        <span className="count-badge count-badge-float shadow-[0_0_0_2px_var(--surface)]">
+          {count}
+        </span>
       )}
     </span>
   );
@@ -200,64 +208,78 @@ function PanelToggle({
 function PanelCatalog() {
   return (
     <Popover.Root>
+      {/* 几何与 IconButton 对齐(30px 方块),但这里是 Base UI 的
+          Trigger,不能套一层 IconButton —— 它要自己拿 ref 和 data 属性。 */}
       <Popover.Trigger
-        className="icon-btn2 icon-btn2-md panel-add"
+        className="shrink-0 inline-flex items-center justify-center size-control ml-0.5
+          rounded-md border border-transparent bg-transparent p-0 text-muted cursor-pointer
+          transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
+          hover:bg-panel-raised hover:border-rule hover:text-text
+          data-[popup-open]:bg-panel-raised data-[popup-open]:text-text"
         title="添加面板"
         aria-label="添加面板"
       >
         <PlusIcon />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner className="popover-layer" sideOffset={8} align="end">
-          <Popover.Popup className="panel-catalog">
-            <div className="panel-catalog-head">面板</div>
-            <div className="panel-catalog-row">
-              <span className="pc-icon"><TerminalIcon /></span>
-              <span className="pc-main">
-                <span className="pc-name">终端</span>
-                <span className="pc-desc">在项目目录里开一个 shell</span>
-              </span>
-              <span className="pc-state">内置</span>
+        <Popover.Positioner className={POPOVER_LAYER} sideOffset={8} align="end">
+          <Popover.Popup className="w-[300px] bg-panel border border-rule-strong rounded-[14px] shadow-menu overflow-hidden animate-pop-in">
+            <div className="pt-3 px-3.5 pb-1.5 text-[10px] font-semibold tracking-caps uppercase text-subtle">
+              面板
             </div>
-            <div className="panel-catalog-row">
-              <span className="pc-icon"><FilesIcon /></span>
-              <span className="pc-main">
-                <span className="pc-name">文件</span>
-                <span className="pc-desc">文件树 · CodeMirror 编辑器</span>
-              </span>
-              <span className="pc-state is-on">已启用</span>
-            </div>
-            <div className="panel-catalog-row">
-              <span className="pc-icon"><ChangesIcon /></span>
-              <span className="pc-main">
-                <span className="pc-name">变更</span>
-                <span className="pc-desc">工作区 diff · 检查点回顾</span>
-              </span>
-              <span className="pc-state is-on">已启用</span>
-            </div>
-            <div className="panel-catalog-row">
-              <span className="pc-icon"><TodosIcon /></span>
-              <span className="pc-main">
-                <span className="pc-name">待办</span>
-                <span className="pc-desc">项目待办 · agent 可经 MCP 读写</span>
-              </span>
-              <span className="pc-state is-on">已启用</span>
-            </div>
-            <div className="panel-catalog-row is-disabled">
-              <span className="pc-icon"><BrowserIcon /></span>
-              <span className="pc-main">
-                <span className="pc-name">浏览器</span>
-                <span className="pc-desc">预览本地 dev server</span>
-              </span>
-              <span className="pc-state">未实现</span>
-            </div>
-            <div className="panel-catalog-foot">
+            <PanelCatalogRow icon={<TerminalIcon />} name="终端" desc="在项目目录里开一个 shell" state="内置" />
+            <PanelCatalogRow icon={<FilesIcon />} name="文件" desc="文件树 · CodeMirror 编辑器" state="已启用" on />
+            <PanelCatalogRow icon={<ChangesIcon />} name="变更" desc="工作区 diff · 检查点回顾" state="已启用" on />
+            <PanelCatalogRow icon={<TodosIcon />} name="待办" desc="项目待办 · agent 可经 MCP 读写" state="已启用" on />
+            <PanelCatalogRow icon={<BrowserIcon />} name="浏览器" desc="预览本地 dev server" state="未实现" disabled />
+            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-whisper">
               面板可插拔:未实现的条目会在支持后出现在上方的开关里。
             </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function PanelCatalogRow({
+  icon,
+  name,
+  desc,
+  state,
+  on = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  desc: string;
+  state: string;
+  on?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2.5 py-2.5 px-3.5 border-t border-rule ${
+        disabled ? "opacity-50" : ""
+      }`}
+    >
+      <span className="flex-none size-[26px] rounded-lg flex items-center justify-center bg-panel-raised text-muted">
+        {icon}
+      </span>
+      <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <span className="text-[12.5px] font-semibold text-text">{name}</span>
+        <span className="font-mono text-[10.5px] text-subtle">{desc}</span>
+      </span>
+      <span
+        className={`flex-none font-mono text-[10px] border rounded-[5px] py-0.5 px-1.5 ${
+          on
+            ? "text-st-done border-transparent bg-st-done-tint"
+            : "text-subtle border-rule"
+        }`}
+      >
+        {state}
+      </span>
+    </div>
   );
 }
 

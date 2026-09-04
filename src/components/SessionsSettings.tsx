@@ -17,6 +17,7 @@ import type {
   WorktreeSettingsView,
 } from "../lib/types";
 import {
+  SettingSection,
   SettingCard,
   SettingChips,
   SettingGroupLabel,
@@ -77,12 +78,7 @@ export function SessionsSettings({ config, onChange }: Props) {
     config.checkpoints.keep == null ? "unlimited" : String(config.checkpoints.keep);
 
   return (
-    <div className="settings-section">
-      <h2>会话</h2>
-      <p className="settings-lede">
-        agent 会话的隔离方式、检查点与落点。生命周期相关的几项还没有实现。
-      </p>
-
+    <SettingSection title="会话" lede={<>agent 会话的隔离方式、检查点与落点。生命周期相关的几项还没有实现。</>}>
       <SettingGroupLabel>生命周期</SettingGroupLabel>
       <SettingCard>
         <SettingRow
@@ -122,7 +118,7 @@ export function SessionsSettings({ config, onChange }: Props) {
         </SettingRow>
         <SettingRow name="分支名前缀" desc="会话 id 会接在后面">
           <input
-            className="settings-input"
+            className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
             value={config.worktree.branch_prefix}
             spellCheck={false}
             aria-label="分支名前缀"
@@ -198,6 +194,6 @@ export function SessionsSettings({ config, onChange }: Props) {
           />
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }

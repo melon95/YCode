@@ -26,6 +26,15 @@ interface Props {
 /// panel owns PTYs that die with their React tree, and the file tree pays a
 /// full re-scan on remount. Hiding keeps both alive, which is the same trick
 /// the pane already used for inactive projects.
+/// 没有入场动画:动画期间(即使只做 opacity)整张卡会被提成独立合成层,
+/// 文件树这类大内容卡在 WKWebView 里异步分块光栅化,内容呈自上而下扫描式
+/// 出现。切项目会重挂面板、每次重播动画,这个代价付不起。
+///
+/// 浮起感来自阴影,不描边(Claude Desktop 的卡片语言)。
+const CARD = `panel-card flex flex-col min-h-[140px] rounded-xl bg-surface overflow-hidden
+  shadow-[0_0_0_0.5px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.06),0_6px_18px_rgba(0,0,0,0.08)]`
+  .replace(/\s+/g, " ");
+
 export function PanelCard({
   title,
   bind,
@@ -38,15 +47,45 @@ export function PanelCard({
   children,
 }: Props) {
   return (
+    // `panel-card` / `is-solo` 留作无样式钩子:solo 时兄弟卡收缩靠
+    // `.panel-stack:has(.panel-card.is-solo)`(Tailwind 写不出「父级里有
+    // 别的卡是 solo」),而 RightPane 和 ui/StackResizer 的 JS 还用
+    // `.panel-card` 找相邻卡片。
+    //
+    // 没有入场动画:动画期间(即使只做 opacity)整张卡会被提成独立合成层,
+    // 文件树这类大内容卡在 WKWebView 里异步分块光栅化,内容呈自上而下扫描式
+    // 出现。切项目会重挂面板、每次重播动画,这个代价付不起。
     <section
-      className={`panel-card${solo ? " is-solo" : ""}`}
+      className={`${CARD} ${solo ? "is-solo flex-auto" : "flex-1 basis-0"}`}
       hidden={!open}
       aria-label={title}
     >
-      <header className="panel-card-head">
-        <span className="pcard-title">{title}</span>
-        {bind && <span className="pcard-bind">{bind}</span>}
-        {count != null && <span className="pcard-count">{count}</span>}
+      {/* 通铺:header 与卡身同色、无分隔线(Claude Desktop 的卡片语言)。
+          标题行靠留白和字重与内容区分,不靠色块。 */}
+      <header className="flex-none flex items-center gap-2 pt-[7px] pr-2 pb-[7px] pl-3 bg-transparent flex-nowrap min-w-0">
+        <span className="flex-none text-xs font-semibold text-text whitespace-nowrap">
+          {title}
+        </span>
+        {bind && (
+          <span
+            // 终端卡的绑定内容是 WorkspaceTargetPicker(一个 select),
+            // 在 chip 里要褪成纯文字 —— 边框和底色由 chip 自己提供。
+            className="flex items-center gap-[5px] min-w-0 flex-[0_1_auto] overflow-hidden whitespace-nowrap
+              text-[10.5px] text-muted bg-panel-raised rounded-md pt-0.5 pr-[7px] pb-0.5 pl-1
+              [&_svg]:flex-none [&_svg]:text-whisper
+              [&_.mono]:font-mono [&_.mono]:text-[10px] [&_.mono]:overflow-hidden [&_.mono]:text-ellipsis
+              [&_.workspace-target-picker]:m-0 [&_.workspace-target-picker]:h-auto
+              [&_.workspace-target-picker]:border-0 [&_.workspace-target-picker]:bg-transparent [&_.workspace-target-picker]:p-0
+              [&_select]:bg-transparent [&_select]:border-none [&_select]:text-[10.5px] [&_select]:text-muted [&_select]:p-0"
+          >
+            {bind}
+          </span>
+        )}
+        {count != null && (
+          <span className="pcard-count flex-none font-mono text-[9px] rounded-full py-0.5 px-1.5 bg-st-working-tint text-st-working">
+            {count}
+          </span>
+        )}
         <span className="toolbar-spacer" />
         {actions}
         {onToggleSolo && (
@@ -71,7 +110,12 @@ export function PanelCard({
           </IconButton>
         )}
       </header>
-      <div className="panel-card-body">{children}</div>
+      {/* `panel-card-body` 留作钩子:solo 时兄弟卡的正文由
+          `.panel-stack:has(...)` 隐藏。宿主面板本来是照着填满整列写的,
+          进了卡片就只填满卡片 —— `[&>*]:min-h-0` 是那条 `> *` 规则。 */}
+      <div className="panel-card-body flex-1 min-h-0 flex flex-col overflow-hidden [&>*]:min-h-0">
+        {children}
+      </div>
     </section>
   );
 }

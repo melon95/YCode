@@ -26,6 +26,18 @@ import { StatusDot } from "./ui/StatusDot";
 import { OverflowMenu, type MenuAction } from "./ui/OverflowMenu";
 import { archiveSessionWithConfirm } from "../lib/sessionActions";
 import { removeProjectWithConfirm } from "../lib/projectActions";
+import {
+  LIST_NOTE,
+  SECTION_CONTEXT,
+  SECTION_HEADING,
+  SESSION_LIST,
+} from "./sidebarStyles";
+
+/// ⋮ 要和行并排,所以行本体外面套了一层容器。容器接管原来的圆角和底色,
+/// 行本身退成一个透明的弹性子项 —— hover / 选中的底色留在内层的话,⋮ 所在
+/// 的那一截不着色,整行的高亮会缺一块右边。
+const ROW_WRAP =
+  "group flex items-center gap-0.5 pr-1.5 rounded-lg hover:bg-panel-raised";
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -38,7 +50,9 @@ function relativeTime(ms: number): string {
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
-      className={"sec-chevron" + (open ? " open" : "")}
+      className={`flex-none text-whisper transition-transform duration-[var(--t-base)] ease-smooth ${
+        open ? "rotate-90" : ""
+      }`}
       width="11"
       height="11"
       viewBox="0 0 24 24"
@@ -183,19 +197,24 @@ export function SidebarProjectGroup({
   // 用合并后的总数。
 
   return (
-    <div className="sb-project">
+    <div className="mb-0.5">
       {/* ⋮ 不能嵌在展开按钮里(button 套 button 无效),所以行是一个
           容器,展开按钮和菜单并排住在里面。 */}
-      <div className="sb-project-head-row">
+      <div className={ROW_WRAP}>
         <button
           type="button"
-          className="sb-project-head"
+          className="flex-1 min-w-0 flex items-center gap-1.5 w-full py-[7px] pr-2.5 pl-2
+            border-none bg-none text-muted text-[12.5px] font-semibold text-left cursor-pointer rounded-lg
+            transition-[background-color,color] duration-[var(--t-fast)] ease-smooth
+            group-hover:text-text"
           onClick={onToggle}
           aria-expanded={expanded}
           title={project.repo_path}
         >
           <ChevronIcon open={expanded} />
-          <span className="sb-project-name">{project.name}</span>
+          <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+            {project.name}
+          </span>
         </button>
         <OverflowMenu
           label={`${project.name} 的更多操作`}
@@ -210,17 +229,22 @@ export function SidebarProjectGroup({
       </div>
 
       {expanded && (
-        <div className="sb-project-body">
+        <div className="pl-1">
+          {/* 「等你处理」自成一块:with 25 sessions,停下来的那个必须不用
+              滚动就能够到。 */}
           {waitingRows.length > 0 && (
-            <div className="needs-you">
-              <div className="sidebar-section-heading needs-you-head">
+            <div className="mt-1 mx-2 mb-2 pb-1 border border-st-blocked-edge rounded-xl bg-st-blocked-block overflow-hidden">
+              <div className={`${SECTION_HEADING} text-st-blocked`}>
                 <span>等你处理</span>
-                <span className="sidebar-section-context">{waitingRows.length}</span>
+                <span className={`${SECTION_CONTEXT} ml-auto`}>
+                  {waitingRows.length}
+                </span>
               </div>
               {waitingRows.map((row) => (
                 <SessionRowButton
                   key={row.key}
                   row={row}
+                  inset
                   onOpen={(r) => onOpenRow(project, r)}
                 />
               ))}
@@ -228,7 +252,7 @@ export function SidebarProjectGroup({
           )}
 
           {buckets.active.length > 0 && (
-            <div className="sidebar-live">
+            <div className={SESSION_LIST}>
               {buckets.active.map((row) => (
                 <SessionRowButton
                   key={row.key}
@@ -241,10 +265,10 @@ export function SidebarProjectGroup({
 
           {buckets.recent.length > 0 && (
             <>
-              <div className="sidebar-section-heading">
+              <div className={SECTION_HEADING}>
                 <span>最近 7 天</span>
               </div>
-              <div className="sidebar-live">
+              <div className={SESSION_LIST}>
                 {buckets.recent.map((row) => (
                   <SessionRowButton
                     key={row.key}
@@ -260,16 +284,15 @@ export function SidebarProjectGroup({
             <>
               <button
                 type="button"
-                className={
-                  "sidebar-section-heading is-toggle" + (olderOpen ? " open" : "")
-                }
+                className={`${SECTION_HEADING} w-full gap-[7px] border-none bg-transparent text-[inherit] text-left cursor-pointer
+                  transition-colors duration-[var(--t-fast)] ease-smooth hover:text-text`}
                 onClick={() => setOlderOpen((v) => !v)}
                 aria-expanded={olderOpen}
               >
                 <ChevronIcon open={olderOpen} />
                 <span title="更早的会话,点开可恢复继续">更早</span>
               </button>
-              <div className="sidebar-live" hidden={!olderOpen}>
+              <div className={SESSION_LIST} hidden={!olderOpen}>
                 {buckets.older.map((row) => (
                   <SessionRowButton
                     key={row.key}
@@ -282,15 +305,15 @@ export function SidebarProjectGroup({
           )}
 
           {scanError && (
-            <div className="sidebar-scan-error" title={scanError}>
+            <div className={`${LIST_NOTE} text-st-working`} title={scanError}>
               扫描 transcript 失败,列表可能不全
             </div>
           )}
           {scanned && shownRows.length === 0 && (
-            <div className="sidebar-live-empty">这个项目还没有会话。</div>
+            <div className={LIST_NOTE}>这个项目还没有会话。</div>
           )}
           {!scanned && shownRows.length === 0 && (
-            <div className="sidebar-live-empty">扫描中…</div>
+            <div className={LIST_NOTE}>扫描中…</div>
           )}
         </div>
       )}
@@ -303,9 +326,12 @@ export function SidebarProjectGroup({
 /// is looking at a conversation, not at our two storage mechanisms.
 function SessionRowButton({
   row,
+  inset = false,
   onOpen,
 }: {
   row: MergedSession;
+  /// 「等你处理」块里的行往内缩一点,不贴着那块的圆角边。
+  inset?: boolean;
   onOpen: (row: MergedSession) => void;
 }) {
   const status = row.light ? statusFromLight(row.light) : "idle";
@@ -328,56 +354,80 @@ function SessionRowButton({
       ]
     : [];
 
+  const open = row.paneIdx >= 0;
   return (
     <div
-      className={
-        "live-row-wrap" + (row.paneIdx >= 0 ? " is-open" : "") +
-        (isActive ? " is-active" : "")
-      }
+      className={`${ROW_WRAP} ${inset ? "mx-1" : ""} ${
+        isActive ? "bg-panel-raised" : ""
+      }`}
     >
-    <button
-      type="button"
-      className={
-        "live-row" +
-        (row.paneIdx >= 0 ? " is-open" : "") +
-        (isActive ? " is-active" : "")
-      }
-      onClick={() => onOpen(row)}
-      title={activeLabel ? `${row.title} · ${activeLabel}` : row.title}
-    >
-      <span className="live-agent">
-        <AgentIcon
-          icon={row.profile?.icon}
-          variant={row.profile?.icon_variant}
-          fallbackChar={row.profile?.display_name ?? row.title}
-          size={18}
-        />
-      </span>
-      <span className="live-main">
-        <span className="live-title">{row.title}</span>
-        <span className="live-sub">
-          {activeLabel && (
-            <>
-              {activeLabel}
-              {" · "}
-            </>
-          )}
-          {relativeTime(row.updatedAtMs)}
-          {row.hasWorktree && (
-            <span className="live-worktree" title="运行在独立的 git worktree 里">
-              {" · "}
-              worktree
-            </span>
-          )}
+      <button
+        type="button"
+        // 挂在画布上的会话得到那道琥珀指示条,一眼看出列表里哪几个正被
+        // 看着。hover 时它探出一小截,已打开的保持全高。
+        className={`relative flex-1 min-w-0 flex items-center gap-[9px] w-full py-1.5 px-2.5
+          border-none rounded-md bg-transparent text-[inherit] text-left cursor-pointer
+          transition-colors duration-[var(--t-fast)] ease-smooth
+          before:content-[''] before:absolute before:left-0.5 before:top-1/2 before:w-0.5
+          before:rounded-full before:bg-st-working before:-translate-y-1/2
+          before:transition-[height,opacity] before:duration-[var(--t-base)] before:ease-smooth
+          ${
+            open
+              ? "before:h-[58%] before:opacity-100"
+              : "before:h-0 before:opacity-0 hover:before:h-[36%] hover:before:opacity-50"
+          }`
+          .replace(/\s+/g, " ")
+          .trim()}
+        onClick={() => onOpen(row)}
+        title={activeLabel ? `${row.title} · ${activeLabel}` : row.title}
+      >
+        <span className="flex-none flex">
+          <AgentIcon
+            icon={row.profile?.icon}
+            variant={row.profile?.icon_variant}
+            fallbackChar={row.profile?.display_name ?? row.title}
+            size={18}
+          />
         </span>
-      </span>
-      {row.paneIdx >= 0 && (
-        <span className="live-pane" title={`面板 ${row.paneIdx + 1}`}>
-          {row.paneIdx + 1}
+        {/* 会话行有两行:标题(没改过名时是 agent 名)和状态 + 时间副行。
+            没有副行的话,一列没起过名的会话彼此无从分辨。 */}
+        <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+          <span
+            className={`flex-1 min-w-0 text-[12.5px] whitespace-nowrap overflow-hidden text-ellipsis ${
+              open ? "text-text" : "text-text-soft"
+            }`}
+          >
+            {row.title}
+          </span>
+          <span className="font-mono text-[9.5px] text-whisper whitespace-nowrap overflow-hidden text-ellipsis">
+            {activeLabel && (
+              <>
+                {activeLabel}
+                {" · "}
+              </>
+            )}
+            {relativeTime(row.updatedAtMs)}
+            {row.hasWorktree && (
+              <span
+                className="text-st-working"
+                title="运行在独立的 git worktree 里"
+              >
+                {" · "}
+                worktree
+              </span>
+            )}
+          </span>
         </span>
-      )}
-      <StatusDot status={status} labelled={false} />
-    </button>
+        {open && (
+          <span
+            className="flex-none font-mono text-[8px] font-bold leading-none text-st-working border border-st-working rounded-[4px] py-0.5 px-1"
+            title={`面板 ${row.paneIdx + 1}`}
+          >
+            {row.paneIdx + 1}
+          </span>
+        )}
+        <StatusDot status={status} labelled={false} />
+      </button>
       <OverflowMenu label={`${row.title} 的更多操作`} actions={rowActions} />
     </div>
   );

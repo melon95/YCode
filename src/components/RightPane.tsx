@@ -20,6 +20,12 @@ import { StackResizer } from "./ui/StackResizer";
 import { IconButton } from "./ui/IconButton";
 import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
+const FILE_TAB = `inline-flex items-center gap-1.5 h-8 pt-0 pr-[7px] pb-0 pl-3
+  border-0 rounded-sm cursor-pointer font-[inherit] min-w-[112px]`.replace(
+  /\s+/g,
+  " ",
+);
+
 export function RightPane() {
   const projects = useStore((s) => s.projects);
   const sessions = useStore((s) => s.sessions);
@@ -349,13 +355,19 @@ export function RightPane() {
   }
 
   return (
-    <section className="right-pane">
+    <section className="h-full bg-bg flex flex-col min-h-0 min-w-0">
       {/* Panel switching moved to the canvas toolbar (see CanvasToolbar) —
           the strip here now only carries open editor files, which are a
           different axis: *which file*, not *which panel*. With no files open
           it isn't rendered at all, rather than leaving an empty band. */}
       {openFiles.length > 0 && (
-      <div className="right-pane-tabs" role="tablist" aria-label="Open files">
+      <div
+        className="flex items-center gap-0.5 py-2 px-3.5 min-h-[54px] bg-surface
+          border-b border-rule overflow-x-auto flex-none
+          [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+        aria-label="Open files"
+      >
         {openFiles.map((path) => {
           const active = rightTab === "editor" && path === selectedFilePath;
           const isPreview = path === previewFilePath;
@@ -363,12 +375,27 @@ export function RightPane() {
             <button
               key={path}
               type="button"
-              className={
-                "right-file-tab" +
-                (active ? " active" : "") +
-                (isPreview ? " preview" : "") +
-                (openFiles.length === 1 ? " single" : "")
-              }
+              className={[
+                FILE_TAB,
+                // A lone open tab has the whole strip to itself — let it grow
+                // to fit the full filename instead of clamping at 220px and
+                // ellipsizing.
+                openFiles.length === 1
+                  ? "max-w-none flex-[0_1_auto]"
+                  : "max-w-[220px] flex-[0_1_220px]",
+                active
+                  ? "bg-panel-raised text-text shadow-[inset_0_0_0_1px_var(--color-rule)]"
+                  : "bg-transparent text-muted hover:bg-highlight-hover hover:text-text",
+                // Preview tab (VS Code-style): italic name signals "transient
+                // — next single-click in the tree will replace this".
+                // Double-click on the tab or on the file in the tree pins it.
+                // Italic glyphs lean right and overflow the box — `overflow:
+                // hidden` would clip the last letter's tail, so the name gets
+                // a sliver of right padding.
+                isPreview && "[&>[data-name]]:italic [&>[data-name]]:pr-0.5",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               onClick={() => showFile(path)}
               // Double-click pins a preview tab — same semantics as the
               // file tree double-click.
@@ -379,14 +406,24 @@ export function RightPane() {
               aria-selected={active}
               title={isPreview ? `${path} (preview — double-click to pin)` : path}
             >
-              <span className="right-file-tab-name">{basename(path)}</span>
+              <span
+                data-name
+                className="overflow-hidden text-ellipsis whitespace-nowrap min-w-0 flex-1 text-left"
+              >
+                {basename(path)}
+              </span>
               {dirtyFiles[path] && (
-                <span className="right-file-tab-dirty" aria-label="unsaved">
+                <span
+                  className="text-accent-strong text-[11px] font-extrabold leading-none flex-none"
+                  aria-label="unsaved"
+                >
                   M
                 </span>
               )}
               <span
-                className="right-file-tab-close"
+                className="size-[18px] inline-flex items-center justify-center rounded-[5px]
+                  text-subtle text-sm leading-none flex-[0_0_18px]
+                  hover:bg-highlight-press hover:text-text"
                 onClick={(e) => closeOpenFile(path, e)}
                 aria-label={`Close ${basename(path)}`}
                 role="button"
@@ -398,8 +435,15 @@ export function RightPane() {
         })}
       </div>
       )}
+      {/* `panel-stack` 留作钩子:solo 联动是 `:has()`,几个 host 的布局
+          修正是后代选择器,两者元素自己都写不出来。
+          gap 归零是因为卡片间距由 StackResizer 的 8px 高度承担,留着 gap
+          会叠加成 16px。overflow-x 必须显式:只写 overflow-y 时它会被隐式
+          提升为 auto,内部稍宽的内容(xterm 固定列宽)就会撑出一根横向
+          滚动条。 */}
       <div
-        className="right-pane-body panel-stack"
+        className="panel-stack relative flex-1 min-h-0 bg-bg
+          flex flex-col gap-0 p-2 overflow-y-auto overflow-x-hidden"
         ref={(el) => {
           stackRef.current = el;
         }}
@@ -446,11 +490,25 @@ export function RightPane() {
             !!selectedFilePath;
           return (
             <div
-              className={
-                "right-editor-workspace" +
-                (workspaceVisible ? "" : " hidden") +
-                (editorVisible ? " with-editor" : " tree-only")
-              }
+              className={[
+                // 行高必须钉死在卡片内,不许跟随内容。缺了这条,树的容器
+                // 被内容越撑越高,ResizeObserver 把更大的高度喂回虚拟化
+                // 列表,列表再渲染更多行 —— 一个每帧自增的反馈循环,表现
+                // 为文件树「从上往下慢慢渲染」。
+                "h-full min-h-0 grid grid-rows-[minmax(0,1fr)]",
+                !workspaceVisible && "hidden",
+                editorVisible
+                  ? // 3-column template (tree | 1px handle | editor) comes in
+                    // inline below with the user's persisted width; this is
+                    // the fallback for a render before it's applied.
+                    "grid-cols-[280px_1px_minmax(0,1fr)]"
+                  : // When only the tree is visible (Files tab, no open
+                    // files), let it span the whole workspace column instead
+                    // of the narrow left strip used in editor mode.
+                    "grid-cols-[1fr]",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               style={
                 editorVisible
                   ? {
@@ -465,7 +523,9 @@ export function RightPane() {
               {/* One FileTreePanel per visited project. Switching projects
                   flips `.hidden`, so the new tree doesn't pay listFiles +
                   react-arborist + SVG-icon-fetch on every switch. */}
-              <div className="right-editor-file-tree">
+              {/* 旧布局里 host 是 absolute inset:0,天然受父级约束;流内
+                  布局里 flex:1 要生效,父级必须真的是 flex 列容器。 */}
+              <div className="min-w-0 min-h-0 bg-bg relative flex flex-col">
                 {Array.from(visitedProjects).map((pid) => {
                   const project = projects[pid];
                   if (!project) return null;
@@ -479,9 +539,14 @@ export function RightPane() {
                   const targetRoot =
                     targetSession?.worktree_path ?? project.repo_path;
                   return (
+                    // 每个访问过的项目一棵树,非当前的用 hidden 藏起来 ——
+                    // 卡片栈里它们是流内的 flex 子项(旧布局是 absolute
+                    // inset:0 互相叠放)。
                     <div
                       key={pid}
-                      className={"file-tree-host" + (isActive ? "" : " hidden")}
+                      className={`relative inset-auto flex-1 min-h-0 overflow-hidden ${
+                        isActive ? "" : "hidden"
+                      }`}
                     >
                       <FileTreePanel
                         key={`${pid}:${targetSessionId ?? "main"}`}
@@ -498,9 +563,12 @@ export function RightPane() {
                   user doesn't need pixel-perfect aim. */}
               {editorVisible && (
                 <div
-                  className={
-                    "file-tree-resizer" + (resizing ? " dragging" : "")
-                  }
+                  className={`cursor-col-resize relative
+                    transition-[background-color] duration-[var(--duration-base)] ease-out
+                    after:content-[''] after:absolute after:top-0 after:bottom-0 after:-left-1 after:-right-1
+                    ${resizing ? "bg-accent" : "bg-rule hover:bg-accent"}`
+                    .replace(/\s+/g, " ")
+                    .trim()}
                   role="separator"
                   aria-orientation="vertical"
                   aria-label="Resize file tree"
@@ -512,9 +580,7 @@ export function RightPane() {
                   enough — the heavy work is the file tree, not the editor. */}
               {hasOpenFiles && activeProject && (
                 <div
-                  className={
-                    "right-editor-main" + (editorVisible ? "" : " hidden")
-                  }
+                  className={`min-w-0 min-h-0 ${editorVisible ? "" : "hidden"}`}
                 >
                   <EditorPanel
                     key={activeWorkspaceKey}
@@ -637,7 +703,9 @@ export function RightPane() {
           return (
             <div
               key={pid}
-              className={"manual-terminal-host" + (visible ? "" : " hidden")}
+              className={`relative inset-auto flex-1 min-h-0 ${
+                visible ? "" : "hidden"
+              }`}
             >
               <RightTerminalSplit
                 key={`${pid}:${targetSessionId ?? "main"}`}

@@ -21,6 +21,33 @@ import type { ReactNode } from "react";
 
 /* ---------- structure ---------- */
 
+/// A settings page: its title, the one-line lede under it, then the cards.
+/// Every page opens this way, so the heading type scale lives here rather
+/// than being restated thirteen times.
+export function SettingSection({
+  title,
+  lede,
+  children,
+}: {
+  title: string;
+  /// Omitted by the pages that are a single self-explanatory card.
+  lede?: ReactNode;
+  /// Absent on the error-state early returns, where the lede *is* the message.
+  children?: ReactNode;
+}) {
+  return (
+    <div>
+      <h2 className="text-[18px] font-bold tracking-[-0.01em]">{title}</h2>
+      {lede && (
+        <p className="mt-1.5 mx-0 mb-[18px] text-[12.5px]/[1.55] text-muted">
+          {lede}
+        </p>
+      )}
+      {children}
+    </div>
+  );
+}
+
 /// The small caps label above a card. Groups rows without nesting them in
 /// another box, which is what the preview does between "生命周期" and
 /// "Worktree 隔离".

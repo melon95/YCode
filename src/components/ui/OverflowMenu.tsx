@@ -45,17 +45,16 @@ export function OverflowMenu({
   return (
     <Menu.Root>
       <Menu.Trigger
-        // `overflow-menu-trigger` 是选择器钩子:hover 显形由祖先行
-        // (`.sb-project-head-row` / `.live-row-wrap` / `.po-card`)驱动,
-        // 那些行本身还没迁移。隐身用 opacity 而不是 display:none ——
-        // 后者会让行在 hover 时突然变宽,文字跟着抖一下。
-        className={`overflow-menu-trigger flex-none inline-flex items-center justify-center
+        // 平时隐身,鼠标落在所在的那一行(侧栏项目头 / 会话行 / 总览卡,
+        // 都标了 `group`)时才浮出来。隐身用 opacity 而不是 display:none
+        // —— 后者会让行在 hover 时突然变宽,文字跟着抖一下。
+        className={`flex-none inline-flex items-center justify-center
           size-[22px] p-0 border-none rounded-md bg-none text-subtle cursor-pointer
           transition-[opacity,background-color,color] duration-[var(--t-fast)] ease-smooth
           hover:bg-panel-raised hover:text-text
           data-[popup-open]:bg-panel-raised data-[popup-open]:text-text
           data-[popup-open]:opacity-100 focus-visible:opacity-100
-          ${hoverOnly ? "opacity-0" : ""}`
+          ${hoverOnly ? "opacity-0 group-hover:opacity-100" : ""}`
           .replace(/\s+/g, " ")
           .trim()}
         aria-label={label}

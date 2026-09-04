@@ -16,6 +16,7 @@ import type { AgentLaunchProfileView, ConfigView } from "../lib/types";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
 import { AgentIcon } from "./AgentIcon";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChip,
@@ -156,13 +157,15 @@ export function AgentsSettings({ config, onChange }: Props) {
   useEscapeGuard(cancelCustom, adding);
 
   return (
-    <div className="settings-section">
-      <h2>Agent 目录</h2>
-      <p className="settings-lede">
-        新建会话时可以选择的 agent。命令要能在 PATH 里找到 ——
-        找不到的会自动从新建会话的选择器里隐藏。
-      </p>
-
+    <SettingSection
+      title="Agent 目录"
+      lede={
+        <>
+  新建会话时可以选择的 agent。命令要能在 PATH 里找到 ——
+          找不到的会自动从新建会话的选择器里隐藏。
+        </>
+      }
+    >
       <SettingGroupLabel>已配置 · {config.agents.length}</SettingGroupLabel>
       <SettingCard>
         {config.agents.length === 0 && (
@@ -245,7 +248,7 @@ export function AgentsSettings({ config, onChange }: Props) {
           >
             <input
               type="text"
-              className="settings-input"
+              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
               placeholder="显示名(可选)"
               aria-label="显示名"
               value={customName}
@@ -257,7 +260,7 @@ export function AgentsSettings({ config, onChange }: Props) {
             />
             <input
               type="text"
-              className="settings-input"
+              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
               placeholder="PATH 中的命令"
               aria-label="命令"
               value={customCommand}
@@ -291,7 +294,7 @@ export function AgentsSettings({ config, onChange }: Props) {
           </SettingRow>
         )}
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 

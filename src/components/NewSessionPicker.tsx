@@ -15,6 +15,22 @@ import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
 import { ToggleTrack } from "./ui/SettingControls";
 import { AgentIcon } from "./AgentIcon";
 
+const COMPOSER_LABEL =
+  "text-[9.5px] font-semibold tracking-caps uppercase text-subtle";
+
+/// 卡内的可选项:内嵌元素不该有和外层卡一样强的投影,给一层极浅的贴底
+/// 阴影就够 —— 它要表达的是「可点」,不是「浮在上面」。
+const CARD = `flex items-center gap-[11px] w-full py-2.5 px-[13px] border-none rounded-xl
+  bg-surface text-[inherit] text-left cursor-pointer
+  shadow-[0_0_0_0.5px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.05)]
+  transition-[background-color,transform,box-shadow] duration-[var(--t-fast)] ease-smooth
+  not-disabled:hover:bg-panel-raised
+  not-disabled:hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.06),0_2px_6px_rgba(0,0,0,0.08)]
+  not-disabled:active:scale-[0.985] disabled:opacity-45 disabled:cursor-not-allowed`
+  .replace(/\s+/g, " ");
+
+const CHIP = "font-mono text-[9.5px] rounded-[5px] py-px px-1.5";
+
 export function NewSessionPicker({ project }: { project: ProjectView }) {
   const agents = useStore((s) => s.agents);
   const [creatingId, setCreatingId] = useState<string | null>(null);
@@ -70,13 +86,11 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
   }
 
   return (
-    <div className="new-session-picker-host">
-      <div className="composer">
-        <div className="composer-eyebrow">
-          新建会话 ·{" "}
-          <ProjectPickerMenu className="is-eyebrow">
-            {project.name}
-          </ProjectPickerMenu>
+    <div className="flex-1 min-h-0 flex items-center justify-center p-7 overflow-y-auto">
+      {/* 卡片语言:去描边、改阴影。 */}
+      <div className="w-[460px] max-w-full pt-5 pr-[22px] pb-[18px] pl-[22px] rounded-2xl bg-panel animate-card-in shadow-[0_0_0_0.5px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.06),0_6px_18px_rgba(0,0,0,0.08)]">
+        <div className={COMPOSER_LABEL}>
+          新建会话 · <ProjectPickerMenu>{project.name}</ProjectPickerMenu>
         </div>
         {/* No task field here on purpose: the agent CLI has its own input,
             and pre-typing a prompt would mean injecting it into the PTY —
@@ -86,8 +100,8 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
 
         {error && <div className="form-error">{error}</div>}
 
-        <div className="composer-label">Agent</div>
-        <div className="composer-agents">
+        <div className={`${COMPOSER_LABEL} mt-[18px] mb-2`}>Agent</div>
+        <div className="flex flex-col gap-2">
           {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
               没有配置任何 agent。编辑
@@ -98,18 +112,14 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
             <button
               key={agent.id}
               type="button"
-              className={
-                "composer-agent" +
-                (agent.available ? "" : " unavailable") +
-                (creatingId === agent.id ? " creating" : "")
-              }
+              className={CARD}
               onClick={() => pick(agent)}
               disabled={!agent.available || creatingId !== null}
               title={
                 agent.available ? agent.command : `${agent.command} — 不在 PATH 中`
               }
             >
-              <span className="composer-agent-icon">
+              <span className="flex-none flex">
                 <AgentIcon
                   icon={agent.icon}
                   variant={agent.icon_variant}
@@ -117,16 +127,28 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
                   size={24}
                 />
               </span>
-              <span className="composer-agent-main">
-                <span className="composer-agent-name">{agent.display_name}</span>
-                <span className="composer-agent-meta">
+              <span className="flex-1 min-w-0 flex flex-col gap-1">
+                <span className="text-[13px] font-semibold text-text">
+                  {agent.display_name}
+                </span>
+                <span className="flex items-center gap-1.5 flex-wrap [&_code]:font-mono [&_code]:text-[10px] [&_code]:text-subtle">
                   <code>{agent.command}</code>
-                  {agent.introspect && <span className="chip-ok">历史可读</span>}
-                  {!agent.available && <span className="chip-warn">未安装</span>}
+                  {agent.introspect && (
+                    <span className={`${CHIP} text-st-done bg-st-done-tint`}>
+                      历史可读
+                    </span>
+                  )}
+                  {!agent.available && (
+                    <span className={`${CHIP} text-st-working bg-st-working-tint`}>
+                      未安装
+                    </span>
+                  )}
                 </span>
               </span>
               {creatingId === agent.id && (
-                <span className="composer-agent-busy">启动中…</span>
+                <span className="flex-none font-mono text-[10px] text-st-working">
+                  启动中…
+                </span>
               )}
             </button>
           ))}
@@ -134,15 +156,15 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
 
         <button
           type="button"
-          className={"composer-opt" + (project.isolate_sessions ? " on" : "")}
+          className={`${CARD} items-start bg-transparent mt-3.5 py-[11px]`}
           onClick={toggleIsolate}
           aria-pressed={project.isolate_sessions}
         >
           {/* 与设置页同一套开关外观 —— 组件级统一,别再各处自绘。 */}
           <ToggleTrack checked={project.isolate_sessions} />
-          <span className="composer-opt-main">
+          <span className="flex-1 min-w-0 flex flex-col gap-[3px]">
             <span
-              className="composer-opt-title"
+              className="text-[12.5px] font-medium text-text"
               title="每个 agent 拿到自己的分支与工作目录,并行时互不覆盖"
             >
               Worktree

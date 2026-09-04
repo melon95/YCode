@@ -48,7 +48,8 @@ export function ContextMenu({
   return (
     <ul
       ref={ref}
-      className="context-menu"
+      className="fixed z-1000 min-w-[180px] p-1 m-0 list-none bg-panel
+        border border-rule-strong rounded-md shadow-menu text-[13px]"
       style={{ left: x, top: y }}
       role="menu"
     >
@@ -57,7 +58,10 @@ export function ContextMenu({
           <button
             type="button"
             role="menuitem"
-            className="context-menu-item"
+            className="w-full flex items-center min-h-[30px] py-1.5 px-2.5
+              bg-transparent border-0 rounded-sm text-[inherit] font-[inherit] text-left cursor-pointer
+              not-disabled:hover:bg-control-hover
+              disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={it.disabled}
             onClick={() => {
               if (it.disabled) return;

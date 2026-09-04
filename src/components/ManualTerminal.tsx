@@ -406,9 +406,11 @@ export function ManualTerminal({
   }, []);
 
   return (
-    <div className="manual-terminal">
+    <div className="relative size-full bg-bg">
       {error && <div className="form-error" style={{ margin: 8 }}>{error}</div>}
-      <div className="manual-terminal-body" ref={containerRef} />
+      {/* `manual-terminal-body` 留作钩子:xterm 自己渲染出来的 `.xterm`
+          节点要撑满这层,那条后代规则 Tailwind 够不着(见 styles.css)。 */}
+      <div className="manual-terminal-body absolute inset-0" ref={containerRef} />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  SettingSection,
   SettingCard,
   SettingChip,
   SettingGroupLabel,
@@ -63,12 +64,15 @@ const PANELS: PanelRow[] = [
 
 export function PanelsSettings() {
   return (
-    <div className="settings-section">
-      <h2>面板</h2>
-      <p className="settings-lede">
-        右侧工作面板。终端是内置面板;面板可以同时打开并堆叠,每个项目记住自己
-        的组合。
-      </p>
+    <SettingSection
+      title="面板"
+      lede={
+        <>
+  右侧工作面板。终端是内置面板;面板可以同时打开并堆叠,每个项目记住自己
+          的组合。
+        </>
+      }
+    >
       <SettingCard>
         {PANELS.map((p) => {
           const Icon = p.icon;
@@ -92,7 +96,7 @@ export function PanelsSettings() {
         面板可插拔:未实现的条目会在支持后自动出现在画布工具条的开关里,
         不需要另行启用。
       </SettingNote>
-    </div>
+    </SettingSection>
   );
 }
 
@@ -139,21 +143,19 @@ const SHORTCUT_GROUPS: Array<{
 
 export function KeyboardSettings() {
   return (
-    <div className="settings-section">
-      <h2>键盘快捷键</h2>
-      <p className="settings-lede">当前生效的绑定。重新绑定尚未实现。</p>
+    <SettingSection title="键盘快捷键" lede={<>当前生效的绑定。重新绑定尚未实现。</>}>
       {SHORTCUT_GROUPS.map((group) => (
         <div className="settings-group" key={group.title}>
           <SettingGroupLabel>{group.title}</SettingGroupLabel>
           <SettingCard>
             {group.items.map((s) => (
               <SettingRow key={s.keys} name={s.label}>
-                <kbd className="settings-kbd">{s.keys}</kbd>
+                <kbd className="flex-none font-mono text-[10.5px] text-text-soft border border-rule-strong border-b-2 rounded-[5px] py-0.5 px-[7px] bg-panel">{s.keys}</kbd>
               </SettingRow>
             ))}
           </SettingCard>
         </div>
       ))}
-    </div>
+    </SettingSection>
   );
 }

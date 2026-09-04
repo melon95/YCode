@@ -32,6 +32,7 @@ import {
 import { useStore } from "../lib/store";
 import { AgentIcon } from "./AgentIcon";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChip,
@@ -86,13 +87,15 @@ export function IntegrationsSettings() {
   );
 
   return (
-    <div className="settings-section">
-      <h2>集成</h2>
-      <p className="settings-lede">
-        ycode 如何与 agent 通信。<b>只观测,不干预</b> —— 这些集成不会阻塞、批准或改写
-        agent 的行为。
-      </p>
-
+    <SettingSection
+      title="集成"
+      lede={
+        <>
+  ycode 如何与 agent 通信。<b>只观测,不干预</b> —— 这些集成不会阻塞、批准或改写
+          agent 的行为。
+        </>
+      }
+    >
       <SettingGroupLabel>Hook · 状态与事件来源</SettingGroupLabel>
       <SettingCard>
         {hookAgents.length === 0 ? (
@@ -143,7 +146,7 @@ export function IntegrationsSettings() {
           </SettingChip>
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 
@@ -261,7 +264,7 @@ function HookRows({ agent }: { agent: HookAgent }) {
       </SettingRow>
       {installed && (
         <SettingRow
-          name={<span className="settings-row-sub">写入位置</span>}
+          name={<span className="font-normal text-subtle">写入位置</span>}
           desc={AGENT_TARGET_NOTE[agent]}
         >
           <SettingValue align="end" title={AGENT_TARGET[agent]}>

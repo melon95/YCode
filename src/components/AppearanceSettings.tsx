@@ -22,10 +22,12 @@ import {
   type Theme,
 } from "../lib/themes";
 import {
+  SettingSection,
   SettingCard,
   SettingChip,
   SettingChips,
   SettingGroupLabel,
+  SettingNote,
   SettingRow,
   type ChipOption,
 } from "./ui/SettingControls";
@@ -122,15 +124,20 @@ export function AppearanceSettings({ config, onChange }: Props) {
   }
 
   return (
-    <div className="settings-section">
-      <h2>外观</h2>
-      <p className="settings-lede">
-        主题会同时换掉界面配色和终端的 xterm 色表。选中即时预览,不保存直接关闭
-        就还原。
-      </p>
-
+    <SettingSection
+      title="外观"
+      lede={
+        <>
+  主题会同时换掉界面配色和终端的 xterm 色表。选中即时预览,不保存直接关闭
+          就还原。
+        </>
+      }
+    >
       <SettingGroupLabel>主题</SettingGroupLabel>
-      <div className="theme-grid theme-grid-modes">
+      {/* Three cards, one row. The old grid was `auto-fill minmax(150px)` for
+          ten themes; with three named choices they should sit side by side
+          rather than reflow into a ragged block. */}
+      <div className="grid grid-cols-3 gap-2.5 mt-1">
         {CHOICES.map((c) => (
           <ThemeCard
             key={c.choice}
@@ -176,10 +183,10 @@ export function AppearanceSettings({ config, onChange }: Props) {
           </SettingRow>
         ))}
       </SettingCard>
-      <p className="settings-note">
+      <SettingNote>
         字号在保存时生效。终端会重新计算网格并同步调整正在运行的 PTY,
         不会逐字卡顿。
-      </p>
+      </SettingNote>
 
       <SettingGroupLabel>动效</SettingGroupLabel>
       <SettingCard>
@@ -192,7 +199,7 @@ export function AppearanceSettings({ config, onChange }: Props) {
           </SettingChip>
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 
@@ -223,54 +230,80 @@ function ThemeCard({
   return (
     <button
       type="button"
-      className={"theme-card" + (selected ? " selected" : "")}
+      // 选中态是两层描边:实心 accent 环 + 更宽的半透明光晕。光晕用 22% ——
+      // 不是全局的 8% tint —— 才能在每种表面上都读得出来:Foundry 的暖暗、
+      // Daylight 的近白、Parchment 的暖亮都一样。
+      className={`relative flex flex-col gap-2 p-[9px] border rounded-md cursor-pointer
+        text-left font-[inherit] text-text
+        transition-[border-color,background,transform] duration-[var(--duration-fast)] ease-out
+        active:translate-y-px ${
+          selected
+            ? "border-accent bg-panel-raised [box-shadow:0_0_0_1px_var(--accent),0_0_0_5px_var(--color-accent-halo)]"
+            : "border-rule bg-panel hover:border-rule-strong hover:bg-panel-raised"
+        }`
+        .replace(/\s+/g, " ")
+        .trim()}
       aria-pressed={selected}
       onClick={onSelect}
     >
       {selected && (
-        <span className="theme-card-active-pill" aria-hidden>
+        <span
+          className="absolute top-1.5 right-1.5 inline-flex items-center gap-[3px]
+            pt-0.5 pr-1.5 pb-0.5 pl-1 bg-accent text-on-accent font-ui text-[9px] font-semibold
+            tracking-[0.06em] uppercase rounded-[3px] pointer-events-none
+            before:content-['✓'] before:text-[10px] before:leading-none"
+          aria-hidden
+        >
           当前
         </span>
       )}
+      {/* The card preview is a tiny abstract "ycode in miniature" — a body
+          color with an inset panel and two text rules plus a small accent
+          block. It's intentionally agnostic of the real layout; we want users
+          to read the *palette*, not memorize the chrome arrangement. */}
       <div
-        className="theme-card-preview"
+        className="relative h-16 border rounded-[4px] overflow-hidden"
         style={{
           background: theme.chrome["--bg"],
           borderColor: theme.chrome["--rule"],
         }}
       >
         <div
-          className="theme-card-preview-panel"
+          className="absolute inset-y-2 right-2 left-7 p-1.5 border rounded-[3px] flex flex-col gap-1"
           style={{
             background: theme.chrome["--panel"],
             borderColor: theme.chrome["--rule"],
           }}
         >
           <div
-            className="theme-card-preview-line"
+            className="h-[3px] w-4/5 rounded-[1px] opacity-85"
             style={{ background: theme.chrome["--text-soft"] }}
           />
           <div
-            className="theme-card-preview-line short"
+            className="h-[3px] w-1/2 rounded-[1px] opacity-55"
             style={{ background: theme.chrome["--muted"] }}
           />
           <div
-            className="theme-card-preview-accent"
+            className="absolute left-1 top-1 bottom-1 w-1 rounded-[2px]"
             style={{ background: theme.chrome["--accent"] }}
           />
         </div>
       </div>
-      <div className="theme-card-label">
-        <span className="theme-card-name">{label}</span>
-        <span className="theme-card-mode">
+      {/* The label row keeps its height whether or not the mode caption is
+          there, so the three cards stay the same size. */}
+      <div className="flex items-baseline justify-between gap-1.5 min-h-[18px]">
+        <span className="font-ui text-[14px] font-medium tracking-[-0.01em]">
+          {label}
+        </span>
+        <span className="font-mono text-[9px] text-whisper">
           {split ? (theme.mode === "dark" ? "当前:深色" : "当前:浅色") : ""}
         </span>
       </div>
-      <div className="theme-card-swatches" aria-hidden>
+      <div className="flex gap-1" aria-hidden>
         {swatches.map((c, i) => (
           <span
             key={i}
-            className="theme-card-swatch"
+            className="flex-1 h-1.5 rounded-[2px] border border-[rgba(var(--shadow-rgb),0.12)]"
             style={{ background: c }}
           />
         ))}

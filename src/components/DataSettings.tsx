@@ -11,6 +11,7 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { useStore } from "../lib/store";
 import { revealInFinder } from "../lib/ipc";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChip,
@@ -60,12 +61,7 @@ export function DataSettings() {
   ];
 
   return (
-    <div className="settings-section">
-      <h2>数据与隐私</h2>
-      <p className="settings-lede">
-        所有数据都在本地。ycode 不代理 agent 的 API 流量,也不上传你的代码。
-      </p>
-
+    <SettingSection title="数据与隐私" lede={<>所有数据都在本地。ycode 不代理 agent 的 API 流量,也不上传你的代码。</>}>
       <SettingGroupLabel>本地存储</SettingGroupLabel>
       <SettingCard>
         <SettingRow name="应用数据" desc="项目、会话、待办、检查点索引">
@@ -163,7 +159,7 @@ export function DataSettings() {
           </SettingAction>
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 

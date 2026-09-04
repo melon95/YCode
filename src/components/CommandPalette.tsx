@@ -90,7 +90,7 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
   const openSessionInLayout = useStore((s) => s.openSessionInLayout);
   const appendSessionToLayout = useStore((s) => s.appendSessionToLayout);
   const setLayoutMode = useStore((s) => s.setLayoutMode);
-  // `.cmdk-scope` 作用域标签:当前活跃项目名(纯展示)。
+  // 作用域标签:当前活跃项目名(纯展示)。
   const activeProjectName = activeProjectId
     ? (projects[activeProjectId]?.name ?? null)
     : null;
@@ -437,9 +437,19 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
 
   if (!open) return null;
   return (
-    <div className="cmd-palette-backdrop" onClick={onClose}>
-      <div className="cmd-palette" onClick={(e) => e.stopPropagation()}>
-        <div className="cmd-palette-input-row">
+    <div
+      className="fixed inset-0 flex items-start justify-center pt-[10vh] z-200
+        bg-[rgba(var(--shadow-rgb),0.55)]"
+      onClick={onClose}
+    >
+      <div
+        className="w-[min(720px,92vw)] max-h-[70vh] bg-surface border border-rule rounded-lg
+          shadow-[0_16px_48px_rgba(var(--shadow-rgb),0.6)] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 输入行:包住 input,好在右侧放作用域标签。底边框长在这一行上,
+            不在 input 上。 */}
+        <div className="flex-none flex items-center gap-2.5 pr-3.5 border-b border-rule">
           <input
             ref={inputRef}
             type="text"
@@ -453,7 +463,8 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
                   ? "过滤会话…"
                   : "跳转会话、切换项目、执行命令,或用 > 搜索历史记录…"
             }
-            className="cmd-palette-input"
+            className="flex-1 min-w-0 w-full py-3 px-3.5 text-sm bg-transparent
+              text-text border-none outline-none font-[inherit]"
             aria-label={
               historyMode
                 ? "搜索会话记录"
@@ -464,15 +475,21 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
             autoComplete="off"
             spellCheck={false}
           />
-          {/* 作用域标签:提示搜索/命令作用在哪个项目上(纯展示)。 */}
+          {/* 作用域标签:小胶囊,提示搜索/命令作用在哪个项目上(纯展示)。 */}
           {activeProjectName && (
-            <span className="cmdk-scope" title="当前项目">
+            <span
+              className="flex-none max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap
+                font-mono text-[10.5px] text-accent bg-accent-tint rounded-md py-[3px] px-2"
+              title="当前项目"
+            >
               {activeProjectName}
             </span>
           )}
         </div>
-        <div className="cmd-palette-results" role="listbox">
-          {statusText && <div className="cmd-palette-status">{statusText}</div>}
+        <div className="flex-1 min-h-0 overflow-y-auto" role="listbox">
+          {statusText && (
+            <div className="py-3.5 px-4 text-muted text-xs">{statusText}</div>
+          )}
           {hits.map((hit, i) => {
             if (hit.kind === "action") {
               // A group caption is printed once, on the first row of each
@@ -480,19 +497,30 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
               const prev = hits[i - 1];
               const newGroup =
                 !prev || prev.kind !== "action" || prev.group !== hit.group;
+              const focused = i === focusedIdx;
               return (
                 <div key={hit.id}>
-                  {newGroup && <div className="cmd-group">{hit.group}</div>}
+                  {newGroup && (
+                    <div className="pt-2.5 px-3.5 pb-[5px] text-[9px] font-bold tracking-caps uppercase text-whisper">
+                      {hit.group}
+                    </div>
+                  )}
                   <button
                     type="button"
                     role="option"
-                    aria-selected={i === focusedIdx}
-                    className={`cmd-row${i === focusedIdx ? " focused" : ""}`}
+                    aria-selected={focused}
+                    className={`group w-full flex items-center gap-[11px] py-2 px-3.5 border-none
+                      bg-transparent text-[inherit] text-left cursor-pointer
+                      transition-colors duration-[var(--t-fast)] ease-smooth
+                      hover:bg-panel-raised ${focused ? "bg-panel-raised" : ""}`}
                     onMouseEnter={() => setFocusedIdx(i)}
                     // ⌘+点击与 ⌘⏎ 同义:在新面板打开。
                     onClick={(e) => pick(hit, e.metaKey || e.ctrlKey)}
                   >
-                    <span className="cmd-row-icon">
+                    <span
+                      className={`flex-none size-[22px] rounded-md flex items-center justify-center
+                        text-muted ${focused ? "bg-panel-sunken" : "bg-panel-raised"}`}
+                    >
                       {hit.icon ? (
                         <AgentIcon
                           icon={hit.icon.icon}
@@ -501,13 +529,20 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
                           size={16}
                         />
                       ) : (
-                        <span className="cmd-row-dot" aria-hidden />
+                        <span
+                          className="size-[5px] rounded-full bg-whisper"
+                          aria-hidden
+                        />
                       )}
                     </span>
-                    <span className="cmd-row-main">
-                      <span className="cmd-row-label">{hit.label}</span>
+                    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <span className="text-[13px] text-text whitespace-nowrap overflow-hidden text-ellipsis">
+                        {hit.label}
+                      </span>
                       {hit.detail && (
-                        <span className="cmd-row-detail">{hit.detail}</span>
+                        <span className="font-mono text-[10.5px] text-subtle whitespace-nowrap overflow-hidden text-ellipsis">
+                          {hit.detail}
+                        </span>
                       )}
                     </span>
                     {hit.status && (
@@ -540,12 +575,12 @@ export function CommandPalette({ open, onClose, onPick }: CommandPaletteProps) {
         </div>
         {/* 底部提示条:说明这里生效的按键(⏎ 与 ⌘⏎ 不同,靠猜猜不到),
             并如实列出前缀 —— `>` 历史搜索、`@` 会话过滤。 */}
-        <div className="cmd-palette-foot">
+        <div className="flex-none flex items-center gap-3.5 py-2 px-3.5 border-t border-rule bg-surface text-[10.5px] text-whisper">
           <span>↑↓ 选择</span>
           <span>⏎ 打开</span>
           <span>⌘⏎ 在新面板打开</span>
           <span>esc 关闭</span>
-          <span className="cmd-foot-right">&gt; 历史 · @ 会话</span>
+          <span className="ml-auto font-mono">&gt; 历史 · @ 会话</span>
         </div>
       </div>
     </div>
@@ -574,20 +609,33 @@ function FileHitRow({
       type="button"
       role="option"
       aria-selected={focused}
-      className={"cmd-palette-hit cmd-palette-hit-file" + (focused ? " focused" : "")}
+      className={`${HIT_ROW} py-[7px] px-3.5 ${focused ? HIT_ROW_ON : ""}`}
       onMouseEnter={onHover}
       onClick={onClick}
     >
-      <div className="cmd-palette-file-row">
+      <div className="flex items-center gap-2 min-w-0">
         {iconUrl && (
-          <img className="cmd-palette-file-icon" src={iconUrl} alt="" aria-hidden />
+          <img className="size-4 flex-none" src={iconUrl} alt="" aria-hidden />
         )}
-        <span className="cmd-palette-file-name">{highlightMatch(name, query)}</span>
-        {dir && <span className="cmd-palette-file-dir">{dir}</span>}
+        <span className="text-[13px] text-text flex-[0_1_auto] whitespace-nowrap overflow-hidden text-ellipsis">
+          {highlightMatch(name, query)}
+        </span>
+        {/* `direction: rtl` 让长路径从左侧省略 —— 尾部的目录名比仓库根更
+            能说明这是哪个文件。 */}
+        {dir && (
+          <span className="text-[11px] text-muted flex-auto min-w-0 whitespace-nowrap overflow-hidden text-ellipsis [direction:rtl] text-left">
+            {dir}
+          </span>
+        )}
       </div>
     </button>
   );
 }
+
+const HIT_ROW = `block w-full text-left bg-transparent border-none
+  border-b border-b-highlight-hairline text-text cursor-pointer`;
+
+const HIT_ROW_ON = "bg-highlight-wash";
 
 function SessionHitRow({
   hit,
@@ -607,12 +655,12 @@ function SessionHitRow({
       type="button"
       role="option"
       aria-selected={focused}
-      className={"cmd-palette-hit" + (focused ? " focused" : "")}
+      className={`${HIT_ROW} py-2.5 px-3.5 ${focused ? HIT_ROW_ON : ""}`}
       onMouseEnter={onHover}
       onClick={onClick}
     >
-      <div className="cmd-palette-hit-meta">
-        <span className={`cmd-palette-hit-agent agent-${hit.agent}`}>
+      <div className="flex items-center gap-2.5 text-[11px] text-muted">
+        <span className="inline-flex items-center gap-1">
           <AgentIcon
             icon={profile?.icon}
             variant={profile?.icon_variant}
@@ -621,12 +669,14 @@ function SessionHitRow({
           />{" "}
           {profile?.display_name ?? hit.agent}
         </span>
-        <span className="cmd-palette-hit-session">{shortId(hit.session_id)}</span>
+        <span className="font-mono">{shortId(hit.session_id)}</span>
         {hit.ts_ms > 0 && (
-          <span className="cmd-palette-hit-ts">{formatRelative(hit.ts_ms)}</span>
+          <span className="ml-auto">{formatRelative(hit.ts_ms)}</span>
         )}
       </div>
-      <div className="cmd-palette-hit-preview">{hit.preview}</div>
+      <div className="mt-1 text-[13px] text-text whitespace-nowrap overflow-hidden text-ellipsis">
+        {hit.preview}
+      </div>
     </button>
   );
 }
@@ -686,7 +736,7 @@ function highlightMatch(target: string, query: string): React.ReactNode {
   for (const idx of indices) {
     if (idx > cursor) out.push(target.slice(cursor, idx));
     out.push(
-      <mark key={idx} className="cmd-palette-match">
+      <mark key={idx} className="bg-transparent text-accent font-semibold">
         {target[idx]}
       </mark>,
     );

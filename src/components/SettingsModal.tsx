@@ -3,6 +3,7 @@
 // modal layered over the coding workspace.
 
 import { useEffect, useRef, useState } from "react";
+import { IconButton } from "./ui/IconButton";
 import {
   Bell,
   Bot,
@@ -115,6 +116,12 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
 interface Props {
   onClose: () => void;
 }
+
+/// 页脚的取消 / 保存。两颗只差配色,几何必须一致 —— 分开写迟早会飘。
+const FOOTER_ACTION = `min-w-[102px] min-h-[38px] px-[18px] border rounded-sm
+  text-[13px] font-[560] cursor-pointer
+  transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
+  disabled:cursor-default disabled:opacity-42`.replace(/\s+/g, " ");
 
 export function SettingsScreen({ onClose }: Props) {
   const setAgents = useStore((s) => s.setAgents);
@@ -272,45 +279,65 @@ export function SettingsScreen({ onClose }: Props) {
     // change here (theme, font size, panel) shows its effect immediately,
     // and there is no "how do I get back" question to answer.
     <div
-      className="settings-mask"
+      className="fixed inset-0 z-180 flex items-center justify-center
+        bg-[rgba(0,0,0,0.22)] backdrop-blur-[10px] animate-fade-in"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) void handleClose();
       }}
     >
-      <section className="settings-dialog" aria-label="设置" role="dialog" aria-modal>
-        <header className="settings-dialog-head">
-          <span className="sd-title">设置</span>
-          <span className="toolbar-spacer" />
-          <span className={`settings-save-state${dirty ? " dirty" : ""}`}>
+      <section
+        className="w-[900px] max-w-[92vw] h-[640px] max-h-[86vh] flex flex-col
+          bg-panel border border-rule-strong rounded-2xl shadow-menu
+          overflow-hidden animate-dialog-in"
+        aria-label="设置"
+        role="dialog"
+        aria-modal
+      >
+        <header className="flex-none h-toolbar flex items-center gap-[9px] pr-3 pl-4 border-b border-rule">
+          <span className="text-[13px] font-semibold text-text">设置</span>
+          <span className="flex-auto" />
+          <span
+            className={`text-[13px] ${dirty ? "text-accent-soft" : "text-muted"}`}
+          >
             {dirty ? "有未保存的更改" : ""}
           </span>
-          <button
-            type="button"
-            className="icon-btn2 icon-btn2-sm"
+          <IconButton
+            size="sm"
             onClick={() => void handleClose()}
             title="关闭 (esc)"
             aria-label="关闭设置"
           >
             <X aria-hidden size={15} />
-          </button>
+          </IconButton>
         </header>
 
-        <div className="settings-body">
-          <aside className="settings-sidebar">
-            <div className="settings-search">
+        <div className="flex-1 min-h-0 flex">
+          <aside className="w-[210px] flex-none border-r border-rule pt-3 px-2.5 pb-[18px] overflow-y-auto bg-surface">
+            <div
+              className="flex items-center gap-2 mb-3 py-[7px] px-2.5 border border-rule
+                rounded-[9px] text-whisper
+                transition-colors duration-[var(--t-fast)] ease-smooth
+                focus-within:border-rule-strong [&>svg]:flex-none"
+            >
               <Search aria-hidden size={13} />
+              {/* WebKit 给 type=search 自带一个清除小叉,和描边风格打架。 */}
               <input
                 type="search"
+                className="flex-1 min-w-0 bg-none border-none outline-none text-text text-[12.5px]
+                  placeholder:text-whisper
+                  [&::-webkit-search-cancel-button]:hidden"
                 placeholder="搜索设置…"
                 aria-label="搜索设置"
                 value={navQuery}
                 onChange={(e) => setNavQuery(e.target.value)}
               />
             </div>
-            <nav className="settings-nav" aria-label="设置分区">
+            <nav aria-label="设置分区">
               {visibleGroups.map((group) => (
-                <div className="settings-nav-group" key={group.title}>
-                  <div className="settings-nav-title">{group.title}</div>
+                <div className="[&+&]:mt-3.5" key={group.title}>
+                  <div className="pt-1 px-2.5 pb-1.5 text-[8.5px] font-bold tracking-caps uppercase text-whisper">
+                    {group.title}
+                  </div>
                   {group.items.map((item) => {
                     const Icon = item.icon;
                     const warn =
@@ -323,10 +350,17 @@ export function SettingsScreen({ onClose }: Props) {
                       <button
                         key={item.id}
                         type="button"
-                        className={
-                          `settings-nav-item${section === item.id ? " active" : ""}` +
-                          (item.pending ? " pending" : "")
-                        }
+                        className={`w-full flex items-center gap-2.5 py-[7px] px-2.5 border-none
+                          rounded-md text-[12.5px] text-left cursor-pointer
+                          transition-[background-color,color] duration-[var(--t-fast)] ease-smooth
+                          not-disabled:hover:bg-panel-raised not-disabled:hover:text-text
+                          disabled:opacity-45 disabled:cursor-not-allowed ${
+                            section === item.id
+                              ? "bg-panel-raised text-text font-semibold"
+                              : "bg-transparent text-muted"
+                          }`
+                          .replace(/\s+/g, " ")
+                          .trim()}
                         aria-current={section === item.id ? "page" : undefined}
                         disabled={item.pending}
                         title={item.pending ? `${item.label} — 尚未实现` : undefined}
@@ -334,31 +368,41 @@ export function SettingsScreen({ onClose }: Props) {
                       >
                         <Icon aria-hidden size={16} />
                         <span>{item.label}</span>
+                        {/* 未接入集成的计数角标。用 working 琥珀色 ——
+                            它是「有事待办」,不是 blocked 那种「正在拦着你」。 */}
                         {warn !== null && (
                           <span
-                            className="settings-nav-warn"
+                            className="ml-auto font-mono text-[8px] font-bold
+                              bg-st-working-badge text-st-working rounded-[99px] py-[1.5px] px-[5.5px]"
                             title={`${warn} 个集成未接入`}
                           >
                             {warn}
                           </span>
                         )}
-                        {item.pending && <span className="nav-pending">待实现</span>}
+                        {item.pending && (
+                          <span className="ml-auto font-mono text-[8px] text-whisper border border-rule rounded-[4px] py-px px-1">
+                            待实现
+                          </span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               ))}
+              {/* 过滤后一无所有时的占位,免得侧栏空得像坏了。 */}
               {navQuery.trim() !== "" && visibleGroups.length === 0 && (
-                <div className="settings-nav-empty">没有匹配的设置项</div>
+                <div className="p-2.5 text-[12px] text-whisper">没有匹配的设置项</div>
               )}
             </nav>
           </aside>
 
-          <main className="settings-main">
+          <main className="flex-1 min-w-0 overflow-y-auto">
             {loading || !staged ? (
-              <div className="settings-loading">读取设置中…</div>
+              <div className="p-[60px] text-center font-display italic text-[16px] text-subtle [font-variation-settings:'opsz'_36,'SOFT'_100]">
+                读取设置中…
+              </div>
             ) : (
-              <div className="settings-content">
+              <div className="pt-[22px] px-[26px] pb-[30px]">
                 {section === "general" && (
                   <GeneralSettings config={staged} onChange={setStaged} />
                 )}
@@ -389,19 +433,25 @@ export function SettingsScreen({ onClose }: Props) {
           </main>
         </div>
 
-        <footer className="settings-footer">
+        <footer className="flex-none flex items-center gap-2 py-2.5 px-4 border-t border-rule bg-surface">
           <button
             type="button"
-            className="settings-reset"
+            className={`justify-self-start min-h-[34px] px-2.5 rounded-sm border-0 bg-transparent
+              text-muted text-[13px] cursor-pointer
+              not-disabled:hover:text-text not-disabled:hover:bg-control-hover
+              disabled:cursor-default disabled:opacity-42`
+              .replace(/\s+/g, " ")}
             onClick={() => void handleReset()}
             disabled={saving || loading}
           >
             恢复默认
           </button>
-          <span className="toolbar-spacer" />
+          <span className="flex-auto" />
           <button
             type="button"
-            className="settings-action"
+            className={`${FOOTER_ACTION} border-rule-strong bg-surface text-text-soft
+              not-disabled:hover:text-text not-disabled:hover:bg-control-hover`
+              .replace(/\s+/g, " ")}
             onClick={() => void handleClose()}
             disabled={saving}
           >
@@ -409,7 +459,14 @@ export function SettingsScreen({ onClose }: Props) {
           </button>
           <button
             type="button"
-            className="settings-action primary"
+            // `#07101f` 是迁移前就写死在 design-system.css 里的字面量,不是
+            // `--text-on-accent`(白)。原样保留 —— 换成令牌会把这颗按钮的
+            // 文字从深靛蓝变成白色,是视觉改动,不该混在这次迁移里。
+            className={`${FOOTER_ACTION} border-accent bg-accent text-[#07101f]
+              not-disabled:hover:border-accent-strong not-disabled:hover:bg-accent-strong
+              not-disabled:hover:text-[#07101f]
+              disabled:border-rule-strong disabled:bg-panel-raised disabled:text-muted`
+              .replace(/\s+/g, " ")}
             onClick={() => void handleSave()}
             disabled={!dirty || saving}
           >

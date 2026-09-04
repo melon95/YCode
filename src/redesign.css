@@ -50,22 +50,8 @@
    Shared toolbar row
    ============================================================ */
 
-.toolbar-row {
-  flex: none;
-  height: var(--toolbar-h);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--rule);
-}
-.toolbar-div {
-  flex: none;
-  width: 1px;
-  height: 18px;
-  background: var(--rule);
-  margin: 0 4px;
-}
+/* `.toolbar-row` / `.toolbar-div` 已随 CanvasToolbar 迁走。`.toolbar-spacer`
+   还留着 —— StatusBar / ProjectsOverview / ui/PanelCard 仍在用。 */
 .toolbar-spacer { flex: 1 1 auto; }
 
 /* ============================================================
@@ -187,126 +173,16 @@
   transform: none;
 }
 
-.topbar-inbox {
-  position: relative;
-  flex: none;
-  width: var(--control-size);
-  height: var(--control-size);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md, 8px);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease);
-}
-.topbar-inbox:hover,
-.topbar-inbox[data-popup-open] {
-  background: var(--panel-raised);
-  border-color: var(--rule);
-  color: var(--text);
-}
-/* The badge already pulses; the button itself stays calm so a queue of one
-   doesn't turn the whole top bar into an alarm. */
-.topbar-inbox.has-waiting { color: var(--st-blocked); }
+/* 按钮本体已迁到 AttentionInbox.tsx。徽章的脉动留在这里:`count-badge-float`
+   是和画布工具条共用的类,只有收件箱那颗该动。 */
 .topbar-inbox .count-badge-float { animation: status-ring 1.6s ease-out infinite; }
 
-.inbox-popup {
-  width: 380px;
-  max-height: 60vh;
-  overflow-y: auto;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 14px;
-  box-shadow: var(--elevation-menu);
-  animation: pop-in var(--t-base) var(--ease-out);
-  transform-origin: top right;
-}
-.inbox-head {
-  display: flex;
-  align-items: center;
-  padding: 12px 14px 8px;
-}
-.inbox-head .eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--st-blocked);
-}
-.inbox-hint {
-  margin-left: auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--whisper);
-}
-.inbox-empty {
-  padding: 22px 16px 26px;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--subtle);
-}
-.inbox-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border: none;
-  border-top: 1px solid var(--rule);
-  border-left: 2px solid var(--st-blocked);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  animation: row-in var(--t-base) var(--ease-out) backwards;
-  transition: background-color var(--t-fast) var(--ease);
-}
+/* 收件箱的行几何已迁到 AttentionInbox.tsx。入场动画留在这里:前几行
+   错开出现是 `:nth-child` 规则,元素自己数不出「我是第几个」。 */
+.inbox-item { animation: row-in var(--t-base) var(--ease-out) backwards; }
 .inbox-item:nth-child(3) { animation-delay: 30ms; }
 .inbox-item:nth-child(4) { animation-delay: 60ms; }
 .inbox-item:nth-child(5) { animation-delay: 90ms; }
-.inbox-item:hover { background: var(--panel-raised); }
-.inbox-agent { flex: none; display: flex; }
-.inbox-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.inbox-title {
-  font-size: 12.5px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.inbox-meta {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.inbox-arrow { flex: none; color: var(--whisper); }
-.inbox-item:hover .inbox-arrow { color: var(--text); }
-.inbox-foot {
-  padding: 9px 14px;
-  border-top: 1px solid var(--rule);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--whisper);
-}
-
-/* 「刚刚完成」分组:完成项是背景信息,压低存在感,别和红色的等待项抢注意力。 */
-.inbox-done-head {
-  padding: 8px 14px 4px;
-  border-top: 1px solid var(--rule);
-  margin-top: 4px;
-}
-.inbox-item-done { opacity: 0.75; }
-.inbox-item-done:hover { opacity: 1; }
-
 /* 项目切换下拉(预览稿 .ptab-more / .pswitch):tab 条右端的折叠入口,
    面板列出空闲项目 + 总览 / 打开项目两条动作。 */
 .ptab-more {
@@ -404,17 +280,10 @@
    画布|右栏是留白 —— 右栏整体是一张浮动圆角卡片(见下),它和
    画布之间靠背景色的空隙分隔,不需要线。 */
 /* 通铺:侧栏与画布同一底色 —— 细线是唯一的分界,两块不同深浅的
-   底色会让分界变成"色块拼接"。styles/design-system 里侧栏是
-   --panel,在 app-workspace 作用域统一覆盖为 --bg;头部工具行、
-   底部新建区和状态栏同理。 */
-.app-workspace .sidebar { background: var(--bg); }
-.app-workspace .sidebar-footer { background: var(--bg); }
+   底色会让分界变成"色块拼接"。侧栏自身与底部新建区已经在组件里直接
+   写成 --bg;状态栏留在这里,因为它在总览屏(.app-overview-host)里也
+   渲染一份,只有工作区里那份该跟着通铺。 */
 .app-workspace .status-bar { background: var(--bg); }
-/* 文件树选中行的 accent 左条去掉:它和整个中性色系统格格不入,
-   选中态靠底色已经足够。设置导航的同款竖条一并移除。 */
-.app-workspace .file-row.file.selected,
-.app-workspace .file-row.dir.selected { box-shadow: none; }
-.settings-dialog .settings-nav-item.active::before { content: none; }
 .app-workspace .col-handle-line {
   width: 1px;
   background: var(--rule);
@@ -463,64 +332,15 @@
 }
 /* 画布保持铺满(单列时没有悬浮孤岛感)。 */
 .app-workspace .agent-workspace-widget { background: var(--bg); }
-/* 右栏本来就是卡片堆叠,外壳不再需要自己的边框底色;
-   panel-stack 的 padding 已经提供了与邻居的间隔。 */
-.app-workspace .right-pane { background: var(--bg); }
-/* 卡片四周留白 8px:左侧不能为 0 —— overflow-x hidden 会把贴边
-   卡片的左侧阴影整个裁掉。列间距相应由分隔条(收窄)+ 这 8px 组成。 */
-.app-workspace .right-pane-body.panel-stack { padding: 8px; }
+/* 右栏外壳与卡片栈的留白已进 components/RightPane.tsx(`bg-bg` / `p-2`)。
+   8px 的左侧留白不能省 —— overflow-x hidden 会把贴边卡片的左侧阴影整个
+   裁掉。列间距相应由分隔条(收窄)+ 这 8px 组成。 */
 
 /* ============================================================
    Sidebar — 项目分组(项目从顶栏迁入)
    ============================================================ */
 
-/* 侧边栏头部的全局按钮(打开项目 / 总览)—— 与工具条 30px 网格一致。 */
-.sidebar-top-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-size, 30px);
-  height: var(--control-size, 30px);
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.sidebar-top-btn:hover:not(:disabled) {
-  background: var(--panel-raised);
-  color: var(--text);
-}
-.sidebar-top-btn:disabled { opacity: 0.4; cursor: default; }
-
-.sb-project { margin-bottom: 2px; }
-.sb-project-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 7px 10px 7px 8px;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.sb-project-head:hover { background: var(--panel-raised); color: var(--text); }
-.sb-project-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sb-project-body { padding-left: 4px; }
+/* 头部按钮与项目分组行已迁到 Sidebar.tsx / SidebarProjectGroup.tsx。 */
 
 /* ============================================================
    Sidebar — agent filter census + live session list
@@ -535,94 +355,8 @@
 
 /* One scroller for the whole session list. The groups inside it size to
    their content — the sidebar scrolls, not each group. */
-.sidebar-scroll {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 6px;
-}
-.sidebar-live {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 0 6px 6px;
-}
-.sidebar-live[hidden] { display: none; }
-
-/* A transcript-only row's extra tag, and the two states the list can be in
-   when it has nothing to show. */
-.live-worktree { color: var(--st-working); }
-.sidebar-live-empty,
-.sidebar-scan-error {
-  padding: 14px 14px 10px;
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--subtle);
-}
-.sidebar-scan-error { color: var(--st-working); }
-.sidebar-footer { margin-top: auto; }
-.live-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: var(--radius-md, 8px);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease);
-}
-.live-row:hover { background: var(--panel-raised); }
-/* 焦点会话(预览稿 .sess.active):底色比 hover 更实,回答「键盘在谁那」。 */
-.live-row.is-active { background: var(--panel-raised); }
-/* Sessions currently mounted on the canvas get the accent rail, so the list
-   shows at a glance which of them you are actually looking at. */
-.live-row::before {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  width: 2px;
-  height: 0;
-  border-radius: 999px;
-  background: var(--st-working);
-  transform: translateY(-50%);
-  opacity: 0;
-  transition: height var(--t-base) var(--ease), opacity var(--t-base) var(--ease);
-}
-.live-row.is-open::before { height: 58%; opacity: 1; }
-.live-row:hover::before { height: 36%; opacity: 0.5; }
-.live-row.is-open:hover::before { height: 58%; opacity: 1; }
-
-.live-agent { flex: none; display: flex; }
-.live-title {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--text-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.live-row.is-open .live-title { color: var(--text); }
-.live-pane {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--st-working);
-  border: 1px solid var(--st-working);
-  border-radius: 4px;
-  padding: 2px 4px;
-}
+/* 侧栏滚动列、会话行、空态提示已迁到 Sidebar.tsx /
+   SidebarProjectGroup.tsx(共享部分在 components/sidebarStyles.ts)。 */
 
 
 /* ============================================================
@@ -630,79 +364,7 @@
    ============================================================ */
 
 .agent-workspace-widget { display: flex; flex-direction: column; min-height: 0; }
-/* 画布工具条与画布同底、无下边线 —— 通铺。 */
-.canvas-toolbar {
-  background: var(--bg);
-  border-bottom: none;
-}
-.panel-toggle { position: relative; display: inline-flex; }
-.panel-toggle .count-badge-float { box-shadow: 0 0 0 2px var(--surface); }
-.panel-add { margin-left: 2px; }
-
-.panel-catalog {
-  width: 300px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 14px;
-  box-shadow: var(--elevation-menu);
-  overflow: hidden;
-  animation: pop-in var(--t-base) var(--ease-out);
-}
-.panel-catalog-head {
-  padding: 12px 14px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--subtle);
-}
-.panel-catalog-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--rule);
-}
-.panel-catalog-row.is-disabled { opacity: 0.5; }
-.pc-icon {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-raised);
-  color: var(--muted);
-}
-.pc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pc-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.pc-desc {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--subtle);
-}
-.pc-state {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--subtle);
-  border: 1px solid var(--rule);
-  border-radius: 5px;
-  padding: 2px 6px;
-}
-.pc-state.is-on {
-  color: var(--st-done);
-  border-color: transparent;
-  background: rgba(var(--st-done-rgb), 0.14);
-}
-.panel-catalog-foot {
-  padding: 9px 14px;
-  border-top: 1px solid var(--rule);
-  font-size: 10.5px;
-  line-height: 1.5;
-  color: var(--whisper);
-}
+/* 画布工具条、面板开关与面板目录已迁到 components/CanvasToolbar.tsx。 */
 
 /* ============================================================
    Status bar
@@ -711,233 +373,26 @@
 .app-workspace { display: flex; flex-direction: column; min-height: 0; }
 .app-workspace-view { flex: 1; min-height: 0; display: flex; }
 
-.status-bar {
-  flex: none;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 14px;
-  border-top: 1px solid var(--rule);
-  background: var(--surface);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--subtle);
-}
-.sb-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.sb-dim { color: var(--whisper); }
+/* 状态栏已迁到 StatusBar.tsx。 */
 
 /* ============================================================
    Settings — dialog over the workspace
    ============================================================ */
 
-.settings-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 180;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(10px);
-  animation: fade-in var(--t-base) var(--ease-out);
-}
+/* 设置弹窗的遮罩与外框已迁到 components/SettingsModal.tsx。 */
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.settings-dialog {
-  width: 900px;
-  max-width: 92vw;
-  height: 640px;
-  max-height: 86vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 16px;
-  box-shadow: var(--elevation-menu);
-  overflow: hidden;
-  animation: dialog-in var(--t-slow) var(--ease-out);
-}
 @keyframes dialog-in {
   from { opacity: 0; transform: translateY(10px) scale(0.985); }
   to { opacity: 1; transform: none; }
 }
 
-/* 确认弹窗(lib/confirm.tsx)—— 与设置 dialog 同一套面板令牌,
-   z-index 高于设置(180):确认可能从设置页里弹出。 */
-.confirm-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 240;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(10px);
-  animation: fade-in var(--t-base) var(--ease-out);
-}
-.confirm-dialog {
-  width: 420px;
-  max-width: 90vw;
-  padding: 20px 22px 16px;
-  background: var(--panel);
-  border: 1px solid var(--rule-strong);
-  border-radius: 14px;
-  box-shadow: var(--elevation-menu);
-  animation: dialog-in var(--t-slow) var(--ease-out);
-}
-.confirm-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-.confirm-message {
-  margin-top: 8px;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-.confirm-btn {
-  height: var(--control-size, 30px);
-  padding: 0 14px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.confirm-btn:hover {
-  background: var(--panel-raised);
-  color: var(--text);
-}
-.confirm-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.confirm-btn.is-primary {
-  background: var(--accent);
-  border-color: transparent;
-  color: var(--bg);
-}
-.confirm-btn.is-primary:hover { opacity: 0.9; color: var(--bg); }
-.confirm-btn.is-danger {
-  border-color: rgba(var(--st-blocked-rgb), 0.5);
-  color: var(--st-blocked);
-}
-.confirm-btn.is-danger:hover {
-  background: rgba(var(--st-blocked-rgb), 0.12);
-  border-color: transparent;
-  color: var(--st-blocked);
-}
+/* 确认弹窗已迁到 lib/confirm.tsx —— 仍读同一套面板令牌,和其余浮层
+   是一家人。 */
 
-.settings-dialog-head {
-  flex: none;
-  height: var(--toolbar-h);
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 12px 0 16px;
-  border-bottom: 1px solid var(--rule);
-}
-.settings-dialog-head .sd-title { font-size: 13px; font-weight: 600; color: var(--text); }
+/* 弹窗骨架(头、侧栏、导航、主区、页脚)已迁到 SettingsModal.tsx。 */
 
-.settings-body { flex: 1; min-height: 0; display: flex; }
-
-.settings-dialog .settings-sidebar {
-  width: 210px;
-  flex: none;
-  border-right: 1px solid var(--rule);
-  padding: 12px 10px 18px;
-  overflow-y: auto;
-  background: var(--surface);
-}
-.settings-nav-group + .settings-nav-group { margin-top: 14px; }
-.settings-nav-title {
-  padding: 4px 10px 6px;
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--whisper);
-}
-.settings-dialog .settings-nav-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: var(--radius-md, 8px);
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.settings-dialog .settings-nav-item:hover:not(:disabled) {
-  background: var(--panel-raised);
-  color: var(--text);
-}
-.settings-dialog .settings-nav-item.active {
-  background: var(--panel-raised);
-  color: var(--text);
-  font-weight: 600;
-}
-.settings-dialog .settings-nav-item.pending { opacity: 0.45; cursor: not-allowed; }
-.nav-pending {
-  margin-left: auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8px;
-  color: var(--whisper);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  padding: 1px 4px;
-}
-
-.settings-dialog .settings-main { flex: 1; min-width: 0; overflow-y: auto; }
-.settings-dialog .settings-content { padding: 22px 26px 30px; }
-
-.settings-dialog .settings-footer {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--rule);
-  background: var(--surface);
-}
-
-/* Shared row chrome for the new read-only pages. */
-.settings-section h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-.settings-lede { margin: 6px 0 18px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
-/* 卡片、行、开关、chip 等已迁到 ui/SettingControls.tsx 的 Tailwind utility。
-   这里只留 Tailwind 表达不了的东西:相邻兄弟间距(元素看不见自己前面是
-   什么),以及尚未迁移的页面还在用的零散钩子。 */
-.settings-kbd {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--text-soft);
-  border: 1px solid var(--rule-strong);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  padding: 2px 7px;
-  background: var(--panel);
-}
-.settings-row-chevron { flex: none; color: var(--whisper); opacity: 0.5; }
-
+/* 页标题与 lede 已迁到 ui/SettingControls.tsx 的 SettingSection。 */
 /* ---- card-row primitives (ui/SettingControls.tsx) ---- */
 
 /* Space between a card and the next group's label. Written as sibling rules
@@ -950,60 +405,8 @@
 .settings-group + .settings-group-label { margin-top: 22px; }
 .settings-note + .settings-group-label { margin-top: 22px; }
 
-/* A continuation row — "写入位置" under the agent it belongs to. Lighter
-   than a name so the pair reads as one entry, not two. */
-.settings-row-sub { font-weight: 400; color: var(--subtle); }
-
-.settings-input {
-  flex: none;
-  width: 150px;
-  height: var(--control-size-sm);
-  padding: 0 8px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--panel);
-  color: var(--text);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
-  outline: none;
-  transition: border-color var(--t-fast) var(--ease);
-}
-.settings-input:hover { border-color: var(--rule-strong); }
-.settings-input:focus { border-color: var(--accent); }
-.settings-input::placeholder { color: var(--whisper); }
-
-/* Language-server rows have no brand icon, so they get a two-letter tag —
-   the preview's `.letter-ico`. */
-.lsp-letter {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-/* Three cards, one row. The old grid was `auto-fill minmax(150px)` for ten
-   themes; with three named choices they should sit side by side rather than
-   reflow into a ragged block. */
-.theme-grid-modes {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.theme-grid-modes .theme-card-mode {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9px;
-  color: var(--whisper);
-  text-transform: none;
-  letter-spacing: 0;
-}
-/* The label row keeps its height whether or not the mode caption is there,
-   so the three cards stay the same size. */
-.theme-grid-modes .theme-card-label { min-height: 18px; }
 .settings-group-label.settings-group-gap { margin-top: 22px; }
 
-
-/* The legacy stylesheet stamps a "SECTIONS" caption above the nav. The
-   dialog's nav is now self-labelling (each group carries its own title),
-   so the extra caption is one heading too many. */
-.settings-dialog .settings-nav::before { content: none; }
 
 /* ============================================================
    Agent panes — header, focus ring, worktree chip
@@ -1033,71 +436,8 @@
   gap: 9px;
 }
 
-/* Pane number. Mirrors the badge the sidebar row carries, so the list and
-   the canvas can be read against each other — that pairing is the reason
-   the number is worth the space at all. */
-.pane-idx {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--whisper);
-  border: 1px solid var(--rule-strong);
-  border-radius: 4px;
-  padding: 2px 5px;
-  transition:
-    color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease);
-}
-.pane-cell.focused .pane-idx {
-  color: var(--st-working);
-  border-color: var(--st-working);
-}
-
-/* 等待态的文字 chip(预览稿 header 的 `.chip`):等待是唯一需要用户行动的
-   状态,值得一个词;点保持在 chip 内做颜色锚点。 */
-.pane-status-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 1.4;
-}
-.pane-status-chip.light-waiting {
-  color: var(--st-blocked);
-  background: rgba(var(--st-blocked-rgb), 0.12);
-}
-
-.pane-spacer { flex: 1 1 auto; min-width: 0; }
-
-/* Worktree branch chip. The ⌥ is a mark, not a shortcut — it reads as
-   "branched off" at a glance without spending a word on it. */
-.pane-branch {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 220px;
-  padding: 2px 8px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 6px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--muted);
-  overflow: hidden;
-}
-.pane-branch-mark { flex: none; color: var(--whisper); }
-.pane-branch b {
-  font-weight: 500;
-  color: var(--text-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 面板序号、等待 chip、spacer、worktree 分支 chip 都已迁到
+   components/TerminalPane.tsx。 */
 
 .pane-merge {
   flex: none;
@@ -1121,147 +461,12 @@
 }
 .pane-merge:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ============================================================
-   Command palette — jump-to rows
-   ============================================================ */
-
-/* 输入行:包住原本的 input,好在右侧放 `.cmdk-scope` 作用域标签。
-   底边框从 input 上移到这一行(styles.css 里的旧规则在此被覆盖)。 */
-.cmd-palette-input-row {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-right: 14px;
-  border-bottom: 1px solid var(--rule);
-}
-.cmd-palette-input-row .cmd-palette-input {
-  flex: 1;
-  min-width: 0;
-  border-bottom: none;
-}
-/* 作用域标签:小胶囊,提示当前搜索/命令作用于哪个项目(预览稿 .cmdk-scope)。 */
-.cmdk-scope {
-  flex: none;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--accent);
-  background: var(--accent-tint);
-  border-radius: 6px;
-  padding: 3px 8px;
-}
-
-.cmd-group {
-  padding: 10px 14px 5px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--whisper);
-}
-.cmd-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 8px 14px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--t-fast) var(--ease);
-}
-.cmd-row:hover,
-.cmd-row.focused { background: var(--panel-raised); }
-.cmd-row-icon {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-raised);
-  color: var(--muted);
-}
-.cmd-row.focused .cmd-row-icon { background: var(--panel-sunken); }
-.cmd-row-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--whisper);
-}
-.cmd-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.cmd-row-label {
-  font-size: 13px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cmd-row-detail {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cmd-palette-foot {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--rule);
-  background: var(--surface);
-  font-size: 10.5px;
-  color: var(--whisper);
-}
-.cmd-foot-right {
-  margin-left: auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
+/* 命令面板(输入行、作用域标签、jump-to 行、底部提示条)已迁到
+   components/CommandPalette.tsx。 */
 
 /* ============================================================
    Right column — stacked panel cards
    ============================================================ */
-
-.right-pane-body.panel-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  overflow-y: auto;
-  /* 必须显式:只写 overflow-y 时 overflow-x 会被隐式提升为 auto,
-     内部稍宽的内容(xterm 固定列宽)就会撑出一根横向滚动条。 */
-  overflow-x: hidden;
-  min-height: 0;
-}
-/* 没有入场动画:动画期间(即使只做 opacity)整张卡会被提成独立合成层,
-   文件树这类大内容卡在 WKWebView 里异步分块光栅化,内容呈自上而下扫描式
-   出现。切项目会重挂面板、每次重播动画,这个代价付不起。 */
-.panel-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 140px;
-  flex: 1 1 0;
-  border-radius: 12px;
-  background: var(--surface);
-  /* 浮起感来自阴影,不描边(Claude Desktop 的卡片语言)。 */
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.05),
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 6px 18px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-}
-.panel-card[hidden] { display: none; }
 
 /* 卡片之间的横向拖拽手柄(ui/StackResizer)。占据 panel-stack 原本
    8px gap 的位置(stack 的 gap 由它替代,见下),平时透明,hover /
@@ -1275,8 +480,6 @@
 .stack-resizer:last-child,
 /* 后面再没有可见卡片的 resizer(只剩第一张卡打开时)也不显示。 */
 .stack-resizer:not(:has(~ .panel-card:not([hidden]))) { display: none; }
-/* 卡片间距由 resizer 的 8px 高度承担,gap 归零避免叠加成 16px。 */
-.right-pane-body.panel-stack { gap: 0; }
 /* Solo: the focused card takes the stack and its siblings shrink to their
    headers — nothing unmounts, so the terminals keep running behind it. */
 .panel-stack:has(.panel-card.is-solo) .panel-card:not(.is-solo) {
@@ -1286,87 +489,11 @@
 .panel-stack:has(.panel-card.is-solo) .panel-card:not(.is-solo) .panel-card-body {
   display: none;
 }
-.panel-card.is-solo { flex: 1 1 auto; }
 
-.panel-card-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px 7px 12px;
-  /* 通铺:header 与卡身同色、无分隔线(Claude Desktop 的卡片语言)。
-     标题行靠留白和字重与内容区分,不靠色块。 */
-  background: transparent;
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-.pcard-title { flex: none; font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
-.pcard-bind {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  flex: 0 1 auto;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 10.5px;
-  color: var(--muted);
-  background: var(--panel-raised);
-  border-radius: 6px;
-  padding: 2px 7px 2px 4px;
-}
-.pcard-bind svg { flex: none; color: var(--whisper); }
-.pcard-bind .mono {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pcard-count {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9px;
-  border-radius: 999px;
-  padding: 2px 6px;
-  background: rgba(var(--st-working-rgb), 0.14);
-  color: var(--st-working);
-}
-.panel-card-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-/* The hosted panels were written to fill a full column; inside a card they
-   just fill the card. */
-.panel-card-body > * { min-height: 0; }
+/* 卡片头、绑定 chip、计数角标与正文都已迁到 ui/PanelCard.tsx。 */
 
-/* The legacy pane stacked its hosts with `position: absolute; inset: 0`,
-   which only works when exactly one of them is visible. In the card stack
-   each host has to lay out inside its own card instead, so they go back
-   into normal flow. */
-.panel-stack .manual-terminal-host,
-.panel-stack .file-tree-host {
-  position: relative;
-  inset: auto;
-  flex: 1;
-  min-height: 0;
-}
-.panel-stack .right-editor-workspace {
-  height: 100%;
-  /* 行高必须钉死在卡片内,不许跟随内容。缺了这条,树的容器被内容越撑
-     越高,ResizeObserver 把更大的高度喂回虚拟化列表,列表再渲染更多行
-     ——一个每帧自增的反馈循环,表现为文件树"从上往下慢慢渲染"。 */
-  grid-template-rows: minmax(0, 1fr);
-}
-/* 旧布局里 host 是 absolute inset:0,天然受父级约束;流内布局里 flex:1
-   要生效,父级必须真的是 flex 列容器 —— styles.css 里它只是 relative。 */
-.panel-stack .right-editor-file-tree {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
+/* 卡片内几个 host 的流内布局修正已随 RightPane 迁走 —— 那些规则原本是
+   「在卡片栈里」才生效的覆盖,现在直接写在对应元素上。 */
 
 /* ============================================================
    Projects overview
@@ -1380,320 +507,16 @@
   display: flex;
   flex-direction: column;
 }
-.projects-overview {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  overflow: hidden;
-  animation: fade-in var(--t-base) var(--ease-out);
-}
-.po-head {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  padding: 26px 32px 16px;
-}
-.po-head h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
-.po-summary {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
-  color: var(--muted);
-}
-.po-hot { color: var(--st-blocked); }
-.po-warm { color: var(--st-working); }
-
-.po-filter { align-self: center; display: flex; gap: 6px; }
-.po-fpill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: var(--control-size-sm);
-  padding: 0 10px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--subtle);
-  font-size: 11.5px;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease);
-}
-.po-fpill:hover:not(.is-active) { border-color: var(--rule-strong); color: var(--muted); }
-.po-fpill.is-active {
-  background: var(--panel-raised);
-  border-color: var(--rule-strong);
-  color: var(--text);
-}
-/* Only the blocked filter earns colour, and only while it has something in
-   it — a permanently red pill stops meaning "look here". */
-.po-fpill.is-hot { color: var(--st-blocked); border-color: rgba(var(--st-blocked-rgb), 0.4); }
-.po-fpill-n {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--whisper);
-}
-.po-fpill.is-hot .po-fpill-n { color: var(--st-blocked); }
-.po-fpill.is-active .po-fpill-n { color: var(--text-soft); }
-
-.po-empty {
-  padding: 8px 32px 20px;
-  font-size: 12.5px;
-  color: var(--subtle);
-}
-
-.po-grid {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
-  padding: 4px 32px 32px;
-  align-content: start;
-}
-.po-card {
-  display: flex;
-  flex-direction: column;
-  /* 三行(名字 / 标签 / 路径)之间用 6px —— 原来的 10px 是给「名字 +
-     色条 + 两行计数」那版排的,行数减半后同样的间距会把卡片撑空。 */
-  gap: 6px;
-  padding: 14px 15px 13px;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: var(--panel);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--t-base) var(--ease),
-    transform var(--t-base) var(--ease),
-    box-shadow var(--t-base) var(--ease);
-}
-.po-card:hover {
-  border-color: var(--rule-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(var(--shadow-rgb, 0, 0, 0), 0.22);
-}
-.po-card:active { transform: scale(0.995); }
-/* A project whose agent is blocked outranks whatever you were looking at,
-   so the card says so before you read its name. */
-.po-card.is-attention { border-color: rgba(var(--st-blocked-rgb), 0.42); }
-
-.po-card-top { display: flex; align-items: center; gap: 9px; }
-.po-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.po-meta,
-.po-path {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.po-path { color: var(--whisper); }
-
-/* 中间一行:分支 + worktree/隔离。各卡片的这一行都从左边同一处起排,
-   所以扫一列卡片时这些标签是对齐的。 */
-.po-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-.po-tag {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--whisper);
-  white-space: nowrap;
-}
-
-/* 卡片名旁的当前分支名 — 等宽小字、subtle(预览稿 .pcard-top .branch)。 */
-.po-branch {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 网格末尾的虚线「打开项目」卡(预览稿 .pcard-new)。 */
-.po-card-new {
-  border: 1px dashed var(--rule-strong);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  /* 不自己定高 —— 卡片内容精简过一轮,写死的 140px 会让这张虚线卡比
-     旁边的项目卡高出一截。让网格行高来决定,它自然和同行对齐。 */
-  color: var(--whisper);
-  background: none;
-  font-size: 12.5px;
-  cursor: pointer;
-  transition:
-    color var(--t-base) var(--ease),
-    background-color var(--t-base) var(--ease);
-}
-.po-card-new:hover {
-  color: var(--text);
-  border-style: solid;
-  background: var(--panel);
-}
-.po-card-new:disabled { opacity: 0.6; cursor: default; }
+/* 总览屏已迁到 components/ProjectsOverview.tsx。`.app-overview-host`
+   (上面)留着 —— 那是 App.tsx 的外壳。 */
 
 /* ============================================================
    Session composer — the empty-canvas "start something" surface
    ============================================================ */
 
-.new-session-picker-host {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 28px;
-  overflow-y: auto;
-}
-.composer {
-  width: 460px;
-  max-width: 100%;
-  padding: 20px 22px 18px;
-  border: 1px solid var(--rule);
-  border-radius: 16px;
-  background: var(--panel);
-  animation: card-in var(--t-slow) var(--ease-out);
-}
-.composer-eyebrow {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--subtle);
-}
-.composer-lede { margin-top: 7px; font-size: 12.5px; color: var(--muted); }
-.composer-label {
-  margin: 18px 0 8px;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps, 0.055em);
-  text-transform: uppercase;
-  color: var(--subtle);
-}
-.composer-agents { display: flex; flex-direction: column; gap: 8px; }
-.composer-agent {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  padding: 10px 13px;
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  background: var(--surface);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--t-fast) var(--ease),
-    background-color var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease);
-}
-.composer-agent:hover:not(:disabled) {
-  border-color: var(--rule-strong);
-  background: var(--panel-raised);
-}
-.composer-agent:active:not(:disabled) { transform: scale(0.985); }
-.composer-agent:disabled { opacity: 0.45; cursor: not-allowed; }
-.composer-agent-icon { flex: none; display: flex; }
-.composer-agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.composer-agent-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.composer-agent-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.composer-agent-meta code {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--subtle);
-}
-.chip-ok,
-.chip-warn {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  border-radius: 5px;
-  padding: 1px 6px;
-}
-.chip-ok { color: var(--st-done); background: rgba(var(--st-done-rgb), 0.14); }
-.chip-warn { color: var(--st-working); background: rgba(var(--st-working-rgb), 0.14); }
-.composer-agent-busy {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--st-working);
-}
+/* composer 已迁到 components/NewSessionPicker.tsx。同段的 `.composer-lede`
+   / `.composer-foot` / `.composer-opt-desc` 一并删掉 —— tsx 里已无引用。 */
 
-.composer-opt {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  width: 100%;
-  margin-top: 14px;
-  padding: 11px 13px;
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
-}
-.composer-opt:hover { border-color: var(--rule-strong); background: var(--surface); }
-/* composer 的开关直接复用 ui/SettingControls 的 ToggleTrack —— 组件唯一,
-   几何与可见性只改一处。 */
-.composer-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.composer-opt-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
-.composer-opt-desc { font-size: 10.5px; line-height: 1.5; color: var(--subtle); }
-
-/* 预览稿 .modal-foot 的提示行:低声量,贴在卡片底部。 */
-.composer-foot {
-  display: flex;
-  gap: 14px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--rule);
-  font-size: 10.5px;
-  color: var(--whisper);
-}
-.composer-foot span { display: inline-flex; align-items: center; gap: 5px; }
-
-/* Live session rows carry two lines: the title (or the agent's name when
-   the session was never renamed) and a status + age subline. Without the
-   subline a column of untitled sessions is indistinguishable. */
-.live-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.live-sub {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  color: var(--whisper);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.live-row { padding-top: 6px; padding-bottom: 6px; }
 
 .workspace-context-bar { gap: 10px; }
 .workspace-context-label {
@@ -1706,26 +529,7 @@
 }
 
 /* Collapsible history section */
-.sidebar-section-heading.is-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: color var(--t-fast) var(--ease);
-}
-.sidebar-section-heading.is-toggle:hover { color: var(--text); }
-.sec-chevron {
-  flex: none;
-  color: var(--whisper);
-  transition: transform var(--t-base) var(--ease);
-}
-.sec-chevron.open { transform: rotate(90deg); }
-.sidebar-section-heading.is-toggle .sidebar-section-context { margin-left: auto; }
+/* 「更早」折叠标题与箭头已迁到 SidebarProjectGroup.tsx。 */
 
 /* The workspace target picker, now living in the canvas toolbar. */
 .canvas-target { display: inline-flex; align-items: center; min-width: 0; }
@@ -1735,40 +539,8 @@
    Sidebar — "needs you" block, ALL filter, new-session button
    ============================================================ */
 
-/* The agent filter row is the sidebar's share of the app's toolbar band —
-   same height as the canvas toolbar and the panel headers, so the three
-   columns start at one line. Overflow stays visible so the count badges
-   aren't clipped; the pill list is capped instead (see Sidebar.tsx). */
-.sidebar-header {
-  height: var(--toolbar-h);
-  padding: 0 12px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 7px;
-}
-/* design-system.css scopes its version under `.app-workspace`, which wins on
-   specificity — so the override has to be scoped the same way. Its
-   `flex-direction: column` is what pushed the filter pills into the middle of
-   the sidebar: on a column, `align-items: center` centres horizontally. And
-   styles.css sets `justify-content: space-between`, which flings the pills to
-   the far edge once the collapse button shares the row. The bar reads left to
-   right, led by the collapse button, like the preview. design-system.css also
-   sizes the pills at 40px; the redesign puts every control on one 30px grid. */
-.app-workspace .sidebar-header {
-  overflow: visible;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 7px;
-  height: var(--toolbar-h);
-  min-height: var(--toolbar-h);
-  padding: 0 12px;
-  /* design-system.css 给它 var(--panel)——侧栏其余部分已通铺 --bg,
-     这条横带不跟上就会显出一截色差。 */
-  background: var(--bg);
-}
+/* 侧栏头部工具行已迁到 Sidebar.tsx —— 它和画布工具条、面板头共用
+   同一条 30px 工具条带,所以三列的顶端在一条线上。 */
 .app-workspace .sidebar-agent-tabs {
   overflow: visible;
   gap: 6px;
@@ -1819,76 +591,11 @@
 /* Blocked sessions get their own block above the list. The tint is the
    whole point: with 25 sessions the one that stopped has to be reachable
    without scrolling. */
-.needs-you {
-  margin: 4px 8px 8px;
-  border: 1px solid rgba(var(--st-blocked-rgb), 0.3);
-  border-radius: 12px;
-  background: rgba(var(--st-blocked-rgb), 0.07);
-  overflow: hidden;
-  padding-bottom: 4px;
-}
-.needs-you-head { color: var(--st-blocked); }
-.needs-you .live-row { margin: 0 4px; }
+/* 「等你处理」块已迁到 SidebarProjectGroup.tsx。 */
 
-.sidebar-footer { padding: 10px; }
-.new-session-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 10px;
-  background: var(--panel-raised);
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease);
-}
-.new-session-btn:hover:not(:disabled) {
-  background: var(--panel-sunken);
-  border-color: var(--muted);
-}
-.new-session-btn:active:not(:disabled) { transform: scale(0.98); }
-.new-session-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.nsb-plus {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  background: var(--st-working);
-  color: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.nsb-plus svg { width: 12px; height: 12px; }
-.nsb-label { flex: 1; text-align: left; }
-.new-session-btn kbd {
-  flex: none;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 9.5px;
-  color: var(--subtle);
-  border: 1px solid var(--rule-strong);
-  border-radius: 4px;
-  padding: 1px 4px;
-}
+/* 新建会话按钮已迁到 Sidebar.tsx(样式在 components/sidebarStyles.ts)。 */
 
-/* The target picker rendered as a panel-card binding chip. */
-.pcard-bind .workspace-target-picker { margin: 0; }
-.pcard-bind select,
-.pcard-bind .native-select {
-  background: transparent;
-  border: none;
-  font-size: 10.5px;
-  color: var(--muted);
-  padding: 0;
-}
-.sb-version { margin-left: 4px; }
+/* 绑定 chip 里的目标选择器改由 ui/PanelCard.tsx 的后代 utility 处理。 */
 
 .sidebar-agent-more {
   flex: none;
@@ -1900,61 +607,7 @@
 /* Badges ride above the pill now that the row no longer clips. */
 .sidebar-agent-tab .count-badge-float { top: -6px; right: -6px; }
 
-/* ── 设置:导航搜索与「集成」角标(对照预览稿 .set-search / .nav-warn) ── */
-.settings-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 12px;
-  padding: 7px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 9px;
-  color: var(--whisper);
-  transition: border-color var(--t-fast) var(--ease);
-}
-.settings-search:focus-within { border-color: var(--rule-strong); }
-.settings-search svg { flex: none; }
-.settings-search input {
-  flex: 1;
-  min-width: 0;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-size: 12.5px;
-}
-.settings-search input::placeholder { color: var(--whisper); }
-/* WebKit 给 type=search 自带一个清除小叉,和描边风格打架。 */
-.settings-search input::-webkit-search-cancel-button { display: none; }
-
-/* 未接入集成的计数角标。用 working 琥珀色 —— 它是「有事待办」,
-   不是 blocked 那种「正在拦着你」。 */
-.settings-nav-warn {
-  margin-left: auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8px;
-  font-weight: 700;
-  background: rgba(var(--st-working-rgb), 0.16);
-  color: var(--st-working);
-  border-radius: 99px;
-  padding: 1.5px 5.5px;
-}
-
-/* 过滤后一无所有时的占位,免得侧栏空得像坏了。 */
-.settings-nav-empty {
-  padding: 10px;
-  font-size: 12px;
-  color: var(--whisper);
-}
-
-/* ============================================================
-   Toast — Base UI 堆叠通知
-   ------------------------------------------------------------
-   停靠右下,和 `.update-notice` 共用一套卡片语言(同底、同描边、
-   同投影),差别只在左侧那道按严重度着色的竖条 —— 一眼分清是报错
-   还是完成,不用读完整句。
-   ============================================================ */
-/* Toast 已迁到 components/ui/Toaster.tsx 的 Tailwind utility。 */
+/* 设置导航的搜索框、角标与空态已迁到 SettingsModal.tsx。 */
 
 /* ============================================================
    Pane 卡片 —— 跟右栏 `.panel-card` 对齐
@@ -1998,7 +651,8 @@
 
 /* pane 标题与右栏卡头同一字号字重,两栏的标题行才在一条水平线上读。 */
 /* 标题只占自己需要的宽度。原来是 `flex: 1 1 auto`,加上后面那个同样
-   `flex: 1` 的 `.pane-spacer`,两者平分剩余空间 —— 结果状态点被推到
+   `flex: 1` 的 spacer(现在写在 TerminalPane 里),两者平分剩余空间
+   —— 结果状态点被推到
    header 正中,读起来像个独立的东西,而不是跟着标题的状态。收缩靠
    max-width 兜底,长标题照样省略号。 */
 .docked-workspace .pane-title {
@@ -2007,39 +661,6 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
-}
-
-/* ============================================================
-   Session composer —— 同上,去描边改阴影
-   ============================================================ */
-.composer {
-  border: none;
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.05),
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 6px 18px rgba(0, 0, 0, 0.08);
-}
-
-/* 卡内的可选项:内嵌元素不该有和外层卡一样强的投影,给一层极浅的
-   贴底阴影就够 —— 它要表达的是「可点」,不是「浮在上面」。 */
-.composer-agent,
-.composer-opt {
-  border: none;
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.04),
-    0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.composer-agent:hover:not(:disabled),
-.composer-opt:hover {
-  background: var(--panel-raised);
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.06),
-    0 2px 6px rgba(0, 0, 0, 0.08);
-}
-
-.composer-foot {
-  border-top: none;
 }
 
 /* 卡片语言下 pane 之间要靠留白分隔,不再有描边划界。浅色主题里
@@ -2171,42 +792,9 @@
    ============================================================ */
 /* 触发器与菜单本体已迁到 ui/OverflowMenu.tsx。只留 hover 显形 ——
    由祖先行驱动,元素自己看不见「鼠标在我所在的那一行上」。 */
-.sb-project-head-row:hover .overflow-menu-trigger,
-.live-row-wrap:hover .overflow-menu-trigger,
-.po-card:hover .overflow-menu-trigger {
-  opacity: 1;
-}
-/* ⋮ 要和行并排,所以行本体外面套了一层容器。容器接管原来的圆角和
-   底色,行本身退成一个透明的弹性子项。 */
-.sb-project-head-row,
-.live-row-wrap {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-right: 6px;
-  border-radius: 8px;
-}
-.sb-project-head-row > .sb-project-head,
-.live-row-wrap > .live-row {
-  flex: 1;
-  min-width: 0;
-}
-/* hover / 选中的底色移到容器上。留在内层的话,⋮ 所在的那一截不着色,
-   整行的高亮会缺一块右边。 */
-.sb-project-head-row:hover { background: var(--panel-raised); }
-.sb-project-head-row:hover > .sb-project-head { background: none; }
-
-.live-row-wrap:hover,
-.live-row-wrap.is-active { background: var(--panel-raised); }
-.live-row-wrap:hover > .live-row,
-.live-row-wrap.is-active > .live-row,
-.live-row-wrap > .live-row:hover { background: none; }
-
-/* 分组小标题去掉计数后,space-between 会把仅剩的那个词推到右端 ——
-   「更早」跑到和项目名对不齐的位置。改左对齐;需要靠右的元素
-   (「等你处理」的计数)自己用 margin-left: auto。 */
-.sidebar-section-heading { justify-content: flex-start; }
-.needs-you-head .sidebar-section-context { margin-left: auto; }
+/* ⋮ 的 hover 显形与行容器已收进组件:三处祖先行(侧栏项目头 / 会话行 /
+   总览卡)都标了 `group`,容器本身用 utility 画。分组小标题的左对齐一并
+   进了 components/sidebarStyles.ts。 */
 
 /* ============================================================
    项目选择器 —— 让已有的项目名文本变成可点

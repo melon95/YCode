@@ -109,6 +109,30 @@ interface FileState {
   loaded: boolean;
 }
 
+/// `editor-panel` 留作无样式钩子:CodeMirror 与自绘搜索面板的几十条覆盖
+/// 规则都挂在它下面(见 styles.css),那些节点是 CM 渲染出来的,
+/// Tailwind 够不着。
+const EDITOR_PANEL = "editor-panel flex flex-col h-full min-h-0";
+
+const PREVIEW_TAB = `size-7 p-0 inline-flex items-center justify-center
+  text-muted bg-transparent border border-transparent rounded-md cursor-pointer
+  hover:text-text hover:bg-accent-tint`.replace(/\s+/g, " ");
+
+const PREVIEW_TAB_ON = `${PREVIEW_TAB} !text-accent-strong !bg-accent-tint !border-rule-accent`;
+
+/// Inline image/SVG preview: center the asset and let it scroll if it
+/// overflows. The checkerboard makes transparency obvious for icons/logos.
+const IMAGE_PREVIEW = `flex-1 min-h-0 flex items-center justify-center overflow-auto p-4
+  bg-surface
+  bg-[linear-gradient(45deg,rgba(255,255,255,0.04)_25%,transparent_25%),linear-gradient(-45deg,rgba(255,255,255,0.04)_25%,transparent_25%),linear-gradient(45deg,transparent_75%,rgba(255,255,255,0.04)_75%),linear-gradient(-45deg,transparent_75%,rgba(255,255,255,0.04)_75%)]
+  bg-[length:20px_20px]
+  bg-[position:0_0,0_10px,10px_-10px,-10px_0]
+  [&>img]:max-w-full [&>img]:max-h-full [&>img]:object-contain
+  [&>img]:[image-rendering:auto] [&>img]:shadow-[0_2px_12px_rgba(0,0,0,0.4)]`.replace(
+  /\s+/g,
+  " ",
+);
+
 export function EditorPanel({
   projectId,
   sessionId,
@@ -567,7 +591,7 @@ export function EditorPanel({
 
   if (openFiles.length === 0) {
     return (
-      <div className="editor-panel">
+      <div className={EDITOR_PANEL}>
         <div className="empty">
           Pick a file from the <strong>Files</strong> tab.
         </div>
@@ -588,18 +612,31 @@ export function EditorPanel({
   const showPreviewTabs = !!previewKind && loaded && !isBinary;
 
   return (
-    <div className="editor-panel">
+    <div className={EDITOR_PANEL}>
       {externalChange && (
-        <div className="editor-warning">
+        <div
+          className="flex items-center gap-2 mt-1.5 mx-2.5 mb-0 py-1.5 px-2.5
+            bg-warning-tint text-role-plan border border-warning-edge rounded
+            text-[11px]
+            [&>button]:ml-auto [&>button]:py-0.5 [&>button]:px-2 [&>button]:text-[11px]
+            [&>button]:bg-transparent [&>button]:text-[inherit]
+            [&>button]:border [&>button]:border-current [&>button]:rounded-[3px]
+            [&>button]:cursor-pointer"
+        >
           File changed on disk while you were editing.
           <button onClick={discardAndReload}>Discard &amp; reload</button>
         </div>
       )}
+      {/* Preview/Raw toggle for markdown & SVG files. */}
       {showPreviewTabs && selectedFilePath && (
-        <div className="preview-tabs" role="tablist" aria-label="Preview mode">
+        <div
+          className="flex gap-0.5 py-1 px-2 border-b border-rule bg-surface"
+          role="tablist"
+          aria-label="Preview mode"
+        >
           <button
             type="button"
-            className={previewMode === "preview" ? "active" : ""}
+            className={previewMode === "preview" ? PREVIEW_TAB_ON : PREVIEW_TAB}
             onClick={() => setPreviewMode(selectedFilePath, "preview")}
             role="tab"
             aria-selected={previewMode === "preview"}
@@ -610,7 +647,7 @@ export function EditorPanel({
           </button>
           <button
             type="button"
-            className={previewMode === "raw" ? "active" : ""}
+            className={previewMode === "raw" ? PREVIEW_TAB_ON : PREVIEW_TAB}
             onClick={() => setPreviewMode(selectedFilePath, "raw")}
             role="tab"
             aria-selected={previewMode === "raw"}
@@ -1023,7 +1060,7 @@ function SvgPreview({ value }: { value: string }) {
     [value],
   );
   return (
-    <div className="image-preview">
+    <div className={IMAGE_PREVIEW}>
       <img src={src} alt="SVG preview" />
     </div>
   );
@@ -1087,7 +1124,7 @@ function ImagePreview({
     return <div className="empty">Loading…</div>;
   }
   return (
-    <div className="image-preview">
+    <div className={IMAGE_PREVIEW}>
       <img src={src} alt={basename(path)} />
     </div>
   );

@@ -11,6 +11,7 @@ import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 import { checkForUpdate } from "../lib/updater";
 import { openUrl } from "../lib/ipc";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChips,
@@ -71,13 +72,15 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="settings-section">
-      <h2>关于</h2>
-      <p className="settings-lede">
-        ycode 是一个通用的 AI CLI 工作台 —— 把 agent CLI 原样跑在 PTY 里,
-        围绕它补上多会话、worktree 隔离、检查点与跨项目视图。
-      </p>
-
+    <SettingSection
+      title="关于"
+      lede={
+        <>
+  ycode 是一个通用的 AI CLI 工作台 —— 把 agent CLI 原样跑在 PTY 里,
+          围绕它补上多会话、worktree 隔离、检查点与跨项目视图。
+        </>
+      }
+    >
       <SettingGroupLabel>版本</SettingGroupLabel>
       <SettingCard>
         <SettingRow name="ycode" desc="启动几秒后会自动检查一次更新">
@@ -153,7 +156,7 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
         检查更新是 ycode 唯一的出网请求。其余数据都留在本机 —— 见
         <b>「数据与隐私」</b>。
       </SettingNote>
-    </div>
+    </SettingSection>
   );
 }
 

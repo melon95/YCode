@@ -18,6 +18,65 @@ import { useTodoReorder } from "./useTodoReorder";
 
 type Status = "todo" | "doing" | "done";
 
+/// 面板整体是个 container:窄到 500px 以下时概览换行、行内边距收紧、
+/// 拖拽把手让位(见下面的 `@max-[500px]:`)。
+const PANEL =
+  "h-full min-h-0 overflow-y-auto pt-4 px-3.5 pb-[22px] bg-bg [container-type:inline-size]";
+
+/// 拖拽重排的手感提示。grab 光标覆盖整行(含标题),"可拖"这件事才是
+/// 一致的,而不是只在状态标签上才出现。标题默认的 `cursor: text` 被这里
+/// 盖掉;真正的编辑光标在重命名时替换标题的那个 input 上。
+/// `todo-item` 是无样式钩子:TodoPanel.test.tsx 用 `closest(".todo-item")`
+/// 从标题找回整行来做拖拽重排的断言。
+const ROW = `todo-item group/row flex min-h-12 items-center gap-2 py-[7px] px-[9px]
+  border border-transparent rounded-sm relative
+  transition-[border-color,background-color,opacity] duration-[var(--duration-fast)] ease-out
+  hover:border-rule hover:bg-control-hover
+  @max-[500px]:gap-[7px] @max-[500px]:px-2`.replace(/\s+/g, " ");
+
+/// 空态两行:第二行比第一行再轻一档。
+const ACTIVE_EMPTY = `flex min-h-40 flex-col items-center justify-center gap-[5px]
+  text-text-soft font-ui text-[11px] text-center
+  [&>span:last-child]:text-subtle [&>span:last-child]:text-[10px]`.replace(
+  /\s+/g,
+  " ",
+);
+
+/// 归档页返回键、「已完成」折叠头、「查看全部」都是同一种低声量文字按钮。
+const QUIET_BTN = `flex items-center border-0 rounded-md bg-transparent cursor-pointer
+  hover:bg-control-hover`.replace(/\s+/g, " ");
+
+const TODO_LIST = "list-none m-0 p-0 flex flex-col gap-1";
+
+const WEEK_LIST = "list-none mt-1 mx-0 mb-0 p-0 flex flex-col gap-2";
+
+const PANEL_ERROR =
+  "mt-1 mx-2 mb-2 py-1.5 px-2.5 rounded-md bg-accent-10 text-accent text-xs";
+
+const SUMMARY_ITEM = `grid grid-cols-[auto_auto] items-baseline gap-[5px] text-subtle
+  font-ui text-[9px] font-[650] tracking-[0.04em] uppercase`.replace(/\s+/g, " ");
+const SUMMARY_NUM = "text-text-soft font-mono text-xs font-[650] tracking-normal";
+const SUMMARY_RULE = "w-px h-3.5 bg-rule-strong @max-[500px]:mx-0.5";
+
+/// 活动列表里的状态小标题(「进行中」/「队列」)。末尾那个计数换等宽。
+const GROUP_HEADER = `list-none flex items-center justify-between mt-2 first:mt-0
+  pt-1 px-[9px] pb-[3px] font-ui text-[9px] font-bold tracking-[0.09em] uppercase text-subtle
+  [&>span:last-child]:text-muted [&>span:last-child]:font-mono
+  [&>span:last-child]:text-[9px] [&>span:last-child]:tracking-normal`.replace(
+  /\s+/g,
+  " ",
+);
+
+/// 「已完成」的周计数、归档页标题旁的总数,同一枚数字。
+const DONE_COUNT = "ml-auto font-bold text-subtle";
+
+const INPUT = `flex-1 min-w-0 border-0 bg-transparent text-text-soft font-[inherit] text-[13px]
+  p-0 outline-none appearance-none shadow-none
+  focus:outline-none focus:shadow-none focus-visible:outline-none focus-visible:shadow-none`.replace(
+  /\s+/g,
+  " ",
+);
+
 // How many weeks of completed todos to show inline before the rest is only
 // reachable through the "View all" archive page.
 const MAX_INLINE_WEEKS = 10;
@@ -147,21 +206,40 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       <li
         key={todo.id}
         data-todo-reorder-id={canDrag ? todo.id : undefined}
-        className={
-          "todo-item status-" +
-          status +
-          (done || editing ? "" : " clickable") +
-          (canDrag ? " draggable" : "") +
-          (todoReorder.dragId === todo.id ? " dragging" : "") +
-          (todoReorder.dropTarget?.id === todo.id
-            ? ` drop-${todoReorder.dropTarget.edge}`
-            : "")
-        }
+        className={[
+          ROW,
+          status === "doing" && "border-accent-12 bg-accent-045",
+          // todo/doing 行点哪儿都能切状态。
+          !done && !editing && "cursor-pointer",
+          canDrag && "hover:cursor-grab [&:hover_[data-title]]:cursor-grab",
+          todoReorder.dragId === todo.id && "opacity-40",
+          // 插入位置标记走指针事件,在 Tauri/WKWebView 里是可用的。
+          todoReorder.dropTarget?.id === todo.id &&
+            (todoReorder.dropTarget.edge === "before"
+              ? "shadow-[inset_0_2px_0_var(--color-accent)]"
+              : "shadow-[inset_0_-2px_0_var(--color-accent)]"),
+        ]
+          .filter(Boolean)
+          .join(" ")}
         onClick={() => handleRowClick(todo)}
       >
+        {/* 状态方块 —— todo/doing 空,done 填充打勾。 */}
         <button
           type="button"
-          className={"todo-check" + (done ? " checked" : "")}
+          className={`flex-[0_0_17px] size-[17px] inline-flex items-center justify-center
+            border-[1.5px] rounded-[5px] cursor-pointer p-0
+            transition-[border-color,background-color] duration-[var(--duration-fast)] ease-out
+            hover:border-accent
+            ${
+              done
+                ? "bg-accent border-accent text-white"
+                : "bg-transparent text-bg " +
+                  (status === "doing"
+                    ? "border-accent shadow-[inset_0_0_0_3px_var(--color-accent-35)]"
+                    : "border-subtle")
+            }`
+            .replace(/\s+/g, " ")
+            .trim()}
           onClick={(e) => {
             e.stopPropagation();
             toggleDone(todo);
@@ -171,10 +249,12 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         >
           {done ? <CheckIcon /> : null}
         </button>
-        <div className="todo-item-content">
+        <div className="flex-1 min-w-0 flex flex-col gap-[3px]">
           {editing ? (
+            // 全局的 `:focus-visible` 光晕在这种无边框矮输入框上会渲染成
+            // 两条游离的横线,所以在 INPUT 里显式关掉。
             <input
-              className="todo-edit-input"
+              className={`${INPUT} min-h-[30px]`}
               value={editingText}
               autoFocus
               onChange={(e) => setEditingText(e.target.value)}
@@ -187,25 +267,52 @@ export function TodoPanel({ projectId }: { projectId: string }) {
           ) : (
             <>
               <span
-                className="todo-title"
+                data-title
+                className={`min-w-0 text-[13px] font-[540] leading-[1.3] cursor-text break-words ${
+                  done ? "line-through text-subtle" : "text-text-soft"
+                }`}
                 onDoubleClick={() => beginEdit(todo)}
                 title={statusDatesTooltip(todo)}
               >
                 {todo.title}
               </span>
-              <span className="todo-item-meta">{statusTimeLabel(todo, status)}</span>
+              <span className="text-subtle font-ui text-[9px] leading-[1.2]">
+                {statusTimeLabel(todo, status)}
+              </span>
             </>
           )}
         </div>
+        {/* TODO / DOING 标签。在活动行上它就是切状态的点击目标,所以自己
+            打上 pointer 光标(压过整行的 grab)加一层 hover 高亮 —— 把
+            「点一下换状态」和行其余部分的「拖一下重排」在视觉上分开。 */}
         {!done && (
-          <span className={"todo-tag tag-" + status}>
-            <span className="todo-tag-dot" aria-hidden />
+          <span
+            className={[
+              "inline-flex flex-none items-center gap-[5px] py-[3px] px-1.5",
+              "border rounded-full font-ui text-[8px] font-bold tracking-[0.06em] uppercase",
+              "transition-[border-color,background-color] duration-[var(--duration-fast)] ease-out",
+              status === "doing"
+                ? "text-accent border-accent-25 bg-accent-hover-wash"
+                : "text-subtle border-rule",
+              !editing &&
+                "cursor-pointer hover:border-accent hover:bg-accent-10",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <span className="size-[5px] rounded-full bg-current" aria-hidden />
             {status === "doing" ? "进行中" : "排队中"}
           </span>
         )}
         {canDrag && (
           <span
-            className="todo-drag-handle"
+            // `todo-drag-handle` 同为无样式钩子:TodoPanel.test.tsx 用它
+            // 从行里取出把手来派发 pointer 事件。
+            className="todo-drag-handle inline-flex flex-[0_0_16px] w-4 h-5 items-center justify-center
+              text-muted opacity-0 cursor-grab touch-none
+              transition-[opacity,color] duration-[var(--duration-fast)] ease-out
+              active:cursor-grabbing group-hover/row:opacity-72
+              @max-[500px]:hidden"
             aria-hidden
             title="拖动以重新排序"
             onPointerDown={(event) => todoReorder.handlePointerDown(event, todo)}
@@ -216,7 +323,11 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         )}
         <button
           type="button"
-          className="todo-delete"
+          className="flex-[0_0_18px] size-[18px] inline-flex items-center justify-center
+            border-0 rounded-[5px] bg-transparent text-subtle cursor-pointer opacity-0
+            transition-[opacity,color,background-color] duration-[var(--duration-fast)] ease-out
+            group-hover/row:opacity-100
+            hover:bg-highlight-press hover:text-text"
           onClick={(e) => {
             e.stopPropagation();
             removeTodo(todo.id);
@@ -251,12 +362,16 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   const hiddenWeeks = weeks.length - inlineWeeks.length;
 
   const renderWeek = (w: WeekGroup) => (
-    <li key={w.weekStart} className="todo-week">
-      <div className="todo-week-header">
-        <span className="todo-week-label">{w.label}</span>
-        <span className="todo-week-count">{w.items.length}</span>
+    <li key={w.weekStart}>
+      <div className="flex items-center gap-1.5 py-0.5 px-2">
+        <span className="text-[11px] font-bold tracking-[0.03em] text-text-soft">
+          {w.label}
+        </span>
+        <span className="ml-auto text-[11px] font-bold text-subtle">
+          {w.items.length}
+        </span>
       </div>
-      <ul className="todo-list">{w.items.map((t) => renderTodo(t))}</ul>
+      <ul className={TODO_LIST}>{w.items.map((t) => renderTodo(t))}</ul>
     </li>
   );
 
@@ -264,52 +379,66 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   // week, reachable via "View all" when the inline section is capped.
   if (showArchive) {
     return (
-      <div className="todo-panel todo-archive">
-        {error && <div className="todo-panel-error">{error}</div>}
-        <div className="todo-archive-header">
+      <div className={PANEL}>
+        {error && <div className={PANEL_ERROR}>{error}</div>}
+        <div className="flex items-center gap-2 pt-0.5 px-1 pb-2.5 border-b border-highlight-hairline mb-2.5">
           <button
             type="button"
-            className="todo-archive-back"
+            className={`${QUIET_BTN} inline-flex gap-1 pt-1 pr-2 pb-1 pl-1.5 text-text-soft text-xs font-semibold hover:text-text`}
             onClick={() => setShowArchive(false)}
           >
             <BackIcon />
             <span>返回</span>
           </button>
-          <span className="todo-archive-title">全部已完成</span>
-          <span className="todo-done-count">{done.length}</span>
+          <span className="text-[13px] font-bold text-text">全部已完成</span>
+          <span className={`${DONE_COUNT} text-xs`}>{done.length}</span>
         </div>
         {weeks.length === 0 ? (
           <div className="empty">还没有已完成的 todo。</div>
         ) : (
-          <ul className="todo-week-list">{weeks.map(renderWeek)}</ul>
+          <ul className={WEEK_LIST}>{weeks.map(renderWeek)}</ul>
         )}
       </div>
     );
   }
 
   return (
-    <div className="todo-panel">
-      {error && <div className="todo-panel-error">{error}</div>}
-      <header className="todo-panel-overview">
-        <div className="todo-panel-heading">
-          <h2>任务流</h2>
-          <p>在队列与进行中之间流转你的工作。</p>
+    <div className={PANEL}>
+      {error && <div className={PANEL_ERROR}>{error}</div>}
+      <header
+        className="flex items-end justify-between gap-5 mt-0.5 mx-0.5 mb-[15px] pt-0 px-0.5 pb-3.5
+          border-b border-rule
+          @max-[500px]:items-start @max-[500px]:flex-col @max-[500px]:gap-2.5"
+      >
+        <div className="min-w-0">
+          <h2 className="m-0 text-text font-display text-[18px] font-[620] leading-[1.15] tracking-[-0.018em]">
+            任务流
+          </h2>
+          <p className="mt-[5px] mx-0 mb-0 text-subtle font-ui text-[10px] leading-[1.35]">
+            在队列与进行中之间流转你的工作。
+          </p>
         </div>
-        <div className="todo-panel-summary" aria-label="任务概览">
-          <span className="todo-summary-item summary-active">
-            <strong>{doing.length}</strong>
+        <div
+          className="inline-flex flex-none items-center gap-2.5 pb-px @max-[500px]:w-full"
+          aria-label="任务概览"
+        >
+          {/* 进行中的数字用 accent —— 概览里唯一需要先被看到的那个。 */}
+          <span className={SUMMARY_ITEM}>
+            <strong className={`${SUMMARY_NUM} !text-accent`}>
+              {doing.length}
+            </strong>
             <span>进行中</span>
           </span>
-          <span className="todo-summary-rule" aria-hidden />
-          <span className="todo-summary-item">
-            <strong>{todo.length}</strong>
+          <span className={SUMMARY_RULE} aria-hidden />
+          <span className={SUMMARY_ITEM}>
+            <strong className={SUMMARY_NUM}>{todo.length}</strong>
             <span>排队中</span>
           </span>
           {done.length > 0 && (
             <>
-              <span className="todo-summary-rule" aria-hidden />
-              <span className="todo-summary-item">
-                <strong>{done.length}</strong>
+              <span className={SUMMARY_RULE} aria-hidden />
+              <span className={SUMMARY_ITEM}>
+                <strong className={SUMMARY_NUM}>{done.length}</strong>
                 <span>已完成</span>
               </span>
             </>
@@ -317,7 +446,12 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         </div>
       </header>
       <form
-        className="todo-capture"
+        className="group/capture flex min-h-10 items-center gap-[9px] mt-0 mx-0.5 mb-[15px] px-2.5
+          border border-rule-strong rounded-sm bg-surface text-subtle
+          transition-[border-color,box-shadow,background-color] duration-[var(--duration-fast)] ease-out
+          focus-within:border-accent focus-within:bg-panel-raised
+          focus-within:shadow-[0_0_0_3px_var(--color-accent-10)] focus-within:text-accent
+          [&>svg]:flex-none"
         onSubmit={(event) => {
           event.preventDefault();
           addTodo();
@@ -325,7 +459,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       >
         <PlusIcon />
         <input
-          className="todo-add-input"
+          className={`${INPUT} placeholder:text-subtle`}
           aria-label="新建 todo"
           placeholder="新建 todo…"
           value={draft}
@@ -333,7 +467,12 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         />
         <button
           type="submit"
-          className="todo-capture-submit"
+          className="inline-flex flex-none items-center justify-center p-0 border-0 outline-0
+            bg-transparent cursor-pointer disabled:cursor-default disabled:opacity-58
+            [&>kbd]:flex-none [&>kbd]:min-w-[22px] [&>kbd]:py-0.5 [&>kbd]:px-[5px]
+            [&>kbd]:border [&>kbd]:border-rule-strong [&>kbd]:rounded-xs
+            [&>kbd]:bg-panel-sunken [&>kbd]:text-subtle [&>kbd]:font-ui [&>kbd]:text-[9px] [&>kbd]:text-center
+            enabled:hover:[&>kbd]:border-accent enabled:hover:[&>kbd]:text-accent"
           aria-label="添加 todo"
           title="添加 todo"
           disabled={!draft.trim()}
@@ -341,51 +480,55 @@ export function TodoPanel({ projectId }: { projectId: string }) {
           <kbd>↵</kbd>
         </button>
       </form>
-      <ul className="todo-list" {...todoReorder.containerHandlers}>
+      <ul className={TODO_LIST} {...todoReorder.containerHandlers}>
         {doing.length > 0 && (
-          <li className="todo-group-header">
+          <li className={GROUP_HEADER}>
             <span>进行中</span>
             <span>{doing.length}</span>
           </li>
         )}
         {doing.map((t) => renderTodo(t, { draggable: true }))}
         {todo.length > 0 && (
-          <li className="todo-group-header">
+          <li className={GROUP_HEADER}>
             <span>队列</span>
             <span>{todo.length}</span>
           </li>
         )}
         {todo.map((t) => renderTodo(t, { draggable: true }))}
         {doing.length === 0 && todo.length === 0 && (
-          <li className="todo-active-empty">
+          <li className={ACTIVE_EMPTY}>
             <span>当前没有进行中的任务。</span>
             <span>准备好后,在上方新建一个 todo。</span>
           </li>
         )}
       </ul>
+      {/* 底部可折叠的「已完成」分组。 */}
       {done.length > 0 && (
-        <div className="todo-done-section">
+        <div className="mt-2.5 border-t border-highlight-hairline pt-1.5">
           <button
             type="button"
-            className={"todo-done-toggle" + (showDone ? " open" : "")}
+            className={`${QUIET_BTN} gap-1.5 w-full py-[5px] px-2 text-subtle
+              text-[11px] font-bold tracking-[0.04em] uppercase hover:text-text-soft
+              ${showDone ? "[&>svg]:rotate-90" : ""}`}
             onClick={() => setShowDone((v) => !v)}
             aria-expanded={showDone}
           >
             <ChevronIcon />
-            <span className="todo-done-label">已完成</span>
-            <span className="todo-done-count">{done.length}</span>
+            <span>已完成</span>
+            <span className={DONE_COUNT}>{done.length}</span>
           </button>
           {showDone && (
             <>
-              <ul className="todo-week-list">{inlineWeeks.map(renderWeek)}</ul>
+              <ul className={WEEK_LIST}>{inlineWeeks.map(renderWeek)}</ul>
               {hiddenWeeks > 0 && (
                 <button
                   type="button"
-                  className="todo-view-all"
+                  className={`${QUIET_BTN} items-baseline gap-2 w-full mt-1.5 py-1.5 px-2
+                    text-accent text-xs font-semibold`}
                   onClick={() => setShowArchive(true)}
                 >
                   查看全部已完成
-                  <span className="todo-view-all-hint">
+                  <span className="ml-auto text-subtle font-medium">
                     还有 {hiddenWeeks} 周
                   </span>
                 </button>
@@ -501,7 +644,7 @@ function relativeTime(ms: number): string {
 function ChevronIcon() {
   return (
     <svg
-      className="todo-done-chevron"
+      className="transition-transform duration-[var(--duration-fast)] ease-out"
       viewBox="0 0 24 24"
       width="12"
       height="12"

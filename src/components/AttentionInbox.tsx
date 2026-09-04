@@ -4,6 +4,22 @@ import { useStore } from "../lib/store";
 import { sessionLight, type SessionView } from "../lib/types";
 import { StatusDot } from "./ui/StatusDot";
 import { AgentIcon } from "./AgentIcon";
+import { POPOVER_LAYER } from "./ui/menuStyles";
+
+/// 等待项与「刚刚完成」项共用一套行几何,差别只在左侧竖条的颜色和整体
+/// 声量 —— 完成项是背景信息,压低存在感,别和红色的等待项抢注意力。
+///
+/// `inbox-item` 作为选择器钩子留着:前几行的入场动画是错开的
+/// (`:nth-child`),元素自己数不出「我是第几个」。
+const ITEM = `inbox-item w-full flex items-center gap-2.5 py-[11px] px-3.5
+  border-none border-t border-t-rule border-l-2 bg-transparent text-[inherit] text-left cursor-pointer
+  transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised`
+  .replace(/\s+/g, " ");
+
+const TITLE =
+  "text-[12.5px] text-text whitespace-nowrap overflow-hidden text-ellipsis";
+const META =
+  "font-mono text-[10.5px] text-subtle whitespace-nowrap overflow-hidden text-ellipsis";
 
 /// The inbox answers one question: *which session is waiting on me right now?*
 ///
@@ -76,7 +92,18 @@ export function AttentionInbox() {
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
-        className={`topbar-inbox${count > 0 ? " has-waiting" : ""}`}
+        // 徽章自己会脉动;按钮本体保持安静 —— 一个等待项不该让整条顶栏
+        // 变成警报器。`topbar-inbox` 作为钩子留着:徽章的 status-ring
+        // 动画由它选中(`.topbar-inbox .count-badge-float`),而
+        // `count-badge*` 是和画布工具条共用的。
+        className={`topbar-inbox relative flex-none size-control inline-flex items-center justify-center
+          rounded-md border border-transparent bg-transparent cursor-pointer
+          transition-[background-color,color,border-color] duration-[var(--t-fast)] ease-smooth
+          hover:bg-panel-raised hover:border-rule hover:text-text
+          data-[popup-open]:bg-panel-raised data-[popup-open]:border-rule data-[popup-open]:text-text
+          ${count > 0 ? "text-st-blocked" : "text-muted"}`
+          .replace(/\s+/g, " ")
+          .trim()}
         aria-label={
           count > 0 ? `${count} 个会话等你处理 (⇧⌘A)` : "没有等待处理的会话 (⇧⌘A)"
         }
@@ -92,14 +119,18 @@ export function AttentionInbox() {
         )}
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner className="popover-layer" sideOffset={8} align="end">
-          <Popover.Popup className="inbox-popup">
-            <div className="inbox-head">
-              <span className="eyebrow">等你处理{count > 0 ? ` · ${count}` : ""}</span>
-              <span className="inbox-hint">⇧⌘A</span>
+        <Popover.Positioner className={POPOVER_LAYER} sideOffset={8} align="end">
+          <Popover.Popup className="w-[380px] max-h-[60vh] overflow-y-auto bg-panel border border-rule-strong rounded-[14px] shadow-menu animate-pop-in origin-top-right">
+            <div className="flex items-center pt-3 px-3.5 pb-2">
+              <span className="text-[10px] font-semibold tracking-caps uppercase text-st-blocked">
+                等你处理{count > 0 ? ` · ${count}` : ""}
+              </span>
+              <span className="ml-auto font-mono text-[10px] text-whisper">
+                ⇧⌘A
+              </span>
             </div>
             {count === 0 && done.length === 0 ? (
-              <div className="inbox-empty">
+              <div className="pt-[22px] px-4 pb-[26px] text-center text-[12.5px] text-subtle">
                 所有 agent 都在忙自己的事 —— 没有等你的会话。
               </div>
             ) : (
@@ -108,11 +139,11 @@ export function AttentionInbox() {
                   <button
                     key={row.session.id}
                     type="button"
-                    className="inbox-item"
+                    className={`${ITEM} group border-l-st-blocked`}
                     onClick={() => jump(row)}
                   >
                     <StatusDot status="blocked" labelled={false} />
-                    <span className="inbox-agent">
+                    <span className="flex-none flex">
                       <AgentIcon
                         icon={agentByProfileId[row.session.agent_profile]?.icon}
                         variant={agentByProfileId[row.session.agent_profile]?.icon_variant}
@@ -120,9 +151,9 @@ export function AttentionInbox() {
                         size={16}
                       />
                     </span>
-                    <span className="inbox-body">
-                      <span className="inbox-title">{row.session.title}</span>
-                      <span className="inbox-meta">
+                    <span className="flex-1 min-w-0 flex flex-col gap-[3px]">
+                      <span className={TITLE}>{row.session.title}</span>
+                      <span className={META}>
                         {row.projectName}
                         {" · "}
                         {relativeTime(row.session.updated_at_ms)}
@@ -132,19 +163,21 @@ export function AttentionInbox() {
                   </button>
                 ))}
                 {done.length > 0 && (
-                  <div className="inbox-done-head">
-                    <span className="eyebrow">刚刚完成</span>
+                  <div className="pt-2 px-3.5 pb-1 border-t border-rule mt-1">
+                    <span className="text-[10px] font-semibold tracking-caps uppercase text-st-blocked">
+                      刚刚完成
+                    </span>
                   </div>
                 )}
                 {done.map((row) => (
                   <button
                     key={row.session.id}
                     type="button"
-                    className="inbox-item inbox-item-done"
+                    className={`${ITEM} group border-l-st-blocked opacity-75 hover:opacity-100`}
                     onClick={() => jump(row)}
                   >
                     <StatusDot status="done" labelled={false} />
-                    <span className="inbox-agent">
+                    <span className="flex-none flex">
                       <AgentIcon
                         icon={agentByProfileId[row.session.agent_profile]?.icon}
                         variant={agentByProfileId[row.session.agent_profile]?.icon_variant}
@@ -152,9 +185,9 @@ export function AttentionInbox() {
                         size={16}
                       />
                     </span>
-                    <span className="inbox-body">
-                      <span className="inbox-title">{row.session.title}</span>
-                      <span className="inbox-meta">
+                    <span className="flex-1 min-w-0 flex flex-col gap-[3px]">
+                      <span className={TITLE}>{row.session.title}</span>
+                      <span className={META}>
                         {row.projectName}
                         {" · "}
                         {relativeTime(row.session.updated_at_ms)}
@@ -165,7 +198,7 @@ export function AttentionInbox() {
                 ))}
               </>
             )}
-            <div className="inbox-foot">
+            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-whisper">
               ycode 只告诉你谁在等 —— 批准仍在 agent 自己的终端里完成
             </div>
           </Popover.Popup>
@@ -194,7 +227,7 @@ function InboxIcon() {
 
 function ArrowIcon() {
   return (
-    <svg className="inbox-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className="flex-none text-whisper group-hover:text-text" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 12h14" />
       <path d="m13 6 6 6-6 6" />
     </svg>

@@ -47,12 +47,36 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-tint: var(--accent-tint);
   --color-accent-tint-hover: var(--accent-tint-hover);
+  /* 比 `--accent-tint` 再淡一档的 hover 洗色。同样是预合成 —— `--accent-rgb`
+     是逗号分隔三元组,`/alpha` 修饰符对它无效。 */
+  --color-accent-wash: rgba(var(--accent-rgb), 0.05);
+  --color-accent-edge: rgba(var(--accent-rgb), 0.18);
+  --color-accent-half: rgba(var(--accent-rgb), 0.55);
+  --color-accent-ring: rgba(var(--accent-rgb), 0.08);
+  /* 主题卡选中光晕。22% 是刻意高于其他 accent 洗色的 —— 它要在暖暗、近白、
+     暖亮三种表面上一致地读得出来。 */
+  --color-accent-halo: rgba(var(--accent-rgb), 0.22);
+  /* 用量页主卡的描边 —— 比 accent-edge 实一档,它要撑住一整张卡。 */
+  --color-accent-40: rgba(var(--accent-rgb), 0.4);
+  --color-accent-hover-wash: rgba(var(--accent-rgb), 0.06);
+  /* Todo 行的进行中态:极淡的底 + 一道刚够看见的描边。整行铺色,所以
+     比任何 chip 的 tint 都要淡。 */
+  --color-accent-045: rgba(var(--accent-rgb), 0.045);
+  --color-accent-12: rgba(var(--accent-rgb), 0.12);
+  --color-accent-25: rgba(var(--accent-rgb), 0.25);
+  --color-accent-10: rgba(var(--accent-rgb), 0.1);
+  /* 进行中 todo 的状态方块内环。 */
+  --color-accent-35: rgba(var(--accent-rgb), 0.35);
 
   /* Status */
   --color-idle: var(--idle);
   --color-running: var(--running);
   --color-error: var(--error);
   --color-warning: var(--warning);
+  /* 编辑器「文件在磁盘上被改了」的警示条。`--warning-rgb` 同样是逗号分隔
+     三元组,要预合成。 */
+  --color-warning-tint: rgba(var(--warning-rgb), 0.12);
+  --color-warning-edge: rgba(var(--warning-rgb), 0.45);
 
   /* Session status (redesign layer). The `-tint` pairs are pre-composed
      because the `--st-*-rgb` tokens are comma-separated triples: Tailwind's
@@ -66,10 +90,21 @@
   --color-st-working-tint: rgba(var(--st-working-rgb), 0.14);
   --color-st-blocked-tint: rgba(var(--st-blocked-rgb), 0.14);
   --color-st-blocked-edge: rgba(var(--st-blocked-rgb), 0.3);
+  --color-st-blocked-half: rgba(var(--st-blocked-rgb), 0.5);
   --color-st-done-tint: rgba(var(--st-done-rgb), 0.14);
   /* 菜单选中态比 chip 的 tint 淡一档 —— 整行着色,0.14 会太抢。 */
   --color-st-working-wash: rgba(var(--st-working-rgb), 0.12);
   --color-st-blocked-wash: rgba(var(--st-blocked-rgb), 0.12);
+  /* 角标反过来要浓一档:它只有一个字符大,淡了就读不出是个计数。 */
+  --color-st-working-badge: rgba(var(--st-working-rgb), 0.16);
+  /* 侧栏「等你处理」整块的底色。铺满一个区块而不是一行,所以要比
+     `-wash` 再淡一半,不然那块会变成一片红。 */
+  --color-st-blocked-block: rgba(var(--st-blocked-rgb), 0.07);
+  /* 总览卡「有 agent 卡住了」的描边 —— 比 `-edge` 实一档,它要在一格
+     卡片的四周撑住。 */
+  --color-st-blocked-card: rgba(var(--st-blocked-rgb), 0.42);
+  /* 「等你处理」筛选 pill 的描边,只在它非空时着色。 */
+  --color-st-blocked-pill: rgba(var(--st-blocked-rgb), 0.4);
 
   /* Chat role labels */
   --color-role-user: var(--role-user);
@@ -80,6 +115,14 @@
   /* Control surfaces */
   --color-control-hover: var(--control-hover);
   --color-control-active: var(--control-active);
+  /* 极浅的中性高亮 —— 用在不该带主题色的地方(命令面板的结果行分隔线和
+     选中态)。`--highlight-rgb` 是逗号分隔三元组,同样要预合成。 */
+  --color-highlight-hairline: rgba(var(--highlight-rgb), 0.04);
+  --color-highlight-wash: rgba(var(--highlight-rgb), 0.06);
+  /* hover 一档、按下/关闭按钮一档。分成两级是因为叠在已经有底色的行上时
+     0.05 几乎看不见,而 0.09 用作普通 hover 又太重。 */
+  --color-highlight-hover: rgba(var(--highlight-rgb), 0.05);
+  --color-highlight-press: rgba(var(--highlight-rgb), 0.09);
 
   /* Type stacks */
   --font-display: var(--font-display);
@@ -121,8 +164,13 @@
   --animate-status-breathe: status-breathe 2.4s ease-in-out infinite;
   --animate-status-ring: status-ring 1.6s ease-out infinite;
   /* 浮层入场。keyframes 本体仍在 redesign.css(尚未迁移的浮层还在用),
-     这里只把它包成一个可用的 `animate-pop-in`。 */
+     这里只把它们包成可用的 utility。 */
   --animate-pop-in: pop-in var(--t-base) var(--ease-out);
+  --animate-fade-in: fade-in var(--t-base) var(--ease-out);
+  --animate-dialog-in: dialog-in var(--t-slow) var(--ease-out);
+  /* 只做透明度,不做位移:transform 会把整张卡提成独立合成层,大内容卡
+     在 WKWebView 里异步分块光栅化,动画期间内容会呈自上而下扫描式出现。 */
+  --animate-card-in: card-in var(--t-slow) var(--ease-out);
 
   @keyframes status-breathe {
     0%,

@@ -110,6 +110,23 @@ type SplitsMap = Record<string, LayoutSplits>;
 
 const MIN_PANE_PCT = 12; // smallest pane width/height — keeps the TUI legible
 
+const PANE_IDX = `flex-none font-mono text-[8px] font-bold leading-none text-whisper
+  border border-rule-strong rounded-[4px] py-0.5 px-[5px]
+  transition-[color,border-color] duration-[var(--t-fast)] ease-smooth
+  group-[.focused]:text-st-working group-[.focused]:border-st-working`;
+
+/// 等待态的文字 chip:等待是唯一需要用户行动的状态,值得一个词;点保持在
+/// chip 内做颜色锚点。其余状态保持安静的点。
+const PANE_STATUS_CHIP =
+  "flex-none inline-flex items-center gap-[5px] py-0.5 px-[7px] rounded-full text-[10px]/[1.4] text-st-blocked bg-st-blocked-wash";
+
+/// Worktree branch chip. The ⌥ is a mark, not a shortcut — it reads as
+/// "branched off" at a glance without spending a word on it.
+const PANE_BRANCH = `flex-none inline-flex items-center gap-[5px] max-w-[220px] py-0.5 px-2
+  border border-rule-strong rounded-md font-mono text-[10.5px] text-muted overflow-hidden
+  [&_b]:font-medium [&_b]:text-text-soft
+  [&_b]:overflow-hidden [&_b]:text-ellipsis [&_b]:whitespace-nowrap`;
+
 function splitsKey(mode: LayoutMode, count: number): string {
   return `${mode}-${count}`;
 }
@@ -662,11 +679,21 @@ export function TerminalPane() {
   }, []);
 
   return (
-    <div className={"terminal-pane" + (showPicker ? " picker-active" : "")}>
+    <div className="relative size-full bg-bg">
       {/* Hidden pool: holds Terminal containers that aren't currently in a
           slot. Always present (even when the picker is up) so re-entering
-          from the picker can recover any background sessions' scrollback. */}
-      <div className="terminal-pool" ref={poolRef} aria-hidden />
+          from the picker can recover any background sessions' scrollback.
+
+          Real dimensions so xterm's first open() doesn't blow up on a 0×0
+          container; `invisible` keeps any momentary contents unseen.
+          `terminal-pool` stays as a hook — the `.terminal-container` inside
+          is created imperatively by xterm's host and positioned by a
+          descendant rule (see styles.css). */}
+      <div
+        className="terminal-pool fixed -left-[99999px] top-0 w-[800px] h-[400px] pointer-events-none invisible"
+        ref={poolRef}
+        aria-hidden
+      />
 
       {!showPicker && (
         <div
@@ -687,7 +714,9 @@ export function TerminalPane() {
               return (
                 <div
                   key={PICKER_SLOT}
-                  className={"pane-cell pane-cell-picker" + (focusedPick ? " focused" : "")}
+                  className={`pane-cell pane-cell-picker group ${
+                    focusedPick ? "focused" : ""
+                  }`}
                   style={{ gridArea: `s${slot}` }}
                   onMouseDownCapture={(e) => {
                     const target = e.target as HTMLElement;
@@ -696,11 +725,11 @@ export function TerminalPane() {
                   }}
                 >
                   <header className="pane-header">
-                    <span className="pane-idx" aria-hidden>
+                    <span className={PANE_IDX} aria-hidden>
                       {slot + 1}
                     </span>
                     <span className="pane-title">新建会话</span>
-                    <span className="pane-spacer" />
+                    <span className="flex-auto min-w-0" />
                     <button
                       type="button"
                       className="pane-close"
@@ -734,9 +763,11 @@ export function TerminalPane() {
             return (
               <div
                 key={id}
-                className={
-                  "pane-cell" + (focused ? " focused" : "")
-                }
+                // `pane-cell` 留作钩子:卡片表面、聚焦环、header 的留白都由
+                // `.app-workspace` / `.docked-workspace` 两层祖先覆盖决定
+                // (它们在 WorkspaceCanvas 上)。`group` 只是给下面的
+                // 面板序号读聚焦态用。
+                className={`pane-cell group ${focused ? "focused" : ""}`}
                 style={{ gridArea: `s${slot}` }}
                 onMouseDownCapture={(e) => {
                   // Header buttons handle their own clicks; bare-cell
@@ -748,11 +779,15 @@ export function TerminalPane() {
                 }}
               >
                 <header className="pane-header">
-                  <span className="pane-idx" aria-hidden title={`面板 ${slot + 1}`}>
+                  {/* Pane number. Mirrors the badge the sidebar row carries,
+                      so the list and the canvas can be read against each
+                      other — that pairing is the reason the number is worth
+                      the space at all. */}
+                  <span className={PANE_IDX} aria-hidden title={`面板 ${slot + 1}`}>
                     {slot + 1}
                   </span>
                   <span
-                    className={`pane-agent agent-${session?.agent_profile ?? ""}`}
+                    className="inline-flex items-center justify-center flex-none"
                     aria-hidden
                   >
                     <AgentIcon
@@ -807,12 +842,12 @@ export function TerminalPane() {
                   )}
                   {session?.worktree_path && (
                     <span
-                      className="pane-branch"
+                      className={PANE_BRANCH}
                       title={`运行在独立 worktree 的分支 ${
                         session.branch ?? `ycode/${id}`
                       } 上`}
                     >
-                      <span className="pane-branch-mark" aria-hidden>
+                      <span className="flex-none text-whisper" aria-hidden>
                         ⌥
                       </span>
                       <b>{session.branch ?? `ycode/${id}`}</b>
@@ -822,7 +857,7 @@ export function TerminalPane() {
                     // 等待态带文字 chip:它是唯一一个「需要你行动」的状态,
                     // 光靠一颗点在四宫格里不够醒目;其余状态保持安静的点。
                     (light === "waiting" ? (
-                      <span className="pane-status-chip light-waiting">
+                      <span className={PANE_STATUS_CHIP}>
                         <span
                           className="pane-status-dot light-waiting"
                           aria-hidden
@@ -836,7 +871,7 @@ export function TerminalPane() {
                         aria-label={SESSION_LIGHT_LABEL[light]}
                       />
                     ))}
-                  <span className="pane-spacer" />
+                  <span className="flex-auto min-w-0" />
                   {session?.worktree_path && session.base_branch && (
                     <button
                       type="button"
@@ -916,7 +951,7 @@ export function TerminalPane() {
       )}
 
       {showPicker && (
-        <div className="terminal-empty">
+        <div className="absolute inset-0 flex items-center justify-center text-muted p-6 bg-bg">
           {!activeProject ? (
             <span>Select a project from the top bar.</span>
           ) : (

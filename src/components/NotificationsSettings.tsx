@@ -13,6 +13,7 @@ import { testNotification } from "../lib/ipc";
 import type { ConfigView } from "../lib/types";
 import { StatusDot } from "./ui/StatusDot";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChips,
@@ -59,13 +60,15 @@ export function NotificationsSettings({ config, onChange }: Props) {
   }
 
   return (
-    <div className="settings-section">
-      <h2>通知</h2>
-      <p className="settings-lede">
-        agent 回合结束时发一条系统通知,这样你不用一直盯着终端。事件来自
-        「集成」页配置的 hook。
-      </p>
-
+    <SettingSection
+      title="通知"
+      lede={
+        <>
+  agent 回合结束时发一条系统通知,这样你不用一直盯着终端。事件来自
+          「集成」页配置的 hook。
+        </>
+      }
+    >
       <SettingGroupLabel>送达方式</SettingGroupLabel>
       <SettingCard>
         <SettingRow
@@ -178,7 +181,7 @@ export function NotificationsSettings({ config, onChange }: Props) {
           />
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 

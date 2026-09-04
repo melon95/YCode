@@ -189,23 +189,30 @@ export function ProjectsOverview({ onClose }: Props) {
   }
 
   return (
-    <section className="projects-overview" aria-label="全部项目">
-      <header className="po-head">
-        <h1>项目</h1>
-        <span className="po-summary">
+    <section
+      className="flex-1 min-h-0 flex flex-col bg-bg overflow-hidden animate-fade-in"
+      aria-label="全部项目"
+    >
+      <header className="flex-none flex items-baseline gap-3.5 pt-[26px] px-8 pb-4">
+        <h1 className="text-[22px] font-bold tracking-[-0.015em]">项目</h1>
+        <span className="font-mono text-[11.5px] text-muted">
           {totals.blocked > 0 && (
-            <span className="po-hot">{totals.blocked} 个等你处理</span>
+            <span className="text-st-blocked">{totals.blocked} 个等你处理</span>
           )}
           {totals.blocked > 0 && totals.working > 0 && " · "}
           {totals.working > 0 && (
-            <span className="po-warm">{totals.working} 个进行中</span>
+            <span className="text-st-working">{totals.working} 个进行中</span>
           )}
           {totals.blocked === 0 && totals.working === 0 && "没有正在运行的 agent"}
           {" · "}
           共 {rows.length} 个项目
         </span>
         <span className="toolbar-spacer" />
-        <div className="po-filter" role="tablist" aria-label="项目筛选">
+        <div
+          className="self-center flex gap-1.5"
+          role="tablist"
+          aria-label="项目筛选"
+        >
           <FilterPill id="all" active={filter} onPick={setFilter}>
             全部
           </FilterPill>
@@ -241,7 +248,7 @@ export function ProjectsOverview({ onClose }: Props) {
       </header>
 
       {shown.length === 0 && (
-        <div className="po-empty">
+        <div className="pt-2 px-8 pb-5 text-[12.5px] text-subtle">
           {filter === "blocked"
             ? "没有项目在等你处理。"
             : filter === "working"
@@ -250,18 +257,33 @@ export function ProjectsOverview({ onClose }: Props) {
         </div>
       )}
 
-      <div className="po-grid">
+      <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5 pt-1 px-8 pb-8 content-start">
         {shown.map((r) => (
           <button
             type="button"
             key={r.id}
-            className={`po-card${r.status === "blocked" ? " is-attention" : ""}`}
+            // 三行(名字 / 标签 / 路径)之间用 6px —— 原来的 10px 是给
+            // 「名字 + 色条 + 两行计数」那版排的,行数减半后同样的间距会
+            // 把卡片撑空。
+            //
+            // agent 卡住的项目盖过你正在看的东西,所以卡片在你读到名字
+            // 之前就该说出这件事。
+            className={`group flex flex-col gap-1.5 pt-3.5 pr-[15px] pb-[13px] pl-[15px]
+              border rounded-[14px] bg-panel text-[inherit] text-left cursor-pointer
+              transition-[border-color,transform,box-shadow] duration-[var(--t-base)] ease-smooth
+              hover:border-rule-strong hover:-translate-y-px hover:shadow-[0_6px_20px_rgba(var(--shadow-rgb),0.22)]
+              active:scale-[0.995]
+              ${r.status === "blocked" ? "border-st-blocked-card" : "border-rule"}`
+              .replace(/\s+/g, " ")
+              .trim()}
             onClick={() => open(r.id)}
             title={r.repoPath}
           >
-            <span className="po-card-top">
+            <span className="flex items-center gap-[9px]">
               <StatusDot status={r.status} labelled={false} />
-              <span className="po-name">{r.name}</span>
+              <span className="flex-1 min-w-0 text-[13.5px] font-semibold text-text whitespace-nowrap overflow-hidden text-ellipsis">
+                {r.name}
+              </span>
               <OverflowMenu
                 label={`${r.name} 的更多操作`}
                 asSpan
@@ -281,17 +303,22 @@ export function ProjectsOverview({ onClose }: Props) {
                 对不齐。会话数不在这里报:左上角那颗状态点已经回答了
                 「有没有事在发生」。 */}
             {(branchById[r.id] || r.worktrees > 0 || r.isolate) && (
-              <span className="po-tags">
+              <span className="flex items-center gap-2 min-w-0 overflow-hidden">
+                {/* 卡片名旁的当前分支名 —— 等宽小字、subtle。 */}
                 {branchById[r.id] && (
-                  <span className="po-branch">{branchById[r.id]}</span>
+                  <span className="flex-none font-mono text-[10px] text-subtle whitespace-nowrap overflow-hidden text-ellipsis">
+                    {branchById[r.id]}
+                  </span>
                 )}
                 {r.worktrees > 0 && (
-                  <span className="po-tag">worktree ×{r.worktrees}</span>
+                  <span className={PO_TAG}>worktree ×{r.worktrees}</span>
                 )}
-                {r.isolate && <span className="po-tag">默认隔离</span>}
+                {r.isolate && <span className={PO_TAG}>默认隔离</span>}
               </span>
             )}
-            <span className="po-path">{r.repoPath}</span>
+            <span className="font-mono text-[10px] text-whisper whitespace-nowrap overflow-hidden text-ellipsis">
+              {r.repoPath}
+            </span>
           </button>
         ))}
 
@@ -300,7 +327,13 @@ export function ProjectsOverview({ onClose }: Props) {
         {filter === "all" && (
           <button
             type="button"
-            className="po-card-new"
+            // 不自己定高 —— 卡片内容精简过一轮,写死的 140px 会让这张虚线
+            // 卡比旁边的项目卡高出一截。让网格行高来决定,它自然和同行对齐。
+            className="border border-dashed border-rule-strong rounded-[14px] flex items-center justify-center gap-2
+              text-whisper bg-none text-[12.5px] cursor-pointer
+              transition-[color,background-color] duration-[var(--t-base)] ease-smooth
+              hover:text-text hover:border-solid hover:bg-panel
+              disabled:opacity-60 disabled:cursor-default"
             onClick={() => void onOpenProject()}
             disabled={creatingProject}
           >
@@ -311,6 +344,10 @@ export function ProjectsOverview({ onClose }: Props) {
     </section>
   );
 }
+
+/// 中间一行:分支 + worktree/隔离。各卡片的这一行都从左边同一处起排,
+/// 所以扫一列卡片时这些标签是对齐的。
+const PO_TAG = "flex-none font-mono text-[10px] text-whisper whitespace-nowrap";
 
 function CloseIcon() {
   return (
@@ -340,20 +377,37 @@ function FilterPill({
   children: React.ReactNode;
 }) {
   const on = active === id;
+  // 只有「等你处理」这一格有资格着色,而且只在它非空时 —— 一个永远红着
+  // 的 pill 就不再意味着「看这里」了。
+  const hot = tone === "hot" && (count ?? 0) > 0;
   return (
     <button
       type="button"
       role="tab"
       aria-selected={on}
-      className={
-        "po-fpill" +
-        (on ? " is-active" : "") +
-        (tone === "hot" && (count ?? 0) > 0 ? " is-hot" : "")
-      }
+      className={`group inline-flex items-center gap-1.5 h-control-sm px-2.5 border rounded-full text-[11.5px] cursor-pointer
+        transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
+        ${
+          on
+            ? "bg-panel-raised border-rule-strong text-text"
+            : `bg-transparent hover:border-rule-strong hover:text-muted ${
+                hot ? "text-st-blocked border-st-blocked-pill" : "text-subtle border-rule"
+              }`
+        }`
+        .replace(/\s+/g, " ")
+        .trim()}
       onClick={() => onPick(id)}
     >
       {children}
-      {count != null && count > 0 && <span className="po-fpill-n">{count}</span>}
+      {count != null && count > 0 && (
+        <span
+          className={`font-mono text-[9.5px] font-bold ${
+            on ? "text-text-soft" : hot ? "text-st-blocked" : "text-whisper"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { platform } from "@tauri-apps/plugin-os";
 import type { ConfigView } from "../lib/types";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChip,
@@ -58,10 +59,7 @@ export function TerminalSettings({ config, onChange }: Props) {
   }, []);
 
   return (
-    <div className="settings-section">
-      <h2>终端</h2>
-      <p className="settings-lede">agent 与 shell 运行的环境。</p>
-
+    <SettingSection title="终端" lede={<>agent 与 shell 运行的环境。</>}>
       <SettingGroupLabel>环境</SettingGroupLabel>
       <SettingCard>
         <SettingRow
@@ -128,7 +126,7 @@ export function TerminalSettings({ config, onChange }: Props) {
           <SettingChip tone="on">WebGL</SettingChip>
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 

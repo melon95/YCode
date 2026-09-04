@@ -6,6 +6,7 @@
 
 import type { ConfigView, StartupModeView } from "../lib/types";
 import {
+  SettingSection,
   SettingCard,
   SettingChip,
   SettingChips,
@@ -40,10 +41,7 @@ const LOCALE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
 
 export function GeneralSettings({ config, onChange }: Props) {
   return (
-    <div className="settings-section">
-      <h2>通用</h2>
-      <p className="settings-lede">启动行为与窗口。</p>
-
+    <SettingSection title="通用" lede={<>启动行为与窗口。</>}>
       <SettingCard>
         <SettingRow
           name="启动时打开"
@@ -84,6 +82,6 @@ export function GeneralSettings({ config, onChange }: Props) {
           />
         </SettingRow>
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }

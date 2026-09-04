@@ -56,36 +56,42 @@ function ConfirmInner({
   }, []);
 
   return (
+    // z-index 高于设置(180):确认可能从设置页里弹出。
     <div
-      className="confirm-mask"
+      className="fixed inset-0 z-240 flex items-center justify-center bg-black/22 backdrop-blur-[10px] animate-fade-in"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onResult(false);
       }}
     >
       <div
-        className="confirm-dialog"
+        className="w-[420px] max-w-[90vw] pt-5 px-[22px] pb-4 bg-panel border border-rule-strong rounded-[14px] shadow-menu animate-dialog-in"
         role="alertdialog"
         aria-modal="true"
         aria-label={opts.title}
       >
-        <div className="confirm-title">{opts.title}</div>
-        {opts.message && <div className="confirm-message">{opts.message}</div>}
-        <div className="confirm-actions">
+        <div className="text-sm font-semibold text-text">{opts.title}</div>
+        {opts.message && (
+          <div className="mt-2 text-[12.5px]/[1.6] text-muted">
+            {opts.message}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 mt-[18px]">
           <button
             ref={cancelRef}
             type="button"
-            className="confirm-btn"
+            className={CONFIRM_BTN}
             onClick={() => onResult(false)}
           >
             {opts.cancelLabel ?? "取消"}
           </button>
           <button
             type="button"
-            className={
-              "confirm-btn" +
-              (opts.destructive ? " is-danger" : " is-primary")
-            }
+            className={`${CONFIRM_BTN} ${
+              opts.destructive
+                ? "border-st-blocked-half text-st-blocked hover:bg-st-blocked-wash hover:border-transparent hover:text-st-blocked"
+                : "bg-accent border-transparent text-bg hover:opacity-90 hover:text-bg"
+            }`}
             onClick={() => onResult(true)}
           >
             {opts.confirmLabel ?? "确定"}
@@ -95,3 +101,10 @@ function ConfirmInner({
     </div>
   );
 }
+
+const CONFIRM_BTN = `h-control py-0 px-3.5 border border-rule-strong rounded-lg
+  bg-transparent text-muted text-[12.5px] cursor-pointer
+  transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
+  hover:bg-panel-raised hover:text-text
+  focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1`
+  .replace(/\s+/g, " ");

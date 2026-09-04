@@ -13,6 +13,7 @@ import {
 } from "../lib/ipc";
 import type { InstallStage, LspManifestView } from "../lib/types";
 import {
+  SettingSection,
   SettingAction,
   SettingCard,
   SettingChip,
@@ -148,10 +149,8 @@ export function LanguagesSettings() {
 
   if (error) {
     return (
-      <div className="settings-section">
-        <h2>编辑器与语言</h2>
-        <p className="settings-lede">读取语言服务列表失败:{error}</p>
-      </div>
+      <SettingSection title="编辑器与语言" lede={<>读取语言服务列表失败:{error}</>}>
+      </SettingSection>
     );
   }
 
@@ -159,13 +158,15 @@ export function LanguagesSettings() {
     manifests?.filter((m) => m.installation !== null).length ?? 0;
 
   return (
-    <div className="settings-section">
-      <h2>编辑器与语言</h2>
-      <p className="settings-lede">
-        内置编辑器与语言服务。语言服务给编辑器带来跳转定义和语义高亮 ——
-        只装你真正会编辑的语言,每个都有几 MB 到几十 MB。
-      </p>
-
+    <SettingSection
+      title="编辑器与语言"
+      lede={
+        <>
+  内置编辑器与语言服务。语言服务给编辑器带来跳转定义和语义高亮 ——
+          只装你真正会编辑的语言,每个都有几 MB 到几十 MB。
+        </>
+      }
+    >
       <SettingGroupLabel>编辑器</SettingGroupLabel>
       <SettingCard>
         <SettingRow
@@ -217,7 +218,7 @@ export function LanguagesSettings() {
           ))
         )}
       </SettingCard>
-    </div>
+    </SettingSection>
   );
 }
 
@@ -257,7 +258,7 @@ function LspRow({
     <SettingRow
       name={manifest.display_name}
       desc={desc}
-      icon={<span className="lsp-letter">{letterFor(manifest.display_name)}</span>}
+      icon={<span className="font-mono text-[9.5px] font-bold tracking-[0.02em]">{letterFor(manifest.display_name)}</span>}
     >
       <SettingValue align="end">{manifest.id}</SettingValue>
       {installing ? (

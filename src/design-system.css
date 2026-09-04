@@ -89,19 +89,6 @@ select {
   line-height: 1.15;
 }
 
-.col-handle,
-.file-tree-resizer {
-  background: var(--rule);
-}
-
-.col-handle:hover,
-.col-handle[data-resize-handle-active],
-.file-tree-resizer:hover,
-.file-tree-resizer.dragging {
-  background: var(--accent);
-  box-shadow: none;
-}
-
 /* App bar */
 .topbar {
   flex-basis: 60px;
@@ -242,24 +229,8 @@ select {
 }
 
 /* Sidebar */
-.sidebar {
-  background: var(--panel);
-}
 
-.sidebar::after {
-  display: none;
-}
 
-.sidebar-header {
-  min-height: 104px;
-  padding: 14px 12px 12px;
-  gap: 12px;
-  align-items: stretch;
-  flex-direction: column;
-  text-transform: none;
-  letter-spacing: 0;
-  background: var(--panel);
-}
 
 .sidebar-heading {
   display: flex;
@@ -269,15 +240,11 @@ select {
   min-width: 0;
 }
 
-.sidebar-eyebrow,
-.sidebar-section-heading {
+.sidebar-eyebrow {
   font-size: 9.5px;
   font-weight: 680;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-}
-
-.sidebar-eyebrow {
   color: var(--text-soft);
 }
 
@@ -332,36 +299,12 @@ select {
   white-space: nowrap;
 }
 
-.sidebar-section-heading {
-  min-height: 35px;
-  padding: 12px 12px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--subtle);
-}
 
-.sidebar-section-context {
-  overflow: hidden;
-  font-size: 9px;
-  font-weight: 520;
-  letter-spacing: 0;
-  text-transform: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .sidebar-content {
   padding: 0 6px 8px;
 }
 
-.sidebar-footer {
-  flex: 0 0 auto;
-  padding: 10px;
-  border-top: 1px solid var(--rule);
-  background: var(--panel);
-}
 
 .sidebar-new-session {
   width: 100%;
@@ -469,15 +412,14 @@ select {
 }
 
 /* Agent work area */
-.terminal-pane {
-  background: var(--bg);
-}
-
 .terminal-grid {
   inset: 8px;
   gap: 8px;
 }
 
+/* `.terminal-pane-card` 的表面与 `.pane-cell` 成组写 —— 两边是同一套卡片
+   语言,且 `.app-workspace` 下还有一层祖先覆盖(见本文件下方)。分屏卡片
+   的其余样式已迁到 components/RightTerminalSplit.tsx。 */
 .pane-cell,
 .terminal-pane-card {
   background: var(--surface);
@@ -494,20 +436,6 @@ select {
 .pane-header {
   min-height: 36px;
   padding: 6px 8px 6px 12px;
-  gap: 8px;
-  background: var(--surface);
-  border-bottom-color: var(--rule);
-  color: var(--muted);
-}
-
-/* Split-terminal headers are deliberately NOT grouped with `.pane-header`
-   above. This header is absolutely positioned over the xterm, and the only
-   thing pushing the terminal body clear of it is `--pane-header-h` (see
-   styles.css). Setting a height here that outgrows the variable silently
-   covers the terminal's top rows — with a fresh shell that is the entire
-   visible content, so the pane reads as blank. Restyle via the variable. */
-.terminal-pane-card-header {
-  padding: 4px 8px;
   gap: 8px;
   background: var(--surface);
   border-bottom-color: var(--rule);
@@ -555,145 +483,28 @@ select {
   height: 7px;
 }
 
-.pane-close,
-.terminal-pane-card-header .pane-close {
+.pane-close {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-xs);
 }
 
-.pane-close:hover,
-.terminal-pane-card-header .pane-close:hover {
+.pane-close:hover {
   color: var(--text);
   background: var(--control-hover);
 }
 
-/* Right tool rail */
-.right-pane {
-  background: var(--bg);
-}
-
-.right-pane-tabs {
-  min-height: 48px;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--surface);
-}
-
-.right-pane-tab {
-  width: auto;
-  height: 32px;
-  flex-basis: auto;
-  gap: 6px;
-  padding: 0 9px;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-}
-
-.right-pane-tab-label {
-  font-size: 10.5px;
-  font-weight: 570;
-  letter-spacing: -0.005em;
-}
-
-.right-pane-tab:hover {
-  color: var(--text);
-  background: var(--control-hover);
-}
-
-.right-pane-tab.active {
-  color: var(--accent);
-  background: var(--control-active);
-}
-
-.right-pane-tab.active::after {
-  content: "";
-  position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 2px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-
-.right-pane-tab-separator {
-  margin: 0 4px;
-  background: var(--rule);
-}
+/* 右栏工具栏与文件标签已迁到 components/RightPane.tsx。
+   `.right-pane-tab*` 一族(带图标的面板切换标签)在 tsx 里已无引用 ——
+   面板切换早就搬去画布工具条了,一并删掉。 */
 
 .workspace-target-separator {
   margin-left: 6px;
 }
 
-.workspace-target-picker {
-  height: 32px;
-  min-width: 0;
-  max-width: 150px;
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  flex: 0 1 150px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--panel-sunken);
-  color: var(--muted);
-}
+/* 工作区目标选择器已迁到 components/WorkspaceTargetPicker.tsx。 */
 
-.workspace-target-picker select {
-  min-width: 0;
-  width: 100%;
-  padding: 0 14px 0 2px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text-soft);
-  font-size: 10.5px;
-  font-weight: 560;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.workspace-target-picker:focus-within {
-  border-color: rgba(var(--accent-rgb), 0.55);
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.08);
-}
-
-.right-file-tab {
-  height: 32px;
-  border-radius: var(--radius-sm);
-}
-
-.right-file-tab.active {
-  background: var(--panel-raised);
-  box-shadow: inset 0 0 0 1px var(--rule);
-}
-
-.right-pane-body,
-.right-editor-file-tree {
-  background: var(--bg);
-}
-
-/* Files */
-.file-tree {
-  padding: 6px;
-}
-
-.file-row {
-  border-radius: var(--radius-xs);
-  padding: 0 7px;
-}
-
-.file-row:hover {
-  background: var(--control-hover);
-}
-
-.file-row.file.selected,
-.file-row.dir.selected {
-  background: var(--control-active);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
+/* Files —— 几何与选中态已合并进 styles.css 的 `.file-row`。 */
 .file-row.file .file-row-name {
   color: var(--text-soft);
 }
@@ -717,8 +528,7 @@ select {
   border-radius: var(--radius-sm);
 }
 
-.changes-panel-branch-menu,
-.context-menu {
+.changes-panel-branch-menu {
   box-shadow: var(--elevation-menu);
 }
 
@@ -1176,137 +986,13 @@ select {
   }
 }
 
-/* Dialogs and settings */
-[role="dialog"],
-.settings-dialog {
+/* 设置弹窗骨架已迁到 SettingsModal.tsx。原先这里是对 styles.css 同名
+   选择器的层叠覆盖 —— 两边一起删了,`[role="dialog"]` 的通用描边留下。 */
+[role="dialog"] {
   border-color: var(--rule-strong) !important;
   border-radius: var(--radius-md) !important;
   box-shadow: 0 28px 80px rgba(var(--shadow-rgb), 0.48),
     0 4px 16px rgba(var(--shadow-rgb), 0.28) !important;
-}
-
-.settings-dialog::before {
-  display: none;
-}
-
-.settings-dialog [class*="ModalHeader"],
-.settings-dialog header {
-  padding: 18px 22px 14px !important;
-}
-
-.settings-dialog [class*="ModalHeading"] {
-  font-family: var(--font-ui) !important;
-  font-size: 20px !important;
-  font-weight: 650 !important;
-  font-style: normal !important;
-  font-variation-settings: normal !important;
-  letter-spacing: -0.02em !important;
-}
-
-.settings-body,
-.settings-content,
-.agents-list {
-  background: var(--panel);
-}
-
-.settings-layout {
-  grid-template-columns: 196px 1fr;
-}
-
-.settings-nav {
-  gap: 2px;
-  padding: 14px 8px;
-  background: var(--surface);
-}
-
-.settings-nav::before {
-  padding: 0 10px 8px;
-  color: var(--subtle);
-}
-
-.settings-nav-item {
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 520;
-  font-style: normal;
-  font-variation-settings: normal;
-}
-
-.settings-nav-item:hover {
-  color: var(--text);
-  background: var(--control-hover);
-}
-
-.settings-nav-item.active {
-  color: var(--text);
-  background: var(--control-active);
-}
-
-.settings-nav-item.active::before {
-  top: 7px;
-  bottom: 7px;
-  left: -8px;
-}
-
-.appearance-settings,
-.usage-root,
-.languages-settings {
-  padding: 22px 24px;
-}
-
-.appearance-section-title,
-.usage-block-title,
-.theme-group-label,
-.usage-card-label,
-.lsp-card-meta-label {
-  letter-spacing: 0.045em;
-}
-
-.theme-card,
-.lsp-card,
-.usage-card,
-.update-notice {
-  border-radius: var(--radius-md);
-}
-
-.theme-card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.11);
-}
-
-.theme-card-name,
-.lsp-card-name,
-.usage-card-value {
-  font-family: var(--font-ui);
-  font-style: normal;
-  font-variation-settings: normal;
-}
-
-.settings-footer {
-  padding: 12px 20px !important;
-  background: var(--surface) !important;
-}
-
-.button {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 580;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.button--primary:hover:not(:disabled):not([data-disabled="true"]) {
-  box-shadow: none;
-}
-
-.button--secondary:hover:not(:disabled):not([data-disabled="true"]) {
-  color: var(--text);
-  border-color: var(--rule-strong);
-  background: var(--control-hover);
 }
 
 .native-select,
@@ -1323,63 +1009,20 @@ select {
   text-transform: none;
 }
 
-.context-menu {
-  border-color: var(--rule-strong);
-  border-radius: var(--radius-md);
-}
-
-.context-menu-item {
-  min-height: 30px;
-  border-radius: var(--radius-sm);
-}
-
-.context-menu-item:hover:not(:disabled) {
-  background: var(--control-hover);
-}
-
 /* History, command palette and tasks */
 .history-modal,
-.history-card,
 .command-palette,
 .command-dialog {
   border-radius: var(--radius-md);
 }
 
-.history-tab-header {
-  background: var(--surface);
-}
-
-.history-tab-title,
-.history-card-role,
-.changes-empty,
-.settings-loading {
+.changes-empty {
   font-family: var(--font-ui);
   font-style: normal;
   font-variation-settings: normal;
 }
 
-.history-card {
-  border-color: var(--rule);
-  background: var(--surface);
-}
 
-.todo-panel {
-  padding: 16px 14px 22px;
-}
-
-.todo-item,
-.todo-done-toggle,
-.todo-view-all,
-.todo-archive-back {
-  border-radius: var(--radius-sm);
-}
-
-.todo-item:hover,
-.todo-done-toggle:hover,
-.todo-view-all:hover,
-.todo-archive-back:hover {
-  background: var(--control-hover);
-}
 
 @media (max-width: 900px) {
   .topbar {
@@ -1398,17 +1041,6 @@ select {
     border: 0;
     background: transparent;
     font-size: 9px;
-  }
-
-  .settings-layout {
-    grid-template-columns: 150px 1fr;
-  }
-}
-
-@media (max-width: 1200px) {
-  .workspace-target-picker {
-    max-width: 124px;
-    flex-basis: 124px;
   }
 }
 
@@ -1441,457 +1073,9 @@ select {
   background: var(--accent);
 }
 
-.settings-screen {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 344px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 58px;
-  overflow: hidden;
-  color: var(--text);
-  background:
-    radial-gradient(circle at 72% 18%, rgba(var(--accent-rgb), 0.025), transparent 32%),
-    var(--bg);
-}
-
-.settings-sidebar {
-  grid-column: 1;
-  grid-row: 1;
-  min-height: 0;
-  padding: 30px 22px 28px;
-  border-right: 1px solid var(--rule);
-  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
-}
-
-.settings-back,
-.settings-reset,
-.settings-action {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.settings-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 32px;
-  margin: -4px 0 21px;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 520;
-}
-
-.settings-back:hover,
-.settings-reset:hover,
-.settings-action:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--control-hover);
-}
-
-.settings-intro {
-  padding: 0 12px;
-}
-
-.settings-intro h1,
-.settings-pane-heading h2 {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-style: normal;
-  font-variation-settings: normal;
-  font-weight: 650;
-  letter-spacing: -0.03em;
-}
-
-.settings-intro h1 {
-  font-size: 30px;
-  line-height: 1.15;
-}
-
-.settings-intro p {
-  max-width: 250px;
-  margin: 12px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.settings-screen .settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 36px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.settings-screen .settings-nav::before,
-.settings-screen .settings-nav-item::before {
-  display: none;
-}
-
-.settings-screen .settings-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-  min-height: 46px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-family: var(--font-ui);
-  font-size: 14px;
-  font-style: normal;
-  font-variation-settings: normal;
-  font-weight: 500;
-  text-align: left;
-}
-
-.settings-screen .settings-nav-item svg {
-  flex: 0 0 auto;
-  color: var(--muted);
-  stroke-width: 1.6;
-}
-
-.settings-screen .settings-nav-item:hover {
-  color: var(--text-soft);
-  background: var(--control-hover);
-}
-
-.settings-screen .settings-nav-item.active {
-  color: var(--text);
-  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.09));
-}
-
-.settings-screen .settings-nav-item.active svg {
-  color: var(--text);
-}
-
-.settings-main {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  padding: 47px 44px 80px;
-}
-
-.settings-screen .settings-content {
-  width: min(100%, 1056px);
-  min-height: 100%;
-  overflow: visible;
-  background: transparent;
-}
-
-.settings-screen .settings-loading {
-  padding: 48px 0;
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  font-style: normal;
-  text-align: left;
-}
-
-.settings-screen .agents-settings {
-  height: auto;
-  min-height: 0;
-}
-
-.settings-pane-heading {
-  display: block;
-  margin-bottom: 34px;
-}
-
-.settings-pane-heading h2 {
-  font-size: 27px;
-  line-height: 1.15;
-}
-
-.settings-pane-heading p {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.settings-pane-heading > span {
-  display: block;
-  margin-top: 28px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.settings-screen .agent-group + .agent-group {
-  margin-top: 34px;
-}
-
-.settings-screen .agent-group h3 {
-  margin: 0 0 13px;
-  color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 560;
-}
-
-.settings-screen .agents-list {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-}
-
-.settings-screen .agent-row {
-  display: grid;
-  grid-template-columns: 38px minmax(150px, 230px) minmax(120px, 1fr) 160px auto;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  min-height: 61px;
-  padding: 10px 18px 10px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--rule);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-soft);
-  text-align: left;
-}
-
-.settings-screen .agent-row:last-child {
-  border-bottom: 0;
-}
-
-.settings-screen .agent-row.addable {
-  grid-template-columns: 38px minmax(150px, 1fr) auto;
-  font: inherit;
-}
-
-.settings-screen .agent-row:hover {
-  background: rgba(var(--highlight-rgb), 0.035);
-}
-
-.settings-screen .agent-row-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  overflow: hidden;
-  border-radius: 8px;
-}
-
-.settings-screen .agent-row-icon > svg,
-.settings-screen .agent-row-icon > img {
-  width: 24px;
-  height: 24px;
-}
-
-.settings-screen .agent-row-name {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 520;
-}
-
-.settings-screen .agent-row-command {
-  overflow: hidden;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-screen .agent-row-status {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.settings-screen .agent-row-delete {
-  width: auto;
-  height: auto;
-  padding: 6px 2px;
-  color: #ff665e;
-  font-size: 13px;
-  font-weight: 520;
-  opacity: 1;
-}
-
-.settings-screen .agent-row-delete:hover {
-  color: #ff857f;
-  background: transparent;
-}
-
-.settings-screen .agent-row-add {
-  opacity: 1;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 520;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.settings-screen .agent-row.addable .agent-row-name {
-  color: var(--text);
-}
-
-.settings-screen .agent-row-custom-icon {
-  border: 1px dashed var(--rule-strong);
-  color: var(--muted);
-  font-size: 24px;
-  font-weight: 300;
-}
-
-.settings-screen .agent-custom-form {
-  display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(200px, 1.4fr) auto auto;
-  gap: 10px;
-  min-height: 61px;
-  padding: 11px 14px;
-  border-top: 1px solid var(--rule);
-}
-
-.settings-screen > .settings-footer {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  align-items: center;
-  gap: 22px;
-  min-height: 58px;
-  padding: 10px 44px 10px 34px !important;
-  border-top: 1px solid var(--rule) !important;
-  background: color-mix(in srgb, var(--surface) 90%, var(--bg)) !important;
-}
-
-.settings-reset {
-  justify-self: start;
-  min-height: 34px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-}
-
-.settings-save-state {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.settings-save-state.dirty {
-  color: var(--accent-soft);
-}
-
-.settings-action {
-  min-width: 102px;
-  min-height: 38px;
-  padding: 0 18px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-soft);
-  font-size: 13px;
-  font-weight: 560;
-}
-
-.settings-action.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #07101f;
-}
-
-.settings-action.primary:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-  background: var(--accent-strong);
-  color: #07101f;
-}
-
-.settings-action.primary:disabled {
-  border-color: var(--rule-strong);
-  background: var(--panel-raised);
-  color: var(--muted);
-}
-
-.settings-action:disabled,
-.settings-reset:disabled {
-  cursor: default;
-  opacity: 0.42;
-}
-
-@media (max-width: 880px) {
-  .settings-screen {
-    grid-template-columns: 250px minmax(0, 1fr);
-  }
-
-  .settings-main {
-    padding-inline: 28px;
-  }
-
-  .settings-screen .agent-row.configured {
-    grid-template-columns: 38px minmax(120px, 1fr) auto;
-  }
-
-  .settings-screen .agent-row-command,
-  .settings-screen .agent-row-status {
-    display: none;
-  }
-}
-
-@media (max-width: 680px) {
-  .settings-screen {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr) 58px;
-  }
-
-  .settings-sidebar {
-    grid-row: 1;
-    padding: 16px;
-    border-right: 0;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .settings-intro {
-    display: none;
-  }
-
-  .settings-back {
-    margin-bottom: 8px;
-  }
-
-  .settings-screen .settings-nav {
-    flex-direction: row;
-    margin-top: 0;
-    overflow-x: auto;
-  }
-
-  .settings-screen .settings-nav-item {
-    width: auto;
-    flex: 0 0 auto;
-  }
-
-  .settings-main {
-    grid-column: 1;
-    grid-row: 2;
-    padding: 28px 20px 60px;
-  }
-
-  .settings-screen > .settings-footer {
-    grid-row: 3;
-    gap: 10px;
-    padding-inline: 16px !important;
-  }
-
-  .settings-save-state,
-  .settings-reset {
-    display: none;
-  }
-}
+/* `.settings-screen` 整段(含两个 @media 断点)删除:那个 class 只存在于
+   AppWorkspaceMount.test.tsx 的 data-testid,真实 DOM 里从来没有过。
+   设置界面现在是 SettingsModal.tsx 的弹窗,样式在组件里。 */
 
 /* Multi-surface workspace shell */
 .app-workspace {
@@ -1940,16 +1124,7 @@ select {
   background: var(--surface);
 }
 
-.workspace-dock-widget > .right-pane {
-  height: 100%;
-}
-
 /* Focused workspace sidebar */
-.app-workspace .sidebar-header {
-  min-height: auto;
-  padding: 18px 14px 12px;
-  gap: 12px;
-}
 
 .app-workspace .sidebar-project-name {
   display: none;
@@ -1985,10 +1160,6 @@ select {
   box-shadow: none;
 }
 
-.app-workspace .sidebar-section-heading {
-  min-height: 42px;
-  padding: 18px 14px 9px;
-}
 
 .app-workspace .sidebar-content {
   padding: 0 8px 10px;
@@ -1999,10 +1170,6 @@ select {
   padding: 4px 10px;
 }
 
-.app-workspace .sidebar-footer {
-  padding: 14px;
-  background: var(--surface);
-}
 
 .app-workspace .sidebar-new-session {
   height: 46px;
@@ -2052,6 +1219,7 @@ select {
   background: var(--surface);
 }
 
+/* 宿主上下文覆盖 —— 选择器本体已迁到组件,这条留着直到 context bar 也迁走。 */
 .workspace-context-bar .workspace-target-picker {
   flex-basis: 190px;
   max-width: 220px;
@@ -2068,28 +1236,3 @@ select {
   white-space: nowrap;
 }
 
-.app-workspace .right-pane-tabs {
-  min-height: 54px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.app-workspace .right-pane-tab {
-  height: 38px;
-  padding: 0 12px;
-}
-
-.app-workspace .right-pane-tab-label {
-  font-size: 12px;
-}
-
-.app-workspace .right-pane-tab.active {
-  color: var(--text);
-  background: transparent;
-}
-
-.app-workspace .right-pane-tab.active::after {
-  right: 8px;
-  bottom: -8px;
-  left: 8px;
-}
