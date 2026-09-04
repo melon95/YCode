@@ -426,7 +426,7 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
   );
 }
 
-// Mirrors `.split-menu` in styles.css: 188px min-width, 4px padding and a 1px
+// 几何沿用迁移前的 `.split-menu`:188px min-width, 4px padding 与 1px
 // border on each side, 32px per item, and a 9px separator before Close Pane.
 // Used only to keep the menu inside the viewport, so being a pixel or two off
 // just shifts the clamp — but omitting the borders clipped the bottom edge.
@@ -443,7 +443,10 @@ interface SplitContextMenuProps {
   onPick: (action: SplitDirection | "close") => void;
 }
 
-function SplitContextMenu(props: SplitContextMenuProps) {
+/// 导出仅供测试:菜单的失效方式是「点了没反应」—— 外部点击守卫靠
+/// `.split-menu` 类名认自己人,类名一丢,capture 阶段的 mousedown 就会
+/// 先把菜单卸载掉。这种坏法肉眼很难发现,值得一个单测钉住。
+export function SplitContextMenu(props: SplitContextMenuProps) {
   // Escape via the shared guard (dismiss-only, no fullscreen exit).
   useEscapeGuard(props.onDismiss);
   // Dismiss on outside click (capture-phase, beats xterm's focus grab on
@@ -451,6 +454,10 @@ function SplitContextMenu(props: SplitContextMenuProps) {
   useEffect(() => {
     function onMouseDown(ev: MouseEvent) {
       const target = ev.target as HTMLElement | null;
+      // `split-menu` 是无样式钩子:样式在下面的 utility 里,但这里要靠
+      // 类名把「点在菜单内」和「点在别处」区分开 —— capture 阶段的
+      // mousedown 在菜单内也会触发,认不出来就会先把菜单卸载掉,后续的
+      // click 便落在一个已经不存在的按钮上,五个动作全都点不动。
       if (target && target.closest(".split-menu")) return;
       props.onDismiss();
     }
@@ -471,7 +478,7 @@ function SplitContextMenu(props: SplitContextMenuProps) {
 
   return createPortal(
     <div
-      className="fixed z-1000 min-w-[188px] p-1 bg-panel-raised border border-rule-strong rounded-lg shadow-[0_12px_32px_rgba(var(--shadow-rgb),0.45)] font-ui"
+      className="split-menu fixed z-1000 min-w-[188px] p-1 bg-panel-raised border border-rule-strong rounded-lg shadow-[0_12px_32px_rgba(var(--shadow-rgb),0.45)] font-ui"
       style={{ left: Math.max(8, left), top: Math.max(8, top) }}
       role="menu"
     >

@@ -143,12 +143,17 @@ describe("CommandPalette", () => {
 
   it("closes on escape without selecting a hit", async () => {
     const user = userEvent.setup();
+    const before = useStore.getState().openFiles;
     const { onClose } = renderPalette();
     screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
 
     await user.keyboard("{Escape}");
 
     expect(onClose).toHaveBeenCalledTimes(1);
+    // 「without selecting a hit」这半句原本由 `expect(onPick).not…` 兜着,
+    // onPick 随历史搜索一起删了 —— 换成断言没有文件被打开,否则这个用例
+    // 只测了 onClose,名字比实际内容大。
+    expect(useStore.getState().openFiles).toEqual(before);
   });
 
   it("shows Chinese status text for empty results", async () => {

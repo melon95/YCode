@@ -169,7 +169,7 @@ export function RightPane() {
     : 0;
 
   // File-tree column width, in pixels. Only consulted in the `with-editor`
-  // workspace mode — tree-only mode keeps the existing `1fr` rule from CSS.
+  // workspace mode — 只有文件树时整列就是 `grid-cols-[1fr]`,不读这个值。
   // Persisted across reloads via localStorage; defaults to a sane 280px
   // (the previous static 32% looked about right at the most common right-
   // pane width). Min 180px matches the prior CSS minmax floor; the 600px
@@ -513,8 +513,8 @@ export function RightPane() {
                 editorVisible
                   ? {
                       // 3-column grid only in editor mode: tree | 1px handle |
-                      // editor. `.tree-only`'s `1fr` from the stylesheet wins
-                      // for the tree-only case (no inline style applied).
+                      // editor. 只有文件树时不加这个内联样式,由 class 上的
+                      // `grid-cols-[1fr]` 决定。
                       gridTemplateColumns: `${fileTreeWidth}px 1px minmax(0, 1fr)`,
                     }
                   : undefined
