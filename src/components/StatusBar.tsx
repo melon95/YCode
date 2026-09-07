@@ -93,10 +93,10 @@ export function StatusBar() {
       {activeProject && (
         <span className={SB_GROUP} title={activeProject.repo_path}>
           <ProjectPickerMenu>{activeProject.name}</ProjectPickerMenu>
-          <span className="text-whisper">· {checkout}</span>
+          <span className="text-muted">· {checkout}</span>
         </span>
       )}
-      <span className={`${SB_GROUP} text-whisper`}>
+      <span className={`${SB_GROUP} text-muted`}>
         {worktrees > 0 ? `worktree ×${worktrees}` : "无 worktree"}
       </span>
       <span className="toolbar-spacer" />
@@ -107,7 +107,7 @@ export function StatusBar() {
             {counts[k]} 个{STATUS_LABEL[k]}
           </span>
         ))}
-      <span className={`${SB_GROUP} text-whisper ml-1`}>v{APP_VERSION}</span>
+      <span className={`${SB_GROUP} text-muted ml-1`}>v{APP_VERSION}</span>
     </footer>
   );
 }

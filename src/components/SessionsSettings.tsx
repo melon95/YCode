@@ -118,7 +118,7 @@ export function SessionsSettings({ config, onChange }: Props) {
         </SettingRow>
         <SettingRow name="分支名前缀" desc="会话 id 会接在后面">
           <input
-            className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
+            className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
             value={config.worktree.branch_prefix}
             spellCheck={false}
             aria-label="分支名前缀"

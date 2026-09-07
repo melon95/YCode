@@ -50,7 +50,15 @@ function relativeTime(ms: number): string {
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
-      className={`flex-none text-whisper transition-transform duration-[var(--t-base)] ease-smooth ${
+      // whisper 压在侧栏底上只有 1.45,而展开/收起是这一行唯一的状态
+      // 指示,不能几乎看不见。也不能纯继承:两处父元素一个是 muted
+      // (项目名)、一个是 subtle(「更早」标题),后者继承下来才 2.83,
+      // 仍在图标 3:1 的线下。所以给它自己的 muted 下限。
+      //
+      // hover 用 `[button:hover_&]` 而不是 `group-hover:`:两个调用点的
+      // 按钮一个靠外层 `.group`、一个是自身 `hover:text-text`,只有直接
+      // 盯住祖先 button 的 hover 才能同时覆盖这两种写法。
+      className={`flex-none text-muted [button:hover_&]:text-text transition-transform duration-[var(--t-base)] ease-smooth ${
         open ? "rotate-90" : ""
       }`}
       width="11"

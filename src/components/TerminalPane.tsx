@@ -110,7 +110,7 @@ type SplitsMap = Record<string, LayoutSplits>;
 
 const MIN_PANE_PCT = 12; // smallest pane width/height — keeps the TUI legible
 
-const PANE_IDX = `flex-none font-mono text-[8px] font-bold leading-none text-whisper
+const PANE_IDX = `flex-none font-mono text-[8px] font-bold leading-none text-muted
   border border-rule-strong rounded-[4px] py-0.5 px-[5px]
   transition-[color,border-color] duration-[var(--t-fast)] ease-smooth
   group-[.focused]:text-st-working group-[.focused]:border-st-working`;
@@ -847,7 +847,7 @@ export function TerminalPane() {
                         session.branch ?? `ycode/${id}`
                       } 上`}
                     >
-                      <span className="flex-none text-whisper" aria-hidden>
+                      <span className="flex-none text-muted" aria-hidden>
                         ⌥
                       </span>
                       <b>{session.branch ?? `ycode/${id}`}</b>

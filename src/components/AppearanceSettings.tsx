@@ -295,7 +295,7 @@ function ThemeCard({
         <span className="font-ui text-[14px] font-medium tracking-[-0.01em]">
           {label}
         </span>
-        <span className="font-mono text-[9px] text-whisper">
+        <span className="font-mono text-[9px] text-muted">
           {split ? (theme.mode === "dark" ? "当前:深色" : "当前:浅色") : ""}
         </span>
       </div>

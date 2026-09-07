@@ -72,7 +72,7 @@ export function PanelCard({
             // 在 chip 里要褪成纯文字 —— 边框和底色由 chip 自己提供。
             className="flex items-center gap-[5px] min-w-0 flex-[0_1_auto] overflow-hidden whitespace-nowrap
               text-[10.5px] text-muted bg-panel-raised rounded-md pt-0.5 pr-[7px] pb-0.5 pl-1
-              [&_svg]:flex-none [&_svg]:text-whisper
+              [&_svg]:flex-none
               [&_.mono]:font-mono [&_.mono]:text-[10px] [&_.mono]:overflow-hidden [&_.mono]:text-ellipsis
               [&_.workspace-target-picker]:m-0 [&_.workspace-target-picker]:h-auto
               [&_.workspace-target-picker]:border-0 [&_.workspace-target-picker]:bg-transparent [&_.workspace-target-picker]:p-0

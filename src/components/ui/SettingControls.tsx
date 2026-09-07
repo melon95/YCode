@@ -63,7 +63,7 @@ export function SettingGroupLabel({
 }) {
   return (
     <div
-      className={`settings-group-label mb-2 font-mono text-[9.5px] font-medium tracking-[0.1em] uppercase text-whisper ${className}`.trim()}
+      className={`settings-group-label mb-2 font-mono text-[9.5px] font-medium tracking-[0.1em] uppercase text-muted ${className}`.trim()}
     >
       {children}
     </div>

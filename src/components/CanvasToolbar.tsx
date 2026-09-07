@@ -234,7 +234,7 @@ function PanelCatalog() {
             <PanelCatalogRow icon={<ChangesIcon />} name="变更" desc="工作区 diff · 检查点回顾" state="已启用" on />
             <PanelCatalogRow icon={<TodosIcon />} name="待办" desc="项目待办 · agent 可经 MCP 读写" state="已启用" on />
             <PanelCatalogRow icon={<BrowserIcon />} name="浏览器" desc="预览本地 dev server" state="未实现" disabled />
-            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-whisper">
+            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-muted">
               面板可插拔:未实现的条目会在支持后出现在上方的开关里。
             </div>
           </Popover.Popup>

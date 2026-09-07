@@ -316,7 +316,7 @@ export function ProjectsOverview({ onClose }: Props) {
                 {r.isolate && <span className={PO_TAG}>默认隔离</span>}
               </span>
             )}
-            <span className="font-mono text-[10px] text-whisper whitespace-nowrap overflow-hidden text-ellipsis">
+            <span className="font-mono text-[10px] text-muted whitespace-nowrap overflow-hidden text-ellipsis">
               {r.repoPath}
             </span>
           </button>
@@ -330,7 +330,7 @@ export function ProjectsOverview({ onClose }: Props) {
             // 不自己定高 —— 卡片内容精简过一轮,写死的 140px 会让这张虚线
             // 卡比旁边的项目卡高出一截。让网格行高来决定,它自然和同行对齐。
             className="border border-dashed border-rule-strong rounded-[14px] flex items-center justify-center gap-2
-              text-whisper bg-none text-[12.5px] cursor-pointer
+              text-muted bg-none text-[12.5px] cursor-pointer
               transition-[color,background-color] duration-[var(--t-base)] ease-smooth
               hover:text-text hover:border-solid hover:bg-panel
               disabled:opacity-60 disabled:cursor-default"
@@ -347,7 +347,7 @@ export function ProjectsOverview({ onClose }: Props) {
 
 /// 中间一行:分支 + worktree/隔离。各卡片的这一行都从左边同一处起排,
 /// 所以扫一列卡片时这些标签是对齐的。
-const PO_TAG = "flex-none font-mono text-[10px] text-whisper whitespace-nowrap";
+const PO_TAG = "flex-none font-mono text-[10px] text-muted whitespace-nowrap";
 
 function CloseIcon() {
   return (
@@ -402,7 +402,7 @@ function FilterPill({
       {count != null && count > 0 && (
         <span
           className={`font-mono text-[9.5px] font-bold ${
-            on ? "text-text-soft" : hot ? "text-st-blocked" : "text-whisper"
+            on ? "text-text-soft" : hot ? "text-st-blocked" : "text-muted"
           }`}
         >
           {count}

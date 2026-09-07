@@ -316,8 +316,11 @@ export function SettingsScreen({ onClose }: Props) {
         <div className="flex-1 min-h-0 flex">
           <aside className="w-[210px] flex-none border-r border-rule pt-3 px-2.5 pb-[18px] overflow-y-auto bg-surface">
             <div
+              // 这里的字色只作用于那枚放大镜(输入框自己是 text-text)。
+              // 用 muted 而不是 whisper:图标没有 hover 态来补偿,whisper
+              // 压在 surface 上只有 1.45,那枚图标基本看不见。
               className="flex items-center gap-2 mb-3 py-[7px] px-2.5 border border-rule
-                rounded-[9px] text-whisper
+                rounded-[9px] text-muted
                 transition-colors duration-[var(--t-fast)] ease-smooth
                 focus-within:border-rule-strong [&>svg]:flex-none"
             >
@@ -326,7 +329,7 @@ export function SettingsScreen({ onClose }: Props) {
               <input
                 type="search"
                 className="flex-1 min-w-0 bg-none border-none outline-none text-text text-[12.5px]
-                  placeholder:text-whisper
+                  placeholder:text-subtle
                   [&::-webkit-search-cancel-button]:hidden"
                 placeholder="搜索设置…"
                 aria-label="搜索设置"
@@ -337,7 +340,7 @@ export function SettingsScreen({ onClose }: Props) {
             <nav aria-label="设置分区">
               {visibleGroups.map((group) => (
                 <div className="[&+&]:mt-3.5" key={group.title}>
-                  <div className="pt-1 px-2.5 pb-1.5 text-[8.5px] font-bold tracking-caps uppercase text-whisper">
+                  <div className="pt-1 px-2.5 pb-1.5 text-[8.5px] font-bold tracking-caps uppercase text-muted">
                     {group.title}
                   </div>
                   {group.items.map((item) => {
@@ -382,7 +385,7 @@ export function SettingsScreen({ onClose }: Props) {
                           </span>
                         )}
                         {item.pending && (
-                          <span className="ml-auto font-mono text-[8px] text-whisper border border-rule rounded-[4px] py-px px-1">
+                          <span className="ml-auto font-mono text-[8px] text-muted border border-rule rounded-[4px] py-px px-1">
                             待实现
                           </span>
                         )}
@@ -393,7 +396,7 @@ export function SettingsScreen({ onClose }: Props) {
               ))}
               {/* 过滤后一无所有时的占位,免得侧栏空得像坏了。 */}
               {navQuery.trim() !== "" && visibleGroups.length === 0 && (
-                <div className="p-2.5 text-[12px] text-whisper">没有匹配的设置项</div>
+                <div className="p-2.5 text-[12px] text-muted">没有匹配的设置项</div>
               )}
             </nav>
           </aside>

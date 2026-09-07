@@ -130,7 +130,7 @@ export function AttentionInbox() {
               <span className="text-[10px] font-semibold tracking-caps uppercase text-st-blocked">
                 等你处理{count > 0 ? ` · ${count}` : ""}
               </span>
-              <span className="ml-auto font-mono text-[10px] text-whisper">
+              <span className="ml-auto font-mono text-[10px] text-muted">
                 ⇧⌘A
               </span>
             </div>
@@ -203,7 +203,7 @@ export function AttentionInbox() {
                 ))}
               </>
             )}
-            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-whisper">
+            <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-muted">
               ycode 只告诉你谁在等 —— 批准仍在 agent 自己的终端里完成
             </div>
           </Popover.Popup>
@@ -232,7 +232,10 @@ function InboxIcon() {
 
 function ArrowIcon() {
   return (
-    <svg className="flex-none text-whisper group-hover:text-text" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    // hover 时有 text-text 兜底,但静止态的 whisper 只有 1.39 —— 「这行
+    // 点得动、会跳过去」平时就该看得见,不能等鼠标压上来才出现。subtle
+    // 比行内文字弱一档,箭头仍是配角。
+    <svg className="flex-none text-subtle group-hover:text-text" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 12h14" />
       <path d="m13 6 6 6-6 6" />
     </svg>

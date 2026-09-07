@@ -248,7 +248,7 @@ export function AgentsSettings({ config, onChange }: Props) {
           >
             <input
               type="text"
-              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
+              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
               placeholder="显示名(可选)"
               aria-label="显示名"
               value={customName}
@@ -260,7 +260,7 @@ export function AgentsSettings({ config, onChange }: Props) {
             />
             <input
               type="text"
-              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-whisper"
+              className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
               placeholder="PATH 中的命令"
               aria-label="命令"
               value={customCommand}

@@ -445,7 +445,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             const prev = hits[i - 1];
             const newGroup = !prev || groupCaption(prev) !== caption;
             const heading = newGroup && (
-              <div className="pt-2.5 px-3.5 pb-[5px] text-[9px] font-bold tracking-caps uppercase text-whisper">
+              <div className="pt-2.5 px-3.5 pb-[5px] text-[9px] font-bold tracking-caps uppercase text-muted">
                 {caption}
               </div>
             );
@@ -522,7 +522,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         {/* 底部提示条:说明这里生效的按键(⏎ 与 ⌘⏎ 不同,靠猜猜不到)。
             ⌘⏎ 只对会话条目有意义 —— 别的条目按了会回落成普通 ⏎,常驻一
             条按下去没反应的提示比不提示更糟。 */}
-        <div className="flex-none flex items-center gap-3.5 py-2 px-3.5 border-t border-rule bg-surface text-[10.5px] text-whisper">
+        <div className="flex-none flex items-center gap-3.5 py-2 px-3.5 border-t border-rule bg-surface text-[10.5px] text-muted">
           <span>↑↓ 选择</span>
           <span>⏎ 打开</span>
           {focusedHit?.kind === "action" && focusedHit.runNewPane && (

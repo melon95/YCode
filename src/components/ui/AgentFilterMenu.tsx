@@ -93,7 +93,10 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
 function ChevronIcon() {
   return (
     <svg
-      className="flex-none text-whisper"
+      // 不写死字色 —— 触发器自己就是 text-muted、hover/展开时转
+      // text-text。whisper 会把那份状态反馈整个挡掉,箭头还只剩 1.4
+      // 的对比度;继承之后它跟着触发器一起走。
+      className="flex-none"
       width="10"
       height="10"
       viewBox="0 0 24 24"
