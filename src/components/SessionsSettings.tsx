@@ -9,6 +9,8 @@
 // resume semantics and failure modes — a switch that stores `true` and
 // changes nothing would be worse than a greyed row that says why.
 
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type {
   CheckpointSettingsView,
   ConfigView,
@@ -32,32 +34,51 @@ interface Props {
   onChange: (next: ConfigView) => void;
 }
 
-const CLOSE_OPTIONS: ReadonlyArray<ChipOption<WorktreeCloseActionView>> = [
-  { value: "ask", label: "每次询问" },
-  { value: "merge", label: "合并" },
-  { value: "discard", label: "丢弃" },
+/// 选项表存的是 `[值, 词条 key]`,渲染时才翻译 —— 模块级常量在 i18next
+/// init 之前求值,直接存译文会把启动语言烙进去。`chips()` 是那一步转换。
+///
+/// 纯数字的档位(20 / 50)没有词条:它们在任何语言里都是同一个数字,
+/// 为它们编一条词条只是给自己找一个可以译错的地方。
+type Choice<T extends string> = readonly [value: T, labelKey: string];
+
+function chips<T extends string>(
+  choices: ReadonlyArray<Choice<T>>,
+  t: TFunction,
+): ReadonlyArray<ChipOption<T>> {
+  return choices.map(([value, key]) => ({ value, label: t(key) }));
+}
+
+const CLOSE_CHOICES: ReadonlyArray<Choice<WorktreeCloseActionView>> = [
+  ["ask", "settings.sessions.ask"],
+  ["merge", "settings.sessions.merge"],
+  ["discard", "settings.sessions.discard"],
 ];
 
-const OPEN_MODE_OPTIONS: ReadonlyArray<ChipOption<SessionOpenModeView>> = [
-  { value: "replace_focused", label: "替换当前面板" },
-  { value: "new_pane", label: "并排新面板" },
+const OPEN_MODE_CHOICES: ReadonlyArray<Choice<SessionOpenModeView>> = [
+  ["replace_focused", "settings.sessions.replaceFocused"],
+  ["new_pane", "settings.sessions.newPane"],
 ];
 
 /// `null` is "keep everything" on the wire; the chip values are strings
 /// because a picker's identity has to be a string.
-const KEEP_OPTIONS: ReadonlyArray<ChipOption<string>> = [
-  { value: "20", label: "20" },
-  { value: "50", label: "50" },
-  { value: "unlimited", label: "不限" },
+function keepOptions(t: TFunction): ReadonlyArray<ChipOption<string>> {
+  return [
+    { value: "20", label: "20" },
+    { value: "50", label: "50" },
+    { value: "unlimited", label: t("common.unlimited") },
+  ];
+}
+
+const IDLE_CHOICES: ReadonlyArray<Choice<string>> = [
+  ["off", "common.off"],
+  ["30m", "settings.sessions.idle30m"],
+  ["2h", "settings.sessions.idle2h"],
 ];
 
-const IDLE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
-  { value: "off", label: "关" },
-  { value: "30m", label: "30 分钟" },
-  { value: "2h", label: "2 小时" },
-];
+const idleOptions = (t: TFunction) => chips(IDLE_CHOICES, t);
 
 export function SessionsSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
   function setWorktree<K extends keyof WorktreeSettingsView>(
     key: K,
     value: WorktreeSettingsView[K],
@@ -78,97 +99,113 @@ export function SessionsSettings({ config, onChange }: Props) {
     config.checkpoints.keep == null ? "unlimited" : String(config.checkpoints.keep);
 
   return (
-    <SettingSection title="会话" lede={<>agent 会话的隔离方式、检查点与落点。生命周期相关的几项还没有实现。</>}>
-      <SettingGroupLabel>生命周期</SettingGroupLabel>
+    <SettingSection
+      title={t("settings.sessions.title")}
+      lede={<>{t("settings.sessions.lede")}</>}
+    >
+      <SettingGroupLabel>{t("settings.sessions.lifecycle")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="关闭窗口时保留 PTY"
-          desc="让 agent 在后台继续跑,重开应用时接回"
-          pendingReason="需要把 PTY 从窗口生命周期里剥离出来,是独立的一摊工作"
+          name={t("settings.sessions.keepPty")}
+          desc={t("settings.sessions.keepPtyDesc")}
+          pendingReason={t("settings.sessions.keepPtyPending")}
         >
-          <SettingToggle label="关闭窗口时保留 PTY" checked={false} disabled />
+          <SettingToggle label={t("settings.sessions.keepPty")} checked={false} disabled />
         </SettingRow>
         <SettingRow
-          name="回收空闲会话进程"
-          desc="空闲超时后结束进程,下次打开用 --resume 恢复上下文"
-          pendingReason="需要空闲计时与 resume 编排,尚未实现"
+          name={t("settings.sessions.reapIdle")}
+          desc={t("settings.sessions.reapIdleDesc")}
+          pendingReason={t("settings.sessions.reapIdlePending")}
         >
-          <SettingChips label="回收空闲会话进程" options={IDLE_OPTIONS} value="off" disabled />
+          <SettingChips
+            label={t("settings.sessions.reapIdle")}
+            options={idleOptions(t)}
+            value="off"
+            disabled
+          />
         </SettingRow>
         <SettingRow
-          name="自动归档已完成会话"
-          desc="仍可在历史中搜索与恢复"
-          pendingReason="需要后台清理任务,尚未实现"
+          name={t("settings.sessions.autoArchive")}
+          desc={t("settings.sessions.autoArchiveDesc")}
+          pendingReason={t("settings.sessions.autoArchivePending")}
         >
-          <SettingChips label="自动归档已完成会话" options={IDLE_OPTIONS} value="off" disabled />
+          <SettingChips
+            label={t("settings.sessions.autoArchive")}
+            options={idleOptions(t)}
+            value="off"
+            disabled
+          />
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>Worktree 隔离</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.sessions.worktreeIsolation")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="新项目默认开启隔离"
-          desc="每个会话独立分支与工作目录,互不干扰。已有项目保持各自的设置"
+          name={t("settings.sessions.isolateNew")}
+          desc={t("settings.sessions.isolateNewDesc")}
         >
           <SettingToggle
-            label="新项目默认开启隔离"
+            label={t("settings.sessions.isolateNew")}
             checked={config.worktree.isolate_by_default}
             onChange={(v) => setWorktree("isolate_by_default", v)}
           />
         </SettingRow>
-        <SettingRow name="分支名前缀" desc="会话 id 会接在后面">
+        <SettingRow
+          name={t("settings.sessions.branchPrefix")}
+          desc={t("settings.sessions.branchPrefixDesc")}
+        >
           <input
             className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
             value={config.worktree.branch_prefix}
             spellCheck={false}
-            aria-label="分支名前缀"
+            aria-label={t("settings.sessions.branchPrefix")}
             placeholder="ycode/"
             onChange={(e) => setWorktree("branch_prefix", e.target.value)}
           />
         </SettingRow>
-        <SettingRow name="关闭 worktree 时">
+        <SettingRow name={t("settings.sessions.onCloseWorktree")}>
           <SettingChips
-            label="关闭 worktree 时"
-            options={CLOSE_OPTIONS}
+            label={t("settings.sessions.onCloseWorktree")}
+            options={chips(CLOSE_CHOICES, t)}
             value={config.worktree.close_action}
             onChange={(v) => setWorktree("close_action", v)}
           />
         </SettingRow>
         <SettingRow
-          name="软链共享的目录"
-          desc="避免每个 worktree 重装依赖"
-          pendingReason="worktree 创建后的初始化流程尚未实现"
+          name={t("settings.sessions.symlinkShared")}
+          desc={t("settings.sessions.symlinkSharedDesc")}
+          pendingReason={t("settings.sessions.postCreatePending")}
         >
           <SettingValue>node_modules · .venv · target</SettingValue>
         </SettingRow>
         <SettingRow
-          name="创建后执行"
-          desc="软链覆盖不到的初始化:拷贝 .env、代码生成、建本地数据库"
-          pendingReason="worktree 创建后的初始化流程尚未实现"
+          name={t("settings.sessions.postCreate")}
+          desc={t("settings.sessions.postCreateDesc")}
+          pendingReason={t("settings.sessions.postCreatePending")}
         >
           <SettingValue>—</SettingValue>
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>检查点</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.sessions.checkpoints")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="自动创建检查点"
-          desc="每个 agent 回合前后各快照一次,可在「变更」面板里回看与回滚"
+          name={t("settings.sessions.autoCheckpoint")}
+          desc={t("settings.sessions.autoCheckpointDesc")}
         >
           <SettingToggle
-            label="自动创建检查点"
+            label={t("settings.sessions.autoCheckpoint")}
             checked={config.checkpoints.enabled}
             onChange={(v) => setCheckpoints("enabled", v)}
           />
         </SettingRow>
         <SettingRow
-          name="每个会话保留数量"
-          desc="超出后删除最旧的,连同它的 git ref"
+          name={t("settings.sessions.keepPerSession")}
+          desc={t("settings.sessions.keepPerSessionDesc")}
         >
           <SettingChips
-            label="每个会话保留数量"
-            options={KEEP_OPTIONS}
+            label={t("settings.sessions.keepPerSession")}
+            options={keepOptions(t)}
             value={keepValue}
             disabled={!config.checkpoints.enabled}
             onChange={(v) =>
@@ -178,15 +215,15 @@ export function SessionsSettings({ config, onChange }: Props) {
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>默认布局</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.sessions.defaultLayout")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="从侧边栏打开会话时"
-          desc="「替换当前面板」不会改变面板数量"
+          name={t("settings.sessions.openFromSidebar")}
+          desc={t("settings.sessions.openFromSidebarDesc")}
         >
           <SettingChips
-            label="从侧边栏打开会话时"
-            options={OPEN_MODE_OPTIONS}
+            label={t("settings.sessions.openFromSidebar")}
+            options={chips(OPEN_MODE_CHOICES, t)}
             value={config.session_open_mode}
             onChange={(session_open_mode) =>
               onChange({ ...config, session_open_mode })

@@ -5,6 +5,7 @@
 // honestly lists what *is* wired beats either an empty section or a set of
 // controls that silently do nothing.
 
+import { useTranslation } from "react-i18next";
 import {
   FolderTree,
   GitCompare,
@@ -24,52 +25,53 @@ import {
 
 interface PanelRow {
   icon: LucideIcon;
-  name: string;
-  desc: string;
+  /// 词条 key —— PANELS 是模块级常量,在 i18next init 之前求值。
+  nameKey: string;
+  descKey: string;
   state: "builtin" | "on" | "pending";
 }
 
 const PANELS: PanelRow[] = [
   {
     icon: TerminalSquare,
-    name: "终端",
-    desc: "在项目目录里开一个 shell",
+    nameKey: "panels.terminal",
+    descKey: "panels.terminalDesc",
     state: "builtin",
   },
   {
     icon: FolderTree,
-    name: "文件",
-    desc: "文件树 · CodeMirror 编辑器 · LSP",
+    nameKey: "panels.files",
+    descKey: "settings.panels.filesDesc",
     state: "on",
   },
   {
     icon: GitCompare,
-    name: "变更",
-    desc: "工作区 diff · 检查点回顾",
+    nameKey: "panels.changes",
+    descKey: "panels.changesDesc",
     state: "on",
   },
   {
     icon: ListChecks,
-    name: "待办",
-    desc: "项目待办 · agent 可经 MCP 读写",
+    nameKey: "panels.todos",
+    descKey: "panels.todosDesc",
     state: "on",
   },
   {
     icon: Globe,
-    name: "浏览器",
-    desc: "预览本地 dev server",
+    nameKey: "panels.browser",
+    descKey: "panels.browserDesc",
     state: "pending",
   },
 ];
 
 export function PanelsSettings() {
+  const { t } = useTranslation();
   return (
     <SettingSection
-      title="面板"
+      title={t("settings.panels.title")}
       lede={
         <>
-  右侧工作面板。终端是内置面板;面板可以同时打开并堆叠,每个项目记住自己
-          的组合。
+          {t("settings.panels.lede")}
         </>
       }
     >
@@ -78,23 +80,22 @@ export function PanelsSettings() {
           const Icon = p.icon;
           return (
             <SettingRow
-              key={p.name}
-              name={p.name}
-              desc={p.desc}
+              key={p.nameKey}
+              name={t(p.nameKey)}
+              desc={t(p.descKey)}
               icon={<Icon aria-hidden size={15} />}
               pendingReason={
-                p.state === "pending" ? "浏览器面板尚未实现" : undefined
+                p.state === "pending" ? t("settings.panels.browserPending") : undefined
               }
             >
-              {p.state === "builtin" && <SettingChip>内置</SettingChip>}
-              {p.state === "on" && <SettingChip tone="on">已启用</SettingChip>}
+              {p.state === "builtin" && <SettingChip>{t("toolbar.builtin")}</SettingChip>}
+              {p.state === "on" && <SettingChip tone="on">{t("common.enabled")}</SettingChip>}
             </SettingRow>
           );
         })}
       </SettingCard>
       <SettingNote>
-        面板可插拔:未实现的条目会在支持后自动出现在画布工具条的开关里,
-        不需要另行启用。
+        {t("settings.panels.footnote")}
       </SettingNote>
     </SettingSection>
   );
@@ -105,51 +106,55 @@ export function PanelsSettings() {
 /// with no table to read — deriving it would mean restructuring working code
 /// for a display concern.
 const SHORTCUT_GROUPS: Array<{
-  title: string;
-  items: Array<{ keys: string; label: string }>;
+  titleKey: string;
+  items: Array<{ keys: string; labelKey: string }>;
 }> = [
   {
-    title: "全局",
+    titleKey: "settings.keyboard.groupGlobal",
     items: [
-      { keys: "⌘K", label: "命令面板 · 跨会话搜索" },
-      { keys: "⌘O", label: "打开项目" },
-      { keys: "⇧⌘P", label: "项目总览" },
-      { keys: "⇧⌘A", label: "等你处理收件箱" },
-      { keys: "⌘,", label: "设置" },
+      { keys: "⌘K", labelKey: "settings.keyboard.palette" },
+      { keys: "⌘O", labelKey: "settings.keyboard.openProject" },
+      { keys: "⇧⌘P", labelKey: "settings.keyboard.overview" },
+      { keys: "⇧⌘A", labelKey: "settings.keyboard.inbox" },
+      { keys: "⌘,", labelKey: "settings.keyboard.settings" },
     ],
   },
   {
-    title: "会话",
+    titleKey: "settings.keyboard.groupSession",
     items: [
-      { keys: "⌘N", label: "用当前 agent 新建会话" },
-      { keys: "⇧⌘N", label: "打开新建会话选择器" },
-      { keys: "⌘T", label: "用第一个可用 agent 新建会话" },
-      { keys: "⌘W", label: "归档当前会话(需确认)" },
-      { keys: "⌘[ / ⌘]", label: "上一个 / 下一个会话" },
-      { keys: "⇧⌘[ / ⇧⌘]", label: "上一个 / 下一个项目" },
+      { keys: "⌘N", labelKey: "settings.keyboard.newWithCurrent" },
+      { keys: "⇧⌘N", labelKey: "settings.keyboard.openPicker" },
+      { keys: "⌘T", labelKey: "settings.keyboard.newWithFirst" },
+      { keys: "⌘W", labelKey: "settings.keyboard.archiveCurrent" },
+      { keys: "⌘[ / ⌘]", labelKey: "settings.keyboard.prevNextSession" },
+      { keys: "⇧⌘[ / ⇧⌘]", labelKey: "settings.keyboard.prevNextProject" },
     ],
   },
   {
-    title: "布局",
+    titleKey: "settings.keyboard.groupLayout",
     items: [
-      { keys: "⌘B", label: "显示 / 隐藏会话列表" },
-      { keys: "⇧⌘B", label: "显示 / 隐藏右侧面板" },
-      { keys: "⌘J", label: "聚焦右侧终端" },
-      { keys: "⌘1 – ⌘4", label: "切换右侧面板" },
-      { keys: "⇧⌘1 – ⇧⌘4", label: "聚焦第 N 个 agent 面板" },
+      { keys: "⌘B", labelKey: "settings.keyboard.toggleSidebar" },
+      { keys: "⇧⌘B", labelKey: "settings.keyboard.toggleRight" },
+      { keys: "⌘J", labelKey: "settings.keyboard.focusTerminal" },
+      { keys: "⌘1 – ⌘4", labelKey: "settings.keyboard.switchPanel" },
+      { keys: "⇧⌘1 – ⇧⌘4", labelKey: "settings.keyboard.focusNthPane" },
     ],
   },
 ];
 
 export function KeyboardSettings() {
+  const { t } = useTranslation();
   return (
-    <SettingSection title="键盘快捷键" lede={<>当前生效的绑定。重新绑定尚未实现。</>}>
+    <SettingSection
+      title={t("settings.keyboard.title")}
+      lede={<>{t("settings.keyboard.lede")}</>}
+    >
       {SHORTCUT_GROUPS.map((group) => (
-        <div className="settings-group" key={group.title}>
-          <SettingGroupLabel>{group.title}</SettingGroupLabel>
+        <div className="settings-group" key={group.titleKey}>
+          <SettingGroupLabel>{t(group.titleKey)}</SettingGroupLabel>
           <SettingCard>
             {group.items.map((s) => (
-              <SettingRow key={s.keys} name={s.label}>
+              <SettingRow key={s.keys} name={t(s.labelKey)}>
                 <kbd className="flex-none font-mono text-[10.5px] text-text-soft border border-rule-strong border-b-2 rounded-[5px] py-0.5 px-[7px] bg-panel">{s.keys}</kbd>
               </SettingRow>
             ))}
