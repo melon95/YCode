@@ -40,6 +40,17 @@ describe("词条完整性", () => {
     expect(missing).toEqual([]);
   });
 
+  // key 只许 ASCII。写词条时很容易手滑打进同形异码的字符 —— 西里尔的
+  // `С` 和拉丁的 `C` 在编辑器里长得一模一样,两边同时打错还能通过上面
+  // 那条一致性检查,却让调用点怎么写都查不到。
+  it("key 全是 ASCII", () => {
+    const bad = [...keyPaths(zh), ...keyPaths(en)].filter((k) =>
+      // eslint-disable-next-line no-control-regex
+      /[^\x00-\x7F]/.test(k),
+    );
+    expect(bad).toEqual([]);
+  });
+
   it("没有空词条", () => {
     const blanks = [
       ...keyPaths(zh).filter((k) => resolve(zh, k) === ""),

@@ -9,6 +9,7 @@
 // Both switches live in the staged `ConfigView` and apply on Save.
 
 import { toast } from "../lib/toast";
+import { useTranslation } from "react-i18next";
 import { testNotification } from "../lib/ipc";
 import type { ConfigView } from "../lib/types";
 import { StatusDot } from "./ui/StatusDot";
@@ -21,7 +22,8 @@ import {
   SettingNote,
   SettingRow,
   SettingToggle,
-  type ChipOption,
+  chips,
+  type Choice,
 } from "./ui/SettingControls";
 
 interface Props {
@@ -33,13 +35,14 @@ interface Props {
 /// user, so it reads as one three-way picker.
 type Delivery = "always" | "unfocused" | "off";
 
-const DELIVERY_OPTIONS: ReadonlyArray<ChipOption<Delivery>> = [
-  { value: "always", label: "总是" },
-  { value: "unfocused", label: "仅窗口失焦时" },
-  { value: "off", label: "关" },
+const DELIVERY_CHOICES: ReadonlyArray<Choice<Delivery>> = [
+  ["always", "common.always"],
+  ["unfocused", "settings.notifications.unfocusedOnly"],
+  ["off", "common.off"],
 ];
 
 export function NotificationsSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
   const { enabled, only_when_unfocused } = config.notifications;
   const delivery: Delivery = !enabled
     ? "off"
@@ -61,121 +64,127 @@ export function NotificationsSettings({ config, onChange }: Props) {
 
   return (
     <SettingSection
-      title="通知"
+      title={t("settings.notifications.title")}
       lede={
         <>
-  agent 回合结束时发一条系统通知,这样你不用一直盯着终端。事件来自
-          「集成」页配置的 hook。
+          {t("settings.notifications.lede")}
         </>
       }
     >
-      <SettingGroupLabel>送达方式</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.notifications.delivery")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="系统通知"
-          desc="「仅窗口失焦时」= ycode 在前台时不打扰,因为终端里已经看得见"
+          name={t("settings.notifications.systemNotification")}
+          desc={t("settings.notifications.systemNotificationDesc")}
         >
           <SettingChips
-            label="系统通知"
-            options={DELIVERY_OPTIONS}
+            label={t("settings.notifications.systemNotification")}
+            options={chips(DELIVERY_CHOICES, t)}
             value={delivery}
             onChange={setDelivery}
           />
         </SettingRow>
         <SettingRow
-          name="发一条测试通知"
-          desc="macOS 上首次会弹出系统通知权限申请"
+          name={t("settings.notifications.testTitle")}
+          desc={t("settings.notifications.testDesc")}
         >
           <SettingAction
-            label="发送测试通知"
+            label={t("settings.notifications.testSend")}
             disabled={!enabled}
             onClick={() => {
               testNotification()
-                .then(() => toast.success("测试通知已发送"))
-                .catch((err) => toast.danger(`发送失败:${err}`));
+                .then(() => toast.success(t("settings.notifications.testSent")))
+                .catch((err) =>
+                  toast.danger(t("settings.notifications.testFailed", { error: err })),
+                );
             }}
           >
             <SendIcon />
           </SettingAction>
         </SettingRow>
         <SettingRow
-          name="提示音"
-          desc="通知送达时播放的声音"
-          pendingReason="提示音播放未实现"
+          name={t("settings.notifications.sound")}
+          desc={t("settings.notifications.soundDesc")}
+          pendingReason={t("settings.notifications.soundPending")}
         >
           <SettingChips
-            label="提示音"
-            options={[
-              { value: "none", label: "无" },
-              { value: "soft", label: "轻柔" },
-              { value: "loud", label: "明显" },
-            ]}
+            label={t("settings.notifications.sound")}
+            options={chips(
+              [
+                ["none", "common.none"],
+                ["soft", "settings.notifications.soundSoft"],
+                ["loud", "settings.notifications.soundLoud"],
+              ],
+              t,
+            )}
             value="none"
             disabled
           />
         </SettingRow>
         <SettingRow
-          name="Dock 角标显示待处理数"
-          desc="等待授权的会话数显示在应用图标上"
-          pendingReason="Dock 角标需要接入 macOS badge API,未实现"
+          name={t("settings.notifications.dockBadge")}
+          desc={t("settings.notifications.dockBadgeDesc")}
+          pendingReason={t("settings.notifications.dockBadgePending")}
         >
           <SettingToggle
-            label="Dock 角标显示待处理数"
+            label={t("settings.notifications.dockBadge")}
             checked={false}
             disabled
           />
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>触发时机</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.notifications.triggers")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name={<><StatusDot status="done" /> 回合完成</>}
-          desc="agent 结束一轮并把控制权交回给你"
+          name={<><StatusDot status="done" /> {t("settings.notifications.turnDone")}</>}
+          desc={t("settings.notifications.turnDoneDesc")}
         >
-          <SettingToggle label="回合完成" checked={enabled} disabled />
+          <SettingToggle label={t("settings.notifications.turnDone")} checked={enabled} disabled />
         </SettingRow>
         <SettingRow
-          name={<><StatusDot status="blocked" /> 需要你授权</>}
-          desc="agent 停下来等确认 —— 最值得立刻知道"
-          pendingReason="需要 PreToolUse hook 才能区分「等授权」和「回合结束」,见 docs/agent-hook-integration-spec.md"
+          name={<><StatusDot status="blocked" /> {t("settings.notifications.needsApproval")}</>}
+          desc={t("settings.notifications.needsApprovalDesc")}
+          pendingReason={t("settings.notifications.needsApprovalPending")}
         >
-          <SettingToggle label="需要你授权" checked={false} disabled />
+          <SettingToggle label={t("settings.notifications.needsApproval")} checked={false} disabled />
         </SettingRow>
         <SettingRow
-          name={<><StatusDot status="error" /> 运行出错</>}
-          desc="agent 进程非正常退出"
-          pendingReason="退出码目前只反映在会话状态点上,还没有接到通知里"
+          name={<><StatusDot status="error" /> {t("settings.notifications.runError")}</>}
+          desc={t("settings.notifications.runErrorDesc")}
+          pendingReason={t("settings.notifications.runErrorPending")}
         >
-          <SettingToggle label="运行出错" checked={false} disabled />
+          <SettingToggle label={t("settings.notifications.runError")} checked={false} disabled />
         </SettingRow>
       </SettingCard>
       <SettingNote>
-        目前只有「回合完成」有事件来源 —— 它就是 hook 报告的那一个事件,
-        所以它跟着上面的总开关走,没有单独的开关。
+        {t("settings.notifications.onlyTurnDoneNote")}
       </SettingNote>
 
-      <SettingGroupLabel>免打扰</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.notifications.dnd")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="跟随系统专注模式"
-          desc="开启专注模式时不发通知"
-          pendingReason="macOS 没有公开的专注模式查询接口,需要另找办法"
+          name={t("settings.notifications.followFocus")}
+          desc={t("settings.notifications.followFocusDesc")}
+          pendingReason={t("settings.notifications.followFocusPending")}
         >
-          <SettingToggle label="跟随系统专注模式" checked={false} disabled />
+          <SettingToggle label={t("settings.notifications.followFocus")} checked={false} disabled />
         </SettingRow>
         <SettingRow
-          name="同一会话最短间隔"
-          desc="避免连续回合刷屏"
-          pendingReason="需要按会话做节流,尚未实现"
+          name={t("settings.notifications.minInterval")}
+          desc={t("settings.notifications.minIntervalDesc")}
+          pendingReason={t("settings.notifications.minIntervalPending")}
         >
           <SettingChips
-            label="同一会话最短间隔"
-            options={[
-              { value: "off", label: "关" },
-              { value: "30s", label: "30 秒" },
-              { value: "2m", label: "2 分钟" },
-            ]}
+            label={t("settings.notifications.minInterval")}
+            options={chips(
+              [
+                ["off", "common.off"],
+                ["30s", "settings.notifications.interval30s"],
+                ["2m", "settings.notifications.interval2m"],
+              ],
+              t,
+            )}
             value="off"
             disabled
           />

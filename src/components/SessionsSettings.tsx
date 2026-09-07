@@ -26,7 +26,9 @@ import {
   SettingRow,
   SettingToggle,
   SettingValue,
+  chips,
   type ChipOption,
+  type Choice,
 } from "./ui/SettingControls";
 
 interface Props {
@@ -34,19 +36,8 @@ interface Props {
   onChange: (next: ConfigView) => void;
 }
 
-/// 选项表存的是 `[值, 词条 key]`,渲染时才翻译 —— 模块级常量在 i18next
-/// init 之前求值,直接存译文会把启动语言烙进去。`chips()` 是那一步转换。
-///
 /// 纯数字的档位(20 / 50)没有词条:它们在任何语言里都是同一个数字,
 /// 为它们编一条词条只是给自己找一个可以译错的地方。
-type Choice<T extends string> = readonly [value: T, labelKey: string];
-
-function chips<T extends string>(
-  choices: ReadonlyArray<Choice<T>>,
-  t: TFunction,
-): ReadonlyArray<ChipOption<T>> {
-  return choices.map(([value, key]) => ({ value, label: t(key) }));
-}
 
 const CLOSE_CHOICES: ReadonlyArray<Choice<WorktreeCloseActionView>> = [
   ["ask", "settings.sessions.ask"],

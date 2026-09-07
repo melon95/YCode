@@ -7,10 +7,12 @@
 // The page states the fact instead.
 
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { appDataDir } from "@tauri-apps/api/path";
 import { useStore } from "../lib/store";
 import { revealInFinder } from "../lib/ipc";
 import {
+  chips,
   SettingSection,
   SettingAction,
   SettingCard,
@@ -31,6 +33,7 @@ const TRANSCRIPT_DIR: Record<string, string> = {
 };
 
 export function DataSettings() {
+  const { t } = useTranslation();
   const [dataDir, setDataDir] = useState<string | null>(null);
   const sessions = useStore((s) => s.sessions);
   const projects = useStore((s) => s.projects);
@@ -61,15 +64,21 @@ export function DataSettings() {
   ];
 
   return (
-    <SettingSection title="数据与隐私" lede={<>所有数据都在本地。ycode 不代理 agent 的 API 流量,也不上传你的代码。</>}>
-      <SettingGroupLabel>本地存储</SettingGroupLabel>
+    <SettingSection
+      title={t("settings.data.title")}
+      lede={<>{t("settings.data.lede")}</>}
+    >
+      <SettingGroupLabel>{t("settings.data.localStorage")}</SettingGroupLabel>
       <SettingCard>
-        <SettingRow name="应用数据" desc="项目、会话、待办、检查点索引">
+        <SettingRow
+          name={t("settings.data.appData")}
+          desc={t("settings.data.appDataDesc")}
+        >
           <SettingValue align="end" title={dataDir ?? undefined}>
-            {dataDir ?? "读取中…"}
+            {dataDir ?? t("settings.data.reading")}
           </SettingValue>
           <SettingAction
-            label="在访达中显示"
+            label={t("settings.data.revealInFinder")}
             disabled={!dataDir}
             onClick={
               dataDir
@@ -83,78 +92,88 @@ export function DataSettings() {
           </SettingAction>
         </SettingRow>
         <SettingRow
-          name="Transcript 来源"
-          desc="只读扫描 —— ycode 从不修改这些文件"
+          name={t("settings.data.transcriptSource")}
+          desc={t("settings.data.transcriptSourceDesc")}
         >
           <SettingValue align="end">
             {transcriptDirs.length > 0 ? transcriptDirs.join(" · ") : "—"}
           </SettingValue>
         </SettingRow>
-        <SettingRow name="已索引" desc="会话与项目的本地索引">
+        <SettingRow
+          name={t("settings.data.indexed")}
+          desc={t("settings.data.indexedDesc")}
+        >
           <SettingValue align="end">
-            {sessionCount} 个会话 · {projectCount} 个项目
+            {t("settings.data.indexedCount", {
+              sessions: sessionCount,
+              projects: projectCount,
+            })}
           </SettingValue>
         </SettingRow>
         <SettingRow
-          name="搜索索引"
-          desc="命令面板的历史搜索用它;损坏时应能从 transcript 重建"
-          pendingReason="索引重建命令未实现"
+          name={t("settings.data.searchIndex")}
+          desc={t("settings.data.searchIndexDesc")}
+          pendingReason={t("settings.data.searchIndexPending")}
         >
-          <SettingAction label="重建索引" disabled>
+          <SettingAction label={t("settings.data.rebuildIndex")} disabled>
             <RefreshIcon />
           </SettingAction>
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>保留策略</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.data.retention")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="会话历史保留"
-          desc="超期仅清理 ycode 的索引,不动 agent 的原始 transcript"
-          pendingReason="保留策略清理任务未实现"
+          name={t("settings.data.historyRetention")}
+          desc={t("settings.data.historyRetentionDesc")}
+          pendingReason={t("settings.data.historyRetentionPending")}
         >
           <SettingChips
-            label="会话历史保留"
-            options={[
-              { value: "90d", label: "90 天" },
-              { value: "1y", label: "1 年" },
-              { value: "forever", label: "永久" },
-            ]}
+            label={t("settings.data.historyRetention")}
+            options={chips(
+              [
+                ["90d", "settings.data.days90"],
+                ["1y", "settings.data.year1"],
+                ["forever", "common.permanent"],
+              ],
+              t,
+            )}
             value="forever"
             disabled
           />
         </SettingRow>
       </SettingCard>
       <SettingNote>
-        检查点的保留数量已经是可用设置,在<b>「会话 → 检查点」</b>里调整,
-        这里不再重复。
+        <Trans i18nKey="settings.data.checkpointNote" components={{ 1: <b /> }} />
       </SettingNote>
 
-      <SettingGroupLabel>遥测</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.data.telemetry")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="匿名使用统计"
-          desc="ycode 没有埋点、没有分析 SDK,也没有可以打开它的开关"
+          name={t("settings.data.anonymousStats")}
+          desc={t("settings.data.anonymousStatsDesc")}
         >
-          <SettingChip tone="on">不收集</SettingChip>
+          <SettingChip tone="on">{t("settings.data.notCollected")}</SettingChip>
         </SettingRow>
-        <SettingRow name="崩溃报告" desc="崩溃日志只写在本地,不会外发">
-          <SettingChip tone="on">不收集</SettingChip>
+        <SettingRow
+          name={t("settings.data.crashReports")}
+          desc={t("settings.data.crashReportsDesc")}
+        >
+          <SettingChip tone="on">{t("settings.data.notCollected")}</SettingChip>
         </SettingRow>
       </SettingCard>
       <SettingNote>
-        唯一的出网请求是<b>检查应用更新</b>(见「关于」页)。agent CLI 自己与模型
-        服务商的通信不经过 ycode。
+        <Trans i18nKey="settings.data.networkNote" components={{ 1: <b /> }} />
       </SettingNote>
 
-      <SettingGroupLabel>清理</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.data.cleanup")}</SettingGroupLabel>
       <SettingCard tone="danger">
         <SettingRow
-          name="清除全部本地数据"
-          desc="移除项目、会话索引与检查点。不会删除你的代码,也不会删除 agent 的 transcript"
-          pendingReason="需要一个能安全停掉所有会话再删库的后端命令,尚未实现"
+          name={t("settings.data.clearAll")}
+          desc={t("settings.data.clearAllDesc")}
+          pendingReason={t("settings.data.clearAllPending")}
         >
-          <SettingAction label="清除全部本地数据" tone="danger" disabled>
+          <SettingAction label={t("settings.data.clearAll")} tone="danger" disabled>
             <TrashIcon />
           </SettingAction>
         </SettingRow>

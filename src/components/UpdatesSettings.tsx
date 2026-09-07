@@ -6,6 +6,8 @@
 // path swallows.
 
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { toast } from "../lib/toast";
 import { getVersion, getTauriVersion } from "@tauri-apps/api/app";
 import { checkForUpdate } from "../lib/updater";
@@ -27,6 +29,7 @@ const REPO_URL = "https://github.com/melon95/YCode";
 const RELEASES_URL = `${REPO_URL}/releases`;
 
 export function UpdatesSettings({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [current, setCurrent] = useState<string>("…");
   const [tauri, setTauri] = useState<string>("…");
   const [checking, setChecking] = useState(false);
@@ -35,10 +38,10 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     getVersion()
       .then((v) => !cancelled && setCurrent(v))
-      .catch(() => !cancelled && setCurrent("未知"));
+      .catch(() => !cancelled && setCurrent(i18next.t("settings.about.unknown")));
     getTauriVersion()
       .then((v) => !cancelled && setTauri(v))
-      .catch(() => !cancelled && setTauri("未知"));
+      .catch(() => !cancelled && setTauri(i18next.t("settings.about.unknown")));
     return () => {
       cancelled = true;
     };
@@ -50,7 +53,7 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
     try {
       const update = await checkForUpdate();
       if (!update) {
-        toast.success("已是最新版本");
+        toast.success(t("settings.about.upToDate"));
         return;
       }
       // Reuse the same notice card rendered by `UpdateNotice` instead of
@@ -65,7 +68,7 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
       // dismisses the modal — forcing a second click to actually install.
       onClose();
     } catch (err) {
-      toast.danger(`检查更新失败:${err}`);
+      toast.danger(t("settings.about.checkFailed", { error: err }));
     } finally {
       setChecking(false);
     }
@@ -73,20 +76,19 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
 
   return (
     <SettingSection
-      title="关于"
+      title={t("settings.about.title")}
       lede={
         <>
-  ycode 是一个通用的 AI CLI 工作台 —— 把 agent CLI 原样跑在 PTY 里,
-          围绕它补上多会话、worktree 隔离、检查点与跨项目视图。
+          {t("settings.about.lede")}
         </>
       }
     >
-      <SettingGroupLabel>版本</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.about.version")}</SettingGroupLabel>
       <SettingCard>
-        <SettingRow name="ycode" desc="启动几秒后会自动检查一次更新">
+        <SettingRow name="ycode" desc={t("settings.about.ycodeDesc")}>
           <SettingValue align="end">v{current}</SettingValue>
           <SettingAction
-            label="检查更新"
+            label={t("settings.about.checkUpdates")}
             disabled={checking}
             onClick={() => void onCheck()}
           >
@@ -97,14 +99,15 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
           <SettingValue align="end">v{tauri}</SettingValue>
         </SettingRow>
         <SettingRow
-          name="更新通道"
-          desc="Beta 更早拿到新功能,可能不稳定"
-          pendingReason="更新器只有稳定版一个源,通道切换未实现"
+          name={t("settings.about.channel")}
+          desc={t("settings.about.channelDesc")}
+          pendingReason={t("settings.about.channelPending")}
         >
           <SettingChips
-            label="更新通道"
+            label={t("settings.about.channel")}
             options={[
-              { value: "stable", label: "稳定版" },
+              { value: "stable", label: t("settings.about.stable") },
+              // 「Beta」是通道的名字,不翻译 —— 各语言都这么叫。
               { value: "beta", label: "Beta" },
             ]}
             value="stable"
@@ -112,19 +115,22 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
           />
         </SettingRow>
         <SettingRow
-          name="自动下载更新"
-          desc="发现新版本时后台下载,重启即生效"
-          pendingReason="更新器目前只提示不下载,自动下载未实现"
+          name={t("settings.about.autoDownload")}
+          desc={t("settings.about.autoDownloadDesc")}
+          pendingReason={t("settings.about.autoDownloadPending")}
         >
-          <SettingToggle label="自动下载更新" checked={false} disabled />
+          <SettingToggle label={t("settings.about.autoDownload")} checked={false} disabled />
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>项目</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.about.project")}</SettingGroupLabel>
       <SettingCard>
-        <SettingRow name="更新日志" desc="每个版本的发布说明,在 GitHub Releases 上">
+        <SettingRow
+          name={t("settings.about.changelog")}
+          desc={t("settings.about.changelogDesc")}
+        >
           <SettingAction
-            label="在浏览器中打开更新日志"
+            label={t("settings.about.openChangelog")}
             onClick={() => {
               void openUrl(RELEASES_URL);
             }}
@@ -133,17 +139,17 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
           </SettingAction>
         </SettingRow>
         <SettingRow
-          name="开源许可"
-          desc="ycode 用到的第三方依赖及其许可证"
-          pendingReason="许可清单页未生成"
+          name={t("settings.about.licenses")}
+          desc={t("settings.about.licensesDesc")}
+          pendingReason={t("settings.about.licensesPending")}
         >
-          <SettingAction label="查看开源许可" disabled>
+          <SettingAction label={t("settings.about.viewLicenses")} disabled>
             <ExternalIcon />
           </SettingAction>
         </SettingRow>
-        <SettingRow name="源码仓库" desc={REPO_URL}>
+        <SettingRow name={t("settings.about.repo")} desc={REPO_URL}>
           <SettingAction
-            label="在浏览器中打开仓库"
+            label={t("settings.about.openRepo")}
             onClick={() => {
               void openUrl(REPO_URL);
             }}
@@ -153,8 +159,7 @@ export function UpdatesSettings({ onClose }: { onClose: () => void }) {
         </SettingRow>
       </SettingCard>
       <SettingNote>
-        检查更新是 ycode 唯一的出网请求。其余数据都留在本机 —— 见
-        <b>「数据与隐私」</b>。
+        <Trans i18nKey="settings.about.networkNote" components={{ 1: <b /> }} />
       </SettingNote>
     </SettingSection>
   );

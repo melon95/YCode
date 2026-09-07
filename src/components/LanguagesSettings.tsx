@@ -4,6 +4,7 @@
 // SQLite `lsp_installations` table, not in `ConfigView`.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "../lib/toast";
 import {
   listenSessionEvents,
@@ -30,6 +31,7 @@ interface InstallProgressState {
 }
 
 export function LanguagesSettings() {
+  const { t } = useTranslation();
   const [manifests, setManifests] = useState<LspManifestView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Per-server in-flight install progress. Keyed by manifest id. Cleared on
@@ -96,10 +98,19 @@ export function LanguagesSettings() {
         });
         if (kind.ok) {
           toast.success(
-            `已安装 ${serverId}${kind.version ? ` (${kind.version})` : ""}`,
+            kind.version
+            ? t("settings.languages.installedWithVersion", {
+                name: serverId,
+                version: kind.version,
+              })
+            : t("settings.languages.installed", { name: serverId }),
           );
         } else {
-          toast.danger(`安装失败:${kind.error ?? "未知错误"}`);
+          toast.danger(
+            t("settings.languages.installFailed", {
+              error: kind.error ?? t("settings.languages.unknownError"),
+            }),
+          );
         }
         void refreshRef.current();
       } else if (kind.type === "LspUninstalled") {
@@ -132,7 +143,7 @@ export function LanguagesSettings() {
         next.delete(id);
         return next;
       });
-      toast.danger(`安装失败:${e}`);
+      toast.danger(t("settings.languages.installFailed", { error: e }));
     }
   }
 
@@ -140,16 +151,19 @@ export function LanguagesSettings() {
     const id = server.manifest.id;
     try {
       await lspUninstall(id);
-      toast.success(`已卸载 ${id}`);
+      toast.success(t("settings.languages.uninstalled", { name: id }));
       await refresh();
     } catch (e) {
-      toast.danger(`卸载失败:${e}`);
+      toast.danger(t("settings.languages.uninstallFailed", { error: e }));
     }
   }
 
   if (error) {
     return (
-      <SettingSection title="编辑器与语言" lede={<>读取语言服务列表失败:{error}</>}>
+      <SettingSection
+        title={t("settings.languages.title")}
+        lede={<>{t("settings.languages.loadFailed", { error })}</>}
+      >
       </SettingSection>
     );
   }
@@ -159,52 +173,53 @@ export function LanguagesSettings() {
 
   return (
     <SettingSection
-      title="编辑器与语言"
+      title={t("settings.languages.title")}
       lede={
         <>
-  内置编辑器与语言服务。语言服务给编辑器带来跳转定义和语义高亮 ——
-          只装你真正会编辑的语言,每个都有几 MB 到几十 MB。
+          {t("settings.languages.lede")}
         </>
       }
     >
-      <SettingGroupLabel>编辑器</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.languages.editor")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="字体 / 字号"
-          desc="字号可在「外观」页与界面、终端一起调整"
-          pendingReason="编辑器字体独立配置未实现,当前跟随外观设置"
+          name={t("settings.languages.fontRow")}
+          desc={t("settings.languages.fontRowDesc")}
+          pendingReason={t("settings.languages.fontRowPending")}
         >
-          <SettingChip>见外观</SettingChip>
+          <SettingChip>{t("settings.languages.seeAppearance")}</SettingChip>
         </SettingRow>
         <SettingRow
-          name="缩进"
-          desc="跟随打开文件的既有缩进"
-          pendingReason="尚未做成可配置项 —— CodeMirror 目前按文件内容推断"
+          name={t("settings.languages.indent")}
+          desc={t("settings.languages.indentDesc")}
+          pendingReason={t("settings.languages.indentPending")}
         >
-          <SettingChip>自动识别</SettingChip>
+          <SettingChip>{t("settings.languages.autoDetect")}</SettingChip>
         </SettingRow>
         <SettingRow
-          name="显示缩进参考线"
-          desc="在嵌套层级间画竖直参考线"
-          pendingReason="CodeMirror 缩进参考线未接入配置"
+          name={t("settings.languages.indentGuides")}
+          desc={t("settings.languages.indentGuidesDesc")}
+          pendingReason={t("settings.languages.indentGuidesPending")}
         >
-          <SettingToggle label="显示缩进参考线" checked={false} disabled />
+          <SettingToggle label={t("settings.languages.indentGuides")} checked={false} disabled />
         </SettingRow>
         <SettingRow
-          name="保存时格式化"
-          desc="调用项目自带的 formatter"
-          pendingReason="需要接入项目的 formatter 配置,尚未实现"
+          name={t("settings.languages.formatOnSave")}
+          desc={t("settings.languages.formatOnSaveDesc")}
+          pendingReason={t("settings.languages.formatOnSavePending")}
         >
-          <SettingToggle label="保存时格式化" checked={false} disabled />
+          <SettingToggle label={t("settings.languages.formatOnSave")} checked={false} disabled />
         </SettingRow>
       </SettingCard>
 
       <SettingGroupLabel>
-        语言服务{manifests ? ` · 已安装 ${installedCount}` : ""}
+        {manifests
+          ? t("settings.languages.serversInstalled", { count: installedCount })
+          : t("settings.languages.servers")}
       </SettingGroupLabel>
       <SettingCard>
         {!manifests ? (
-          <SettingRow name="读取中…" />
+          <SettingRow name={t("common.loading")} />
         ) : (
           manifests.map((server) => (
             <LspRow
@@ -237,6 +252,7 @@ function LspRow({
   onInstall,
   onUninstall,
 }: LspRowProps) {
+  const { t } = useTranslation();
   const { manifest, installation, platform_supported, requirement_message } =
     server;
   const installing = isPending || progress !== undefined;
@@ -247,7 +263,7 @@ function LspRow({
   // is English prose several lines long — it pushed every other row out of
   // rhythm to say what the server id already says.
   const desc = !platform_supported
-    ? "当前平台不支持"
+    ? t("settings.languages.unsupportedPlatform")
     : requirement_message && !installed
       ? requirement_message
       : progress
@@ -263,18 +279,22 @@ function LspRow({
       <SettingValue align="end">{manifest.id}</SettingValue>
       {installing ? (
         <SettingChip tone="warn">
-          {progress?.percent != null ? `${progress.percent}%` : "安装中…"}
+          {progress?.percent != null
+                ? t("settings.languages.installingPercent", { percent: progress.percent })
+                : t("settings.languages.installing")}
         </SettingChip>
       ) : installed ? (
         <SettingChip tone="on" title={installation?.version ?? undefined}>
-          {installation?.version ? `v${installation.version}` : "已安装"}
+          {installation?.version
+                ? `v${installation.version}`
+                : t("settings.languages.installedShort")}
         </SettingChip>
       ) : (
-        <SettingChip>未安装</SettingChip>
+        <SettingChip>{t("settings.languages.notInstalled")}</SettingChip>
       )}
       {installed ? (
         <SettingAction
-          label={`卸载 ${manifest.display_name}`}
+          label={t("settings.languages.uninstall", { name: manifest.display_name })}
           tone="danger"
           disabled={installing}
           onClick={onUninstall}
@@ -283,10 +303,10 @@ function LspRow({
         </SettingAction>
       ) : (
         <SettingAction
-          label={`安装 ${manifest.display_name}`}
+          label={t("settings.languages.install", { name: manifest.display_name })}
           title={
             !platform_supported
-              ? "当前平台不支持"
+              ? t("settings.languages.unsupportedPlatform")
               : (requirement_message ?? undefined)
           }
           disabled={!canInstall}

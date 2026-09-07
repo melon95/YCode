@@ -17,6 +17,7 @@
 // has to hand-place margins, and a utility on the element itself can't see
 // what precedes it.
 
+import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -236,6 +237,18 @@ export function SettingToggle({
       <ToggleTrack checked={checked} />
     </button>
   );
+}
+
+/// 选项表在模块顶层定义,那会儿 i18next 还没 init —— 所以存的是
+/// `[值, 词条 key]`,渲染时经 `chips()` 才翻译。直接在常量里存译文会
+/// 把启动语言烙死,之后切语言这些 chip 不会跟着变。
+export type Choice<T extends string> = readonly [value: T, labelKey: string];
+
+export function chips<T extends string>(
+  choices: ReadonlyArray<Choice<T>>,
+  t: TFunction,
+): ReadonlyArray<ChipOption<T>> {
+  return choices.map(([value, key]) => ({ value, label: t(key) }));
 }
 
 export interface ChipOption<T extends string> {
