@@ -12,6 +12,8 @@
 // back, so the buttons say what they did via a toast instead.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { toast } from "../lib/toast";
 import { platform } from "@tauri-apps/plugin-os";
 import {
@@ -61,8 +63,8 @@ const AGENT_TARGET: Record<HookAgent, string> = {
 /// How we edited it. Separate from the path so the path itself stays short
 /// enough to render without being ellipsised away.
 const AGENT_TARGET_NOTE: Record<HookAgent, string> = {
-  claude: "以 _ycode_managed 标记我们写的那一段",
-  codex: "保留你原有的 notify",
+  claude: "settings.integrations.hookNoteClaude",
+  codex: "settings.integrations.hookNoteCodex",
 };
 /// The events each installed hook actually reports. Hard-coded because they
 /// are a property of the patch we write, not something the backend returns.
@@ -72,6 +74,7 @@ const AGENT_EVENTS: Record<HookAgent, string[]> = {
 };
 
 export function IntegrationsSettings() {
+  const { t } = useTranslation();
   // Only the agents the user actually configured, and only the two the
   // backend can patch. Listing a fixed claude/codex/gemini trio meant the
   // page advertised integrations for CLIs that weren't installed — and kept
@@ -88,61 +91,65 @@ export function IntegrationsSettings() {
 
   return (
     <SettingSection
-      title="集成"
+      title={t("settings.integrations.title")}
       lede={
         <>
-  ycode 如何与 agent 通信。<b>只观测,不干预</b> —— 这些集成不会阻塞、批准或改写
-          agent 的行为。
+          <Trans i18nKey="settings.integrations.lede" components={{ 1: <b /> }} />
         </>
       }
     >
-      <SettingGroupLabel>Hook · 状态与事件来源</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.integrations.hookGroup")}</SettingGroupLabel>
       <SettingCard>
         {hookAgents.length === 0 ? (
           <SettingRow
-            name="没有可接入的 agent"
-            desc="目前只有 Claude Code 和 Codex 提供了可读的回合结束事件"
+            name={t("settings.integrations.noAgents")}
+            desc={t("settings.integrations.noAgentsDesc")}
           />
         ) : (
           hookAgents.map((a) => <HookRows key={a} agent={a} />)
         )}
       </SettingCard>
       <SettingNote>
-        Hook 只用来读取会话状态与工具活动。helper 在任何失败路径都返回 0,
-        <b>ycode 未运行时不会影响你的 agent</b>。首次改写前会在原文件旁写一份
-        <code> .ycode.bak</code> 备份。
+        <Trans
+          i18nKey="settings.integrations.hookNote"
+          components={{ 1: <b />, 3: <code /> }}
+        />
       </SettingNote>
 
-      <SettingGroupLabel>MCP · 供 agent 调用的能力</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.integrations.mcpGroup")}</SettingGroupLabel>
       <SettingCard>
         {hookAgents.map((a) => (
           <McpRow key={a} agent={a} />
         ))}
-        <SettingRow name="传输">
+        <SettingRow name={t("settings.integrations.transport")}>
           <SettingValue align="end">
             ycode-mcp sidecar · Unix domain socket
           </SettingValue>
         </SettingRow>
       </SettingCard>
       <SettingNote>
-        注册后 agent 可通过 <code>list_todos</code> / <code>add_todo</code> /{" "}
-        <code>update_todo</code> / <code>delete_todo</code> 读写当前项目的待办。
-        项目由 agent 所在的终端推断,不需要项目 id。
+        <Trans
+          i18nKey="settings.integrations.mcpNote"
+          components={{ 1: <code />, 3: <code />, 5: <code />, 7: <code /> }}
+        />
       </SettingNote>
 
-      <SettingGroupLabel>系统</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.integrations.systemGroup")}</SettingGroupLabel>
       <SettingCard>
         <CliRow />
         <SettingRow
           name={
             <>
-              处理 <code>ycode://</code> 深链接
+              <Trans
+                i18nKey="settings.integrations.deepLink"
+                components={{ 1: <code /> }}
+              />
             </>
           }
-          desc="点击 ycode:// 链接时唤起本应用"
+          desc={t("settings.integrations.deepLinkDesc")}
         >
-          <SettingChip tone="on" title="由 tauri-plugin-deep-link 在启动时注册">
-            已注册
+          <SettingChip tone="on" title={t("settings.integrations.deepLinkBy")}>
+            {t("settings.integrations.registered")}
           </SettingChip>
         </SettingRow>
       </SettingCard>
@@ -153,13 +160,21 @@ export function IntegrationsSettings() {
 /* ---------- hooks ---------- */
 
 function HookRows({ agent }: { agent: HookAgent }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<AgentPatchStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(() => {
     agentHookStatus(agent)
       .then(setStatus)
-      .catch((err) => toast.danger(`${AGENT_LABEL[agent]} hook 状态读取失败:${err}`));
+      .catch((err) =>
+        toast.danger(
+          t("settings.integrations.hookReadFailed", {
+            agent: AGENT_LABEL[agent],
+            error: err,
+          }),
+        ),
+      );
   }, [agent]);
 
   useEffect(refresh, [refresh]);
@@ -173,12 +188,12 @@ function HookRows({ agent }: { agent: HookAgent }) {
       const next = await action();
       setStatus(next);
       if (next.agent === "codex" && next.kind === "conflict_user_set") {
-        toast.warning("Codex 已有自己的 notify —— 没有改动你的配置");
+        toast.warning(t("settings.integrations.codexHasNotify"));
       } else {
         toast.success(success);
       }
     } catch (err) {
-      toast.danger(`操作失败:${err}`);
+      toast.danger(t("settings.integrations.actionFailed", { error: err }));
       refresh();
     } finally {
       setBusy(false);
@@ -198,15 +213,17 @@ function HookRows({ agent }: { agent: HookAgent }) {
         desc={
           conflict ? (
             <>
-              你已在 <code>~/.codex/config.toml</code> 里设了{" "}
-              <code>{existing.join(" ")}</code>。ycode 可以串在它前面,两者都会
-              收到同一个事件;移除时会还原成你原来的设置。
+              <Trans
+                i18nKey="settings.integrations.codexConflict"
+                values={{ existing: existing.join(" ") }}
+                components={{ 1: <code />, 3: <code /> }}
+              />
             </>
           ) : undefined
         }
       >
         {status === null ? (
-          <SettingChip>读取中…</SettingChip>
+          <SettingChip>{t("common.loading")}</SettingChip>
         ) : (
           <>
             {installed &&
@@ -215,17 +232,17 @@ function HookRows({ agent }: { agent: HookAgent }) {
                   {e}
                 </SettingChip>
               ))}
-            {conflict && <SettingChip tone="warn">未接入</SettingChip>}
-            {!installed && !conflict && <SettingChip>未接入</SettingChip>}
+            {conflict && <SettingChip tone="warn">{t("settings.integrations.notConnected")}</SettingChip>}
+            {!installed && !conflict && <SettingChip>{t("settings.integrations.notConnected")}</SettingChip>}
             {conflict ? (
               <SettingAction
-                label="串接到现有 notify 之后"
-                title="串接:两者都会收到事件"
+                label={t("settings.integrations.chainAfter")}
+                title={t("settings.integrations.chainAfterHint")}
                 disabled={busy || existing.length === 0}
                 onClick={() =>
                   void run(
                     () => agentInstallCodexChain(existing),
-                    `${AGENT_LABEL[agent]} hook 已串接在你原有的 notify 之上`,
+                    t("settings.integrations.hookChained", { agent: AGENT_LABEL[agent] }),
                   )
                 }
               >
@@ -233,13 +250,13 @@ function HookRows({ agent }: { agent: HookAgent }) {
               </SettingAction>
             ) : installed ? (
               <SettingAction
-                label="移除 hook"
+                label={t("settings.integrations.removeHook")}
                 tone="danger"
                 disabled={busy}
                 onClick={() =>
                   void run(
                     () => agentUninstallHook(agent),
-                    `${AGENT_LABEL[agent]} hook 已移除`,
+                    t("settings.integrations.hookRemoved", { agent: AGENT_LABEL[agent] }),
                   )
                 }
               >
@@ -247,12 +264,12 @@ function HookRows({ agent }: { agent: HookAgent }) {
               </SettingAction>
             ) : (
               <SettingAction
-                label="接入 hook"
+                label={t("settings.integrations.installHook")}
                 disabled={busy}
                 onClick={() =>
                   void run(
                     () => agentInstallHook(agent),
-                    `${AGENT_LABEL[agent]} hook 已接入`,
+                    t("settings.integrations.hookInstalled", { agent: AGENT_LABEL[agent] }),
                   )
                 }
               >
@@ -264,8 +281,8 @@ function HookRows({ agent }: { agent: HookAgent }) {
       </SettingRow>
       {installed && (
         <SettingRow
-          name={<span className="font-normal text-subtle">写入位置</span>}
-          desc={AGENT_TARGET_NOTE[agent]}
+          name={<span className="font-normal text-subtle">{t("settings.integrations.writeLocation")}</span>}
+          desc={t(AGENT_TARGET_NOTE[agent])}
         >
           <SettingValue align="end" title={AGENT_TARGET[agent]}>
             {AGENT_TARGET[agent]}
@@ -279,13 +296,21 @@ function HookRows({ agent }: { agent: HookAgent }) {
 /* ---------- MCP ---------- */
 
 function McpRow({ agent }: { agent: HookAgent }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(() => {
     mcpStatus(agent)
       .then(setStatus)
-      .catch((err) => toast.danger(`${AGENT_LABEL[agent]} MCP 状态读取失败:${err}`));
+      .catch((err) =>
+        toast.danger(
+          t("settings.integrations.mcpReadFailed", {
+            agent: AGENT_LABEL[agent],
+            error: err,
+          }),
+        ),
+      );
   }, [agent]);
 
   useEffect(refresh, [refresh]);
@@ -296,7 +321,7 @@ function McpRow({ agent }: { agent: HookAgent }) {
       setStatus(await action());
       toast.success(success);
     } catch (err) {
-      toast.danger(`操作失败:${err}`);
+      toast.danger(t("settings.integrations.actionFailed", { error: err }));
     } finally {
       setBusy(false);
     }
@@ -305,22 +330,22 @@ function McpRow({ agent }: { agent: HookAgent }) {
   return (
     <SettingRow
       name={AGENT_LABEL[agent]}
-      desc="待办列表 · agent 可读取、新建、更新当前项目的待办"
+      desc={t("settings.integrations.todoMcpDesc")}
       icon={<AgentIcon icon={AGENT_ICON[agent]} fallbackChar={AGENT_LABEL[agent]} size={22} />}
     >
       {status === null ? (
-        <SettingChip>读取中…</SettingChip>
+        <SettingChip>{t("common.loading")}</SettingChip>
       ) : status === "installed" ? (
         <>
-          <SettingChip tone="on">已注册</SettingChip>
+          <SettingChip tone="on">{t("settings.integrations.registered")}</SettingChip>
           <SettingAction
-            label="取消注册"
+            label={t("settings.integrations.unregister")}
             tone="danger"
             disabled={busy}
             onClick={() =>
               void run(
                 () => mcpUninstall(agent),
-                `${AGENT_LABEL[agent]} 的待办 MCP 已移除`,
+                t("settings.integrations.mcpRemoved", { agent: AGENT_LABEL[agent] }),
               )
             }
           >
@@ -329,14 +354,14 @@ function McpRow({ agent }: { agent: HookAgent }) {
         </>
       ) : (
         <>
-          <SettingChip>未注册</SettingChip>
+          <SettingChip>{t("settings.integrations.notRegistered")}</SettingChip>
           <SettingAction
-            label="注册待办 MCP"
+            label={t("settings.integrations.registerTodoMcp")}
             disabled={busy}
             onClick={() =>
               void run(
                 () => mcpInstall(agent),
-                `${AGENT_LABEL[agent]} 的待办 MCP 已注册`,
+                t("settings.integrations.mcpRegistered", { agent: AGENT_LABEL[agent] }),
               )
             }
           >
@@ -361,12 +386,13 @@ function installHint(): string {
     os = "macos";
   }
   if (os === "windows") {
-    return "写入 %LOCALAPPDATA%\\YCode\\bin\\ycode.cmd 并把该目录加进用户 PATH。不需要管理员权限,装好后请开一个新终端。";
+    return i18next.t("settings.integrations.cliWindows");
   }
-  return "在 /usr/local/bin/ycode 建一个软链接。只有当该目录对你不可写时才会要求输入密码。";
+  return i18next.t("settings.integrations.cliUnix");
 }
 
 function CliRow() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<CliInstallStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -374,7 +400,9 @@ function CliRow() {
     () =>
       cliStatus()
         .then(setStatus)
-        .catch((err) => toast.danger(`命令行状态读取失败:${err}`)),
+        .catch((err) =>
+        toast.danger(t("settings.integrations.cliReadFailed", { error: err })),
+      ),
     [],
   );
 
@@ -392,12 +420,12 @@ function CliRow() {
       // with a failure meaning — announcing "it's on your PATH" while
       // rendering a Repair button underneath would just be a lie.
       if (next.kind === "installed") {
-        toast.success("`ycode` 已在 PATH 中 —— 开一个新终端试试");
+        toast.success(t("settings.integrations.cliInstalled"));
       } else {
-        toast.warning("安装未完成 —— 见下方状态");
+        toast.warning(t("settings.integrations.cliIncomplete"));
       }
     } catch (err) {
-      toast.danger(`安装失败:${err}`);
+      toast.danger(t("settings.integrations.cliInstallFailed", { error: err }));
       // The failure may itself have changed what's on disk (a partial
       // elevated run), so re-read rather than trusting the stale value.
       await refresh();
@@ -410,9 +438,9 @@ function CliRow() {
     setBusy(true);
     try {
       setStatus(await cliUninstall());
-      toast.success("`ycode` 命令已移除");
+      toast.success(t("settings.integrations.cliRemoved"));
     } catch (err) {
-      toast.danger(`移除失败:${err}`);
+      toast.danger(t("settings.integrations.cliRemoveFailed", { error: err }));
       await refresh();
     } finally {
       setBusy(false);
@@ -421,20 +449,22 @@ function CliRow() {
 
   const name = (
     <>
-      <code>ycode</code> 命令行工具
+      <Trans i18nKey="settings.integrations.cliName" components={{ 1: <code /> }} />
     </>
   );
   const desc = (
     <>
-      在任意终端用 <code>ycode .</code> 打开当前目录,<code>ycode src/main.rs</code>{" "}
-      打开该文件所在仓库并聚焦它
+      <Trans
+        i18nKey="settings.integrations.cliDesc"
+        components={{ 1: <code />, 3: <code /> }}
+      />
     </>
   );
 
   if (status === null) {
     return (
       <SettingRow name={name} desc={desc}>
-        <SettingChip>读取中…</SettingChip>
+        <SettingChip>{t("common.loading")}</SettingChip>
       </SettingRow>
     );
   }
@@ -446,8 +476,8 @@ function CliRow() {
             safe action to offer — but the user needs a way to re-read the
             state after clearing it by hand, and mount is otherwise the only
             trigger. */}
-        <SettingChip tone="warn">被占用</SettingChip>
-        <SettingAction label="重新检查" onClick={() => void refresh()}>
+        <SettingChip tone="warn">{t("settings.integrations.occupied")}</SettingChip>
+        <SettingAction label={t("settings.integrations.recheck")} onClick={() => void refresh()}>
           <RefreshIcon />
         </SettingAction>
       </SettingRow>
@@ -461,7 +491,7 @@ function CliRow() {
           {status.path}
         </SettingChip>
         <SettingAction
-          label="移除 ycode 命令"
+          label={t("settings.integrations.removeCli")}
           tone="danger"
           disabled={busy}
           onClick={() => void onUninstall()}
@@ -476,11 +506,14 @@ function CliRow() {
     return (
       <SettingRow
         name={name}
-        desc={`${status.path} 指向 ${status.target},那已不是当前这份构建`}
+        desc={t("settings.integrations.staleTarget", {
+              path: status.path,
+              target: status.target,
+            })}
       >
-        <SettingChip tone="warn">需修复</SettingChip>
+        <SettingChip tone="warn">{t("settings.integrations.needsRepair")}</SettingChip>
         <SettingAction
-          label="修复 ycode 命令"
+          label={t("settings.integrations.repairCli")}
           disabled={busy}
           onClick={() => void onInstall()}
         >
@@ -492,9 +525,9 @@ function CliRow() {
 
   return (
     <SettingRow name={name} desc={installHint()}>
-      <SettingChip>未安装</SettingChip>
+      <SettingChip>{t("settings.languages.notInstalled")}</SettingChip>
       <SettingAction
-        label="安装 ycode 命令"
+        label={t("settings.integrations.installCli")}
         disabled={busy}
         onClick={() => void onInstall()}
       >
