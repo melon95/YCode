@@ -18,6 +18,7 @@
 // cwd-tracking logic.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { ManualTerminal } from "./ManualTerminal";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
@@ -345,6 +346,7 @@ interface TerminalPaneCardProps {
 }
 
 function TerminalPaneCard(props: TerminalPaneCardProps) {
+  const { t } = useTranslation();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   function handleContextMenu(e: React.MouseEvent) {
@@ -390,8 +392,8 @@ function TerminalPaneCard(props: TerminalPaneCardProps) {
               e.stopPropagation();
               props.onClose(props.paneId);
             }}
-            aria-label="关闭面板"
-            title="关闭面板(shell 会随之停止)"
+            aria-label={t("panel.closePane")}
+            title={t("panel.closePaneHint")}
           >
             ×
           </button>
@@ -447,6 +449,7 @@ interface SplitContextMenuProps {
 /// `.split-menu` 类名认自己人,类名一丢,capture 阶段的 mousedown 就会
 /// 先把菜单卸载掉。这种坏法肉眼很难发现,值得一个单测钉住。
 export function SplitContextMenu(props: SplitContextMenuProps) {
+  const { t } = useTranslation();
   // Escape via the shared guard (dismiss-only, no fullscreen exit).
   useEscapeGuard(props.onDismiss);
   // Dismiss on outside click (capture-phase, beats xterm's focus grab on
@@ -489,7 +492,7 @@ export function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("right")}
       >
         <SplitIcon direction="right" />
-        <span>向右分屏</span>
+        <span>{t("panel.splitRight")}</span>
       </button>
       <button
         type="button"
@@ -498,7 +501,7 @@ export function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("left")}
       >
         <SplitIcon direction="left" />
-        <span>向左分屏</span>
+        <span>{t("panel.splitLeft")}</span>
       </button>
       <button
         type="button"
@@ -507,7 +510,7 @@ export function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("down")}
       >
         <SplitIcon direction="down" />
-        <span>向下分屏</span>
+        <span>{t("panel.splitDown")}</span>
       </button>
       <button
         type="button"
@@ -516,7 +519,7 @@ export function SplitContextMenu(props: SplitContextMenuProps) {
         onClick={() => props.onPick("up")}
       >
         <SplitIcon direction="up" />
-        <span>向上分屏</span>
+        <span>{t("panel.splitUp")}</span>
       </button>
       {props.canClose && (
         <>
@@ -529,7 +532,7 @@ export function SplitContextMenu(props: SplitContextMenuProps) {
             onClick={() => props.onPick("close")}
           >
             <CloseIcon />
-            <span>关闭面板</span>
+            <span>{t("panel.closePane")}</span>
           </button>
         </>
       )}

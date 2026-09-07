@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "./IconButton";
 
 interface Props {
@@ -46,6 +47,7 @@ export function PanelCard({
   actions,
   children,
 }: Props) {
+  const { t } = useTranslation();
   return (
     // `panel-card` / `is-solo` 留作无样式钩子:solo 时兄弟卡收缩靠
     // `.panel-stack:has(.panel-card.is-solo)`(Tailwind 写不出「父级里有
@@ -93,8 +95,8 @@ export function PanelCard({
             size="sm"
             active={solo}
             onClick={onToggleSolo}
-            title={solo ? "还原" : "放大"}
-            aria-label={solo ? "还原面板" : "放大面板"}
+            title={solo ? t("panel.restore") : t("panel.maximize")}
+            aria-label={solo ? t("panel.restoreAria") : t("panel.maximizeAria")}
           >
             {solo ? <MinimiseIcon /> : <ExpandIcon />}
           </IconButton>
@@ -103,8 +105,8 @@ export function PanelCard({
           <IconButton
             size="sm"
             onClick={onClose}
-            title="关闭"
-            aria-label={`关闭${title}`}
+            title={t("common.close")}
+            aria-label={t("panel.closeNamed", { title })}
           >
             <CloseIcon />
           </IconButton>

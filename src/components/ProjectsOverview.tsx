@@ -6,6 +6,7 @@
 // have eight of them. Cards, ordered attention-first, do.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "../lib/toast";
 import { OverflowMenu } from "./ui/OverflowMenu";
@@ -27,13 +28,6 @@ interface Props {
 
 /// 「x 前」相对时间。Sidebar 里有个同款私有函数,但它没导出、且该文件
 /// 不在本次改动范围内,所以这里复制一份并导出供测试使用。
-export function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
-}
 
 type Row = {
   id: string;
@@ -52,6 +46,7 @@ type Row = {
 };
 
 export function ProjectsOverview({ onClose }: Props) {
+  const { t } = useTranslation();
   const projects = useStore((s) => s.projects);
   const projectOrder = useStore((s) => s.projectOrder);
   const sessions = useStore((s) => s.sessions);
@@ -173,7 +168,7 @@ export function ProjectsOverview({ onClose }: Props) {
       const picked = await openDialog({
         directory: true,
         multiple: false,
-        title: "选择项目仓库目录",
+        title: t("sidebar.pickRepoDir"),
       });
       if (typeof picked !== "string") return; // 用户取消
       const name = picked.split("/").filter(Boolean).pop() ?? picked;
@@ -182,7 +177,7 @@ export function ProjectsOverview({ onClose }: Props) {
       setActiveProjectId(view.id);
       onClose();
     } catch (err) {
-      toast.danger(`创建项目失败:${err}`);
+      toast.danger(t("sidebar.createProjectFailed", { error: err }));
     } finally {
       setCreatingProject(false);
     }
@@ -191,30 +186,38 @@ export function ProjectsOverview({ onClose }: Props) {
   return (
     <section
       className="flex-1 min-h-0 flex flex-col bg-bg overflow-hidden animate-fade-in"
-      aria-label="全部项目"
+      aria-label={t("overview.allProjects")}
     >
       <header className="flex-none flex items-baseline gap-3.5 pt-[26px] px-8 pb-4">
-        <h1 className="text-[22px] font-bold tracking-[-0.015em]">项目</h1>
+        <h1 className="text-[22px] font-bold tracking-[-0.015em]">
+            {t("overview.title")}
+          </h1>
         <span className="font-mono text-[11.5px] text-muted">
           {totals.blocked > 0 && (
-            <span className="text-st-blocked">{totals.blocked} 个等你处理</span>
+            <span className="text-st-blocked">
+                {t("overview.blockedCount", { count: totals.blocked })}
+              </span>
           )}
           {totals.blocked > 0 && totals.working > 0 && " · "}
           {totals.working > 0 && (
-            <span className="text-st-working">{totals.working} 个进行中</span>
+            <span className="text-st-working">
+                {t("overview.workingCount", { count: totals.working })}
+              </span>
           )}
-          {totals.blocked === 0 && totals.working === 0 && "没有正在运行的 agent"}
+          {totals.blocked === 0 &&
+                totals.working === 0 &&
+                t("overview.noneRunning")}
           {" · "}
-          共 {rows.length} 个项目
+          {t("overview.projectCount", { count: rows.length })}
         </span>
         <span className="toolbar-spacer" />
         <div
           className="self-center flex gap-1.5"
           role="tablist"
-          aria-label="项目筛选"
+          aria-label={t("overview.filterAria")}
         >
           <FilterPill id="all" active={filter} onPick={setFilter}>
-            全部
+            {t("overview.filterAll")}
           </FilterPill>
           <FilterPill
             id="blocked"
@@ -223,7 +226,7 @@ export function ProjectsOverview({ onClose }: Props) {
             tone="hot"
             count={blockedProjects}
           >
-            等你处理
+            {t("overview.filterBlocked")}
           </FilterPill>
           <FilterPill
             id="working"
@@ -231,17 +234,17 @@ export function ProjectsOverview({ onClose }: Props) {
             onPick={setFilter}
             count={workingProjects}
           >
-            进行中
+            {t("overview.filterWorking")}
           </FilterPill>
           <FilterPill id="recent" active={filter} onPick={setFilter}>
-            最近
+            {t("overview.filterRecent")}
           </FilterPill>
         </div>
         <IconButton
           className="self-center"
           onClick={onClose}
-          title="返回工作区 (esc)"
-          aria-label="返回工作区"
+          title={t("overview.backHint")}
+          aria-label={t("overview.back")}
         >
           <CloseIcon />
         </IconButton>
@@ -250,10 +253,10 @@ export function ProjectsOverview({ onClose }: Props) {
       {shown.length === 0 && (
         <div className="pt-2 px-8 pb-5 text-[12.5px] text-subtle">
           {filter === "blocked"
-            ? "没有项目在等你处理。"
+            ? t("overview.emptyBlocked")
             : filter === "working"
-              ? "没有项目正在运行 agent。"
-              : "还没有项目。"}
+              ? t("overview.emptyWorking")
+              : t("overview.empty")}
         </div>
       )}
 
@@ -285,11 +288,11 @@ export function ProjectsOverview({ onClose }: Props) {
                 {r.name}
               </span>
               <OverflowMenu
-                label={`${r.name} 的更多操作`}
+                label={t("sidebar.moreActions", { name: r.name })}
                 asSpan
                 actions={[
                   {
-                    label: "删除",
+                    label: t("common.delete"),
                     destructive: true,
                     onClick: () => void removeProjectWithConfirm(r.id),
                   },
@@ -313,7 +316,7 @@ export function ProjectsOverview({ onClose }: Props) {
                 {r.worktrees > 0 && (
                   <span className={PO_TAG}>worktree ×{r.worktrees}</span>
                 )}
-                {r.isolate && <span className={PO_TAG}>默认隔离</span>}
+                {r.isolate && <span className={PO_TAG}>{t("overview.isolateDefault")}</span>}
               </span>
             )}
             <span className="font-mono text-[10px] text-muted whitespace-nowrap overflow-hidden text-ellipsis">
@@ -337,7 +340,7 @@ export function ProjectsOverview({ onClose }: Props) {
             onClick={() => void onOpenProject()}
             disabled={creatingProject}
           >
-            ＋ 打开项目… <kbd>⌘O</kbd>
+            {t("overview.openProject")} <kbd>⌘O</kbd>
           </button>
         )}
       </div>

@@ -12,6 +12,8 @@
 // list cached on open. Results cap at 50.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { listFiles } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
@@ -51,11 +53,14 @@ type ActionHit = {
 type Hit = FileHit | ActionHit;
 
 /// 一条结果归在哪个分组标题下。action 自带 `group`;文件只有一种归属。
+// 模块级纯函数,拿不到 hook —— 直接用 i18next 实例。分组标题只在渲染
+// 期读一次,不需要 hook 那套「语言变了重渲染」的订阅。
 function groupCaption(hit: Hit): string {
-  return hit.kind === "action" ? hit.group : "文件";
+  return hit.kind === "action" ? hit.group : i18next.t("palette.file");
 }
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const activeProjectId = useStore((s) => s.activeProjectId);
   const workspaceSessionId = useStore((s) =>
     s.activeProjectId
@@ -110,12 +115,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       .map(({ se, status }): ActionHit => ({
         kind: "action",
         id: `session:${se.id}`,
-        group: "会话",
+        group: t("palette.session"),
         label:
           se.title?.trim() ||
           se.agent_thread_name?.trim() ||
           agentByProfileId[se.agent_profile]?.display_name ||
-          "未命名会话",
+          t("palette.untitledSession"),
         detail: projects[se.project_id]?.name,
         icon: agentByProfileId[se.agent_profile],
         status,
@@ -157,7 +162,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       out.push({
         kind: "action",
         id: `project:${p.id}`,
-        group: "项目",
+        group: t("palette.project"),
         label: p.name,
         detail: p.repo_path,
         score: 0,
@@ -171,8 +176,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         kind: "action",
         id: "cmd:new-session",
-        group: "命令",
-        label: "新建会话",
+        group: t("palette.command"),
+        label: t("palette.newSession"),
         detail: "⌘N",
         score: 0,
         // 与侧边栏新建按钮同一条 store 路径 —— 之前派发的
@@ -182,8 +187,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         kind: "action",
         id: "cmd:open-project",
-        group: "命令",
-        label: "打开项目…",
+        group: t("palette.command"),
+        label: t("palette.openProject"),
         detail: "⌘O",
         score: 0,
         run: fire("ycode:new-project"),
@@ -191,8 +196,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         kind: "action",
         id: "cmd:overview",
-        group: "命令",
-        label: "全部项目总览",
+        group: t("palette.command"),
+        label: t("palette.allProjects"),
         detail: "⇧⌘P",
         score: 0,
         run: fire("ycode:open-overview"),
@@ -200,8 +205,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         kind: "action",
         id: "cmd:settings",
-        group: "命令",
-        label: "打开设置",
+        group: t("palette.command"),
+        label: t("palette.openSettings"),
         detail: "⌘,",
         score: 0,
         run: fire("ycode:open-settings"),
@@ -209,8 +214,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         kind: "action",
         id: "cmd:layout-columns",
-        group: "命令",
-        label: "切换布局:并排两栏",
+        group: t("palette.command"),
+        label: t("palette.layoutTwoColumns"),
         detail: "Columns",
         score: 0,
         // setLayoutMode 对当前面板数不合法的模式会静默忽略,
@@ -374,11 +379,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   const statusText = useMemo(() => {
     if (sessionListMode) {
-      if (hits.length === 0) return "没有匹配的会话。";
+      if (hits.length === 0) return t("palette.noSessionMatch");
       return null;
     }
     if (trimmedQuery.length === 0) return null;
-    if (hits.length === 0) return "没有匹配项 —— 试试 @ 只看会话";
+    if (hits.length === 0) return t("palette.noMatch");
     return null;
   }, [sessionListMode, trimmedQuery, hits.length]);
 
@@ -406,14 +411,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
             placeholder={
-              sessionListMode ? "过滤会话…" : "跳转会话、切换项目、执行命令、打开文件…"
+              sessionListMode ? t("palette.filterSessions") : t("palette.searchAll")
             }
             // `cmd-palette-input` 是无样式钩子:全局焦点环画的是 box-shadow
             // 且规则是 unlayered 的,utility 层压不过它,清除只能写在
             // styles.css 里(见那里的注释)。
             className="cmd-palette-input flex-1 min-w-0 w-full py-3 px-3.5 text-sm
               bg-transparent text-text border-none outline-none font-[inherit]"
-            aria-label={sessionListMode ? "过滤会话" : "搜索或执行命令"}
+            aria-label={
+            sessionListMode ? t("palette.filterSessionsAria") : t("palette.searchAria")
+          }
             autoComplete="off"
             spellCheck={false}
           />
@@ -426,7 +433,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             <span
               className="flex-none max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap
                 font-mono text-[10.5px] text-accent bg-accent-tint rounded-md py-[3px] px-2"
-              title="当前项目"
+              title={t("palette.currentProject")}
             >
               {activeProjectName}
             </span>
@@ -523,13 +530,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             ⌘⏎ 只对会话条目有意义 —— 别的条目按了会回落成普通 ⏎,常驻一
             条按下去没反应的提示比不提示更糟。 */}
         <div className="flex-none flex items-center gap-3.5 py-2 px-3.5 border-t border-rule bg-surface text-[10.5px] text-muted">
-          <span>↑↓ 选择</span>
-          <span>⏎ 打开</span>
+          <span>{t("palette.hintSelect")}</span>
+          <span>{t("palette.hintOpen")}</span>
           {focusedHit?.kind === "action" && focusedHit.runNewPane && (
-            <span>⌘⏎ 在新面板打开</span>
+            <span>{t("palette.hintOpenPane")}</span>
           )}
-          <span>esc 关闭</span>
-          <span className="ml-auto font-mono">@ 只看会话</span>
+          <span>{t("palette.hintClose")}</span>
+          <span className="ml-auto font-mono">{t("palette.hintSessionsOnly")}</span>
         </div>
       </div>
     </div>

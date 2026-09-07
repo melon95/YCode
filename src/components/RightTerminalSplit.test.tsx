@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SplitContextMenu } from "./RightTerminalSplit";
@@ -32,7 +33,7 @@ describe("SplitContextMenu", () => {
     const user = userEvent.setup();
     const { onDismiss, onPick } = renderMenu();
 
-    await user.click(screen.getByRole("menuitem", { name: "向右分屏" }));
+    await user.click(screen.getByRole("menuitem", { name: i18next.t("panel.splitRight") }));
 
     expect(onPick).toHaveBeenCalledWith("right");
     expect(onDismiss).not.toHaveBeenCalled();
@@ -50,14 +51,20 @@ describe("SplitContextMenu", () => {
 
   it("offers every split direction, plus close when the pane can be closed", () => {
     renderMenu(true);
-    for (const label of ["向右分屏", "向左分屏", "向下分屏", "向上分屏"]) {
+    for (const key of [
+      "panel.splitRight",
+      "panel.splitLeft",
+      "panel.splitDown",
+      "panel.splitUp",
+    ]) {
+      const label = i18next.t(key);
       expect(screen.getByRole("menuitem", { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole("menuitem", { name: /关闭/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: i18next.t("panel.closePane") })).toBeInTheDocument();
   });
 
   it("hides the close action for the last remaining pane", () => {
     renderMenu(false);
-    expect(screen.queryByRole("menuitem", { name: /关闭/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: i18next.t("panel.closePane") })).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
@@ -111,7 +112,7 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(listFilesMock).toHaveBeenCalledWith("project-a", undefined),
     );
-    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), "cmd");
+    await user.type(screen.getByRole("textbox", { name: i18next.t("palette.searchAria") }), "cmd");
     await user.keyboard("{Enter}");
 
     const state = useStore.getState();
@@ -145,7 +146,7 @@ describe("CommandPalette", () => {
     const user = userEvent.setup();
     const before = useStore.getState().openFiles;
     const { onClose } = renderPalette();
-    screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
+    screen.getByRole("textbox", { name: i18next.t("palette.searchAria") }).focus();
 
     await user.keyboard("{Escape}");
 
@@ -159,26 +160,26 @@ describe("CommandPalette", () => {
   it("shows Chinese status text for empty results", async () => {
     const user = userEvent.setup();
     renderPalette();
-    const input = screen.getByRole("textbox", { name: "搜索或执行命令" });
+    const input = screen.getByRole("textbox", { name: i18next.t("palette.searchAria") });
 
     // 默认模式无匹配 → 中文空态,提示可用前缀。
     await user.type(input, "zzzzzz不存在的东西qqq");
     expect(
-      await screen.findByText("没有匹配项 —— 试试 @ 只看会话"),
+      await screen.findByText(i18next.t("palette.noMatch")),
     ).toBeInTheDocument();
 
     // `@` 模式的空态。
     await user.clear(input);
     await user.type(input, "@zzzz不存在qqq");
-    expect(screen.getByText("没有匹配的会话。")).toBeInTheDocument();
+    expect(screen.getByText(i18next.t("palette.noSessionMatch"))).toBeInTheDocument();
   });
 
   it("renders the footer hints", () => {
     useStore.setState({ projects: { "project-a": project() } });
     renderPalette();
 
-    expect(screen.getByText("↑↓ 选择")).toBeInTheDocument();
-    expect(screen.getByText("@ 只看会话")).toBeInTheDocument();
+    expect(screen.getByText(i18next.t("palette.hintSelect"))).toBeInTheDocument();
+    expect(screen.getByText(i18next.t("palette.hintSessionsOnly"))).toBeInTheDocument();
   });
 
   // ⌘⏎ 只对会话条目有意义 —— 别的条目按了会回落成普通 ⏎。常驻一条按下去
@@ -192,12 +193,12 @@ describe("CommandPalette", () => {
     renderPalette();
 
     // 第一行是会话 —— 会话是唯一提供 runNewPane 的条目。
-    expect(screen.getByText("⌘⏎ 在新面板打开")).toBeInTheDocument();
+    expect(screen.getByText(i18next.t("palette.hintOpenPane"))).toBeInTheDocument();
 
     // 移到项目行,提示要消失。
-    await user.click(screen.getByLabelText("搜索或执行命令"));
+    await user.click(screen.getByLabelText(i18next.t("palette.searchAria")));
     await user.keyboard("{ArrowDown}");
-    expect(screen.queryByText("⌘⏎ 在新面板打开")).toBeNull();
+    expect(screen.queryByText(i18next.t("palette.hintOpenPane"))).toBeNull();
   });
 
   // 作用域标签只在搜索真的被限在当前项目里时出现。空查询的默认视图列的是
@@ -206,7 +207,7 @@ describe("CommandPalette", () => {
     const user = userEvent.setup();
     useStore.setState({ projects: { "project-a": project() } });
     renderPalette();
-    const input = screen.getByLabelText("搜索或执行命令");
+    const input = screen.getByLabelText(i18next.t("palette.searchAria"));
 
     // 默认视图、空查询 —— 结果跨全部项目。
     expect(screen.queryByText("internal-portal-frontend")).toBeNull();
@@ -230,7 +231,7 @@ describe("CommandPalette", () => {
   async function expectHighlightFollowsArrowKeys(user: UserEvent) {
     // 方向键挂在 input 的 onKeyDown 上,焦点必须在那儿。真实使用里
     // 面板一打开就自动聚焦,jsdom 里要自己点一下。
-    await user.click(screen.getByLabelText("搜索或执行命令"));
+    await user.click(screen.getByLabelText(i18next.t("palette.searchAria")));
     const rows = await screen.findAllByRole("option");
     expect(rows.length).toBeGreaterThan(1);
 
@@ -266,7 +267,7 @@ describe("CommandPalette", () => {
     renderPalette();
     await waitFor(() => expect(listFilesMock).toHaveBeenCalled());
     // 两个结果都能匹配 —— 需要至少两行才能验证高亮会移走。
-    await user.type(screen.getByLabelText("搜索或执行命令"), "e");
+    await user.type(screen.getByLabelText(i18next.t("palette.searchAria")), "e");
 
     await expectHighlightFollowsArrowKeys(user);
   });
@@ -276,7 +277,7 @@ describe("CommandPalette", () => {
     useStore.setState({ projects: { "project-a": project() } });
     renderPalette();
 
-    await user.type(screen.getByLabelText("搜索或执行命令"), ">");
+    await user.type(screen.getByLabelText(i18next.t("palette.searchAria")), ">");
     expect(screen.getByText("internal-portal-frontend")).toBeInTheDocument();
   });
 
@@ -301,7 +302,7 @@ describe("CommandPalette", () => {
 
     // 空查询下会话组排最前;session-a 更新时间更晚排第一。
     await screen.findByText("修复登录问题");
-    screen.getByRole("textbox", { name: "搜索或执行命令" }).focus();
+    screen.getByRole("textbox", { name: i18next.t("palette.searchAria") }).focus();
     await user.keyboard("{Meta>}{Enter}{/Meta}");
 
     const state = useStore.getState();
@@ -317,20 +318,20 @@ describe("CommandPalette", () => {
     });
     renderPalette();
 
-    await user.type(screen.getByRole("textbox", { name: "搜索或执行命令" }), "@");
+    await user.type(screen.getByRole("textbox", { name: i18next.t("palette.searchAria") }), "@");
     expect(
-      screen.getByRole("textbox", { name: "过滤会话" }),
+      screen.getByRole("textbox", { name: i18next.t("palette.filterSessionsAria") }),
     ).toBeInTheDocument();
     // 只剩会话组:命令条目消失,会话条目还在。
     expect(screen.getByText("修复登录问题")).toBeInTheDocument();
-    expect(screen.queryByText("新建会话")).not.toBeInTheDocument();
+    expect(screen.queryByText(i18next.t("palette.newSession"))).not.toBeInTheDocument();
 
     // 继续输入按标题过滤。
     await user.type(
-      screen.getByRole("textbox", { name: "过滤会话" }),
+      screen.getByRole("textbox", { name: i18next.t("palette.filterSessionsAria") }),
       "不存在的标题xyz",
     );
-    expect(screen.getByText("没有匹配的会话。")).toBeInTheDocument();
+    expect(screen.getByText(i18next.t("palette.noSessionMatch"))).toBeInTheDocument();
   });
 
   it("switches the layout to columns via the palette command", async () => {
@@ -340,11 +341,13 @@ describe("CommandPalette", () => {
     });
     const { onClose } = renderPalette();
 
+    // 用词条本身当搜索词:硬编码某种语言的片段会在另一种语言下匹配不到
+    // 任何命令,而这条用例要验的是「搜得到就能执行」,不是某个具体措辞。
     await user.type(
-      screen.getByRole("textbox", { name: "搜索或执行命令" }),
-      "并排两栏",
+      screen.getByRole("textbox", { name: i18next.t("palette.searchAria") }),
+      i18next.t("palette.layoutTwoColumns"),
     );
-    await screen.findByText("切换布局:并排两栏");
+    await screen.findByText(i18next.t("palette.layoutTwoColumns"));
     await user.keyboard("{Enter}");
 
     expect(useStore.getState().layout.mode).toBe("columns");
