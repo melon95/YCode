@@ -12,6 +12,8 @@
 // closed without saving.
 
 import type { ConfigView, FontSizesView } from "../lib/types";
+import { useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import {
   getTheme,
@@ -38,14 +40,16 @@ import {
 // for them. 跟随系统 previews whichever side the OS is on right now.
 const CHOICES: Array<{
   choice: "light" | "dark" | "system";
-  label: string;
+  /// 词条 key —— 模块级常量在 i18next init 之前求值,存译文会把启动
+  /// 语言烙死。
+  labelKey: string;
   preview: () => Theme;
 }> = [
-  { choice: "light", label: "浅色", preview: () => getTheme(MODE_THEME_ID.light) },
-  { choice: "dark", label: "深色", preview: () => getTheme(MODE_THEME_ID.dark) },
+  { choice: "light", labelKey: "settings.appearance.light", preview: () => getTheme(MODE_THEME_ID.light) },
+  { choice: "dark", labelKey: "settings.appearance.dark", preview: () => getTheme(MODE_THEME_ID.dark) },
   {
     choice: "system",
-    label: "跟随系统",
+    labelKey: "settings.appearance.followSystem",
     preview: () => getTheme(MODE_THEME_ID[prefersDark() ? "dark" : "light"]),
   },
 ];
@@ -57,21 +61,21 @@ interface Props {
 
 type Lane = keyof FontSizesView;
 
-const LANES: Array<{ key: Lane; label: string; hint: string }> = [
+const LANES: Array<{ key: Lane; labelKey: string; hintKey: string }> = [
   {
     key: "ui",
-    label: "界面",
-    hint: "侧边栏、文件树、右栏标签条",
+    labelKey: "settings.appearance.laneUi",
+    hintKey: "settings.appearance.laneUiHint",
   },
   {
     key: "editor",
-    label: "编辑器",
-    hint: "右栏的 CodeMirror 代码编辑器",
+    labelKey: "settings.appearance.laneEditor",
+    hintKey: "settings.appearance.laneEditorHint",
   },
   {
     key: "terminal",
-    label: "终端",
-    hint: "中栏的 agent 终端与右栏的手动终端",
+    labelKey: "settings.appearance.laneTerminal",
+    hintKey: "settings.appearance.laneTerminalHint",
   },
 ];
 
@@ -92,10 +96,14 @@ const SIZE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
 function sizeOptionsFor(current: number): ReadonlyArray<ChipOption<string>> {
   const value = String(current);
   if (SIZE_OPTIONS.some((o) => o.value === value)) return SIZE_OPTIONS;
-  return [...SIZE_OPTIONS, { value, label: `${value}(当前)` }];
+  return [
+    ...SIZE_OPTIONS,
+    { value, label: i18next.t("settings.appearance.currentValue", { value }) },
+  ];
 }
 
 export function AppearanceSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
   const setTheme = useStore((s) => s.setTheme);
 
   const choice = themeChoice(config.theme);
@@ -125,15 +133,14 @@ export function AppearanceSettings({ config, onChange }: Props) {
 
   return (
     <SettingSection
-      title="外观"
+      title={t("settings.appearance.title")}
       lede={
         <>
-  主题会同时换掉界面配色和终端的 xterm 色表。选中即时预览,不保存直接关闭
-          就还原。
+          {t("settings.appearance.lede")}
         </>
       }
     >
-      <SettingGroupLabel>主题</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.appearance.theme")}</SettingGroupLabel>
       {/* Three cards, one row. The old grid was `auto-fill minmax(150px)` for
           ten themes; with three named choices they should sit side by side
           rather than reflow into a ragged block. */}
@@ -141,7 +148,7 @@ export function AppearanceSettings({ config, onChange }: Props) {
         {CHOICES.map((c) => (
           <ThemeCard
             key={c.choice}
-            label={c.label}
+            label={t(c.labelKey)}
             theme={c.preview()}
             split={c.choice === "system"}
             selected={choice === c.choice}
@@ -150,19 +157,21 @@ export function AppearanceSettings({ config, onChange }: Props) {
         ))}
       </div>
 
-      <SettingGroupLabel className="settings-group-gap">布局</SettingGroupLabel>
+      <SettingGroupLabel className="settings-group-gap">
+        {t("settings.appearance.layout")}
+      </SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="界面密度"
-          desc="紧凑挤进更多会话行,宽松留更多呼吸空间"
-          pendingReason="密度令牌未接入,全局间距目前固定"
+          name={t("settings.appearance.density")}
+          desc={t("settings.appearance.densityDesc")}
+          pendingReason={t("settings.appearance.densityPending")}
         >
           <SettingChips
-            label="界面密度"
+            label={t("settings.appearance.density")}
             options={[
-              { value: "compact", label: "紧凑" },
-              { value: "standard", label: "标准" },
-              { value: "relaxed", label: "宽松" },
+              { value: "compact", label: t("settings.appearance.compact") },
+              { value: "standard", label: t("settings.appearance.standard") },
+              { value: "relaxed", label: t("settings.appearance.relaxed") },
             ]}
             value="standard"
             disabled
@@ -170,12 +179,14 @@ export function AppearanceSettings({ config, onChange }: Props) {
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel className="settings-group-gap">字号</SettingGroupLabel>
+      <SettingGroupLabel className="settings-group-gap">
+        {t("settings.appearance.fontSizes")}
+      </SettingGroupLabel>
       <SettingCard>
         {LANES.map((lane) => (
-          <SettingRow key={lane.key} name={lane.label} desc={lane.hint}>
+          <SettingRow key={lane.key} name={t(lane.labelKey)} desc={t(lane.hintKey)}>
             <SettingChips
-              label={`${lane.label}字号`}
+              label={t("settings.appearance.laneFontSize", { lane: t(lane.labelKey) })}
               options={sizeOptionsFor(config.font_sizes[lane.key])}
               value={String(config.font_sizes[lane.key])}
               onChange={(v) => setLane(lane.key, v)}
@@ -184,18 +195,17 @@ export function AppearanceSettings({ config, onChange }: Props) {
         ))}
       </SettingCard>
       <SettingNote>
-        字号在保存时生效。终端会重新计算网格并同步调整正在运行的 PTY,
-        不会逐字卡顿。
+        {t("settings.appearance.fontNote")}
       </SettingNote>
 
-      <SettingGroupLabel>动效</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.appearance.motion")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="减少动态效果"
-          desc="跟随系统的辅助功能设置,开启后状态点不再呼吸、弹层不再位移"
+          name={t("settings.appearance.reduceMotion")}
+          desc={t("settings.appearance.reduceMotionDesc")}
         >
-          <SettingChip tone="on" title="通过 prefers-reduced-motion 媒体查询生效">
-            跟随系统
+          <SettingChip tone="on" title={t("settings.appearance.reduceMotionBy")}>
+            {t("settings.appearance.followSystem")}
           </SettingChip>
         </SettingRow>
       </SettingCard>
@@ -221,6 +231,7 @@ function ThemeCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const swatches = [
     theme.chrome["--bg"],
     theme.chrome["--panel-raised"],
@@ -254,7 +265,7 @@ function ThemeCard({
             before:content-['✓'] before:text-[10px] before:leading-none"
           aria-hidden
         >
-          当前
+          {t("settings.appearance.current")}
         </span>
       )}
       {/* The card preview is a tiny abstract "ycode in miniature" — a body
@@ -296,7 +307,11 @@ function ThemeCard({
           {label}
         </span>
         <span className="font-mono text-[9px] text-muted">
-          {split ? (theme.mode === "dark" ? "当前:深色" : "当前:浅色") : ""}
+          {split
+            ? theme.mode === "dark"
+              ? t("settings.appearance.currentDark")
+              : t("settings.appearance.currentLight")
+            : ""}
         </span>
       </div>
       <div className="flex gap-1" aria-hidden>

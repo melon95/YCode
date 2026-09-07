@@ -6,6 +6,7 @@
 // 外观页(ui/editor/terminal 三条)与终端页(terminal)都要覆盖。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ConfigView } from "../lib/types";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -44,7 +45,7 @@ describe("外观页字号 chips", () => {
       />,
     );
 
-    const uiGroup = screen.getByRole("radiogroup", { name: "界面字号" });
+    const uiGroup = screen.getByRole("radiogroup", { name: i18next.t("settings.appearance.laneFontSize", { lane: i18next.t("settings.appearance.laneUi") }) });
     expect(within(uiGroup).getAllByRole("radio")).toHaveLength(4);
     expect(within(uiGroup).getByRole("radio", { name: "13" })).toBeChecked();
   });
@@ -57,15 +58,15 @@ describe("外观页字号 chips", () => {
       />,
     );
 
-    const uiGroup = screen.getByRole("radiogroup", { name: "界面字号" });
+    const uiGroup = screen.getByRole("radiogroup", { name: i18next.t("settings.appearance.laneFontSize", { lane: i18next.t("settings.appearance.laneUi") }) });
     const chips = within(uiGroup).getAllByRole("radio");
     expect(chips).toHaveLength(5);
-    const current = within(uiGroup).getByRole("radio", { name: "16(当前)" });
+    const current = within(uiGroup).getByRole("radio", { name: i18next.t("settings.appearance.currentValue", { value: 16 }) });
     expect(current).toBeChecked();
     expect(chips[chips.length - 1]).toBe(current);
 
     // 只有 ui 这条超出预设;editor 那条保持四个预设 chip。
-    const editorGroup = screen.getByRole("radiogroup", { name: "编辑器字号" });
+    const editorGroup = screen.getByRole("radiogroup", { name: i18next.t("settings.appearance.laneFontSize", { lane: i18next.t("settings.appearance.laneEditor") }) });
     expect(within(editorGroup).getAllByRole("radio")).toHaveLength(4);
     expect(within(editorGroup).getByRole("radio", { name: "13" })).toBeChecked();
   });
@@ -79,7 +80,7 @@ describe("外观页字号 chips", () => {
       />,
     );
 
-    const uiGroup = screen.getByRole("radiogroup", { name: "界面字号" });
+    const uiGroup = screen.getByRole("radiogroup", { name: i18next.t("settings.appearance.laneFontSize", { lane: i18next.t("settings.appearance.laneUi") }) });
     fireEvent.click(within(uiGroup).getByRole("radio", { name: "14" }));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange.mock.calls[0][0].font_sizes.ui).toBe(14);
@@ -95,10 +96,10 @@ describe("终端页字号 chips", () => {
       />,
     );
 
-    const group = screen.getByRole("radiogroup", { name: "终端字号" });
+    const group = screen.getByRole("radiogroup", { name: i18next.t("settings.terminal.terminalFontSize") });
     expect(within(group).getAllByRole("radio")).toHaveLength(5);
     expect(
-      within(group).getByRole("radio", { name: "16(当前)" }),
+      within(group).getByRole("radio", { name: i18next.t("settings.appearance.currentValue", { value: 16 }) }),
     ).toBeChecked();
   });
 
@@ -110,7 +111,7 @@ describe("终端页字号 chips", () => {
       />,
     );
 
-    const group = screen.getByRole("radiogroup", { name: "终端字号" });
+    const group = screen.getByRole("radiogroup", { name: i18next.t("settings.terminal.terminalFontSize") });
     expect(within(group).getAllByRole("radio")).toHaveLength(4);
     expect(within(group).getByRole("radio", { name: "12" })).toBeChecked();
   });

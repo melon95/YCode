@@ -9,6 +9,8 @@
 // let you change it.
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { platform } from "@tauri-apps/plugin-os";
 import type { ConfigView } from "../lib/types";
 import {
@@ -41,10 +43,14 @@ const SIZE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
 function sizeOptionsFor(current: number): ReadonlyArray<ChipOption<string>> {
   const value = String(current);
   if (SIZE_OPTIONS.some((o) => o.value === value)) return SIZE_OPTIONS;
-  return [...SIZE_OPTIONS, { value, label: `${value}(当前)` }];
+  return [
+    ...SIZE_OPTIONS,
+    { value, label: i18next.t("settings.appearance.currentValue", { value }) },
+  ];
 }
 
 export function TerminalSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
   const [shell, setShell] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,50 +65,56 @@ export function TerminalSettings({ config, onChange }: Props) {
   }, []);
 
   return (
-    <SettingSection title="终端" lede={<>agent 与 shell 运行的环境。</>}>
-      <SettingGroupLabel>环境</SettingGroupLabel>
+    <SettingSection
+      title={t("settings.terminal.title")}
+      lede={<>{t("settings.terminal.lede")}</>}
+    >
+      <SettingGroupLabel>{t("settings.terminal.environment")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
           name="Shell"
-          desc="以登录 shell 启动,因此会读取 .zprofile / .zshrc,PATH 与你手动开终端时一致"
+          desc={t("settings.terminal.loginShellDesc")}
         >
           <SettingValue align="end">{shell ?? "—"}</SettingValue>
           {/* 只读展示是真的;能改是假的 —— 按钮保留位置但按待实现处理,
               原因放在 tooltip 里,而不是整行灰掉把真实信息也一起灰掉。 */}
           <SettingAction
-            label="更改 shell"
+            label={t("settings.terminal.changeShell")}
             disabled
-            title="Shell 目前跟随系统默认,自定义未实现"
+            title={t("settings.terminal.changeShellPending")}
           >
             <EditIcon />
           </SettingAction>
         </SettingRow>
         <SettingRow
-          name="工作目录"
-          desc="会话所属项目的仓库根目录;开启隔离的会话则是它自己的 worktree"
+          name={t("settings.terminal.cwd")}
+          desc={t("settings.terminal.cwdDesc")}
         >
-          <SettingChip tone="on">按会话</SettingChip>
+          <SettingChip tone="on">{t("settings.terminal.perSession")}</SettingChip>
         </SettingRow>
         <SettingRow
-          name="环境变量"
-          desc="每个 agent 的额外变量在「Agent 目录」里按 agent 配置,而不是全局叠加"
+          name={t("settings.terminal.envVars")}
+          desc={t("settings.terminal.envVarsDesc")}
         >
-          <SettingChip>见 Agent 目录</SettingChip>
+          <SettingChip>{t("settings.terminal.seeAgents")}</SettingChip>
         </SettingRow>
       </SettingCard>
 
-      <SettingGroupLabel>显示</SettingGroupLabel>
+      <SettingGroupLabel>{t("settings.terminal.display")}</SettingGroupLabel>
       <SettingCard>
         <SettingRow
-          name="字体"
-          desc="系统等宽字体栈(SF Mono / Menlo / Consolas)"
-          pendingReason="终端字体独立配置未实现,当前跟随外观设置"
+          name={t("settings.terminal.font")}
+          desc={t("settings.terminal.fontDesc")}
+          pendingReason={t("settings.terminal.fontPending")}
         >
           <SettingValue align="end">ui-monospace</SettingValue>
         </SettingRow>
-        <SettingRow name="字号" desc="所有 agent 终端与手动终端">
+        <SettingRow
+          name={t("settings.terminal.fontSize")}
+          desc={t("settings.terminal.fontSizeDesc")}
+        >
           <SettingChips
-            label="终端字号"
+            label={t("settings.terminal.terminalFontSize")}
             options={sizeOptionsFor(config.font_sizes.terminal)}
             value={String(config.font_sizes.terminal)}
             onChange={(v) =>
@@ -114,15 +126,21 @@ export function TerminalSettings({ config, onChange }: Props) {
           />
         </SettingRow>
         <SettingRow
-          name="配色跟随界面主题"
-          desc="终端的前景/背景取自当前主题的色板"
+          name={t("settings.terminal.themeFollows")}
+          desc={t("settings.terminal.themeFollowsDesc")}
         >
-          <SettingChip tone="on">已启用</SettingChip>
+          <SettingChip tone="on">{t("common.enabled")}</SettingChip>
         </SettingRow>
-        <SettingRow name="回滚缓冲" desc="每个会话保留的输出,重新挂载时回放">
+        <SettingRow
+          name={t("settings.terminal.scrollback")}
+          desc={t("settings.terminal.scrollbackDesc")}
+        >
           <SettingValue align="end">256 KB</SettingValue>
         </SettingRow>
-        <SettingRow name="渲染方式" desc="xterm.js WebGL,失败时自动退回 canvas">
+        <SettingRow
+          name={t("settings.terminal.renderer")}
+          desc={t("settings.terminal.rendererDesc")}
+        >
           <SettingChip tone="on">WebGL</SettingChip>
         </SettingRow>
       </SettingCard>

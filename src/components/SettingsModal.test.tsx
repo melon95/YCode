@@ -84,11 +84,11 @@ describe("SettingsScreen", () => {
   it("renders as a dialog over the workspace and switches sections", async () => {
     render(<SettingsScreen onClose={vi.fn()} />);
 
-    expect(await screen.findByRole("dialog", { name: "设置" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "关闭设置" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: i18next.t("settings.shell.title") })).toBeVisible();
+    expect(screen.getByRole("button", { name: i18next.t("settings.shell.closeAria") })).toBeVisible();
     expect(screen.getByText(i18next.t("settings.agents.configured", { count: 1 }))).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "外观" }));
+    fireEvent.click(screen.getByRole("button", { name: i18next.t("settings.nav.appearance") }));
     expect(screen.getByText("Appearance panel")).toBeVisible();
   });
 
@@ -107,9 +107,9 @@ describe("SettingsScreen", () => {
       target: { value: "gemini" },
     });
     fireEvent.click(screen.getByRole("button", { name: i18next.t("settings.agents.confirmAdd") }));
-    expect(screen.getByText("有未保存的更改")).toBeVisible();
+    expect(screen.getByText(i18next.t("settings.shell.dirty"))).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: i18next.t("common.save") }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     const savedAgents = vi.mocked(saveConfig).mock.calls[0][0].agents;
     expect(savedAgents).toHaveLength(2);
@@ -131,7 +131,7 @@ describe("SettingsScreen", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: i18next.t("settings.agents.confirmAdd") }));
 
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(screen.getByRole("button", { name: i18next.t("common.save") }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
     const savedAgents = vi.mocked(saveConfig).mock.calls[0][0].agents;
     expect(savedAgents).toHaveLength(2);

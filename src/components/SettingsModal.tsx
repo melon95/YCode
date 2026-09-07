@@ -3,6 +3,8 @@
 // modal layered over the coding workspace.
 
 import { useEffect, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { IconButton } from "./ui/IconButton";
 import {
   Bell,
@@ -65,7 +67,9 @@ type SectionId =
 
 interface NavItem {
   id: SectionId;
-  label: string;
+  /// 词条 key,不是文案本身 —— NAV_GROUPS 是模块级常量,在 i18next
+  /// init 之前就求值了。渲染和搜索时才 `t()`。
+  labelKey: string;
   icon: LucideIcon;
   /// Sections whose backing feature doesn't exist yet still appear — dimmed
   /// and unclickable — because "not yet" is a more useful answer than an
@@ -77,38 +81,38 @@ interface NavItem {
 /// render it. The old flat list mixed a monitoring dashboard (Usage) in with
 /// real settings and buried the hook wiring inside Notifications, even though
 /// hooks drive session status too.
-const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
+const NAV_GROUPS: Array<{ titleKey: string; items: NavItem[] }> = [
   {
-    title: "工作区",
+    titleKey: "settings.nav.groupWorkspace",
     items: [
-      { id: "general", label: "通用", icon: SlidersHorizontal },
-      { id: "sessions", label: "会话", icon: Layers },
-      { id: "panels", label: "面板", icon: PanelRight },
+      { id: "general", labelKey: "settings.nav.general", icon: SlidersHorizontal },
+      { id: "sessions", labelKey: "settings.nav.sessions", icon: Layers },
+      { id: "panels", labelKey: "settings.nav.panels", icon: PanelRight },
     ],
   },
   {
-    title: "Agent",
+    titleKey: "settings.nav.groupAgent",
     items: [
-      { id: "agents", label: "Agent 目录", icon: Bot },
-      { id: "integrations", label: "集成", icon: Plug },
-      { id: "notifications", label: "通知", icon: Bell },
-      { id: "usage", label: "用量", icon: ChartPie },
+      { id: "agents", labelKey: "settings.nav.agents", icon: Bot },
+      { id: "integrations", labelKey: "settings.nav.integrations", icon: Plug },
+      { id: "notifications", labelKey: "settings.nav.notifications", icon: Bell },
+      { id: "usage", labelKey: "settings.nav.usage", icon: ChartPie },
     ],
   },
   {
-    title: "编辑与终端",
+    titleKey: "settings.nav.groupEditor",
     items: [
-      { id: "terminal", label: "终端", icon: TerminalSquare },
-      { id: "languages", label: "编辑器与语言", icon: Code2 },
+      { id: "terminal", labelKey: "settings.nav.terminal", icon: TerminalSquare },
+      { id: "languages", labelKey: "settings.nav.languages", icon: Code2 },
     ],
   },
   {
-    title: "应用",
+    titleKey: "settings.nav.groupApp",
     items: [
-      { id: "appearance", label: "外观", icon: Monitor },
-      { id: "keyboard", label: "键盘快捷键", icon: Keyboard },
-      { id: "data", label: "数据与隐私", icon: Database },
-      { id: "about", label: "关于", icon: CircleArrowDown },
+      { id: "appearance", labelKey: "settings.nav.appearance", icon: Monitor },
+      { id: "keyboard", labelKey: "settings.nav.keyboard", icon: Keyboard },
+      { id: "data", labelKey: "settings.nav.data", icon: Database },
+      { id: "about", labelKey: "settings.nav.about", icon: CircleArrowDown },
     ],
   },
 ];
@@ -124,6 +128,7 @@ const FOOTER_ACTION = `min-w-[102px] min-h-[38px] px-[18px] border rounded-sm
   disabled:cursor-default disabled:opacity-42`.replace(/\s+/g, " ");
 
 export function SettingsScreen({ onClose }: Props) {
+  const { t } = useTranslation();
   const setAgents = useStore((s) => s.setAgents);
   const setFontSizes = useStore((s) => s.setFontSizes);
   const setTheme = useStore((s) => s.setTheme);
@@ -156,7 +161,7 @@ export function SettingsScreen({ onClose }: Props) {
       })
       .catch((err) => {
         if (cancelled) return;
-        toast.danger(`读取配置失败:${err}`);
+        toast.danger(t("settings.shell.readFailed", { error: err }));
         onCloseRef.current();
       })
       .finally(() => {
@@ -209,16 +214,16 @@ export function SettingsScreen({ onClose }: Props) {
   const dirty =
     staged !== null && original !== null && !sameConfig(staged, original);
 
-  const visibleGroups = filterNavGroups(navQuery);
+  const visibleGroups = filterNavGroups(navQuery, t);
 
   useEscapeGuard(() => void handleClose());
 
   async function handleClose() {
     if (dirty) {
       const ok = await confirmDialog({
-        title: "放弃未保存的更改?",
-        message: "设置里还有没保存的改动。",
-        confirmLabel: "放弃",
+        title: t("settings.shell.discardTitle"),
+        message: t("settings.shell.discardBody"),
+        confirmLabel: t("settings.shell.discard"),
         destructive: true,
       });
       if (!ok) return;
@@ -240,10 +245,10 @@ export function SettingsScreen({ onClose }: Props) {
       setAutoHideTopBar(staged.auto_hide_top_bar);
       setSessionOpenMode(staged.session_open_mode);
       setOriginal(staged);
-      toast.success("设置已保存");
+      toast.success(t("settings.shell.saved"));
       onClose();
     } catch (err) {
-      toast.danger(`保存失败:${err}`);
+      toast.danger(t("settings.shell.saveFailed", { error: err }));
     } finally {
       setSaving(false);
     }
@@ -251,9 +256,9 @@ export function SettingsScreen({ onClose }: Props) {
 
   async function handleReset() {
     const ok = await confirmDialog({
-      title: "恢复默认设置?",
-      message: "会用出厂默认覆盖你的配置文件,自定义内容将丢失。",
-      confirmLabel: "恢复默认",
+      title: t("settings.shell.resetTitle"),
+      message: t("settings.shell.resetBody"),
+      confirmLabel: t("settings.shell.reset"),
       destructive: true,
     });
     if (!ok) return;
@@ -267,9 +272,9 @@ export function SettingsScreen({ onClose }: Props) {
       setTheme(cfg.theme);
       setAutoHideTopBar(cfg.auto_hide_top_bar);
       setSessionOpenMode(cfg.session_open_mode);
-      toast.success("已恢复默认设置");
+      toast.success(t("settings.shell.resetDone"));
     } catch (err) {
-      toast.danger(`恢复默认失败:${err}`);
+      toast.danger(t("settings.shell.resetFailed", { error: err }));
     }
   }
 
@@ -289,25 +294,25 @@ export function SettingsScreen({ onClose }: Props) {
         className="w-[900px] max-w-[92vw] h-[640px] max-h-[86vh] flex flex-col
           bg-panel border border-rule-strong rounded-2xl shadow-menu
           overflow-hidden animate-dialog-in"
-        aria-label="设置"
+        aria-label={t("settings.shell.title")}
         role="dialog"
         aria-modal
       >
         {/* 内边距沿用迁移前 design-system.css 的 `!important` 覆盖(22px
             两侧),不是 styles.css 那层 —— 后者被它压掉了。 */}
         <header className="flex-none h-toolbar flex items-center gap-[9px] px-[22px] border-b border-rule">
-          <span className="text-[13px] font-semibold text-text">设置</span>
+          <span className="text-[13px] font-semibold text-text">{t("settings.shell.title")}</span>
           <span className="flex-auto" />
           <span
             className={`text-[13px] ${dirty ? "text-accent-soft" : "text-muted"}`}
           >
-            {dirty ? "有未保存的更改" : ""}
+            {dirty ? t("settings.shell.dirty") : ""}
           </span>
           <IconButton
             size="sm"
             onClick={() => void handleClose()}
-            title="关闭 (esc)"
-            aria-label="关闭设置"
+            title={t("settings.shell.closeHint")}
+            aria-label={t("settings.shell.closeAria")}
           >
             <X aria-hidden size={15} />
           </IconButton>
@@ -331,20 +336,21 @@ export function SettingsScreen({ onClose }: Props) {
                 className="flex-1 min-w-0 bg-none border-none outline-none text-text text-[12.5px]
                   placeholder:text-subtle
                   [&::-webkit-search-cancel-button]:hidden"
-                placeholder="搜索设置…"
-                aria-label="搜索设置"
+                placeholder={t("settings.shell.searchPlaceholder")}
+                aria-label={t("settings.shell.searchPlaceholder")}
                 value={navQuery}
                 onChange={(e) => setNavQuery(e.target.value)}
               />
             </div>
-            <nav aria-label="设置分区">
+            <nav aria-label={t("settings.shell.sections")}>
               {visibleGroups.map((group) => (
-                <div className="[&+&]:mt-3.5" key={group.title}>
+                <div className="[&+&]:mt-3.5" key={group.titleKey}>
                   <div className="pt-1 px-2.5 pb-1.5 text-[8.5px] font-bold tracking-caps uppercase text-muted">
-                    {group.title}
+                    {t(group.titleKey)}
                   </div>
                   {group.items.map((item) => {
                     const Icon = item.icon;
+                    const label = t(item.labelKey);
                     const warn =
                       item.id === "integrations" &&
                       integrationsWarn !== null &&
@@ -368,25 +374,29 @@ export function SettingsScreen({ onClose }: Props) {
                           .trim()}
                         aria-current={section === item.id ? "page" : undefined}
                         disabled={item.pending}
-                        title={item.pending ? `${item.label} — 尚未实现` : undefined}
+                        title={
+                          item.pending
+                            ? t("settings.shell.pendingItem", { label })
+                            : undefined
+                        }
                         onClick={() => setSection(item.id)}
                       >
                         <Icon aria-hidden size={16} />
-                        <span>{item.label}</span>
+                        <span>{label}</span>
                         {/* 未接入集成的计数角标。用 working 琥珀色 ——
                             它是「有事待办」,不是 blocked 那种「正在拦着你」。 */}
                         {warn !== null && (
                           <span
                             className="ml-auto font-mono text-[8px] font-bold
                               bg-st-working-badge text-st-working rounded-[99px] py-[1.5px] px-[5.5px]"
-                            title={`${warn} 个集成未接入`}
+                            title={t("settings.shell.integrationsWarn", { count: warn })}
                           >
                             {warn}
                           </span>
                         )}
                         {item.pending && (
                           <span className="ml-auto font-mono text-[8px] text-muted border border-rule rounded-[4px] py-px px-1">
-                            待实现
+                            {t("ui.pending")}
                           </span>
                         )}
                       </button>
@@ -396,7 +406,7 @@ export function SettingsScreen({ onClose }: Props) {
               ))}
               {/* 过滤后一无所有时的占位,免得侧栏空得像坏了。 */}
               {navQuery.trim() !== "" && visibleGroups.length === 0 && (
-                <div className="p-2.5 text-[12px] text-muted">没有匹配的设置项</div>
+                <div className="p-2.5 text-[12px] text-muted">{t("settings.shell.noMatch")}</div>
               )}
             </nav>
           </aside>
@@ -406,7 +416,7 @@ export function SettingsScreen({ onClose }: Props) {
               // 正体 Geist —— 迁移前 design-system.css 把 styles.css 那层
               // 的斜体 Fraunces 重置掉了,这里跟随实际生效的结果。
               <div className="p-[60px] text-center font-ui not-italic text-[16px] text-subtle">
-                读取设置中…
+                {t("settings.shell.loading")}
               </div>
             ) : (
               <div className="pt-[22px] px-[26px] pb-[30px]">
@@ -451,7 +461,7 @@ export function SettingsScreen({ onClose }: Props) {
             onClick={() => void handleReset()}
             disabled={saving || loading}
           >
-            恢复默认
+            {t("settings.shell.reset")}
           </button>
           <span className="flex-auto" />
           <button
@@ -462,7 +472,7 @@ export function SettingsScreen({ onClose }: Props) {
             onClick={() => void handleClose()}
             disabled={saving}
           >
-            取消
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -477,7 +487,7 @@ export function SettingsScreen({ onClose }: Props) {
             onClick={() => void handleSave()}
             disabled={!dirty || saving}
           >
-            {saving ? "保存中…" : "保存"}
+            {saving ? t("settings.shell.saving") : t("common.save")}
           </button>
         </footer>
       </section>
@@ -491,13 +501,14 @@ function sameConfig(a: ConfigView, b: ConfigView): boolean {
 
 /// 按导航项标题(和组名)过滤左侧列表。匹配组名时整组保留 —— 搜「应用」
 /// 应该给出该组全部四项,而不是空手而归。空查询原样返回。
-function filterNavGroups(query: string): typeof NAV_GROUPS {
+function filterNavGroups(query: string, t: TFunction): typeof NAV_GROUPS {
   const q = query.trim().toLowerCase();
   if (!q) return NAV_GROUPS;
+  // 匹配的是译文而不是 key:用户搜的是屏幕上看到的词。
   return NAV_GROUPS.map((group) => {
-    if (group.title.toLowerCase().includes(q)) return group;
+    if (t(group.titleKey).toLowerCase().includes(q)) return group;
     const items = group.items.filter((item) =>
-      item.label.toLowerCase().includes(q),
+      t(item.labelKey).toLowerCase().includes(q),
     );
     return { ...group, items };
   }).filter((group) => group.items.length > 0);
