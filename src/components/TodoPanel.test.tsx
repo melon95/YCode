@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -77,21 +78,31 @@ describe("TodoPanel task flow", () => {
     render(<TodoPanel projectId="project-a" />);
 
     expect(await screen.findByText("Polish task workflow")).toBeInTheDocument();
-    expect(screen.getByLabelText("任务概览")).toHaveTextContent(
-      "1进行中1排队中1已完成",
+    // 三格各一条:进行中 / 排队中 / 已完成。拼词条而不是写死字面量 ——
+    // 这条断言要验的是计数,不是某种语言的措辞。
+    expect(screen.getByLabelText(i18next.t("todo.overviewAria"))).toHaveTextContent(
+      `1${i18next.t("todo.doing")}1${i18next.t("todo.queued")}1${i18next.t("todo.done")}`,
     );
     // 「进行中」同时出现在概览、分组标题和状态标签里,只需确认存在。
-    expect(screen.getAllByText("进行中").length).toBeGreaterThan(0);
-    expect(screen.getByText("队列")).toBeInTheDocument();
-    expect(screen.getByText(/开始于 2 小时前/)).toBeInTheDocument();
-    expect(screen.getByText(/添加于 30 分钟前/)).toBeInTheDocument();
+    expect(screen.getAllByText(i18next.t("todo.doing")).length).toBeGreaterThan(0);
+    expect(screen.getByText(i18next.t("todo.queue"))).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        `${i18next.t("todo.verbStarted")} ${i18next.t("time.hoursAgo", { count: 2 })}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        `${i18next.t("todo.verbAdded")} ${i18next.t("time.minutesAgo", { count: 30 })}`,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("adds a task through the capture field", async () => {
     const user = userEvent.setup();
     render(<TodoPanel projectId="project-a" />);
 
-    const input = await screen.findByRole("textbox", { name: "新建 todo" });
+    const input = await screen.findByRole("textbox", { name: i18next.t("todo.newAria") });
     await user.type(input, "  Ship the task panel  ");
     await user.keyboard("{Enter}");
 
@@ -109,7 +120,7 @@ describe("TodoPanel task flow", () => {
     render(<TodoPanel projectId="project-a" />);
 
     const completeButtons = await screen.findAllByRole("button", {
-      name: "标记为已完成",
+      name: i18next.t("todo.doneToggleOff"),
     });
     await user.click(completeButtons[0]);
 

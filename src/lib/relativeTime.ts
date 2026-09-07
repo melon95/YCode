@@ -20,10 +20,25 @@ const DAY = 86_400_000;
 ///
 /// `t` 由调用方传进来而不是在这里 `useTranslation()` —— 这是个纯函数,
 /// 不是组件,拿不到 hook;而且传进来之后它在测试里可以被替换掉。
-export function relativeTime(ms: number, t: TFunction): string {
-  const diff = Date.now() - ms;
+/// `maxDays` 给定时,超过该天数改用绝对日期(「Jun 2」)。待办面板要这个:
+/// 一条三个月前完成的任务显示「92 天前」等于没说,日期至少能让人对上
+/// 自己那周在干什么。侧栏不传 —— 那里「N 天前」正是想要的粒度。
+export function relativeTime(
+  ms: number,
+  t: TFunction,
+  maxDays?: number,
+): string {
+  // 负数(时钟回拨、未来的时间戳)夹到 0,否则会渲染出「-3 分钟前」。
+  const diff = Math.max(0, Date.now() - ms);
   if (diff < MINUTE) return t("time.justNow");
   if (diff < HOUR) return t("time.minutesAgo", { count: Math.floor(diff / MINUTE) });
   if (diff < DAY) return t("time.hoursAgo", { count: Math.floor(diff / HOUR) });
+  if (maxDays != null && diff >= maxDays * DAY) {
+    // 月/日跟随浏览器 locale,不写死格式:英文出「Jun 2」,中文出「6月2日」。
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    }).format(new Date(ms));
+  }
   return t("time.daysAgo", { count: Math.floor(diff / DAY) });
 }

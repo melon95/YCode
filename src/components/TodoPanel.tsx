@@ -6,6 +6,9 @@
 // reorders within a status group, and completed work remains grouped by week.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import { relativeTime } from "../lib/relativeTime";
 import {
   createTodo,
   deleteTodo,
@@ -84,6 +87,7 @@ const MAX_INLINE_WEEKS = 10;
 const EMPTY_TODOS: TodoView[] = [];
 
 export function TodoPanel({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const todos = useStore((s) => s.todos[projectId]);
   const setTodos = useStore((s) => s.setTodos);
   const [error, setError] = useState<string | null>(null);
@@ -248,8 +252,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             e.stopPropagation();
             toggleDone(todo);
           }}
-          aria-label={done ? "已完成 — 点击可重新打开" : "标记为已完成"}
-          title={done ? "已完成 — 点击可重新打开" : "标记为已完成"}
+          aria-label={done ? t("todo.doneToggleOn") : t("todo.doneToggleOff")}
+          title={done ? t("todo.doneToggleOn") : t("todo.doneToggleOff")}
         >
           {done ? <CheckIcon /> : null}
         </button>
@@ -276,12 +280,12 @@ export function TodoPanel({ projectId }: { projectId: string }) {
                   done ? "line-through text-subtle" : "text-text-soft"
                 }`}
                 onDoubleClick={() => beginEdit(todo)}
-                title={statusDatesTooltip(todo)}
+                title={statusDatesTooltip(todo, t)}
               >
                 {todo.title}
               </span>
               <span className="text-subtle font-ui text-[9px] leading-[1.2]">
-                {statusTimeLabel(todo, status)}
+                {statusTimeLabel(todo, status, t)}
               </span>
             </>
           )}
@@ -305,7 +309,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
               .join(" ")}
           >
             <span className="size-[5px] rounded-full bg-current" aria-hidden />
-            {status === "doing" ? "进行中" : "排队中"}
+            {status === "doing" ? t("todo.doing") : t("todo.queued")}
           </span>
         )}
         {canDrag && (
@@ -318,7 +322,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
               active:cursor-grabbing group-hover/row:opacity-72
               @max-[500px]:hidden"
             aria-hidden
-            title="拖动以重新排序"
+            title={t("todo.dragToReorder")}
             onPointerDown={(event) => todoReorder.handlePointerDown(event, todo)}
             onClick={(event) => event.stopPropagation()}
           >
@@ -336,8 +340,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             e.stopPropagation();
             removeTodo(todo.id);
           }}
-          aria-label="删除 todo"
-          title="删除"
+          aria-label={t("todo.deleteAria")}
+          title={t("common.delete")}
         >
           <TrashIcon />
         </button>
@@ -361,7 +365,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
   }, [list]);
   // Bucket completed todos by the week they were finished, newest week first.
   // Recomputed only when the completed set changes.
-  const weeks = useMemo(() => groupByWeek(done), [done]);
+  const weeks = useMemo(() => groupByWeek(done, t), [done, t]);
   const inlineWeeks = weeks.slice(0, MAX_INLINE_WEEKS);
   const hiddenWeeks = weeks.length - inlineWeeks.length;
 
@@ -392,13 +396,13 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             onClick={() => setShowArchive(false)}
           >
             <BackIcon />
-            <span>返回</span>
+            <span>{t("todo.back")}</span>
           </button>
-          <span className="text-[13px] font-bold text-text">全部已完成</span>
+          <span className="text-[13px] font-bold text-text">{t("todo.allDone")}</span>
           <span className={`${DONE_COUNT} text-xs`}>{done.length}</span>
         </div>
         {weeks.length === 0 ? (
-          <div className="empty">还没有已完成的 todo。</div>
+          <div className="empty">{t("todo.noneDone")}</div>
         ) : (
           <ul className={WEEK_LIST}>{weeks.map(renderWeek)}</ul>
         )}
@@ -416,34 +420,34 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       >
         <div className="min-w-0">
           <h2 className="m-0 text-text font-display text-[18px] font-[620] leading-[1.15] tracking-[-0.018em]">
-            任务流
+            {t("todo.title")}
           </h2>
           <p className="mt-[5px] mx-0 mb-0 text-subtle font-ui text-[10px] leading-[1.35]">
-            在队列与进行中之间流转你的工作。
+            {t("todo.lede")}
           </p>
         </div>
         <div
           className="inline-flex flex-none items-center gap-2.5 pb-px @max-[500px]:w-full"
-          aria-label="任务概览"
+          aria-label={t("todo.overviewAria")}
         >
           {/* 进行中的数字用 accent —— 概览里唯一需要先被看到的那个。 */}
           <span className={SUMMARY_ITEM}>
             <strong className={`${SUMMARY_NUM} !text-accent`}>
               {doing.length}
             </strong>
-            <span>进行中</span>
+            <span>{t("todo.doing")}</span>
           </span>
           <span className={SUMMARY_RULE} aria-hidden />
           <span className={SUMMARY_ITEM}>
             <strong className={SUMMARY_NUM}>{todo.length}</strong>
-            <span>排队中</span>
+            <span>{t("todo.queued")}</span>
           </span>
           {done.length > 0 && (
             <>
               <span className={SUMMARY_RULE} aria-hidden />
               <span className={SUMMARY_ITEM}>
                 <strong className={SUMMARY_NUM}>{done.length}</strong>
-                <span>已完成</span>
+                <span>{t("todo.done")}</span>
               </span>
             </>
           )}
@@ -464,8 +468,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
         <PlusIcon />
         <input
           className={`todo-add-input ${INPUT} placeholder:text-subtle`}
-          aria-label="新建 todo"
-          placeholder="新建 todo…"
+          aria-label={t("todo.newAria")}
+          placeholder={t("todo.newPlaceholder")}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
         />
@@ -477,8 +481,8 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             [&>kbd]:border [&>kbd]:border-rule-strong [&>kbd]:rounded-xs
             [&>kbd]:bg-panel-sunken [&>kbd]:text-subtle [&>kbd]:font-ui [&>kbd]:text-[9px] [&>kbd]:text-center
             enabled:hover:[&>kbd]:border-accent enabled:hover:[&>kbd]:text-accent"
-          aria-label="添加 todo"
-          title="添加 todo"
+          aria-label={t("todo.addAria")}
+          title={t("todo.addAria")}
           disabled={!draft.trim()}
         >
           <kbd>↵</kbd>
@@ -487,22 +491,22 @@ export function TodoPanel({ projectId }: { projectId: string }) {
       <ul className={TODO_LIST} {...todoReorder.containerHandlers}>
         {doing.length > 0 && (
           <li className={GROUP_HEADER}>
-            <span>进行中</span>
+            <span>{t("todo.doing")}</span>
             <span>{doing.length}</span>
           </li>
         )}
         {doing.map((t) => renderTodo(t, { draggable: true }))}
         {todo.length > 0 && (
           <li className={GROUP_HEADER}>
-            <span>队列</span>
+            <span>{t("todo.queue")}</span>
             <span>{todo.length}</span>
           </li>
         )}
         {todo.map((t) => renderTodo(t, { draggable: true }))}
         {doing.length === 0 && todo.length === 0 && (
           <li className={ACTIVE_EMPTY}>
-            <span>当前没有进行中的任务。</span>
-            <span>准备好后,在上方新建一个 todo。</span>
+            <span>{t("todo.nothingDoing")}</span>
+            <span>{t("todo.addWhenReady")}</span>
           </li>
         )}
       </ul>
@@ -518,7 +522,7 @@ export function TodoPanel({ projectId }: { projectId: string }) {
             aria-expanded={showDone}
           >
             <ChevronIcon />
-            <span>已完成</span>
+            <span>{t("todo.done")}</span>
             <span className={DONE_COUNT}>{done.length}</span>
           </button>
           {showDone && (
@@ -531,9 +535,9 @@ export function TodoPanel({ projectId }: { projectId: string }) {
                     text-accent text-xs font-semibold`}
                   onClick={() => setShowArchive(true)}
                 >
-                  查看全部已完成
+                  {t("todo.seeAllDone")}
                   <span className="ml-auto text-subtle font-medium">
-                    还有 {hiddenWeeks} 周
+                    {t("todo.moreWeeks", { count: hiddenWeeks })}
                   </span>
                 </button>
               )}
@@ -560,10 +564,14 @@ function weekStartMs(ms: number): number {
 }
 
 /** 「本周」/「上周」,更早则显示该周的日期区间(如 "Jun 2 – Jun 8")。 */
-function weekLabel(weekStart: number, currentWeekStart: number): string {
+function weekLabel(
+  weekStart: number,
+  currentWeekStart: number,
+  t: TFunction,
+): string {
   const weeksAgo = Math.round((currentWeekStart - weekStart) / WEEK_MS);
-  if (weeksAgo <= 0) return "本周";
-  if (weeksAgo === 1) return "上周";
+  if (weeksAgo <= 0) return t("todo.thisWeek");
+  if (weeksAgo === 1) return t("todo.lastWeek");
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
   const start = new Date(weekStart).toLocaleDateString(undefined, opts);
   const end = new Date(weekStart + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(
@@ -578,20 +586,22 @@ function weekLabel(weekStart: number, currentWeekStart: number): string {
  * update/create time for legacy rows without a done stamp). Weeks are ordered
  * newest-first, and each week's items newest-completed-first.
  */
-function groupByWeek(done: TodoView[]): WeekGroup[] {
+function groupByWeek(done: TodoView[], t: TFunction): WeekGroup[] {
   const currentWeekStart = weekStartMs(Date.now());
   const buckets = new Map<number, TodoView[]>();
-  for (const t of done) {
-    const ms = t.done_at_ms ?? t.updated_at_ms ?? t.created_at_ms;
+  // 循环变量叫 `todo` 而不是 `t`:`t` 现在是翻译函数,同名会把它遮蔽掉,
+  // 而被遮蔽处恰好就是下面要调 `weekLabel(..., t)` 的地方。
+  for (const todo of done) {
+    const ms = todo.done_at_ms ?? todo.updated_at_ms ?? todo.created_at_ms;
     const ws = weekStartMs(ms);
     const bucket = buckets.get(ws);
-    if (bucket) bucket.push(t);
-    else buckets.set(ws, [t]);
+    if (bucket) bucket.push(todo);
+    else buckets.set(ws, [todo]);
   }
   return Array.from(buckets.entries())
     .map(([ws, items]) => ({
       weekStart: ws,
-      label: weekLabel(ws, currentWeekStart),
+      label: weekLabel(ws, currentWeekStart, t),
       items: items.sort(
         (a, b) => (b.done_at_ms ?? 0) - (a.done_at_ms ?? 0),
       ),
@@ -609,41 +619,36 @@ function fmt(ms: number | null): string | null {
 }
 
 /** 多行悬停提示,展示各状态对应的时间戳。 */
-function statusDatesTooltip(todo: TodoView): string {
-  const lines = [`创建于:${fmt(todo.created_at_ms) ?? "—"}`];
+function statusDatesTooltip(todo: TodoView, t: TFunction): string {
+  const lines = [t("todo.createdAt", { time: fmt(todo.created_at_ms) ?? "—" })];
   const started = fmt(todo.started_at_ms);
-  if (started) lines.push(`开始于:${started}`);
+  if (started) lines.push(t("todo.startedAt", { time: started }));
   const done = fmt(todo.done_at_ms);
-  if (done) lines.push(`完成于:${done}`);
-  lines.push("", "双击可编辑");
+  if (done) lines.push(t("todo.finishedAt", { time: done }));
+  lines.push("", t("todo.doubleClickToEdit"));
   return lines.join("\n");
 }
 
-function statusTimeLabel(todo: TodoView, status: Status): string {
+function statusTimeLabel(
+  todo: TodoView,
+  status: Status,
+  t: TFunction,
+): string {
   const timestamp =
     status === "doing"
       ? (todo.started_at_ms ?? todo.updated_at_ms)
       : status === "done"
         ? (todo.done_at_ms ?? todo.updated_at_ms)
         : todo.created_at_ms;
-  const verb = status === "doing" ? "开始于" : status === "done" ? "完成于" : "添加于";
-  return `${verb} ${relativeTime(timestamp)}`;
+  const verb =
+    status === "doing"
+      ? t("todo.verbStarted")
+      : status === "done"
+        ? t("todo.verbFinished")
+        : t("todo.verbAdded");
+  return `${verb} ${relativeTime(timestamp, t, 7)}`;
 }
 
-function relativeTime(ms: number): string {
-  const elapsed = Math.max(0, Date.now() - ms);
-  const minute = 60 * 1000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (elapsed < minute) return "刚刚";
-  if (elapsed < hour) return `${Math.floor(elapsed / minute)} 分钟前`;
-  if (elapsed < day) return `${Math.floor(elapsed / hour)} 小时前`;
-  if (elapsed < 7 * day) return `${Math.floor(elapsed / day)} 天前`;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(ms));
-}
 
 function ChevronIcon() {
   return (

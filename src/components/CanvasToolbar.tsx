@@ -7,6 +7,7 @@
 // is decided next to the work rather than inside the panel it controls.
 
 import { Popover } from "@base-ui/react/popover";
+import { useTranslation } from "react-i18next";
 import {
   defaultLayoutMode,
   useStore,
@@ -21,12 +22,14 @@ import { AttentionInbox } from "./AttentionInbox";
 
 const TOOLBAR_DIV = "flex-none w-px h-[18px] bg-rule my-0 mx-1";
 
-const LAYOUT_LABEL: Record<LayoutMode, string> = {
-  single: "单栏",
-  stack: "上下堆叠",
-  columns: "并排两栏",
-  grid2x2: "网格 2×2",
-  "main-side": "主 + 侧",
+/// 存词条 key 而不是译文 —— 这张表在模块加载时求值,那会儿 i18next 还
+/// 没 init。同 STATUS_LABEL_KEY。
+const LAYOUT_LABEL_KEY: Record<LayoutMode, string> = {
+  single: "toolbar.layoutSingle",
+  stack: "toolbar.layoutStack",
+  columns: "toolbar.layoutColumns",
+  grid2x2: "toolbar.layoutGrid",
+  "main-side": "toolbar.layoutMainSide",
 };
 
 interface Props {
@@ -42,6 +45,7 @@ export function CanvasToolbar({
   sidebarCollapsed,
   settingsActive = false,
 }: Props) {
+  const { t } = useTranslation();
   const mode = useStore((s) => s.layout.mode);
   const count = useStore((s) => s.layout.visibleIds.length);
   const setLayoutMode = useStore((s) => s.setLayoutMode);
@@ -86,8 +90,8 @@ export function CanvasToolbar({
             active={!layoutDisabled && activeMode === m}
             disabled={layoutDisabled || !valid.includes(m)}
             onClick={() => setLayoutMode(m)}
-            title={LAYOUT_LABEL[m]}
-            aria-label={LAYOUT_LABEL[m]}
+            title={t(LAYOUT_LABEL_KEY[m])}
+            aria-label={t(LAYOUT_LABEL_KEY[m])}
           >
             <LayoutGlyph mode={m} />
           </IconButton>
@@ -100,7 +104,7 @@ export function CanvasToolbar({
       {/* Workspace panels. Highlighted when open, mirroring the way the
           preview (and Claude Code's own Code view) puts the panel switches
           at the top of the working area. */}
-      <PanelToggle tab="terminal" open={openPanels} onPick={togglePanelOpen} label="终端">
+      <PanelToggle tab="terminal" open={openPanels} onPick={togglePanelOpen} label={t("panels.terminal")}>
         <TerminalIcon />
       </PanelToggle>
       <PanelToggle
@@ -114,7 +118,7 @@ export function CanvasToolbar({
           togglePanelOpen("files");
           if (openPanels.includes("editor")) togglePanelOpen("editor");
         }}
-        label="文件"
+        label={t("panels.files")}
         matches={["files", "editor"]}
       >
         <FilesIcon />
@@ -123,7 +127,7 @@ export function CanvasToolbar({
         tab="changes"
         open={openPanels}
         onPick={togglePanelOpen}
-        label="变更"
+        label={t("panels.changes")}
         // 预览稿的变更角标。0 个文件不挂角标(与待办一致)。
         count={changesFileCount || undefined}
       >
@@ -133,7 +137,7 @@ export function CanvasToolbar({
         tab="todos"
         open={openPanels}
         onPick={togglePanelOpen}
-        label="待办"
+        label={t("panels.todos")}
         count={openTodos || undefined}
       >
         <TodosIcon />
@@ -145,8 +149,8 @@ export function CanvasToolbar({
       <span className={TOOLBAR_DIV} />
       <IconButton
         onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-palette"))}
-        title="搜索或执行命令 (⌘K)"
-        aria-label="搜索或执行命令 (⌘K)"
+        title={t("toolbar.search")}
+        aria-label={t("toolbar.search")}
       >
         <SearchIcon />
       </IconButton>
@@ -154,8 +158,8 @@ export function CanvasToolbar({
       <IconButton
         active={settingsActive}
         onClick={() => window.dispatchEvent(new CustomEvent("ycode:open-settings"))}
-        title="设置 (⌘,)"
-        aria-label="设置"
+        title={t("toolbar.settings")}
+        aria-label={t("toolbar.settingsAria")}
       >
         <GearIcon />
       </IconButton>
@@ -208,6 +212,7 @@ function PanelToggle({
 /// preview in here?" — and an entry that says "not yet" answers that faster
 /// than its absence does.
 function PanelCatalog() {
+  const { t } = useTranslation();
   return (
     <Popover.Root>
       {/* 几何与 IconButton 对齐(30px 方块),但这里是 Base UI 的
@@ -218,8 +223,8 @@ function PanelCatalog() {
           transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
           hover:bg-panel-raised hover:border-rule hover:text-text
           data-[popup-open]:bg-panel-raised data-[popup-open]:text-text"
-        title="添加面板"
-        aria-label="添加面板"
+        title={t("toolbar.addPanel")}
+        aria-label={t("toolbar.addPanel")}
       >
         <PlusIcon />
       </Popover.Trigger>
@@ -227,15 +232,15 @@ function PanelCatalog() {
         <Popover.Positioner className={POPOVER_LAYER} sideOffset={8} align="end">
           <Popover.Popup className="w-[300px] bg-panel border border-rule-strong rounded-[14px] shadow-menu overflow-hidden animate-pop-in">
             <div className="pt-3 px-3.5 pb-1.5 text-[10px] font-semibold tracking-caps uppercase text-subtle">
-              面板
+              {t("toolbar.panels")}
             </div>
-            <PanelCatalogRow icon={<TerminalIcon />} name="终端" desc="在项目目录里开一个 shell" state="内置" />
-            <PanelCatalogRow icon={<FilesIcon />} name="文件" desc="文件树 · CodeMirror 编辑器" state="已启用" on />
-            <PanelCatalogRow icon={<ChangesIcon />} name="变更" desc="工作区 diff · 检查点回顾" state="已启用" on />
-            <PanelCatalogRow icon={<TodosIcon />} name="待办" desc="项目待办 · agent 可经 MCP 读写" state="已启用" on />
-            <PanelCatalogRow icon={<BrowserIcon />} name="浏览器" desc="预览本地 dev server" state="未实现" disabled />
+            <PanelCatalogRow icon={<TerminalIcon />} name={t("panels.terminal")} desc={t("panels.terminalDesc")} state={t("toolbar.builtin")} />
+            <PanelCatalogRow icon={<FilesIcon />} name={t("panels.files")} desc={t("panels.filesDesc")} state={t("common.enabled")} on />
+            <PanelCatalogRow icon={<ChangesIcon />} name={t("panels.changes")} desc={t("panels.changesDesc")} state={t("common.enabled")} on />
+            <PanelCatalogRow icon={<TodosIcon />} name={t("panels.todos")} desc={t("panels.todosDesc")} state={t("common.enabled")} on />
+            <PanelCatalogRow icon={<BrowserIcon />} name={t("panels.browser")} desc={t("panels.browserDesc")} state={t("toolbar.notBuilt")} disabled />
             <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-muted">
-              面板可插拔:未实现的条目会在支持后出现在上方的开关里。
+              {t("toolbar.catalogFootnote")}
             </div>
           </Popover.Popup>
         </Popover.Positioner>

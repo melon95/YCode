@@ -5,6 +5,7 @@
 // 无焦点时回落到 workspace 手选目标;以及 count/actions 两个卡片头插槽。
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { i18next } from "../lib/i18n";
 import userEvent from "@testing-library/user-event";
 import { act, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -156,7 +157,7 @@ describe("RightPane 变更面板绑定", () => {
     render(<RightPane />);
     // 锁定在当前跟随目标 s1 上。
     await user.click(
-      screen.getByRole("button", { name: "锁定到当前会话" }),
+      screen.getByRole("button", { name: i18next.t("panels.lockAria") }),
     );
     act(() => {
       useStore.getState().focusLayoutSlot(1); // 焦点 → s2
@@ -164,11 +165,11 @@ describe("RightPane 变更面板绑定", () => {
     // 仍固定在 s1。
     expect(screen.getByTestId("changes-panel")).toHaveTextContent("target:s1");
     expect(
-      screen.getByRole("button", { name: "解除锁定,恢复跟随焦点" }),
+      screen.getByRole("button", { name: i18next.t("panels.unlockAria") }),
     ).toHaveAttribute("aria-pressed", "true");
     // 解锁 → 恢复跟随,立刻切到焦点会话 s2。
     await user.click(
-      screen.getByRole("button", { name: "解除锁定,恢复跟随焦点" }),
+      screen.getByRole("button", { name: i18next.t("panels.unlockAria") }),
     );
     expect(screen.getByTestId("changes-panel")).toHaveTextContent("target:s2");
   });
@@ -176,7 +177,7 @@ describe("RightPane 变更面板绑定", () => {
   it("锁定的会话被移除后自动失效,回到跟随逻辑", () => {
     render(<RightPane />);
     // 焦点默认在 s1;点击锁定即锁在 s1 上。
-    const btn = screen.getByRole("button", { name: "锁定到当前会话" });
+    const btn = screen.getByRole("button", { name: i18next.t("panels.lockAria") });
     act(() => {
       btn.click();
     });
@@ -202,7 +203,7 @@ describe("RightPane 卡片头计数", () => {
   it("变更卡片显示 diff 文件数(ChangesPanel 经 onFileCount 上报)", async () => {
     render(<RightPane />);
     await waitFor(() =>
-      expect(screen.getByText("3 个文件")).toBeInTheDocument(),
+      expect(screen.getByText(i18next.t("panels.fileCount", { count: 3 }))).toBeInTheDocument(),
     );
     // 工具条角标共用的 store 字段也被写入。
     expect(useStore.getState().changesFileCount).toBe(3);
@@ -210,7 +211,7 @@ describe("RightPane 卡片头计数", () => {
 
   it("待办卡片显示未完成 todo 数(不含 done)", () => {
     render(<RightPane />);
-    const todosCard = screen.getByRole("region", { name: "待办" });
+    const todosCard = screen.getByRole("region", { name: i18next.t("panels.todos") });
     expect(todosCard.querySelector(".pcard-count")).toHaveTextContent("2");
   });
 

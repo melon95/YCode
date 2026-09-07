@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { displaySessionTitle, useStore, type RightTab } from "../lib/store";
 import type { SessionView } from "../lib/types";
 import { FileTreePanel } from "./FileTreePanel";
@@ -27,6 +28,7 @@ const FILE_TAB = `inline-flex items-center gap-1.5 h-8 pt-0 pr-[7px] pb-0 pl-3
 );
 
 export function RightPane() {
+  const { t } = useTranslation();
   const projects = useStore((s) => s.projects);
   const sessions = useStore((s) => s.sessions);
   const workspaceSessionByProject = useStore(
@@ -129,13 +131,19 @@ export function RightPane() {
     : "主仓库";
   const changesBindTitle = changesLockValid
     ? changesSession
-      ? `已锁定:${displaySessionTitle(changesSession, liveTitles)}`
-      : "已锁定:主仓库"
+      ? t("panels.lockedTo", {
+            name: displaySessionTitle(changesSession, liveTitles),
+          })
+      : t("panels.lockedToMain")
     : focusSession
-      ? `跟随焦点会话:${displaySessionTitle(focusSession, liveTitles)}`
+      ? t("panels.followingFocus", {
+            name: displaySessionTitle(focusSession, liveTitles),
+          })
       : changesSession
-        ? `手选目标:${displaySessionTitle(changesSession, liveTitles)}`
-        : "主仓库";
+        ? t("panels.pickedTarget", {
+              name: displaySessionTitle(changesSession, liveTitles),
+            })
+        : t("statusBar.mainRepo");
 
   const toggleChangesLock = useCallback(() => {
     if (!activeProject) return;
@@ -449,7 +457,7 @@ export function RightPane() {
         }}
       >
         <PanelCard
-          title="文件"
+          title={t("panels.files")}
           // Static label rather than the picker: one editable copy of the
           // control (in the terminal card) is enough — three would just be
           // three ways to set the same value.
@@ -462,7 +470,7 @@ export function RightPane() {
                   ? (activeWorkspaceSession.branch ??
                     activeWorkspaceSession.base_branch ??
                     "worktree")
-                  : "主仓库"}
+                  : t("statusBar.mainRepo")}
               </span>
             </>
           }
@@ -599,7 +607,7 @@ export function RightPane() {
         </PanelCard>
         <StackResizer />
         <PanelCard
-          title="变更"
+          title={t("panels.changes")}
           open={isOpen("changes")}
           // 绑定 chip 如实反映当前跟随/锁定的目标(见上方解析逻辑)。
           bind={
@@ -612,7 +620,9 @@ export function RightPane() {
           }
           // 预览稿的「3 个文件」计数;仅在面板挂载、数字可信时显示。
           count={
-            changesFileCount != null ? `${changesFileCount} 个文件` : undefined
+            changesFileCount != null
+                  ? t("panels.fileCount", { count: changesFileCount })
+                  : undefined
           }
           // 预览稿的 #chg-pin:锁定后停止跟随焦点,固定在锁定那一刻的目标。
           actions={
@@ -623,11 +633,11 @@ export function RightPane() {
               disabled={!activeProject}
               title={
                 changesLockValid
-                  ? "已锁定 · 点击恢复跟随焦点"
-                  : "锁定到当前会话(不跟随焦点)"
+                  ? t("panels.lockedHint")
+                  : t("panels.lockHint")
               }
               aria-label={
-                changesLockValid ? "解除锁定,恢复跟随焦点" : "锁定到当前会话"
+                changesLockValid ? t("panels.unlockAria") : t("panels.lockAria")
               }
             >
               <PinIcon />
@@ -653,7 +663,7 @@ export function RightPane() {
         </PanelCard>
         <StackResizer />
         <PanelCard
-          title="待办"
+          title={t("panels.todos")}
           open={isOpen("todos")}
           // 未完成 todo 数,与画布工具条的角标同源(store.todos)。
           count={openTodoCount > 0 ? openTodoCount : undefined}
@@ -667,7 +677,7 @@ export function RightPane() {
         </PanelCard>
         <StackResizer />
         <PanelCard
-          title="终端"
+          title={t("panels.terminal")}
           open={isOpen("terminal")}
           // The binding label *is* the control: this is where you both see
           // and change which checkout the right column's tools point at.
