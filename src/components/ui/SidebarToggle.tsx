@@ -7,6 +7,7 @@
 // the panel it hides, so it has to hand off to the neighbouring toolbar.
 
 import { IconButton } from "./IconButton";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   collapsed: boolean;
@@ -14,7 +15,8 @@ interface Props {
 }
 
 export function SidebarToggle({ collapsed, onToggle }: Props) {
-  const label = collapsed ? "显示会话列表" : "隐藏会话列表";
+  const { t } = useTranslation();
+  const label = collapsed ? t("ui.showSessions") : t("ui.hideSessions");
   return (
     <IconButton
       onClick={onToggle}

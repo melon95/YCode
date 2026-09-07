@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Menu } from "@base-ui/react/menu";
 import { useStore } from "../../lib/store";
 import {
@@ -23,6 +24,7 @@ interface Props {
 /// 看得到、点不动。与其另加一个控件(那会让同一个名字在相邻两行出现
 /// 两次),不如让这两处文本自己可点。
 export function ProjectPickerMenu({ children, className, asSpan }: Props) {
+  const { t } = useTranslation();
   const projects = useStore((s) => s.projects);
   const projectOrder = useStore((s) => s.projectOrder);
   const activeProjectId = useStore((s) => s.activeProjectId);
@@ -61,7 +63,7 @@ export function ProjectPickerMenu({ children, className, asSpan }: Props) {
           ${className ?? ""}`
           .replace(/\s+/g, " ")
           .trim()}
-        aria-label="切换项目"
+        aria-label={t("ui.switchProject")}
         nativeButton={!asSpan}
         render={asSpan ? <span role="button" tabIndex={0} /> : undefined}
         onClick={(e) => e.stopPropagation()}

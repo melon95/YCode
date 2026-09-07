@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { watchImmediate } from "@tauri-apps/plugin-fs";
 import { toast } from "../lib/toast";
 import { Tree, type NodeRendererProps } from "react-arborist";
@@ -59,6 +60,7 @@ export function FileTreePanel({
   sessionId?: string;
   rootPath: string;
 }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,11 +221,11 @@ export function FileTreePanel({
   const doDelete = useCallback(
     async (node: TreeNode) => {
       const ok = await confirmDialog({
-        title: `删除 ${node.name}?`,
+        title: t("editor.deleteTitle", { name: node.name }),
         message: node.is_dir
-          ? "目录及其全部内容会被永久删除。"
-          : "文件会从磁盘上永久删除。",
-        confirmLabel: "删除",
+          ? t("editor.deleteDirBody")
+          : t("editor.deleteFileBody"),
+        confirmLabel: t("common.delete"),
         destructive: true,
       });
       if (!ok) return;

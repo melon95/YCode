@@ -84,7 +84,7 @@ export default {
     older: "更早",
     createProjectFailed: "创建项目失败:{{error}}",
     startSessionFailed: "启动 {{agent}} 会话失败:{{error}}",
-    paneCapReached: "已达 {{count}} 个面板上限,先关一个",
+    paneCapReached_other: "已达 {{count}} 个面板上限,先关一个",
     noAgentForId: "没有 id 为「{{id}}」的 agent 配置",
     noAgentForResume: "没有能恢复「{{agent}}」会话的 agent 配置,请在设置里添加。",
     noResumableId: "这份 transcript 还没有可恢复的会话 id。",
@@ -115,6 +115,71 @@ export default {
       "把这个 agent 的分支合并到主工作树的「{{base}}」。主工作树必须已检出「{{base}}」且没有未提交的改动。",
     mergeBackTo: "把这个 agent 的分支合并回 {{base}}",
     onBranch: "运行在独立 worktree 的分支 {{branch}} 上",
+  },
+
+  ui: {
+    showSessions: "显示会话列表",
+    hideSessions: "隐藏会话列表",
+    confirmOk: "确定",
+    switchProject: "切换项目",
+    resizePanel: "调整面板高度",
+    allAgents: "全部 agent",
+    filterBy: "筛选:{{label}}",
+    filterAgentAria: "agent 筛选 —— 当前 {{label}}",
+    workspaceTarget: "工作区目标",
+    workspaceTargetHint: "选择「文件、编辑器、变更、LSP、终端」所使用的 checkout",
+    pending: "待实现",
+    session: "会话",
+  },
+
+  editor: {
+    closeDirtyTitle: "关闭 {{name}}?它有未保存的修改",
+    closeDirtyBody: "自上次保存以来的编辑会被丢弃。",
+    discardEdits: "丢弃修改",
+    saveBeforeSwitch: "切换工作区前,请先保存或关闭已编辑的文件。",
+    deleteTitle: "删除 {{name}}?",
+    deleteDirBody: "目录及其全部内容会被永久删除。",
+    deleteFileBody: "文件会从磁盘上永久删除。",
+  },
+
+  session: {
+    closeFailed: "关闭失败:{{error}}",
+    thisSession: "这个会话",
+    itsBranch: "它的分支",
+    baseBranch: "基准分支",
+    closeTitle: "关闭「{{label}}」?",
+    closeBody: "agent 的运行进程会被结束。",
+    removeWorktreeTitle: "移除这个 agent 的 worktree?",
+    removeWorktree: "移除 worktree",
+    // 三种情形分开写而不是拼句子:未提交的改动和未合并的提交是两件不同
+    // 的损失,拼接出来的句子在只有其中一种时会读着别扭。
+    dirtyAndUnmerged_other:
+      "agent 已停止。它的 worktree 有未提交的改动,另有 {{count}} 个提交尚未合并到 {{base}}。移除 worktree 会丢弃未提交的改动;分支「{{branch}}」会保留但成为孤儿分支(没有 worktree,不再显示在界面里)。想全部保留请先合并。",
+    dirtyOnly:
+      "agent 已停止。它的 worktree 有未提交的改动,移除 worktree 会把它们丢弃 —— 想保留请先提交或合并。",
+    unmergedOnly_other:
+      "agent 已停止。分支「{{branch}}」有 {{count}} 个提交尚未合并到 {{base}}。移除 worktree 会保留分支但使其成为孤儿(不再显示在界面里)—— 想让工作可见请先合并。",
+  },
+
+  project: {
+    deleteTitle: "删除「{{name}}」?",
+    repoUntouched: "仓库目录 {{path}} 不会被删除,里面的文件和分支都保持原样。",
+    sessionsClosed_other: "{{count}} 个会话会被结束并归档{{suffix}}。",
+    worktreesTornDown_other:
+      ",其中 {{count}} 个的 worktree 会被拆掉(未提交的改动会丢失)",
+    reAddHint: "之后可以用「打开项目」重新加回来。",
+    deleted: "已删除「{{name}}」",
+    deleteFailed: "删除失败:{{error}}",
+  },
+
+  picker: {
+    newSessionIn: "新建会话 · ",
+    noAgents: "没有配置任何 agent。编辑",
+    noAgentsAdd: "添加一个。",
+    notOnPath: "{{command}} — 不在 PATH 中",
+    historyReadable: "历史可读",
+    notInstalled: "未安装",
+    worktreeHint: "每个 agent 拿到自己的分支与工作目录,并行时互不覆盖",
   },
 
   settings: {

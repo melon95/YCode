@@ -18,6 +18,7 @@
 // what precedes it.
 
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 /* ---------- structure ---------- */
 
@@ -120,6 +121,7 @@ export function SettingRow({
   pendingReason,
   children,
 }: RowProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={`flex items-center gap-3 py-3 px-3.5 border-t border-rule first:border-t-0 ${
@@ -149,7 +151,7 @@ export function SettingRow({
       </span>
       {pendingReason && (
         <span className="flex-none font-mono text-[10px] text-subtle border border-rule rounded-[5px] py-0.5 px-1.5">
-          待实现
+          {t("ui.pending")}
         </span>
       )}
       {children}

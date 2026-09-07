@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
 import type { SessionView } from "../lib/types";
@@ -13,6 +14,7 @@ function targetLabel(session: SessionView): string {
  * terminal links, and the manual terminal as one atomic UI context.
  */
 export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
+  const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const selectedSessionId = useStore(
     (s) => s.workspaceSessionByProject[projectId] ?? null,
@@ -57,16 +59,16 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
         onChange={(event) => {
           const next = event.target.value || null;
           if (dirtyCount > 0) {
-            toast.warning("切换工作区前,请先保存或关闭已编辑的文件。");
+            toast.warning(t("editor.saveBeforeSwitch"));
             event.currentTarget.value = value;
             return;
           }
           setWorkspaceSessionId(projectId, next);
         }}
-        title="选择「文件、编辑器、变更、LSP、终端」所使用的 checkout"
-        aria-label="工作区目标"
+        title={t("ui.workspaceTargetHint")}
+        aria-label={t("ui.workspaceTarget")}
       >
-        <option value="">主仓库</option>
+        <option value="">{t("statusBar.mainRepo")}</option>
         {worktrees.map((session) => (
           <option key={session.id} value={session.id}>
             {targetLabel(session)}

@@ -8,6 +8,7 @@
 // transcript 扫描按分组懒加载,见 SidebarProjectGroup。
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "../lib/toast";
 import { LAYOUT_CAP, useStore } from "../lib/store";
@@ -29,6 +30,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onToggleSidebar }: SidebarProps) {
+  const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [showAllAgents, setShowAllAgents] = useState(true);
@@ -94,16 +96,16 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
   ) {
     if (creating) return;
     if (atCap) {
-      toast.warning(`已达 ${LAYOUT_CAP} 个面板上限,先关一个。`);
+      toast.warning(t("sidebar.paneCapReached", { count: LAYOUT_CAP }));
       return;
     }
     if (!profileId) {
-      toast.warning("还没有选中 agent。");
+      toast.warning(t("sidebar.noAgentSelected"));
       return;
     }
     const profile = useStore.getState().agents.find((a) => a.id === profileId);
     if (!profile) {
-      toast.danger(`没有 id 为「${profileId}」的 agent 配置`);
+      toast.danger(t("sidebar.noAgentForId", { id: profileId }));
       return;
     }
     setCreating(true);
@@ -117,7 +119,12 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
       upsertSession(view);
       openSessionInLayout(view.id);
     } catch (err) {
-      toast.danger(`启动 ${profile.display_name} 会话失败:${err}`);
+      toast.danger(
+        t("sidebar.startSessionFailed", {
+          agent: profile.display_name,
+          error: err,
+        }),
+      );
     } finally {
       setCreating(false);
     }
@@ -125,7 +132,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
 
   async function onResume(d: DiscoveredSessionView, project: ProjectView) {
     if (!d.session_id) {
-      toast.warning("这份 transcript 还没有可恢复的会话 id。");
+      toast.warning(t("sidebar.noResumableId"));
       return;
     }
     const existing = Object.values(useStore.getState().sessions).find(
@@ -140,7 +147,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
     }
     const profile = agentTabs.find((a) => a.introspect === d.agent);
     if (!profile) {
-      toast.danger(`没有能恢复「${d.agent}」会话的 agent 配置,请在设置里添加。`);
+      toast.danger(t("sidebar.noAgentForResume", { agent: d.agent }));
       return;
     }
     await onCreate(project, profile.id, {
@@ -157,7 +164,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
       const picked = await open({
         directory: true,
         multiple: false,
-        title: "选择项目仓库目录",
+        title: t("sidebar.pickRepoDir"),
       });
       if (typeof picked !== "string") return; // user cancelled
       const name = picked.split("/").filter(Boolean).pop() ?? picked;
@@ -165,7 +172,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
       upsertProject(view);
       setActiveProjectId(view.id);
     } catch (err) {
-      toast.danger(`创建项目失败:${err}`);
+      toast.danger(t("sidebar.createProjectFailed", { error: err }));
     } finally {
       setCreatingProject(false);
     }
@@ -207,8 +214,8 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
               className={TOP_BTN}
               onClick={onAddProject}
               disabled={creatingProject}
-              aria-label="打开项目"
-              title="打开项目 (⌘O)"
+              aria-label={t("sidebar.openProject")}
+              title={t("sidebar.openProjectHint")}
             >
               <FolderPlusIcon />
             </button>
@@ -218,8 +225,8 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
               onClick={() =>
                 window.dispatchEvent(new CustomEvent("ycode:open-overview"))
               }
-              aria-label="全部项目总览 (⇧⌘P)"
-              title="全部项目总览 (⇧⌘P)"
+              aria-label={t("sidebar.overviewHint")}
+              title={t("sidebar.overviewHint")}
             >
               <GridIcon />
             </button>
@@ -251,7 +258,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
         ))}
         {projectList.length === 0 && (
           <div className={LIST_NOTE}>
-            还没有项目。用顶栏的「打开项目」添加一个。
+            {t("sidebar.noProjects")}
           </div>
         )}
       </div>
@@ -263,12 +270,14 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
           onClick={showNewSessionPicker}
           disabled={!activeProjectId || creating || atCap}
           aria-label={
-            atCap ? `已达 ${LAYOUT_CAP} 个面板上限,先关一个` : "新建会话"
+            atCap
+              ? t("sidebar.paneCapReached", { count: LAYOUT_CAP })
+              : t("sidebar.newSession")
           }
           title={
             atCap
-              ? `已达 ${LAYOUT_CAP} 个面板上限,先关一个`
-              : "新建会话 —— 打开 agent 选择器"
+              ? t("sidebar.paneCapReached", { count: LAYOUT_CAP })
+              : t("sidebar.newSessionHint")
           }
         >
           <span
@@ -278,7 +287,7 @@ export function Sidebar({ onToggleSidebar }: SidebarProps) {
             <PlusIcon />
           </span>
           <span className="flex-1 text-left">
-            {creating ? "启动中…" : "新建会话"}
+            {creating ? t("common.starting") : t("sidebar.newSession")}
           </span>
           <kbd
             className="flex-none font-mono text-[9.5px] text-subtle border border-rule-strong rounded-[4px] py-px px-1"

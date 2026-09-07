@@ -95,7 +95,8 @@ export default {
     older: "Older",
     createProjectFailed: "Couldn't create the project: {{error}}",
     startSessionFailed: "Couldn't start the {{agent}} session: {{error}}",
-    paneCapReached: "That's the {{count}}-pane limit — close one first",
+    paneCapReached_one: "That's the {{count}}-pane limit — close one first",
+    paneCapReached_other: "That's the {{count}}-pane limit — close one first",
     noAgentForId: "No agent configured with the id “{{id}}”",
     noAgentForResume:
       "No agent configured that can resume a “{{agent}}” session. Add one in Settings.",
@@ -127,6 +128,83 @@ export default {
       "Merges this agent's branch into “{{base}}” in the main worktree. The main worktree must already have “{{base}}” checked out with no uncommitted changes.",
     mergeBackTo: "Merge this agent's branch back into {{base}}",
     onBranch: "Running on {{branch}} in its own worktree",
+  },
+
+  ui: {
+    showSessions: "Show session list",
+    hideSessions: "Hide session list",
+    confirmOk: "OK",
+    switchProject: "Switch project",
+    resizePanel: "Resize panel",
+    allAgents: "All agents",
+    filterBy: "Filter: {{label}}",
+    filterAgentAria: "Agent filter — currently {{label}}",
+    workspaceTarget: "Workspace target",
+    workspaceTargetHint:
+      "Which checkout Files, Editor, Changes, LSP and Terminal point at",
+    pending: "Not yet built",
+    session: "Session",
+  },
+
+  editor: {
+    closeDirtyTitle: "Close {{name}}? It has unsaved changes",
+    closeDirtyBody: "Edits since the last save will be discarded.",
+    discardEdits: "Discard changes",
+    saveBeforeSwitch:
+      "Save or close your edited files before switching workspaces.",
+    deleteTitle: "Delete {{name}}?",
+    deleteDirBody: "The folder and everything in it is deleted for good.",
+    deleteFileBody: "The file is deleted from disk for good.",
+  },
+
+  session: {
+    closeFailed: "Couldn't close: {{error}}",
+    thisSession: "this session",
+    itsBranch: "its branch",
+    baseBranch: "the base branch",
+    closeTitle: "Close “{{label}}”?",
+    closeBody: "The agent's process will be terminated.",
+    removeWorktreeTitle: "Remove this agent's worktree?",
+    removeWorktree: "Remove worktree",
+    // Three separate messages rather than one assembled sentence: uncommitted
+    // changes and unmerged commits are different losses, and a stitched-up
+    // sentence reads badly when only one of them applies.
+    dirtyAndUnmerged_one:
+      "The agent has stopped. Its worktree has uncommitted changes, plus {{count}} commit not yet merged into {{base}}. Removing the worktree discards the uncommitted changes; the branch “{{branch}}” survives but is orphaned (no worktree, no longer listed in the UI). Merge first to keep everything.",
+    dirtyAndUnmerged_other:
+      "The agent has stopped. Its worktree has uncommitted changes, plus {{count}} commits not yet merged into {{base}}. Removing the worktree discards the uncommitted changes; the branch “{{branch}}” survives but is orphaned (no worktree, no longer listed in the UI). Merge first to keep everything.",
+    dirtyOnly:
+      "The agent has stopped. Its worktree has uncommitted changes, and removing the worktree throws them away — commit or merge first to keep them.",
+    unmergedOnly_one:
+      "The agent has stopped. The branch “{{branch}}” has {{count}} commit not yet merged into {{base}}. Removing the worktree keeps the branch but orphans it (no longer listed in the UI) — merge first to keep the work visible.",
+    unmergedOnly_other:
+      "The agent has stopped. The branch “{{branch}}” has {{count}} commits not yet merged into {{base}}. Removing the worktree keeps the branch but orphans it (no longer listed in the UI) — merge first to keep the work visible.",
+  },
+
+  project: {
+    deleteTitle: "Delete “{{name}}”?",
+    repoUntouched:
+      "The repository at {{path}} is left alone — its files and branches stay exactly as they are.",
+    sessionsClosed_one: "{{count}} session will be closed and archived{{suffix}}.",
+    sessionsClosed_other: "{{count}} sessions will be closed and archived{{suffix}}.",
+    worktreesTornDown_one:
+      ", {{count}} of them tearing down a worktree (uncommitted changes are lost)",
+    worktreesTornDown_other:
+      ", {{count}} of them tearing down worktrees (uncommitted changes are lost)",
+    reAddHint: "You can add it back later with “Open project”.",
+    deleted: "Deleted “{{name}}”",
+    deleteFailed: "Couldn't delete: {{error}}",
+  },
+
+  picker: {
+    newSessionIn: "New session · ",
+    noAgents: "No agents configured. Edit",
+    noAgentsAdd: "to add one.",
+    notOnPath: "{{command}} — not on PATH",
+    historyReadable: "History readable",
+    notInstalled: "Not installed",
+    worktreeHint:
+      "Each agent gets its own branch and working directory, so parallel runs don't overwrite each other",
   },
 
   settings: {

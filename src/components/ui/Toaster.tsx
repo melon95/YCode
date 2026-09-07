@@ -1,4 +1,5 @@
 import { Toast } from "@base-ui/react/toast";
+import { useTranslation } from "react-i18next";
 import { toastManager } from "../../lib/toast";
 
 /// Renders the toast stack for the whole app. Mounted once, next to `<App />`.
@@ -73,12 +74,13 @@ const CLOSE = `flex-none p-0 size-[18px] grid place-items-center border-none
   hover:text-text hover:bg-control-hover`;
 
 function ToastList() {
+  const { t } = useTranslation();
   const { toasts } = Toast.useToastManager();
   return toasts.map((toast) => (
     <Toast.Root key={toast.id} toast={toast} className={ROOT}>
       <Toast.Content className={CONTENT}>
         <Toast.Description className={DESCRIPTION} />
-        <Toast.Close className={CLOSE} aria-label="关闭">
+        <Toast.Close className={CLOSE} aria-label={t("common.close")}>
           ✕
         </Toast.Close>
       </Toast.Content>

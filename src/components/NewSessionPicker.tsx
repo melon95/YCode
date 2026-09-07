@@ -8,6 +8,7 @@
 // see at a glance which CLIs they still need to install.
 
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createSession, setProjectIsolateSessions } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView } from "../lib/types";
@@ -32,6 +33,7 @@ const CARD = `flex items-center gap-[11px] w-full py-2.5 px-[13px] border-none r
 const CHIP = "font-mono text-[9.5px] rounded-[5px] py-px px-1.5";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
+  const { t } = useTranslation();
   const agents = useStore((s) => s.agents);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +92,8 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
       {/* 卡片语言:去描边、改阴影。 */}
       <div className="w-[460px] max-w-full pt-5 pr-[22px] pb-[18px] pl-[22px] rounded-2xl bg-panel animate-card-in shadow-[0_0_0_0.5px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.06),0_6px_18px_rgba(0,0,0,0.08)]">
         <div className={COMPOSER_LABEL}>
-          新建会话 · <ProjectPickerMenu>{project.name}</ProjectPickerMenu>
+          {t("picker.newSessionIn")}
+          <ProjectPickerMenu>{project.name}</ProjectPickerMenu>
         </div>
         {/* No task field here on purpose: the agent CLI has its own input,
             and pre-typing a prompt would mean injecting it into the PTY —
@@ -104,8 +107,8 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
         <div className="flex flex-col gap-2">
           {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
-              没有配置任何 agent。编辑
-              <code> ~/.config/ycode/config.json</code> 添加一个。
+              {t("picker.noAgents")}
+              <code> ~/.config/ycode/config.json</code> {t("picker.noAgentsAdd")}
             </div>
           )}
           {sorted.map((agent) => (
@@ -116,7 +119,9 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
               onClick={() => pick(agent)}
               disabled={!agent.available || creatingId !== null}
               title={
-                agent.available ? agent.command : `${agent.command} — 不在 PATH 中`
+                agent.available
+                        ? agent.command
+                        : t("picker.notOnPath", { command: agent.command })
               }
             >
               <span className="flex-none flex">
@@ -135,19 +140,19 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
                   <code>{agent.command}</code>
                   {agent.introspect && (
                     <span className={`${CHIP} text-st-done bg-st-done-tint`}>
-                      历史可读
+                      {t("picker.historyReadable")}
                     </span>
                   )}
                   {!agent.available && (
                     <span className={`${CHIP} text-st-working bg-st-working-tint`}>
-                      未安装
+                      {t("picker.notInstalled")}
                     </span>
                   )}
                 </span>
               </span>
               {creatingId === agent.id && (
                 <span className="flex-none font-mono text-[10px] text-st-working">
-                  启动中…
+                  {t("common.starting")}
                 </span>
               )}
             </button>
@@ -165,7 +170,7 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
           <span className="flex-1 min-w-0 flex flex-col gap-[3px]">
             <span
               className="text-[12.5px] font-medium text-text"
-              title="每个 agent 拿到自己的分支与工作目录,并行时互不覆盖"
+              title={t("picker.worktreeHint")}
             >
               Worktree
             </span>

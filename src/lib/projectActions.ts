@@ -2,6 +2,7 @@
 // 行为,否则「从哪删的」会决定发生什么,那是最难查的一类不一致。
 
 import { toast } from "./toast";
+import { i18next } from "./i18n";
 import { deleteProject } from "./ipc";
 import { confirmDialog } from "./confirm";
 import { useStore } from "./store";
@@ -23,23 +24,26 @@ export async function removeProjectWithConfirm(projectId: string): Promise<void>
   const worktrees = live.filter((s) => s.worktree_path).length;
 
   const lines = [
-    `仓库目录 ${project.repo_path} 不会被删除,里面的文件和分支都保持原样。`,
+    i18next.t("project.repoUntouched", { path: project.repo_path }),
   ];
   if (live.length > 0) {
+    // worktree 那半句作为 `suffix` 插进整句里,而不是在外面拼字符串 ——
+    // 中文的「,其中 N 个…」挂在句末,英文的从句位置未必相同,交给词条
+    // 自己决定往哪儿放。
+    const suffix =
+      worktrees > 0
+        ? i18next.t("project.worktreesTornDown", { count: worktrees })
+        : "";
     lines.push(
-      `${live.length} 个会话会被结束并归档${
-        worktrees > 0
-          ? `,其中 ${worktrees} 个的 worktree 会被拆掉(未提交的改动会丢失)`
-          : ""
-      }。`,
+      i18next.t("project.sessionsClosed", { count: live.length, suffix }),
     );
   }
-  lines.push("之后可以用「打开项目」重新加回来。");
+  lines.push(i18next.t("project.reAddHint"));
 
   const ok = await confirmDialog({
-    title: `删除「${project.name}」?`,
+    title: i18next.t("project.deleteTitle", { name: project.name }),
     message: lines.join("\n"),
-    confirmLabel: "删除",
+    confirmLabel: i18next.t("common.delete"),
     destructive: true,
   });
   if (!ok) return;
@@ -47,8 +51,8 @@ export async function removeProjectWithConfirm(projectId: string): Promise<void>
   try {
     await deleteProject(projectId);
     useStore.getState().removeProject(projectId);
-    toast.success(`已删除「${project.name}」`);
+    toast.success(i18next.t("project.deleted", { name: project.name }));
   } catch (err) {
-    toast.danger(`删除失败:${err}`);
+    toast.danger(i18next.t("project.deleteFailed", { error: err }));
   }
 }

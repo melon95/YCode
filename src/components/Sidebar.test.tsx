@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { i18next } from "../lib/i18n";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PICKER_SLOT, useStore } from "../lib/store";
 import type { AgentProfileView, ProjectView, SessionView } from "../lib/types";
@@ -79,14 +80,18 @@ describe("Sidebar agent filter", () => {
     render(<Sidebar />);
 
     const trigger = screen.getByRole("button", {
-      name: "筛选 agent —— 当前 全部 agent",
+      name: i18next.t("ui.filterAgentAria", {
+        label: i18next.t("ui.allAgents"),
+      }),
     });
 
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
 
     expect(
-      screen.getByRole("button", { name: "筛选 agent —— 当前 Codex" }),
+      screen.getByRole("button", {
+        name: i18next.t("ui.filterAgentAria", { label: "Codex" }),
+      }),
     ).toBeInTheDocument();
   });
 
@@ -98,7 +103,7 @@ describe("Sidebar agent filter", () => {
     // no picker round-trip), and whether it exists shouldn't depend on what
     // the middle column happens to be rendering.
     expect(
-      screen.getByRole("button", { name: "新建会话" }),
+      screen.getByRole("button", { name: i18next.t("sidebar.newSession") }),
     ).toBeInTheDocument();
   });
 
@@ -114,7 +119,7 @@ describe("Sidebar agent filter", () => {
     const { rerender } = render(<Sidebar />);
 
     expect(
-      screen.getByRole("button", { name: "新建会话" }),
+      screen.getByRole("button", { name: i18next.t("sidebar.newSession") }),
     ).toBeInTheDocument();
 
     useStore.setState({
@@ -127,7 +132,7 @@ describe("Sidebar agent filter", () => {
     rerender(<Sidebar />);
 
     expect(
-      screen.getByRole("button", { name: "新建会话" }),
+      screen.getByRole("button", { name: i18next.t("sidebar.newSession") }),
     ).toBeInTheDocument();
   });
 });

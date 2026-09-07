@@ -1,4 +1,5 @@
 import { Popover } from "@base-ui/react/popover";
+import { useTranslation } from "react-i18next";
 import { AgentIcon } from "../AgentIcon";
 import type { AgentProfileView } from "../../lib/types";
 import { MENU_ITEM_ON, MENU_ITEM_REST, MENU_POPUP, POPOVER_LAYER } from "./menuStyles";
@@ -26,8 +27,9 @@ interface Props {
 /// 先是溢出、再是整条横向滚动,而侧栏宽度是用户拖出来的,不该被一个
 /// 过滤器绑架。收进下拉后触发器宽度恒定,agent 再多也只是菜单变长。
 export function AgentFilterMenu({ agents, value, onChange }: Props) {
+  const { t } = useTranslation();
   const current = value ? agents.find((a) => a.id === value) : null;
-  const label = current?.display_name ?? "全部 agent";
+  const label = current?.display_name ?? t("ui.allAgents");
 
   return (
     <Popover.Root>
@@ -37,8 +39,8 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
           transition-[background-color,border-color,color] duration-[var(--t-fast)] ease-smooth
           hover:border-rule-strong hover:text-text
           data-[popup-open]:border-rule-strong data-[popup-open]:text-text"
-        title={`筛选:${label}`}
-        aria-label={`筛选 agent —— 当前 ${label}`}
+        title={t("ui.filterBy", { label })}
+        aria-label={t("ui.filterAgentAria", { label })}
       >
         {current ? (
           <AgentIcon
@@ -63,7 +65,7 @@ export function AgentFilterMenu({ agents, value, onChange }: Props) {
             >
               <span className={ALL_BADGE}>ALL</span>
               <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                全部 agent
+                {t("ui.allAgents")}
               </span>
             </Popover.Close>
             {agents.map((profile) => (

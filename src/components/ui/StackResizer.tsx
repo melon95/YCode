@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 /// 右栏堆叠卡片之间的横向拖拽手柄(Claude Desktop 式:平时几乎不可见,
 /// hover / 拖拽时浮出居中短胶囊)。
@@ -7,6 +8,7 @@ import { useCallback, useRef } from "react";
 /// 相邻的可见卡片高度换算成 flex-grow 权重写到行内样式上。不持久化 ——
 /// 卡片组合本身随开关变化,记住一套比例对下一次组合未必有意义。
 export function StackResizer() {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement | null>(null);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -82,7 +84,7 @@ export function StackResizer() {
         after:content-[''] after:absolute after:left-0 after:right-0 after:-top-[3px] after:-bottom-[3px]"
       role="separator"
       aria-orientation="horizontal"
-      aria-label="调整面板高度"
+      aria-label={t("ui.resizePanel")}
       onPointerDown={onPointerDown}
     />
   );

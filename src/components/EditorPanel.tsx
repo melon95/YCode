@@ -4,6 +4,7 @@
 // either an auto-reload (clean buffer) or a conflict banner (dirty buffer).
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createRoot, type Root } from "react-dom/client";
 import { watch } from "@tauri-apps/plugin-fs";
 import { toast } from "../lib/toast";
@@ -142,6 +143,7 @@ export function EditorPanel({
   sessionId?: string;
   rootPath?: string;
 }) {
+  const { t } = useTranslation();
   const openFiles = useStore((s) => s.openFiles);
   const selectedFilePath = useStore((s) => s.selectedFilePath);
   const closeFile = useStore((s) => s.closeFile);
@@ -509,9 +511,9 @@ export function EditorPanel({
       const fs = filesRef.current.get(path);
       if (fs && fs.loaded && fs.value !== fs.original) {
         const ok = await confirmDialog({
-          title: `关闭 ${basename(path)}?它有未保存的修改`,
-          message: "自上次保存以来的编辑会被丢弃。",
-          confirmLabel: "丢弃修改",
+          title: t("editor.closeDirtyTitle", { name: basename(path) }),
+          message: t("editor.closeDirtyBody"),
+          confirmLabel: t("editor.discardEdits"),
           destructive: true,
         });
         if (!ok) return;

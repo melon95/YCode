@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "../lib/toast";
@@ -44,10 +45,10 @@ describe("WorkspaceTargetPicker", () => {
   it("keeps the control compact without a redundant workspace prefix", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
-    expect(screen.queryByText("工作区")).toBeNull();
+    expect(screen.queryByText(i18next.t("ui.workspaceTarget"))).toBeNull();
     expect(
-      screen.getByRole("combobox", { name: "工作区目标" }),
-    ).toHaveDisplayValue("主仓库");
+      screen.getByRole("combobox", { name: i18next.t("ui.workspaceTarget") }),
+    ).toHaveDisplayValue(i18next.t("statusBar.mainRepo"));
   });
 
   it("switches the shared workspace target", async () => {
@@ -55,7 +56,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "工作区目标" }),
+      screen.getByRole("combobox", { name: i18next.t("ui.workspaceTarget") }),
       "session-a",
     );
 
@@ -74,7 +75,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "工作区目标" }),
+      screen.getByRole("combobox", { name: i18next.t("ui.workspaceTarget") }),
       "",
     );
 
@@ -93,7 +94,7 @@ describe("WorkspaceTargetPicker", () => {
     render(<WorkspaceTargetPicker projectId="project-a" />);
 
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "工作区目标" }),
+      screen.getByRole("combobox", { name: i18next.t("ui.workspaceTarget") }),
       "session-a",
     );
 

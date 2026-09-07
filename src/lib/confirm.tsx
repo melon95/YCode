@@ -7,6 +7,7 @@
 // (--panel / --rule-strong / --st-blocked),让确认框和其余浮层是一家人。
 
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { createRoot } from "react-dom/client";
 import { useEscapeGuard } from "./useEscapeGuard";
 
@@ -46,6 +47,7 @@ function ConfirmInner({
   opts: ConfirmOptions;
   onResult: (ok: boolean) => void;
 }) {
+  const { t } = useTranslation();
   // Escape dismisses the dialog without also exiting fullscreen. See the hook.
   useEscapeGuard(() => onResult(false));
 
@@ -83,7 +85,7 @@ function ConfirmInner({
             className={`${CONFIRM_BTN} ${CONFIRM_BTN_QUIET}`}
             onClick={() => onResult(false)}
           >
-            {opts.cancelLabel ?? "取消"}
+            {opts.cancelLabel ?? t("common.cancel")}
           </button>
           <button
             type="button"
@@ -92,7 +94,7 @@ function ConfirmInner({
             }`}
             onClick={() => onResult(true)}
           >
-            {opts.confirmLabel ?? "确定"}
+            {opts.confirmLabel ?? t("ui.confirmOk")}
           </button>
         </div>
       </div>
