@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -102,7 +103,7 @@ describe("ChangesPanel review workflow", () => {
       <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
     );
 
-    await user.click(await screen.findByRole("button", { name: "暂存代码块" }));
+    await user.click(await screen.findByRole("button", { name: i18next.t("changes.stageHunk") }));
 
     await waitFor(() =>
       expect(gitApplyHunk).toHaveBeenCalledWith(
@@ -128,8 +129,8 @@ describe("ChangesPanel review workflow", () => {
     await waitFor(() =>
       expect(gitBranchStatus).toHaveBeenCalledWith("project-a", "session-a"),
     );
-    expect(await screen.findByText("已提交的变更")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "暂存代码块" })).toBeNull();
+    expect(await screen.findByText(i18next.t("changes.committedChange"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: i18next.t("changes.stageHunk") })).toBeNull();
   });
 
   it("reviews a completed agent turn without exposing working-tree actions", async () => {
@@ -170,11 +171,11 @@ describe("ChangesPanel review workflow", () => {
         "src/app.ts",
       ),
     );
-    expect(await screen.findByText("回合快照")).toBeInTheDocument();
+    expect(await screen.findByText(i18next.t("changes.turnSnapshot"))).toBeInTheDocument();
     expect(screen.getByLabelText("Agent 回合快照")).toHaveValue(
       "checkpoint-1",
     );
-    expect(screen.queryByRole("button", { name: "暂存代码块" })).toBeNull();
+    expect(screen.queryByRole("button", { name: i18next.t("changes.stageHunk") })).toBeNull();
     expect(screen.queryByLabelText("提交信息")).toBeNull();
   });
 });
