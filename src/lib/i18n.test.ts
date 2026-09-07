@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "../locales/en";
 import zh from "../locales/zh";
@@ -79,6 +81,49 @@ describe("词条完整性", () => {
       if (JSON.stringify(ph(a)) !== JSON.stringify(ph(b))) mismatched.push(k);
     }
     expect(mismatched).toEqual([]);
+  });
+});
+
+/// 递归收集 `src/` 下所有源码(不含词条本身和测试)。
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) return e.name === "locales" ? [] : sourceFiles(p);
+    if (!/\.tsx?$/.test(e.name) || e.name.includes(".test.")) return [];
+    return [p];
+  });
+}
+
+describe("词条与代码的对应", () => {
+  // 死词条会悄悄累积:改版删掉一处界面,它的词条留在文件里没人发现,
+  // 下一个人还得跟着翻译一遍。这条把它变成会红的测试。
+  //
+  // key 的引用形式不止 `t("…")` —— 模块级常量表存 key(labelKey /
+  // titleKey…),`<Trans i18nKey>` 走 JSX 属性,选项表是 `[值, key]` 的
+  // 元组。少认一种就会误报,所以这里逐一列出。
+  it("没有定义了却没人引用的词条", () => {
+    const src = sourceFiles(join(import.meta.dirname, ".."))
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+    const patterns = [
+      /\bt\(\s*"([a-zA-Z][\w.]*)"/g,
+      /i18nKey="([\w.]+)"/g,
+      /(?:labelKey|titleKey|nameKey|descKey|hintKey)\s*:\s*"([\w.]+)"/g,
+      /\[\s*"[\w-]+"\s*,\s*"([\w.]+)"\s*\]/g,
+      // `single: "toolbar.layoutSingle"` 这种「值就是 key」的映射表。
+      // 它们经 `t(TABLE[x])` 动态索引,静态扫描看不见调用点,只能认
+      // 定义处。所以这条特意宽松:任何形如 `xxx: "a.b"` 的都算引用。
+      /^\s*"?[\w-]+"?:\s*"([a-z]\w*(?:\.\w+)+)",?$/gm,
+    ];
+    const used = new Set<string>();
+    for (const p of patterns) {
+      for (const m of src.matchAll(p)) if (m[1].includes(".")) used.add(m[1]);
+    }
+    const base = (k: string) => k.replace(/_(zero|one|two|few|many|other)$/, "");
+    const orphans = [...new Set(keyPaths(zh).map(base))]
+      .filter((k) => !used.has(k))
+      .sort();
+    expect(orphans).toEqual([]);
   });
 });
 

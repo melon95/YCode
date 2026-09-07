@@ -21,13 +21,10 @@ export default {
 
   common: {
     cancel: "Cancel",
-    confirm: "Confirm",
     save: "Save",
     delete: "Delete",
-    remove: "Remove",
     close: "Close",
     refresh: "Refresh",
-    retry: "Retry",
     loading: "Loading…",
     starting: "Starting…",
     none: "None",
@@ -35,11 +32,8 @@ export default {
     enabled: "Enabled",
     unlimited: "Unlimited",
     always: "Always",
-    project: "Project",
-    branch: "Branch",
     command: "Command",
     commit: "Commit",
-    global: "Global",
     permanent: "Permanent",
   },
 

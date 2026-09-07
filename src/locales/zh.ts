@@ -21,13 +21,10 @@ export default {
 
   common: {
     cancel: "取消",
-    confirm: "确认",
     save: "保存",
     delete: "删除",
-    remove: "移除",
     close: "关闭",
     refresh: "刷新",
-    retry: "重试",
     loading: "加载中…",
     starting: "启动中…",
     none: "无",
@@ -35,11 +32,8 @@ export default {
     enabled: "已启用",
     unlimited: "不限",
     always: "总是",
-    project: "项目",
-    branch: "分支",
     command: "命令",
     commit: "提交",
-    global: "全局",
     permanent: "永久",
   },
 
