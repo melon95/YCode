@@ -18,6 +18,7 @@
 // earlier comment in Sidebar.tsx claimed deduping needed the SessionStart hook;
 // that was wrong — the ids are already there.
 
+import { i18next } from "./i18n";
 import {
   sessionLight,
   type AgentProfileView,
@@ -174,7 +175,7 @@ function liveTitle(s: SessionView, profile: AgentProfileView | undefined): strin
     s.title.trim() ||
     s.agent_thread_name?.trim() ||
     profile?.display_name ||
-    "会话"
+    i18next.t("ui.session")
   );
 }
 

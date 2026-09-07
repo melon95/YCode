@@ -11,6 +11,7 @@
 // ConfigView and we mutate via `onChange`. The PATH probe is read-only.
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { probeCommand } from "../lib/ipc";
 import type { AgentLaunchProfileView, ConfigView } from "../lib/types";
 import { useEscapeGuard } from "../lib/useEscapeGuard";
@@ -62,6 +63,7 @@ function introspectFor(command: string): string | null {
 }
 
 export function AgentsSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
   // Inline "custom agent" form state. Lets users add any CLI not in the
   // catalog without re-introducing the full per-agent editor.
   const [adding, setAdding] = useState(false);
@@ -158,20 +160,21 @@ export function AgentsSettings({ config, onChange }: Props) {
 
   return (
     <SettingSection
-      title="Agent 目录"
+      title={t("settings.agents.title")}
       lede={
         <>
-  新建会话时可以选择的 agent。命令要能在 PATH 里找到 ——
-          找不到的会自动从新建会话的选择器里隐藏。
+          {t("settings.agents.lede")}
         </>
       }
     >
-      <SettingGroupLabel>已配置 · {config.agents.length}</SettingGroupLabel>
+      <SettingGroupLabel>
+            {t("settings.agents.configured", { count: config.agents.length })}
+          </SettingGroupLabel>
       <SettingCard>
         {config.agents.length === 0 && (
           <SettingRow
-            name="还没有配置任何 agent"
-            desc="用下面的自定义 agent 加一个"
+            name={t("settings.agents.none")}
+            desc={t("settings.agents.noneDesc")}
           />
         )}
         {config.agents.map((agent, idx) => {
@@ -191,12 +194,12 @@ export function AgentsSettings({ config, onChange }: Props) {
             >
               <SettingValue align="end">{agent.command}</SettingValue>
               {agent.introspect && (
-                <SettingChip title="ycode 能读取这个 agent 的会话记录">
-                  历史可读
+                <SettingChip title={t("settings.agents.historyReadableHint")}>
+                  {t("picker.historyReadable")}
                 </SettingChip>
               )}
               <SettingAction
-                label={`移除 ${label}`}
+                label={t("settings.agents.remove", { name: label })}
                 tone="danger"
                 onClick={() => deleteAgent(idx)}
               >
@@ -211,13 +214,15 @@ export function AgentsSettings({ config, onChange }: Props) {
           而答案(PATH 里没有)页首已经说过了。 */}
       {detectedRows !== null && detectedRows.length > 0 && (
         <>
-          <SettingGroupLabel>已检测到 · {detectedRows.length}</SettingGroupLabel>
+          <SettingGroupLabel>
+              {t("settings.agents.detected", { count: detectedRows.length })}
+            </SettingGroupLabel>
           <SettingCard>
             {detectedRows.map((k) => (
               <SettingRow
                 key={k.command}
                 name={k.displayName}
-                desc="PATH 中找到,尚未配置"
+                desc={t("settings.agents.detectedDesc")}
                 icon={
                   <AgentIcon
                     icon={k.icon}
@@ -229,7 +234,7 @@ export function AgentsSettings({ config, onChange }: Props) {
               >
                 <SettingValue align="end">{k.command}</SettingValue>
                 <SettingAction
-                  label={`添加 ${k.displayName}`}
+                  label={t("settings.agents.add", { name: k.displayName })}
                   onClick={() => addDetected(k)}
                 >
                   <PlusIcon />
@@ -243,14 +248,14 @@ export function AgentsSettings({ config, onChange }: Props) {
       <SettingCard>
         {adding ? (
           <SettingRow
-            name="自定义 agent"
-            desc="任何能在终端里跑的 CLI 都可以加进来"
+            name={t("settings.agents.custom")}
+            desc={t("settings.agents.customDesc")}
           >
             <input
               type="text"
               className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
-              placeholder="显示名(可选)"
-              aria-label="显示名"
+              placeholder={t("settings.agents.displayName")}
+              aria-label={t("settings.agents.displayNameAria")}
               value={customName}
               autoFocus
               onChange={(e) => setCustomName(e.target.value)}
@@ -261,8 +266,8 @@ export function AgentsSettings({ config, onChange }: Props) {
             <input
               type="text"
               className="flex-none w-[150px] h-control-sm px-2 border border-rule rounded-sm bg-panel text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)] ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle"
-              placeholder="PATH 中的命令"
-              aria-label="命令"
+              placeholder={t("settings.agents.commandPlaceholder")}
+              aria-label={t("common.command")}
               value={customCommand}
               onChange={(e) => setCustomCommand(e.target.value)}
               onKeyDown={(e) => {
@@ -270,23 +275,23 @@ export function AgentsSettings({ config, onChange }: Props) {
               }}
             />
             <SettingAction
-              label="确认添加"
+              label={t("settings.agents.confirmAdd")}
               disabled={!customCommand.trim()}
               onClick={confirmCustom}
             >
               <CheckIcon />
             </SettingAction>
-            <SettingAction label="取消" onClick={cancelCustom}>
+            <SettingAction label={t("common.cancel")} onClick={cancelCustom}>
               <CloseIcon />
             </SettingAction>
           </SettingRow>
         ) : (
           <SettingRow
-            name="自定义 agent"
-            desc="任何能在终端里跑的 CLI 都可以加进来"
+            name={t("settings.agents.custom")}
+            desc={t("settings.agents.customDesc")}
           >
             <SettingAction
-              label="添加自定义 agent"
+              label={t("settings.agents.addCustom")}
               onClick={() => setAdding(true)}
             >
               <PlusIcon />

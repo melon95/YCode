@@ -128,7 +128,7 @@ export function RightPane() {
   // 主仓库;tooltip 里补充来源(锁定 / 跟随焦点 / 手选)与会话标题。
   const changesBindLabel = changesSession?.worktree_path
     ? (changesSession.branch ?? changesSession.base_branch ?? "worktree")
-    : "主仓库";
+    : t("statusBar.mainRepo");
   const changesBindTitle = changesLockValid
     ? changesSession
       ? t("panels.lockedTo", {

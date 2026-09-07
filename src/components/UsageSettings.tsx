@@ -9,6 +9,8 @@
 // never mistaken for a bill.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18next } from "../lib/i18n";
 import { getAllUsage, getWorkspaceUsage } from "../lib/ipc";
 import type { SessionUsageView, WorkspaceUsageView } from "../lib/types";
 import { AgentIcon } from "./AgentIcon";
@@ -43,6 +45,7 @@ const USAGE_NUM = "text-right tabular-nums";
 const LOADING = "p-[60px] text-center font-ui not-italic text-[16px] text-subtle";
 
 export function UsageSettings() {
+  const { t } = useTranslation();
   const [usage, setUsage] = useState<WorkspaceUsageView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,16 +70,19 @@ export function UsageSettings() {
   }, []);
 
   if (loading) {
-    return <div className={LOADING}>正在统计会话日志…</div>;
+    return <div className={LOADING}>{t("settings.usage.counting")}</div>;
   }
   if (error) {
-    return <div className="text-muted text-[13px]/[1.5] py-6 px-1">读取用量失败:{error}</div>;
+    return (
+      <div className="text-muted text-[13px]/[1.5] py-6 px-1">
+        {t("settings.usage.readFailed", { error })}
+      </div>
+    );
   }
   if (!usage || usage.sessions.length === 0) {
     return (
       <div className="text-muted text-[13px]/[1.5] py-6 px-1">
-        还没有可统计的用量。在任意项目里跑一次 Claude Code 或 Codex,
-        数据就会出现在这里。
+        {t("settings.usage.empty")}
       </div>
     );
   }
@@ -85,6 +91,7 @@ export function UsageSettings() {
 }
 
 function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
+  const { t } = useTranslation();
   // `null` = the all-projects rollup; a project id = drill into that project's
   // own detail (fetched lazily, then cached). The top summary always reflects
   // every project; only the lower "Details" panel re-scopes.
@@ -127,30 +134,29 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
   return (
     <div className="flex flex-col gap-[18px] py-[22px] px-6 max-w-[760px]">
       <p className="mt-1.5 mx-0 mb-[18px] text-[12.5px]/[1.55] text-muted">
-        跨全部项目的 token 用量与费用估算,数据来自各 agent 自己的会话日志。
-        费用是对已知模型系列的离线估算,仅供参考。
+        {t("settings.usage.lede")}
       </p>
 
       {/* ── Part 1: summary across every project ───────────────────────── */}
       <div className="grid grid-cols-3 gap-2.5">
-        <UsageCard label="费用估算" value={fmtCost(usage.total_cost_usd)} primary />
-        <UsageCard label="总 token" value={fmtCompact(totals.total)} />
-        <UsageCard label="会话数" value={`${usage.sessions.length}`} />
+        <UsageCard label={t("settings.usage.cost")} value={fmtCost(usage.total_cost_usd)} primary />
+        <UsageCard label={t("settings.usage.totalTokens")} value={fmtCompact(totals.total)} />
+        <UsageCard label={t("settings.usage.sessionCount")} value={`${usage.sessions.length}`} />
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <BreakdownChip label="输入" value={totals.input} />
-        <BreakdownChip label="输出" value={totals.output} />
-        <BreakdownChip label="缓存写入" value={totals.cache_creation} />
-        <BreakdownChip label="缓存读取" value={totals.cache_read} />
+        <BreakdownChip label={t("settings.usage.input")} value={totals.input} />
+        <BreakdownChip label={t("settings.usage.output")} value={totals.output} />
+        <BreakdownChip label={t("settings.usage.cacheWrite")} value={totals.cache_creation} />
+        <BreakdownChip label={t("settings.usage.cacheRead")} value={totals.cache_read} />
         {totals.reasoning > 0 && (
-          <BreakdownChip label="推理" value={totals.reasoning} />
+          <BreakdownChip label={t("settings.usage.reasoning")} value={totals.reasoning} />
         )}
       </div>
 
       {usage.by_project.length > 0 && (
         <section className="flex flex-col gap-2.5">
-          <h3 className={BLOCK_TITLE}>按项目</h3>
+          <h3 className={BLOCK_TITLE}>{t("settings.usage.byProject")}</h3>
           <div className="flex flex-col gap-3">
             {usage.by_project.map((p) => {
               const ref = maxProjectCost > 0 ? maxProjectCost : 1;
@@ -183,7 +189,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
       {/* ── Part 2: detail, scoped via the tab selector ────────────────── */}
       <div className="flex flex-col gap-[18px]">
         <div className="flex flex-col gap-2.5">
-          <h3 className={BLOCK_TITLE}>明细</h3>
+          <h3 className={BLOCK_TITLE}>{t("settings.usage.detail")}</h3>
           <div className="flex flex-wrap gap-1.5" role="tablist">
             <button
               type="button"
@@ -212,7 +218,7 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
         </div>
 
         {detailLoading || !scope ? (
-          <div className={LOADING}>正在统计会话日志…</div>
+          <div className={LOADING}>{t("settings.usage.counting")}</div>
         ) : (
           <UsageDetail usage={scope} showSessions={selected != null} />
         )}
@@ -229,6 +235,7 @@ function UsageDetail({
   usage: WorkspaceUsageView;
   showSessions: boolean;
 }) {
+  const { t } = useTranslation();
   // Day chart: just the last 7 days with usage — enough to read the recent
   // trend without the bars spanning months of sparse history.
   const days = useMemo(
@@ -272,7 +279,7 @@ function UsageDetail({
     <>
       {days.length > 1 && (
         <section className="flex flex-col gap-2.5">
-          <h3 className={BLOCK_TITLE}>按天</h3>
+          <h3 className={BLOCK_TITLE}>{t("settings.usage.byDay")}</h3>
           <div className="flex items-end gap-1 h-24">
             {days.map((d) => {
               const ref = maxDayCost > 0 ? maxDayCost : maxDayTokens;
@@ -300,7 +307,7 @@ function UsageDetail({
 
       {usage.by_model.length > 0 && (
         <section className="flex flex-col gap-2.5">
-          <h3 className={BLOCK_TITLE}>按模型</h3>
+          <h3 className={BLOCK_TITLE}>{t("settings.usage.byModel")}</h3>
           <div className="flex flex-col">
             {usage.by_model.map((m) => (
               <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center py-[7px] border-b border-rule last:border-b-0 text-[12px]" key={m.model}>
@@ -318,7 +325,7 @@ function UsageDetail({
       {showSessions && sessionGroups.length > 0 && activeGroup && (
         <section className="flex flex-col gap-2.5">
           <div className="flex flex-col gap-2.5">
-            <h3 className={BLOCK_TITLE}>会话</h3>
+            <h3 className={BLOCK_TITLE}>{t("settings.usage.sessions")}</h3>
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Agent CLI">
               {sessionGroups.map((g) => {
                 const meta = agentMeta(g.agent);
@@ -339,7 +346,10 @@ function UsageDetail({
                     />
                     <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap text-text group-aria-selected:text-accent">{meta.label}</span>
                     <span className="text-muted text-[11px] tabular-nums whitespace-nowrap">
-                      {g.sessions.length} 个 · {fmtCompact(g.tokens)} token
+                      {t("settings.usage.groupSummary", {
+                    count: g.sessions.length,
+                    tokens: fmtCompact(g.tokens),
+                  })}
                     </span>
                   </button>
                 );
@@ -348,11 +358,11 @@ function UsageDetail({
           </div>
           <div className="flex flex-col text-[12px]">
             <div className={`${USAGE_TR} text-muted text-[10px] uppercase tracking-caps`}>
-              <span>会话</span>
-              <span>模型</span>
+              <span>{t("settings.usage.sessions")}</span>
+              <span>{t("settings.usage.model")}</span>
               <span className={USAGE_NUM}>Token</span>
-              <span className={USAGE_NUM}>费用</span>
-              <span className={USAGE_NUM}>最近活动</span>
+              <span className={USAGE_NUM}>{t("settings.usage.costCol")}</span>
+              <span className={USAGE_NUM}>{t("settings.usage.lastActive")}</span>
             </div>
             {activeGroup.sessions.map((s) => (
               <div className={USAGE_TR} key={s.jsonl_path}>
@@ -421,7 +431,7 @@ function agentMeta(agent: string): { label: string; icon: string } {
     case "gemini":
       return { label: "Gemini CLI", icon: "GeminiCLI" };
     default:
-      return { label: agent || "未知", icon: agent };
+      return { label: agent || i18next.t("settings.usage.unknownAgent"), icon: agent };
   }
 }
 

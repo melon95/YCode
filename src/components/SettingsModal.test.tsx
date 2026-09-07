@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18next } from "../lib/i18n";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ConfigView } from "../lib/types";
 import { getConfig, saveConfig } from "../lib/ipc";
@@ -85,7 +86,7 @@ describe("SettingsScreen", () => {
 
     expect(await screen.findByRole("dialog", { name: "设置" })).toBeVisible();
     expect(screen.getByRole("button", { name: "关闭设置" })).toBeVisible();
-    expect(screen.getByText("已配置 · 1")).toBeVisible();
+    expect(screen.getByText(i18next.t("settings.agents.configured", { count: 1 }))).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "外观" }));
     expect(screen.getByText("Appearance panel")).toBeVisible();
@@ -100,12 +101,12 @@ describe("SettingsScreen", () => {
     render(<SettingsScreen onClose={onClose} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "添加自定义 agent" }),
+      await screen.findByRole("button", { name: i18next.t("settings.agents.addCustom") }),
     );
-    fireEvent.change(screen.getByLabelText("命令"), {
+    fireEvent.change(screen.getByLabelText(i18next.t("common.command")), {
       target: { value: "gemini" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "确认添加" }));
+    fireEvent.click(screen.getByRole("button", { name: i18next.t("settings.agents.confirmAdd") }));
     expect(screen.getByText("有未保存的更改")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -123,12 +124,12 @@ describe("SettingsScreen", () => {
     render(<SettingsScreen onClose={vi.fn()} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "添加自定义 agent" }),
+      await screen.findByRole("button", { name: i18next.t("settings.agents.addCustom") }),
     );
-    fireEvent.change(screen.getByLabelText("命令"), {
+    fireEvent.change(screen.getByLabelText(i18next.t("common.command")), {
       target: { value: "claude" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "确认添加" }));
+    fireEvent.click(screen.getByRole("button", { name: i18next.t("settings.agents.confirmAdd") }));
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(saveConfig).toHaveBeenCalledTimes(1));
