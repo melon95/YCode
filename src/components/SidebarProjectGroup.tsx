@@ -399,7 +399,12 @@ function SessionRowButton({
           >
             {row.title}
           </span>
-          <span className="font-mono text-[9.5px] text-whisper whitespace-nowrap overflow-hidden text-ellipsis">
+          {/* 副行用 muted 而不是 whisper:whisper 是「几乎看不见」那一档
+              (深色主题里 #394351 一类,压在侧栏底色上对比度只有 1.2–1.9),
+              画分隔线、图标描边够用,当 9.5px 正文就读不出来了。muted 在
+              全部十套主题上都过 4.5:1,同时和标题的 text-soft 仍差
+              1.3–2.0 倍,副行不会抢走标题的位置。 */}
+          <span className="font-mono text-[9.5px] text-muted whitespace-nowrap overflow-hidden text-ellipsis">
             {activeLabel && (
               <>
                 {activeLabel}
