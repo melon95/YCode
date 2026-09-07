@@ -24,6 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -55,7 +56,7 @@ import {
   isPrintableCharEvent,
 } from "../lib/terminalInput";
 import { resolveTheme } from "../lib/themes";
-import { sessionLight, SESSION_LIGHT_LABEL } from "../lib/types";
+import { sessionLight, SESSION_LIGHT_LABEL_KEY } from "../lib/types";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AgentIcon } from "./AgentIcon";
 
@@ -221,6 +222,7 @@ function gutterDefs(mode: LayoutMode, splits: LayoutSplits): GutterDef[] {
 }
 
 export function TerminalPane() {
+  const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const liveTitles = useStore((s) => s.liveTitles);
   const layout = useStore((s) => s.layout);
@@ -251,9 +253,9 @@ export function TerminalPane() {
 
   const doMerge = useCallback(async (sid: string, base: string) => {
     const ok = await confirmDialog({
-      title: `合并到 ${base}?`,
-      message: `把这个 agent 的分支合并到主工作树的「${base}」。主工作树必须已检出「${base}」且没有未提交的改动。`,
-      confirmLabel: "合并",
+      title: t("pane.mergeConfirmTitle", { base }),
+      message: t("pane.mergeConfirmBody", { base }),
+      confirmLabel: t("pane.merge"),
     });
     if (!ok) return;
     setMergingId(sid);
@@ -728,7 +730,7 @@ export function TerminalPane() {
                     <span className={PANE_IDX} aria-hidden>
                       {slot + 1}
                     </span>
-                    <span className="pane-title">新建会话</span>
+                    <span className="pane-title">{t("pane.newSession")}</span>
                     <span className="flex-auto min-w-0" />
                     <button
                       type="button"
@@ -737,8 +739,8 @@ export function TerminalPane() {
                         e.stopPropagation();
                         closeLayoutSlot(slot);
                       }}
-                      aria-label="关闭选择器"
-                      title="关闭"
+                      aria-label={t("pane.closePicker")}
+                      title={t("common.close")}
                     >
                       ×
                     </button>
@@ -783,7 +785,7 @@ export function TerminalPane() {
                       so the list and the canvas can be read against each
                       other — that pairing is the reason the number is worth
                       the space at all. */}
-                  <span className={PANE_IDX} aria-hidden title={`面板 ${slot + 1}`}>
+                  <span className={PANE_IDX} aria-hidden title={t("sidebar.paneNo", { n: slot + 1 })}>
                     {slot + 1}
                   </span>
                   <span
@@ -825,12 +827,12 @@ export function TerminalPane() {
                         if (e.key === "Enter") commitRename();
                         else if (e.key === "Escape") setEditingId(null);
                       }}
-                      aria-label="重命名会话"
+                      aria-label={t("pane.rename")}
                     />
                   ) : (
                     <span
                       className="pane-title"
-                      title={`${title} —— 双击可重命名`}
+                      title={t("pane.renameHint", { title })}
                       onDoubleClick={() => {
                         if (!session) return;
                         setEditingId(id);
@@ -843,9 +845,9 @@ export function TerminalPane() {
                   {session?.worktree_path && (
                     <span
                       className={PANE_BRANCH}
-                      title={`运行在独立 worktree 的分支 ${
-                        session.branch ?? `ycode/${id}`
-                      } 上`}
+                      title={t("pane.onBranch", {
+                        branch: session.branch ?? `ycode/${id}`,
+                      })}
                     >
                       <span className="flex-none text-muted" aria-hidden>
                         ⌥
@@ -862,13 +864,13 @@ export function TerminalPane() {
                           className="pane-status-dot light-waiting"
                           aria-hidden
                         />
-                        等待中
+                        {t("pane.waiting")}
                       </span>
                     ) : (
                       <span
                         className={`pane-status-dot light-${light}`}
-                        title={SESSION_LIGHT_LABEL[light]}
-                        aria-label={SESSION_LIGHT_LABEL[light]}
+                        title={t(SESSION_LIGHT_LABEL_KEY[light])}
+                        aria-label={t(SESSION_LIGHT_LABEL_KEY[light])}
                       />
                     ))}
                   <span className="flex-auto min-w-0" />
@@ -881,10 +883,10 @@ export function TerminalPane() {
                         e.stopPropagation();
                         void doMerge(id, session.base_branch!);
                       }}
-                      aria-label={`合并到 ${session.base_branch}`}
-                      title={`把这个 agent 的分支合并回 ${session.base_branch}`}
+                      aria-label={t("pane.mergeTo", { base: session.base_branch })}
+                      title={t("pane.mergeBackTo", { base: session.base_branch })}
                     >
-                      {mergingId === id ? "合并中…" : "合并"}
+                      {mergingId === id ? t("pane.merging") : t("pane.merge")}
                     </button>
                   )}
                   <button
@@ -894,8 +896,8 @@ export function TerminalPane() {
                       e.stopPropagation();
                       void closeSessionNow(id);
                     }}
-                    aria-label="关闭会话"
-                    title="关闭会话(会结束该进程)"
+                    aria-label={t("pane.close")}
+                    title={t("pane.closeHint")}
                   >
                     ×
                   </button>

@@ -13,6 +13,7 @@ import type {
   TodoView,
 } from "./types";
 import { DEFAULT_THEME_ID } from "./themes";
+import { applyLocale, SYSTEM_LOCALE_ID } from "./i18n";
 
 export const DEFAULT_FONT_SIZES: FontSizesView = {
   ui: 13,
@@ -447,6 +448,10 @@ interface AppState {
   /// `App.tsx` writes the resolved theme's CSS variable map to `:root` on
   /// change; TerminalPane / ManualTerminal re-skin live xterm instances.
   theme: string;
+  /// 界面语言,存的是用户的**选择**而不是解析结果 —— `"system"` 要原样
+  /// 留着,否则用户改了系统语言,ycode 还停在当初解析出的那一门。真正
+  /// 用哪套词条由 `resolveLocale` 在每次读取时算。镜像后端配置字段。
+  locale: string;
   /// When true the top bar collapses out of the layout and only slides back
   /// in while the pointer is near the window's top edge. Mirrors the
   /// backend config field of the same name; defaults to false until the
@@ -554,6 +559,7 @@ interface AppState {
   setLiveTitle: (sessionId: string, title: string) => void;
   setFontSizes: (f: FontSizesView) => void;
   setTheme: (id: string) => void;
+  setLocale: (id: string) => void;
   /// 「跟随系统」下 OS 明暗翻转时自增。主题 id 仍是 "system" 没变,靠它
   /// 通知 xterm 订阅者「解析结果变了,该重绘了」—— 不然终端会保持旧配色。
   themeEpoch: number;
@@ -601,6 +607,8 @@ export const useStore = create<AppState>((set) => ({
   previewFilePath: null,
   fontSizes: DEFAULT_FONT_SIZES,
   theme: DEFAULT_THEME_ID,
+  // 默认跟随系统:装了就是本地语言,不必先进设置挑一次。
+  locale: SYSTEM_LOCALE_ID,
   autoHideTopBar: false,
   sessionOpenMode: "new_pane",
   activeSidebarAgentId: null,
@@ -1316,6 +1324,15 @@ export const useStore = create<AppState>((set) => ({
 
   setTheme: (id) =>
     set((state) => (state.theme === id ? state : { theme: id })),
+
+  // 切语言时顺手让 i18next 跟上。放在 setter 里而不是让每个调用点各自
+  // 记得调一次 —— 漏掉的那处会出现「store 说英文、界面还是中文」。
+  setLocale: (id) =>
+    set((state) => {
+      if (state.locale === id) return state;
+      applyLocale(id);
+      return { locale: id };
+    }),
   themeEpoch: 0,
   bumpThemeEpoch: () => set((state) => ({ themeEpoch: state.themeEpoch + 1 })),
 

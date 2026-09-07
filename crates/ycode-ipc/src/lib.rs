@@ -244,6 +244,10 @@ pub struct ConfigView {
     /// id is unknown (lets future themes round-trip safely through older app
     /// versions).
     pub theme: String,
+    /// UI language choice: `"zh"` / `"en"` / `"system"`. Mirrors
+    /// [`ycode_config::Config::locale`] verbatim — `"system"` stays
+    /// `"system"` so the UI keeps following the OS.
+    pub locale: String,
     /// Collapse the top bar into a hover-reveal strip. Mirrors
     /// [`ycode_config::Config::auto_hide_top_bar`].
     pub auto_hide_top_bar: bool,
@@ -463,6 +467,7 @@ impl From<ycode_config::Config> for ConfigView {
             font_sizes: c.font_sizes.into(),
             notifications: c.notifications.into(),
             theme: c.theme,
+            locale: c.locale,
             auto_hide_top_bar: c.auto_hide_top_bar,
             startup: c.startup.into(),
             worktree: c.worktree.into(),
@@ -479,6 +484,7 @@ impl From<ConfigView> for ycode_config::Config {
             font_sizes: v.font_sizes.into(),
             notifications: v.notifications.into(),
             theme: v.theme,
+            locale: v.locale,
             auto_hide_top_bar: v.auto_hide_top_bar,
             startup: v.startup.into(),
             worktree: v.worktree.into(),

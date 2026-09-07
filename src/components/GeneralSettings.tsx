@@ -4,7 +4,10 @@
 // 自动隐藏顶栏 moved out of it: both are about how the window behaves, not
 // how it looks. 外观 is themes and type sizes.
 
+import { useTranslation } from "react-i18next";
 import type { ConfigView, StartupModeView } from "../lib/types";
+import { LOCALE_CHOICES, LOCALE_LABEL } from "../lib/i18n";
+import { useStore } from "../lib/store";
 import {
   SettingSection,
   SettingCard,
@@ -19,51 +22,57 @@ interface Props {
   onChange: (next: ConfigView) => void;
 }
 
-const STARTUP_OPTIONS: ReadonlyArray<ChipOption<StartupModeView>> = [
-  { value: "resume", label: "智能恢复" },
-  { value: "overview", label: "项目总览" },
-  { value: "blank", label: "空白" },
-];
+function startupOptions(
+  t: (k: string) => string,
+): ReadonlyArray<ChipOption<StartupModeView>> {
+  return [
+    { value: "resume", label: t("settings.general.startupResume") },
+    { value: "overview", label: t("settings.general.startupOverview") },
+    { value: "blank", label: t("settings.general.startupBlank") },
+  ];
+}
 
-const LOCALE_OPTIONS: ReadonlyArray<ChipOption<string>> = [
-  { value: "zh", label: "简体中文" },
-  {
-    value: "en",
-    label: "English",
-    disabledReason: "界面文案目前全部硬编码,还没有接入 i18n 框架",
-  },
-  {
-    value: "system",
-    label: "跟随系统",
-    disabledReason: "界面文案目前全部硬编码,还没有接入 i18n 框架",
-  },
-];
+/// 语言名不翻译 —— 每一项都用它自己那门语言的写法(见 LOCALE_LABEL)。
+/// 唯一的例外是「跟随系统」,那不是一门语言而是一句说明,得跟着当前
+/// 界面语言走。
+function localeOptions(t: (k: string) => string): ReadonlyArray<ChipOption<string>> {
+  return LOCALE_CHOICES.map((v) => ({
+    value: v,
+    label:
+      v === "system" ? t("settings.general.matchSystem") : LOCALE_LABEL[v],
+  }));
+}
 
 export function GeneralSettings({ config, onChange }: Props) {
+  const { t } = useTranslation();
+  const setLocale = useStore((s) => s.setLocale);
   return (
-    <SettingSection title="通用" lede={<>启动行为与窗口。</>}>
+    <SettingSection
+      title={t("settings.general.title")}
+      lede={<>{t("settings.general.lede")}</>}
+    >
       <SettingCard>
         <SettingRow
-          name="启动时打开"
-          desc="「智能恢复」= 上次留有活跃会话就直接回工作区,否则进项目总览"
+          name={t("settings.general.startup")}
+          desc={t("settings.general.startupDesc")}
         >
           <SettingChips
-            label="启动时打开"
-            options={STARTUP_OPTIONS}
+            label={t("settings.general.startup")}
+            options={startupOptions(t)}
             value={config.startup}
             onChange={(startup) => onChange({ ...config, startup })}
           />
         </SettingRow>
 
         <SettingRow
-          name="记住窗口位置与大小"
-          desc="退出时记录,下次原样打开"
+          name={t("settings.general.windowState")}
+          desc={t("settings.general.windowStateDesc")}
         >
           {/* Handled by tauri-plugin-window-state at the process level, with
               no runtime switch to expose. Stating that it's on beats an
               always-checked toggle that does nothing when you click it. */}
-          <SettingChip tone="on" title="由 tauri-plugin-window-state 在窗口关闭时写入">
-            已启用
+          <SettingChip tone="on" title={t("settings.general.windowStateBy")}>
+            {t("common.enabled")}
           </SettingChip>
         </SettingRow>
 
@@ -71,14 +80,20 @@ export function GeneralSettings({ config, onChange }: Props) {
             与画布工具条,没有可隐藏的横条了。config 字段保留兼容老配置。 */}
 
         <SettingRow
-          name="界面语言"
-          pendingReason="界面文案目前全部硬编码为简体中文,还没有接入 i18n 框架"
+          name={t("settings.general.locale")}
+          desc={t("settings.general.localeDesc")}
         >
           <SettingChips
-            label="界面语言"
-            options={LOCALE_OPTIONS}
-            value="zh"
-            disabled
+            label={t("settings.general.locale")}
+            options={localeOptions(t)}
+            value={config.locale}
+            onChange={(locale) => {
+              // 立刻切给 i18next,不等保存 —— 语言是所见即所得的选择,
+              // 先看到界面变了才知道自己选对没有。真正落盘仍走
+              // `onChange` 那条 staged-config 的常规路径。
+              setLocale(locale);
+              onChange({ ...config, locale });
+            }}
           />
         </SettingRow>
       </SettingCard>

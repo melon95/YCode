@@ -22,12 +22,16 @@ export const STATUS_BY_LIGHT: Record<SessionLight, StatusKind> = {
   error: "error",
 };
 
-export const STATUS_LABEL: Record<StatusKind, string> = {
-  working: "进行中",
-  blocked: "等你处理",
-  done: "已完成",
-  error: "出错",
-  idle: "空闲",
+/// 状态名的词条 key,不是文案本身 —— 这张表在模块加载时就求值,那会儿
+/// i18next 还没 init,直接存译文会把启动时的语言永久烙进常量里,之后
+/// 用户再换语言这些字也不会跟着变。存 key、由调用点 `t()` 是唯一能让
+/// 它跟随语言切换的形态。
+export const STATUS_LABEL_KEY: Record<StatusKind, string> = {
+  working: "status.working",
+  blocked: "status.blocked",
+  done: "status.done",
+  error: "status.error",
+  idle: "status.idle",
 };
 
 /// Sort weight for "which session should I look at first". Lower sorts first.

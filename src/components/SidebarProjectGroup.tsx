@@ -6,11 +6,13 @@
 // 变化事件只刷新"当前展开"的分组。
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { relativeTime } from "../lib/relativeTime";
 import { useStore } from "../lib/store";
 import { listenSessionEvents, scanWorkspaceSessions } from "../lib/ipc";
 import {
   sessionLight,
-  SESSION_LIGHT_LABEL,
+  SESSION_LIGHT_LABEL_KEY,
   type AgentProfileView,
   type DiscoveredSessionView,
   type ProjectView,
@@ -38,14 +40,6 @@ import {
 /// 的那一截不着色,整行的高亮会缺一块右边。
 const ROW_WRAP =
   "group flex items-center gap-0.5 pr-1.5 rounded-lg hover:bg-panel-raised";
-
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
-}
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -92,6 +86,7 @@ export function SidebarProjectGroup({
   /// null = 全部 agent;否则只显示该 launch-profile 的会话。
   agentFilter: string | null;
 }) {
+  const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const activityBySession = useStore((s) => s.activityBySession);
   const agents = useStore((s) => s.agents);
@@ -225,10 +220,10 @@ export function SidebarProjectGroup({
           </span>
         </button>
         <OverflowMenu
-          label={`${project.name} 的更多操作`}
+          label={t("sidebar.moreActions", { name: project.name })}
           actions={[
             {
-              label: "删除",
+              label: t("common.delete"),
               destructive: true,
               onClick: () => void removeProjectWithConfirm(project.id),
             },
@@ -238,12 +233,12 @@ export function SidebarProjectGroup({
 
       {expanded && (
         <div className="pl-1">
-          {/* 「等你处理」自成一块:with 25 sessions,停下来的那个必须不用
+          {/* 「{t("status.blocked")}」自成一块:with 25 sessions,停下来的那个必须不用
               滚动就能够到。 */}
           {waitingRows.length > 0 && (
             <div className="mt-1 mx-2 mb-2 pb-1 border border-st-blocked-edge rounded-xl bg-st-blocked-block overflow-hidden">
               <div className={`${SECTION_HEADING} text-st-blocked`}>
-                <span>等你处理</span>
+                <span>{t("status.blocked")}</span>
                 <span className={`${SECTION_CONTEXT} ml-auto`}>
                   {waitingRows.length}
                 </span>
@@ -274,7 +269,7 @@ export function SidebarProjectGroup({
           {buckets.recent.length > 0 && (
             <>
               <div className={SECTION_HEADING}>
-                <span>最近 7 天</span>
+                <span>{t("sidebar.recent7d")}</span>
               </div>
               <div className={SESSION_LIST}>
                 {buckets.recent.map((row) => (
@@ -298,7 +293,7 @@ export function SidebarProjectGroup({
                 aria-expanded={olderOpen}
               >
                 <ChevronIcon open={olderOpen} />
-                <span title="更早的会话,点开可恢复继续">更早</span>
+                <span title={t("sidebar.olderHint")}>{t("sidebar.older")}</span>
               </button>
               <div className={SESSION_LIST} hidden={!olderOpen}>
                 {buckets.older.map((row) => (
@@ -314,14 +309,14 @@ export function SidebarProjectGroup({
 
           {scanError && (
             <div className={`${LIST_NOTE} text-st-working`} title={scanError}>
-              扫描 transcript 失败,列表可能不全
+              {t("sidebar.scanFailed")}
             </div>
           )}
           {scanned && shownRows.length === 0 && (
-            <div className={LIST_NOTE}>这个项目还没有会话。</div>
+            <div className={LIST_NOTE}>{t("sidebar.noSessionsInProject")}</div>
           )}
           {!scanned && shownRows.length === 0 && (
-            <div className={LIST_NOTE}>扫描中…</div>
+            <div className={LIST_NOTE}>{t("sidebar.scanning")}</div>
           )}
         </div>
       )}
@@ -338,15 +333,16 @@ function SessionRowButton({
   onOpen,
 }: {
   row: MergedSession;
-  /// 「等你处理」块里的行往内缩一点,不贴着那块的圆角边。
+  /// 「{t("status.blocked")}」块里的行往内缩一点,不贴着那块的圆角边。
   inset?: boolean;
   onOpen: (row: MergedSession) => void;
 }) {
+  const { t } = useTranslation();
   const status = row.light ? statusFromLight(row.light) : "idle";
-  // 副行只标注仍需注意的状态(进行中 / 等你处理 / 出错)。「已结束」和
+  // 副行只标注仍需注意的状态(进行中 / {t("status.blocked")} / 出错)。「已结束」和
   // 「可恢复」不写 —— 历史会话本来就都可以恢复,逐行重复只是噪音。
   const activeLabel =
-    row.light && row.light !== "done" ? SESSION_LIGHT_LABEL[row.light] : null;
+    row.light && row.light !== "done" ? t(SESSION_LIGHT_LABEL_KEY[row.light]) : null;
   // 焦点会话的背景高亮。琥珀指示条回答的是「在不在画布上」,这个背景
   // 回答的是「键盘现在打到谁」—— 两件事。
   const isActive = useStore((s) => row.live != null && s.activeId === row.live.id);
@@ -355,7 +351,7 @@ function SessionRowButton({
   const rowActions: MenuAction[] = row.live
     ? [
         {
-          label: "归档",
+          label: t("sidebar.archive"),
           destructive: true,
           onClick: () => void archiveSessionWithConfirm(row.live!.id),
         },
@@ -419,11 +415,11 @@ function SessionRowButton({
                 {" · "}
               </>
             )}
-            {relativeTime(row.updatedAtMs)}
+            {relativeTime(row.updatedAtMs, t)}
             {row.hasWorktree && (
               <span
                 className="text-st-working"
-                title="运行在独立的 git worktree 里"
+                title={t("sidebar.onWorktree")}
               >
                 {" · "}
                 worktree
@@ -434,14 +430,14 @@ function SessionRowButton({
         {open && (
           <span
             className="flex-none font-mono text-[8px] font-bold leading-none text-st-working border border-st-working rounded-[4px] py-0.5 px-1"
-            title={`面板 ${row.paneIdx + 1}`}
+            title={t("sidebar.paneNo", { n: row.paneIdx + 1 })}
           >
             {row.paneIdx + 1}
           </span>
         )}
         <StatusDot status={status} labelled={false} />
       </button>
-      <OverflowMenu label={`${row.title} 的更多操作`} actions={rowActions} />
+      <OverflowMenu label={t("sidebar.moreActions", { name: row.title })} actions={rowActions} />
     </div>
   );
 }

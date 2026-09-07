@@ -63,6 +63,14 @@ pub struct Config {
     /// time, so a future-version config file can't softlock the UI.
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// UI language: `"zh"`, `"en"`, or `"system"` to follow the OS. Stored
+    /// as the user's *choice* rather than the resolved language — keeping
+    /// `"system"` verbatim is what lets the UI follow along when they change
+    /// their OS language later. Unknown ids resolve to `"system"` at render
+    /// time (see `src/lib/i18n.ts`), so a config written by a future ycode
+    /// with more languages still yields something sensible here.
+    #[serde(default = "default_locale")]
+    pub locale: String,
     /// Collapse the top bar (project tabs + search + gear) into a thin
     /// hover strip, reclaiming its vertical space for the workspace. The
     /// bar slides back over the content while the pointer is near the top
@@ -85,6 +93,10 @@ pub struct Config {
 
 fn default_theme() -> String {
     "foundry".into()
+}
+
+fn default_locale() -> String {
+    "system".into()
 }
 
 /// What the window shows when ycode starts.
@@ -299,6 +311,7 @@ impl Default for Config {
             font_sizes: FontSizes::default(),
             notifications: NotificationSettings::default(),
             theme: default_theme(),
+            locale: default_locale(),
             auto_hide_top_bar: false,
             startup: StartupMode::default(),
             worktree: WorktreeSettings::default(),

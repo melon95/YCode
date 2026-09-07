@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Popover } from "@base-ui/react/popover";
+import { relativeTime } from "../lib/relativeTime";
 import { useStore } from "../lib/store";
 import { sessionLight, type SessionView } from "../lib/types";
 import { StatusDot } from "./ui/StatusDot";
@@ -35,6 +37,7 @@ const META =
 /// takes a decision out of the user's hands. So the inbox routes you to the
 /// session and gets out of the way.
 export function AttentionInbox() {
+  const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const projects = useStore((s) => s.projects);
   const agents = useStore((s) => s.agents);
@@ -74,6 +77,9 @@ export function AttentionInbox() {
   }, [sessions, projects, activityBySession]);
 
   const count = waiting.length;
+  // 一句话同时当 title 和 aria-label,写两遍迟早只改一处。
+  const inboxLabel =
+    count > 0 ? t("inbox.open", { count }) : t("inbox.empty");
 
   // ⇧⌘A opens the inbox — the counterpart to the badge, so the queue is
   // reachable without leaving the keyboard.
@@ -109,12 +115,8 @@ export function AttentionInbox() {
           ${count > 0 ? "text-st-blocked" : "text-muted"}`
           .replace(/\s+/g, " ")
           .trim()}
-        aria-label={
-          count > 0 ? `${count} 个会话等你处理 (⇧⌘A)` : "没有等待处理的会话 (⇧⌘A)"
-        }
-        title={
-          count > 0 ? `${count} 个会话等你处理 (⇧⌘A)` : "没有等待处理的会话 (⇧⌘A)"
-        }
+        aria-label={inboxLabel}
+        title={inboxLabel}
       >
         <InboxIcon />
         {count > 0 && (
@@ -128,7 +130,8 @@ export function AttentionInbox() {
           <Popover.Popup className="w-[380px] max-h-[60vh] overflow-y-auto bg-panel border border-rule-strong rounded-[14px] shadow-menu animate-pop-in origin-top-right">
             <div className="flex items-center pt-3 px-3.5 pb-2">
               <span className="text-[10px] font-semibold tracking-caps uppercase text-st-blocked">
-                等你处理{count > 0 ? ` · ${count}` : ""}
+                {t("inbox.title")}
+                {count > 0 ? ` · ${count}` : ""}
               </span>
               <span className="ml-auto font-mono text-[10px] text-muted">
                 ⇧⌘A
@@ -136,7 +139,7 @@ export function AttentionInbox() {
             </div>
             {count === 0 && done.length === 0 ? (
               <div className="pt-[22px] px-4 pb-[26px] text-center text-[12.5px] text-subtle">
-                所有 agent 都在忙自己的事 —— 没有等你的会话。
+                {t("inbox.emptyBody")}
               </div>
             ) : (
               <>
@@ -161,7 +164,7 @@ export function AttentionInbox() {
                       <span className={META}>
                         {row.projectName}
                         {" · "}
-                        {relativeTime(row.session.updated_at_ms)}
+                        {relativeTime(row.session.updated_at_ms, t)}
                       </span>
                     </span>
                     <ArrowIcon />
@@ -170,7 +173,7 @@ export function AttentionInbox() {
                 {done.length > 0 && (
                   <div className="pt-2 px-3.5 pb-1 border-t border-rule mt-1">
                     <span className="text-[10px] font-semibold tracking-caps uppercase text-st-blocked">
-                      刚刚完成
+                      {t("inbox.justFinished")}
                     </span>
                   </div>
                 )}
@@ -195,7 +198,7 @@ export function AttentionInbox() {
                       <span className={META}>
                         {row.projectName}
                         {" · "}
-                        {relativeTime(row.session.updated_at_ms)}
+                        {relativeTime(row.session.updated_at_ms, t)}
                       </span>
                     </span>
                     <ArrowIcon />
@@ -204,21 +207,13 @@ export function AttentionInbox() {
               </>
             )}
             <div className="py-[9px] px-3.5 border-t border-rule text-[10.5px]/[1.5] text-muted">
-              ycode 只告诉你谁在等 —— 批准仍在 agent 自己的终端里完成
+              {t("inbox.footnote")}
             </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
   );
-}
-
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return `${Math.floor(diff / 86_400_000)} 天前`;
 }
 
 function InboxIcon() {

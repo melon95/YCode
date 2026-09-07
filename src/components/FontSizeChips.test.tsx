@@ -20,6 +20,7 @@ function makeConfig(fontSizes: ConfigView["font_sizes"]): ConfigView {
     font_sizes: fontSizes,
     notifications: { enabled: true, only_when_unfocused: true },
     theme: "atelier",
+  locale: "system",
     auto_hide_top_bar: false,
     startup: "resume",
     worktree: {

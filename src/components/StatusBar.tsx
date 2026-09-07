@@ -9,10 +9,15 @@
 // heads-down somewhere else.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { gitBranch } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { sessionLight, type SessionLight } from "../lib/types";
-import { statusFromLight, STATUS_LABEL, type StatusKind } from "../lib/sessionStatus";
+import {
+  statusFromLight,
+  STATUS_LABEL_KEY,
+  type StatusKind,
+} from "../lib/sessionStatus";
 import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
 import { StatusDot } from "./ui/StatusDot";
 
@@ -27,6 +32,7 @@ const SHOWN: StatusKind[] = ["blocked", "working", "error"];
 const SB_GROUP = "inline-flex items-center gap-1.5 whitespace-nowrap";
 
 export function StatusBar() {
+  const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
@@ -62,8 +68,8 @@ export function StatusBar() {
   const checkout = workspaceSession?.worktree_path
     ? (workspaceSession.branch ?? workspaceSession.base_branch ?? "worktree")
     : mainBranch
-      ? `主仓库/${mainBranch}`
-      : "主仓库";
+      ? t("statusBar.mainRepoOn", { branch: mainBranch })
+      : t("statusBar.mainRepo");
 
   const { counts, worktrees, total } = useMemo(() => {
     const counts = { working: 0, blocked: 0, done: 0, error: 0, idle: 0 } as Record<
@@ -97,14 +103,17 @@ export function StatusBar() {
         </span>
       )}
       <span className={`${SB_GROUP} text-muted`}>
-        {worktrees > 0 ? `worktree ×${worktrees}` : "无 worktree"}
+        {worktrees > 0 ? `worktree ×${worktrees}` : t("statusBar.noWorktree")}
       </span>
       <span className="toolbar-spacer" />
       {total > 0 &&
         SHOWN.filter((k) => counts[k] > 0).map((k) => (
           <span className={SB_GROUP} key={k}>
             <StatusDot status={k} size="sm" labelled={false} />
-            {counts[k]} 个{STATUS_LABEL[k]}
+            {t("statusBar.sessionCount", {
+              count: counts[k],
+              label: t(STATUS_LABEL_KEY[k]),
+            })}
           </span>
         ))}
       <span className={`${SB_GROUP} text-muted ml-1`}>v{APP_VERSION}</span>

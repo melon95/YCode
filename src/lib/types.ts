@@ -165,11 +165,13 @@ export function sessionLight(
   return activity === "waiting" ? "waiting" : "running";
 }
 
-export const SESSION_LIGHT_LABEL: Record<SessionLight, string> = {
-  running: "进行中",
-  waiting: "等你处理",
-  done: "已结束",
-  error: "出错",
+/// 同 `STATUS_LABEL_KEY`:存 key 不存译文,常量在 i18next init 之前就
+/// 求值,存译文等于把启动语言烙死。
+export const SESSION_LIGHT_LABEL_KEY: Record<SessionLight, string> = {
+  running: "status.working",
+  waiting: "status.blocked",
+  done: "status.exited",
+  error: "status.error",
 };
 
 /// Project-level rollup of every live (non-archived) session's light, so the

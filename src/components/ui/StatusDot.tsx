@@ -1,5 +1,6 @@
+import { useTranslation } from "react-i18next";
 import type { StatusKind } from "../../lib/sessionStatus";
-import { STATUS_LABEL } from "../../lib/sessionStatus";
+import { STATUS_LABEL_KEY } from "../../lib/sessionStatus";
 
 interface Props {
   status: StatusKind;
@@ -38,13 +39,15 @@ export function StatusDot({
   labelled = true,
   className = "",
 }: Props) {
+  const { t } = useTranslation();
+  const label = labelled ? t(STATUS_LABEL_KEY[status]) : undefined;
   return (
     <span
       className={`shrink-0 block rounded-full transition-colors duration-[var(--t-base)] ease-smooth ${SIZE[size]} ${TONE[status]} ${className}`.trim()}
-      title={labelled ? STATUS_LABEL[status] : undefined}
+      title={label}
       aria-hidden={labelled ? undefined : true}
       role={labelled ? "img" : undefined}
-      aria-label={labelled ? STATUS_LABEL[status] : undefined}
+      aria-label={label}
     />
   );
 }

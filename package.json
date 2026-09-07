@@ -60,6 +60,7 @@
     "dompurify": "^3.4.10",
     "framer-motion": "^12.38.0",
     "gitdiff-parser": "^0.3.1",
+    "i18next": "^26.4.2",
     "lucide-react": "^0.562.0",
     "marked": "^18.0.5",
     "material-icon-theme": "5.34.0",
@@ -67,6 +68,7 @@
     "react-arborist": "^3.7.0",
     "react-diff-view": "^3.3.3",
     "react-dom": "^19.0.0",
+    "react-i18next": "^17.0.13",
     "react-resizable-panels": "^4.11.1",
     "zustand": "^5.0.0"
   },

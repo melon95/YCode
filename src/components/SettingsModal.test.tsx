@@ -57,6 +57,7 @@ const config: ConfigView = {
   font_sizes: { ui: 13, editor: 13, terminal: 13 },
   notifications: { enabled: true, only_when_unfocused: true },
   theme: "atelier",
+  locale: "system",
   auto_hide_top_bar: false,
   startup: "resume",
   worktree: {

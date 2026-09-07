@@ -19,6 +19,12 @@ export type ConfigView = { agents: Array<AgentLaunchProfileView>, font_sizes: Fo
  */
 theme: string, 
 /**
+ * UI language choice: `"zh"` / `"en"` / `"system"`. Mirrors
+ * [`ycode_config::Config::locale`] verbatim — `"system"` stays
+ * `"system"` so the UI keeps following the OS.
+ */
+locale: string, 
+/**
  * Collapse the top bar into a hover-reveal strip. Mirrors
  * [`ycode_config::Config::auto_hide_top_bar`].
  */

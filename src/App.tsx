@@ -45,6 +45,7 @@ export function App() {
   const fontSizes = useStore((s) => s.fontSizes);
   const setFontSizes = useStore((s) => s.setFontSizes);
   const setTheme = useStore((s) => s.setTheme);
+  const setLocale = useStore((s) => s.setLocale);
   const setAutoHideTopBar = useStore((s) => s.setAutoHideTopBar);
   const setSessionOpenMode = useStore((s) => s.setSessionOpenMode);
   const setLockedProjectId = useStore((s) => s.setLockedProjectId);
@@ -323,6 +324,7 @@ export function App() {
           setAgents(agents);
           setFontSizes(config.font_sizes);
           setTheme(config.theme);
+          setLocale(config.locale);
           setAutoHideTopBar(config.auto_hide_top_bar);
           setSessionOpenMode(config.session_open_mode);
           // Startup behaviour, applied once. `resume` is a judgement call
