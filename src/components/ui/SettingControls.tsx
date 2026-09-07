@@ -193,11 +193,17 @@ export function ToggleTrack({
         .trim()}
       aria-hidden
     >
-      {/* 轨道内高 16px(18 - 2×1px 边框),13px 圆 → 上下各 1.5px。 */}
+      {/* 轨道内高 16px(18 - 2×1px 边框),13px 圆 → 上下各 1.5px。
+
+          关闭态的圆点用 muted 而不是 bg:bg 是窗口底色,压在轨道的
+          panel-sunken 上对比度只有 1.02–1.32(深色主题最糟,两者都是近
+          黑),圆点整个消失,开关看起来像一条空轨道 —— 分不出是关着还是
+          坏了。muted 在十套主题上都有 4.2:1 以上,过 UI 控件的 3:1;又比
+          开启态的纯白暗一档,两个状态仍然一眼可分。 */}
       <span
         className={`absolute top-1/2 -translate-y-1/2 size-[13px] rounded-full
           transition-[left] duration-[var(--t-base)] ease-smooth ${
-            checked ? "left-[15px] bg-white" : "left-0.5 bg-bg"
+            checked ? "left-[15px] bg-white" : "left-0.5 bg-muted"
           }`
           .replace(/\s+/g, " ")
           .trim()}
