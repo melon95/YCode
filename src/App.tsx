@@ -13,6 +13,7 @@ import {
   stopWorkspaceWatch,
 } from "./lib/ipc";
 import { useStore } from "./lib/store";
+import { outputImpliesResumed } from "./lib/sessionStatus";
 import { useEscapeGuard } from "./lib/useEscapeGuard";
 import { applyTheme, resolveTheme, SYSTEM_THEME_ID } from "./lib/themes";
 import { useHotkeys } from "./lib/hotkeys";
@@ -305,6 +306,10 @@ export function App() {
   // every PtyExit, and re-opening the overview under someone mid-session
   // because their last session just ended would be its own bug.
   const startupAppliedRef = useRef(false);
+  // 每个「等你处理」会话在转入 waiting 之后累计收到的 PTY 字节数。用来
+  // 认出「用户是在 ycode 之外答的」—— 详见 `outputImpliesResumed`。
+  // 会话一旦离开 waiting 就删掉条目,这里始终只装当前等待中的那几个。
+  const bytesSinceWaitingRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -366,9 +371,37 @@ export function App() {
     listenSessionEvents((event) => {
       const kind = event.kind;
       if (kind.type === "PtyOutput" || kind.type === "PtyExit") {
-        // Output never moves the status light (the waiting→running flip is
-        // driven by user input in terminalInput.ts — see the note there).
-        if (kind.type === "PtyExit") refresh();
+        if (kind.type === "PtyExit") {
+          bytesSinceWaitingRef.current.delete(event.session_id);
+          refresh();
+          return;
+        }
+        // 用户在 ycode 里敲字是 waiting→running 的首选信号(即时、无歧义,
+        // 见 terminalInput.ts)。但那条路要求终端在 ycode 里 —— 在外部
+        // 终端答完的会话一个按键都发不过来,只能靠输出量兜底。
+        const counters = bytesSinceWaitingRef.current;
+        const seen = counters.get(event.session_id);
+        if (seen === undefined) return; // 不在等待中,不必计数
+        const { activityBySession, setActivity } = useStore.getState();
+        if (activityBySession[event.session_id] !== "waiting") {
+          // 用户已经在 ycode 里敲字答复了(terminalInput.ts 把灯改回
+          // running,但够不着这个 Map)。计数器就此作废。
+          counters.delete(event.session_id);
+          return;
+        }
+        // base64 是 4 字符编 3 字节;这里只需要量级,不必解码去数准确值。
+        const total = seen + Math.floor((kind.data.length * 3) / 4);
+        if (!outputImpliesResumed(total)) {
+          counters.set(event.session_id, total);
+          return;
+        }
+        counters.delete(event.session_id);
+        setActivity(event.session_id, "running");
+        return;
+      }
+      if (kind.type === "SessionRemoved") {
+        bytesSinceWaitingRef.current.delete(event.session_id);
+        refresh();
         return;
       }
       if (kind.type === "TitleChanged") {
@@ -400,6 +433,9 @@ export function App() {
         // The status light is focus-independent: the agent is waiting for the
         // user regardless of which pane they're looking at, so always set it.
         setActivity(event.session_id, "waiting");
+        // 从零开始计这个会话之后收到的输出量 —— 用户可能在 ycode 之外
+        // 答复,那时输出是唯一能看到的恢复信号。
+        bytesSinceWaitingRef.current.set(event.session_id, 0);
         const windowFocused =
           typeof document !== "undefined" && document.hasFocus();
         if (!(windowFocused && focusedId === event.session_id)) {
