@@ -104,10 +104,9 @@ export function DataSettings() {
           desc={t("settings.data.indexedDesc")}
         >
           <SettingValue align="end">
-            {t("settings.data.indexedCount", {
-              sessions: sessionCount,
-              projects: projectCount,
-            })}
+            {t("settings.data.indexedSessions", { count: sessionCount })}
+            {" · "}
+            {t("settings.data.indexedProjects", { count: projectCount })}
           </SettingValue>
         </SettingRow>
         <SettingRow

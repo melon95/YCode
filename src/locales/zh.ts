@@ -676,7 +676,11 @@ export default {
       transcriptSourceDesc: "只读扫描 —— ycode 从不修改这些文件",
       indexed: "已索引",
       indexedDesc: "会话与项目的本地索引",
-      indexedCount: "{{sessions}} 个会话 · {{projects}} 个项目",
+      // 拆成两条各自带 count:英文要按数量变形("1 project" / "2
+      // projects"),而具名变量不触发 i18next 的复数解析。中文不变形,
+      // 但 key 结构要跟英文对齐。
+      indexedSessions_other: "{{count}} 个会话",
+      indexedProjects_other: "{{count}} 个项目",
       searchIndex: "搜索索引",
       searchIndexDesc: "命令面板的历史搜索用它;损坏时应能从 transcript 重建",
       searchIndexPending: "索引重建命令未实现",
@@ -793,7 +797,10 @@ export default {
       actionFailed: "操作失败:{{error}}",
       codexConflict: "你已在 <1>~/.codex/config.toml</1> 里设了 <3>{{existing}}</3>。ycode 可以串在它前面,两者都会收到同一个事件;移除时会还原成你原来的设置。",
       notConnected: "未接入",
-      chainAfter: "串接到现有 notify 之后",
+      // ycode 的 helper 排在 notify 数组第一位,再用 --next exec 用户
+      // 原有的那个 —— 是「串在前面」。这条原本写的「之后」把顺序说反了,
+      // 而同组的 codexConflict / hookChained 都写的是前面。
+      chainAfter: "串接到现有 notify 之前",
       chainAfterHint: "串接:两者都会收到事件",
       hookChained: "{{agent}} hook 已串接在你原有的 notify 之上",
       removeHook: "移除 hook",
