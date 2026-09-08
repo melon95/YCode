@@ -337,6 +337,25 @@ export default {
   },
 
   changes: {
+    discardFileTitle: "Discard changes to {{name}}?",
+    discardUntrackedBody: "The file will be deleted. This can't be undone.",
+    discardTrackedBody:
+      "The file goes back to its last committed state. This can't be undone.",
+    discard: "Discard",
+    discardHunkTitle: "Discard this hunk in {{name}}?",
+    discardHunkBody:
+      "Only the lines inside this hunk are reverted — other changes in the file stay.",
+    reviewScope: "Review scope",
+    scopeWorking: "Working tree",
+    scopeBranch: "Branch vs base",
+    scopeCheckpoint: "Agent turn",
+    branchTabHint: "See what's been committed since {{base}}",
+    branchTabDisabled: "Pick an isolated worktree with a base branch first",
+    checkpointTabHint: "Look back at a finished agent turn",
+    checkpointTabDisabled: "No finished agent turn captured yet",
+    snapshot: "Snapshot",
+    snapshotAria: "Agent turn snapshot",
+    checkpointOption: "{{title}} · turn {{sequence}} · {{time}}",
     detachedHead: "Detached HEAD at {{head}}",
     noUpstream: "{{head}} (no upstream)",
     ahead: "Commits ahead of upstream",

@@ -123,7 +123,7 @@ describe("ChangesPanel review workflow", () => {
     );
 
     await user.click(
-      screen.getByRole("tab", { name: "分支 vs 基准" }),
+      screen.getByRole("tab", { name: i18next.t("changes.scopeBranch") }),
     );
 
     await waitFor(() =>
@@ -154,7 +154,7 @@ describe("ChangesPanel review workflow", () => {
       <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
     );
 
-    const agentTurnTab = screen.getByRole("tab", { name: "Agent 回合" });
+    const agentTurnTab = screen.getByRole("tab", { name: i18next.t("changes.scopeCheckpoint") });
     await waitFor(() => expect(agentTurnTab).toBeEnabled());
     await user.click(agentTurnTab);
 
@@ -172,7 +172,7 @@ describe("ChangesPanel review workflow", () => {
       ),
     );
     expect(await screen.findByText(i18next.t("changes.turnSnapshot"))).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent 回合快照")).toHaveValue(
+    expect(screen.getByLabelText(i18next.t("changes.snapshotAria"))).toHaveValue(
       "checkpoint-1",
     );
     expect(screen.queryByRole("button", { name: i18next.t("changes.stageHunk") })).toBeNull();

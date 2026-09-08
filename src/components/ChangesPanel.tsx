@@ -403,12 +403,12 @@ export function ChangesPanel({
 
   const discardFile = async (change: GitFileChange) => {
     const ok = await confirmDialog({
-      title: `丢弃对 ${basename(change.path)} 的修改?`,
+      title: t("changes.discardFileTitle", { name: basename(change.path) }),
       message:
         change.status === "untracked" || change.status === "added"
-          ? "该文件会被删除,且无法撤销。"
-          : "文件会恢复到最近一次提交的状态,且无法撤销。",
-      confirmLabel: "丢弃",
+          ? t("changes.discardUntrackedBody")
+          : t("changes.discardTrackedBody"),
+      confirmLabel: t("changes.discard"),
       destructive: true,
     });
     if (!ok) return;
@@ -431,10 +431,9 @@ export function ChangesPanel({
     }
     if (action === "discard") {
       const ok = await confirmDialog({
-        title: `丢弃 ${basename(selected)} 中的这个代码块?`,
-        message:
-          "只会还原这个代码块内的行,文件中的其他修改保持不变。",
-        confirmLabel: "丢弃代码块",
+        title: t("changes.discardHunkTitle", { name: basename(selected) }),
+        message: t("changes.discardHunkBody"),
+        confirmLabel: t("changes.discardHunk"),
         destructive: true,
       });
       if (!ok) return;
@@ -467,7 +466,7 @@ export function ChangesPanel({
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
-        <div className="changes-review-scope" role="tablist" aria-label="审阅范围">
+        <div className="changes-review-scope" role="tablist" aria-label={t("changes.reviewScope")}>
           <button
             type="button"
             role="tab"
@@ -475,7 +474,7 @@ export function ChangesPanel({
             className={scope === "working" ? "active" : ""}
             onClick={() => setScope("working")}
           >
-            工作树
+            {t("changes.scopeWorking")}
           </button>
           <button
             type="button"
@@ -486,11 +485,11 @@ export function ChangesPanel({
             onClick={() => setScope("branch")}
             title={
               canReviewBranch
-                ? `查看自 ${baseBranch} 以来已提交的变更`
-                : "请先选择带基准分支的隔离 worktree"
+                ? t("changes.branchTabHint", { base: baseBranch })
+                : t("changes.branchTabDisabled")
             }
           >
-            分支 vs 基准
+            {t("changes.scopeBranch")}
           </button>
           <button
             type="button"
@@ -501,25 +500,28 @@ export function ChangesPanel({
             onClick={() => setScope("checkpoint")}
             title={
               canReviewCheckpoint
-                ? "回看一个已完成的 agent 回合"
-                : "还没有捕获到已完成的 agent 回合"
+                ? t("changes.checkpointTabHint")
+                : t("changes.checkpointTabDisabled")
             }
           >
-            Agent 回合
+            {t("changes.scopeCheckpoint")}
           </button>
         </div>
         {scope === "checkpoint" && selectedCheckpoint && (
           <label className="changes-checkpoint-picker">
-            <span>快照</span>
+            <span>{t("changes.snapshot")}</span>
             <select
-              aria-label="Agent 回合快照"
+              aria-label={t("changes.snapshotAria")}
               value={selectedCheckpoint.id}
               onChange={(event) => setCheckpointId(event.target.value)}
             >
               {reviewableCheckpoints.map((checkpoint) => (
                 <option key={checkpoint.id} value={checkpoint.id}>
-                  {checkpoint.session_title} · 回合 {checkpoint.sequence} ·{" "}
-                  {formatCheckpointTime(checkpoint.created_at_ms)}
+                  {t("changes.checkpointOption", {
+                    title: checkpoint.session_title,
+                    sequence: checkpoint.sequence,
+                    time: formatCheckpointTime(checkpoint.created_at_ms),
+                  })}
                 </option>
               ))}
             </select>

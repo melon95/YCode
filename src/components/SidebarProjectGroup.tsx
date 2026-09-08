@@ -233,7 +233,7 @@ export function SidebarProjectGroup({
 
       {expanded && (
         <div className="pl-1">
-          {/* 「{t("status.blocked")}」自成一块:with 25 sessions,停下来的那个必须不用
+          {/* 「等你处理」自成一块:with 25 sessions,停下来的那个必须不用
               滚动就能够到。 */}
           {waitingRows.length > 0 && (
             <div className="mt-1 mx-2 mb-2 pb-1 border border-st-blocked-edge rounded-xl bg-st-blocked-block overflow-hidden">
@@ -333,13 +333,13 @@ function SessionRowButton({
   onOpen,
 }: {
   row: MergedSession;
-  /// 「{t("status.blocked")}」块里的行往内缩一点,不贴着那块的圆角边。
+  /// 「等你处理」块里的行往内缩一点,不贴着那块的圆角边。
   inset?: boolean;
   onOpen: (row: MergedSession) => void;
 }) {
   const { t } = useTranslation();
   const status = row.light ? statusFromLight(row.light) : "idle";
-  // 副行只标注仍需注意的状态(进行中 / {t("status.blocked")} / 出错)。「已结束」和
+  // 副行只标注仍需注意的状态(进行中 / 等你处理 / 出错)。「已结束」和
   // 「可恢复」不写 —— 历史会话本来就都可以恢复,逐行重复只是噪音。
   const activeLabel =
     row.light && row.light !== "done" ? t(SESSION_LIGHT_LABEL_KEY[row.light]) : null;
