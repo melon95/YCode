@@ -136,13 +136,12 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
                 <span className="text-[13px] font-semibold text-text">
                   {agent.display_name}
                 </span>
+                {/* 「历史可读」的 chip 不在这里出现:选 agent 时要判断的是
+                    「用哪个」,而 introspect 能力对这个决定没有影响 —— 它是
+                    agent 的固有属性,不是此刻的选项差异。真要查它,设置页的
+                    Agent 目录里那份带 tooltip 的更合适。 */}
                 <span className="flex items-center gap-1.5 flex-wrap [&_code]:font-mono [&_code]:text-[10px] [&_code]:text-subtle">
                   <code>{agent.command}</code>
-                  {agent.introspect && (
-                    <span className={`${CHIP} text-st-done bg-st-done-tint`}>
-                      {t("picker.historyReadable")}
-                    </span>
-                  )}
                   {!agent.available && (
                     <span className={`${CHIP} text-st-working bg-st-working-tint`}>
                       {t("picker.notInstalled")}
