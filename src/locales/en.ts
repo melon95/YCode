@@ -119,7 +119,7 @@ export default {
     mergeTo: "Merge into {{base}}",
     mergeConfirmTitle: "Merge into {{base}}?",
     mergeConfirmBody:
-      "Merges this agent's branch into “{{base}}” in the main worktree. The main worktree must already have “{{base}}” checked out with no uncommitted changes.",
+      "This merges the agent's branch into “{{base}}” in the main worktree. The main worktree has to already have “{{base}}” checked out, with nothing uncommitted.",
     mergeBackTo: "Merge this agent's branch back into {{base}}",
     onBranch: "Running on {{branch}} in its own worktree",
   },
@@ -129,14 +129,14 @@ export default {
     hideSessions: "Hide session list",
     confirmOk: "OK",
     switchProject: "Switch project",
-    resizePanel: "Resize panel",
+    resizePanel: "Resize panel height",
     allAgents: "All agents",
     filterBy: "Filter: {{label}}",
     filterAgentAria: "Agent filter — currently {{label}}",
     workspaceTarget: "Workspace target",
     workspaceTargetHint:
-      "Which checkout Files, Editor, Changes, LSP and Terminal point at",
-    pending: "Not yet built",
+      "The checkout that Files, Editor, Changes, LSP and Terminal all point to",
+    pending: "Not built",
     session: "Session",
   },
 
@@ -147,8 +147,8 @@ export default {
     saveBeforeSwitch:
       "Save or close your edited files before switching workspaces.",
     deleteTitle: "Delete {{name}}?",
-    deleteDirBody: "The folder and everything in it is deleted for good.",
-    deleteFileBody: "The file is deleted from disk for good.",
+    deleteDirBody: "The folder and everything in it will be deleted for good.",
+    deleteFileBody: "The file will be deleted from disk for good.",
   },
 
   session: {
@@ -181,10 +181,14 @@ export default {
       "The repository at {{path}} is left alone — its files and branches stay exactly as they are.",
     sessionsClosed_one: "{{count}} session will be closed and archived{{suffix}}.",
     sessionsClosed_other: "{{count}} sessions will be closed and archived{{suffix}}.",
+    // 这半句作为 suffix 插进 sessionsClosed,整句是「N sessions will be
+    // closed and archived, …」。所以这里也要跟着用将来时 —— 原本的
+    // 现在分词独立结构("of them tearing down")接在 will be 后面时态
+    // 对不齐,读起来像笔记而不是句子。
     worktreesTornDown_one:
-      ", {{count}} of them tearing down a worktree (uncommitted changes are lost)",
+      ", and {{count}} of those will tear down a worktree (uncommitted changes go with it)",
     worktreesTornDown_other:
-      ", {{count}} of them tearing down worktrees (uncommitted changes are lost)",
+      ", and {{count}} of those will tear down worktrees (uncommitted changes go with them)",
     reAddHint: "You can add it back later with “Open project”.",
     deleted: "Deleted “{{name}}”",
     deleteFailed: "Couldn't delete: {{error}}",
@@ -195,7 +199,7 @@ export default {
     noAgents: "No agents configured. Edit",
     noAgentsAdd: "to add one.",
     notOnPath: "{{command}} — not on PATH",
-    historyReadable: "History readable",
+    historyReadable: "Readable history",
     notInstalled: "Not installed",
     worktreeHint:
       "Each agent gets its own branch and working directory, so parallel runs don't overwrite each other",
@@ -215,7 +219,7 @@ export default {
     noSessionMatch: "No matching sessions.",
     noMatch: "Nothing matched — try @ to search sessions only",
     filterSessions: "Filter sessions…",
-    searchAll: "Jump to a session, switch project, run a command, open a file…",
+    searchAll: "Jump to a session, switch projects, run a command, open a file…",
     filterSessionsAria: "Filter sessions",
     searchAria: "Search or run a command",
     currentProject: "Current project",
@@ -229,8 +233,13 @@ export default {
   overview: {
     allProjects: "All projects",
     title: "Projects",
-    blockedCount: "{{count}} need you",
-    workingCount: "{{count}} working",
+    // 主谓要随数量变:count=1 时「1 need you」是病句,而 1 恰好是最常
+    // 见的情形。中文没有这层变化,所以这是英文侧独有的坑。
+    blockedCount_one: "{{count}} needs you",
+    blockedCount_other: "{{count}} need you",
+    // 「working」是形容词不是动词,两个分支同形。
+    workingCount_one: "{{count}} working",
+    workingCount_other: "{{count}} working",
     noneRunning: "No agents running",
     projectCount_one: "{{count}} project",
     projectCount_other: "{{count}} projects",
@@ -244,7 +253,7 @@ export default {
     emptyBlocked: "No project is waiting on you.",
     emptyWorking: "No project has an agent running.",
     empty: "No projects yet.",
-    isolateDefault: "Isolated by default",
+    isolateDefault: "auto-isolate",
     openProject: "＋ Open project…",
   },
 
@@ -274,8 +283,8 @@ export default {
     addPanel: "Add panel",
     panels: "Panels",
     catalogFootnote:
-      "Panels are pluggable — the ones not built yet will show up as toggles above once they are.",
-    builtin: "Built in",
+      "Panels are pluggable — the ones that aren't built yet will show up as toggles above once they are built.",
+    builtin: "Built-in",
     notBuilt: "Not yet built",
   },
 
@@ -295,7 +304,9 @@ export default {
     lockedTo: "Locked to {{name}}",
     lockedToMain: "Locked to the main repo",
     followingFocus: "Following the focused session: {{name}}",
-    pickedTarget: "Pinned to {{name}}",
+    // 这是「你选的,但没锁」那条分支(锁定走 lockedTo)。别用 "Pinned"
+    // —— 在 UI 语汇里 pin 和 lock 同义,会把未锁说成已固定。
+    pickedTarget: "You picked {{name}}",
     lockedHint: "Locked · click to follow focus again",
     lockHint: "Lock to this session (stop following focus)",
     unlockAria: "Unlock and follow focus again",
@@ -310,10 +321,10 @@ export default {
     dragToReorder: "Drag to reorder",
     deleteAria: "Delete todo",
     back: "Back",
-    allDone: "All done",
+    allDone: "Everything finished",
     noneDone: "Nothing finished yet.",
     title: "Task flow",
-    lede: "Move your work between the queue and in progress.",
+    lede: "Move work between the queue and what's actually in progress.",
     overviewAria: "Task overview",
     done: "Done",
     queue: "Queue",

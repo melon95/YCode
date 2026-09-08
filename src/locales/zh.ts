@@ -204,8 +204,8 @@ export default {
   overview: {
     allProjects: "全部项目",
     title: "项目",
-    blockedCount: "{{count}} 个等你处理",
-    workingCount: "{{count}} 个进行中",
+    blockedCount_other: "{{count}} 个等你处理",
+    workingCount_other: "{{count}} 个进行中",
     noneRunning: "没有正在运行的 agent",
     projectCount_other: "共 {{count}} 个项目",
     filterAria: "项目筛选",
