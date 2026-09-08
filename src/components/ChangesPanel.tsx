@@ -741,10 +741,14 @@ export function ChangesPanel({
               doCommit();
             }
           }}
-          placeholder={
+          placeholder={t("changes.commitMessage")}
+          // 快捷键提示挂 title 而不是 placeholder:输入框只有一行高,
+          // 英文的「Commit message · ⌘⏎ to commit to main」会换行,
+          // 第二行被 min-height 裁掉。
+          title={
             branch && !branch.detached
-              ? t("changes.commitMessageTo", { branch: branch.head })
-              : t("changes.commitMessage")
+              ? t("changes.commitHintTo", { branch: branch.head })
+              : t("changes.commitHint")
           }
           rows={1}
           aria-label={t("changes.commitMessageAria")}

@@ -346,8 +346,13 @@ export default {
     viewMode: "视图模式",
     listView: "列表视图",
     treeView: "树视图",
-    commitMessageTo: "提交信息(⌘⏎ 提交到「{{branch}}」)",
-    commitMessage: "提交信息(⌘⏎ 提交)",
+    // placeholder 只放最要紧的那个词。输入框是 rows={1},右栏里约
+    // 200px —— 中文塞得下「(⌘⏎ 提交到「main」)」,英文塞不下,实测
+    // 第二行会被 min-height 裁掉只露半截。快捷键提示移到 title 上,
+    // 两种语言都保持 placeholder 干净。
+    commitMessage: "提交信息",
+    commitHintTo: "⌘⏎ 提交到「{{branch}}」",
+    commitHint: "⌘⏎ 提交",
     commitMessageAria: "提交信息",
     nothingToCommit: "没有可提交的变更",
     needCommitMessage: "请输入提交信息",
