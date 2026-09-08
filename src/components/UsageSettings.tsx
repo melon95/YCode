@@ -167,9 +167,13 @@ function UsageReport({ usage }: { usage: WorkspaceUsageView }) {
                   <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-baseline text-[12px]">
                     <span className="text-text font-medium overflow-hidden text-ellipsis whitespace-nowrap">{p.name}</span>
                     <span className="text-muted text-[11px] tabular-nums whitespace-nowrap">
-                      {fmtCompact(p.tokens.total)} tokens ·{" "}
-                      {Math.round(p.session_count)}{" "}
-                      {p.session_count === 1 ? "session" : "sessions"}
+                      {/* 原本这里是手写的 `count === 1 ? "session" : "sessions"`
+                          外加硬编码的 "tokens" —— 中文界面下会漏出英文。
+                          复用 groupSummary 这条词条,复数由 i18next 决定。 */}
+                      {t("settings.usage.groupSummary", {
+                        count: Math.round(p.session_count),
+                        tokens: fmtCompact(p.tokens.total),
+                      })}
                     </span>
                     <span className="text-text tabular-nums min-w-[56px] text-right">{fmtCost(p.cost_usd)}</span>
                   </div>

@@ -310,7 +310,7 @@ export default {
   changes: {
     discardFileTitle: "丢弃对 {{name}} 的修改?",
     discardUntrackedBody: "该文件会被删除,且无法撤销。",
-    discardTrackedBody: "文件会恢复到最近一次提交的状态,且无法撤销。",
+    discardTrackedBody: "文件会恢复到最近一次提交的状态,已暂存的改动一并重置,且无法撤销。",
     discard: "丢弃",
     discardHunkTitle: "丢弃 {{name}} 中的这个代码块?",
     discardHunkBody: "只会还原这个代码块内的行,文件中的其他修改保持不变。",
@@ -440,7 +440,7 @@ export default {
       byDay: "按天",
       byModel: "按模型",
       sessions: "会话",
-      groupSummary: "{{count}} 个 · {{tokens}} token",
+      groupSummary_other: "{{count}} 个 · {{tokens}} token",
       model: "模型",
       costCol: "费用",
       lastActive: "最近活动",
