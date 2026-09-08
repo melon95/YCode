@@ -31,8 +31,14 @@ interface Props {
 /// 文件树这类大内容卡在 WKWebView 里异步分块光栅化,内容呈自上而下扫描式
 /// 出现。切项目会重挂面板、每次重播动画,这个代价付不起。
 ///
-/// 浮起感来自阴影,不描边(Claude Desktop 的卡片语言)。
-const CARD = `panel-card flex flex-col min-h-[140px] rounded-xl bg-surface overflow-hidden
+/// 浮起感来自阴影(深色主题下再加一圈描边,见 redesign.css —— 黑底上的
+/// 黑投影读不出来)。
+///
+/// `min-w-0` 是给描边用的:卡片是竖排 flex 的子项,`min-width: auto` 会让
+/// 它取内容的 min-content 宽度 —— xterm 固定列宽的终端会把卡片顶得比卡片栈
+/// 还宽,右边那条描边就被栈的 `overflow-x: hidden` 裁掉,看着只有上、左、下
+/// 三条边。归零后卡片老实收进栈的内容宽度里,四条边都在。
+const CARD = `panel-card flex flex-col min-h-[140px] min-w-0 rounded-xl bg-surface overflow-hidden
   shadow-[0_0_0_0.5px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.06),0_6px_18px_rgba(0,0,0,0.08)]`
   .replace(/\s+/g, " ");
 

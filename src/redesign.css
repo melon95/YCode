@@ -338,6 +338,24 @@
 }
 /* 画布保持铺满(单列时没有悬浮孤岛感)。 */
 .app-workspace .agent-workspace-widget { background: var(--bg); }
+
+/* 深色主题下右栏卡片描边。卡片的浮起感本来全靠投影,但深色主题里 `--bg`
+   已经接近纯黑,黑投影落在黑底上什么也读不出来 —— 卡片和画布地面看着是
+   同一块。浅色主题不需要这条:那边投影本来就成立。
+
+   必须是 border,不能是 outline 或 inset box-shadow。后两者属于元素自身的
+   绘制阶段,而卡片里铺满的 xterm 画布是之后绘制的子元素,会把它盖掉 ——
+   实测只有 header 那一圈(背景透明)露得出来,卡身四周全被吃掉。border 画
+   在边框盒里,子元素排布在它内侧,盖不到。
+
+   颜色用 `--rule-strong` 而不是 `--rule`:后者是「同一色块内部的分割线」
+   那一档,压在近黑的画布地面上时 1px 宽几乎不可见。
+
+   选择器不挂 `.app-workspace` —— 那个 class 早就从真实 DOM 里消失了(只剩
+   测试文件在用),挂上去规则永远不匹配。 */
+[data-theme-mode="dark"] .panel-card {
+  border: 1px solid var(--rule-strong);
+}
 /* 右栏外壳与卡片栈的留白已进 components/RightPane.tsx(`bg-bg` / `p-2`)。
    8px 的左侧留白不能省 —— overflow-x hidden 会把贴边卡片的左侧阴影整个
    裁掉。列间距相应由分隔条(收窄)+ 这 8px 组成。 */
