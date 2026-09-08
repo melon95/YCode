@@ -31,7 +31,8 @@ use crate::{
     GitBranchInfo, GitBranchListView, GitDiffSource, GitFileChange, GitFileDiff, GitFileStatus,
     GitHunkAction, LspManifestView, ModelUsageView, OpenInExternalEditorRequest, ProjectUsageView,
     ProjectView, RenameSessionRequest, ResizePtyRequest, ReviewCheckpointView, SearchHit,
-    SessionUsageView, SessionView, SpawnPtyRequest, TodoView, TokenCountsView, UiEvent,
+    SessionUsageView, SessionView, SpawnPtyRequest, SystemProxyView, TodoView, TokenCountsView,
+    UiEvent,
     UiEventKind, UnifiedEvent, WorkspaceUsageView, WorktreeCloseState, WriteFileRequest,
     WritePtyRequest,
 };
@@ -222,6 +223,37 @@ impl Service {
     /// a value and release the lock immediately.
     pub async fn notification_settings(&self) -> ycode_config::NotificationSettings {
         self.config.read().await.notifications
+    }
+
+    /// Resolve the proxy variables for a PTY about to be spawned. Re-read on
+    /// every spawn rather than cached at startup: people toggle their proxy
+    /// app mid-session, and a terminal opened after the toggle should reflect
+    /// it. In `system` mode this shells out to `scutil`, hence the
+    /// `spawn_blocking` — a few ms, but not on the async runtime.
+    async fn resolved_proxy(&self) -> ycode_config::proxy::ResolvedProxy {
+        let settings = self.config.read().await.proxy.clone();
+        if settings.mode == ycode_config::ProxyMode::Off {
+            return Default::default();
+        }
+        tokio::task::spawn_blocking(move || settings.resolve())
+            .await
+            .unwrap_or_default()
+    }
+
+    /// Read-only snapshot of the OS proxy configuration for the Settings
+    /// page. Only the upper-case spellings are handed over; the lower-case
+    /// duplicates we also inject would just double every row.
+    pub async fn detect_system_proxy(&self) -> SystemProxyView {
+        let detected = tokio::task::spawn_blocking(ycode_config::proxy::system_proxy)
+            .await
+            .unwrap_or_default();
+        let pac_url = detected.pac_url.clone();
+        let vars = detected
+            .into_env()
+            .into_iter()
+            .filter(|(k, _)| *k == k.to_ascii_uppercase())
+            .collect();
+        SystemProxyView { vars, pac_url }
     }
 
     /// Persist `incoming` to `~/.config/ycode/config.json`, swap the live
@@ -1642,6 +1674,7 @@ impl Service {
             req.command
         };
         let mut env = terminal_env(std::env::vars());
+        inject_proxy_env(&mut env, self.resolved_proxy().await);
         inject_notify_env(
             &mut env,
             &id,
@@ -2241,6 +2274,7 @@ impl Service {
         let mut env = terminal_env(
             std::env::vars().chain(profile.env.iter().map(|(k, v)| (k.clone(), v.clone()))),
         );
+        inject_proxy_env(&mut env, self.resolved_proxy().await);
         inject_notify_env(
             &mut env,
             id,
@@ -2750,6 +2784,27 @@ where
     env.entry("LC_CTYPE".into())
         .or_insert_with(|| "UTF-8".into());
     env.into_iter().collect()
+}
+
+/// Seed the proxy variables onto a PTY environment.
+///
+/// `system` mode only fills what's missing, so a value inherited from the
+/// launching terminal (dev mode) or set as an agent-profile `env` entry wins
+/// over auto-detection. `manual` mode overrides: an address typed into
+/// ycode's settings is the more explicit statement. Either way the spawned
+/// login shell sources the user's rc *after* this, so an `export` in
+/// `~/.zshrc` still has the final say.
+fn inject_proxy_env(env: &mut Vec<(String, String)>, proxy: ycode_config::proxy::ResolvedProxy) {
+    for (key, value) in proxy.vars {
+        match env.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, existing)) => {
+                if proxy.force {
+                    *existing = value;
+                }
+            }
+            None => env.push((key, value)),
+        }
+    }
 }
 
 /// Inject `YCODE_TERMINAL_ID` (always), `YCODE_NOTIFY_SOCK` (when the notify
@@ -4964,6 +5019,39 @@ mod tests {
             color: None,
             introspect: None,
         }
+    }
+
+    /// System mode is a fallback: a value already on the PTY env (inherited
+    /// from a dev-mode launch, or set as an agent-profile `env` entry) is the
+    /// user being specific, and must survive auto-detection.
+    #[test]
+    fn system_mode_proxy_does_not_clobber_an_existing_value() {
+        let mut env = vec![("HTTPS_PROXY".to_string(), "http://mine:1".to_string())];
+        inject_proxy_env(
+            &mut env,
+            ycode_config::proxy::ResolvedProxy {
+                vars: vec![
+                    ("HTTPS_PROXY".into(), "http://detected:2".into()),
+                    ("NO_PROXY".into(), "localhost".into()),
+                ],
+                force: false,
+            },
+        );
+        assert!(env.contains(&("HTTPS_PROXY".into(), "http://mine:1".into())));
+        assert!(env.contains(&("NO_PROXY".into(), "localhost".into())));
+    }
+
+    #[test]
+    fn manual_mode_proxy_overrides_an_existing_value() {
+        let mut env = vec![("HTTPS_PROXY".to_string(), "http://stale:1".to_string())];
+        inject_proxy_env(
+            &mut env,
+            ycode_config::proxy::ResolvedProxy {
+                vars: vec![("HTTPS_PROXY".into(), "http://typed:2".into())],
+                force: true,
+            },
+        );
+        assert_eq!(env, [("HTTPS_PROXY".to_string(), "http://typed:2".into())]);
     }
 
     fn row(agent_session_id: Option<&str>, agent_thread_name: Option<&str>) -> SessionRow {

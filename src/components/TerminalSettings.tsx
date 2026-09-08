@@ -9,10 +9,11 @@
 // let you change it.
 
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { i18next } from "../lib/i18n";
 import { platform } from "@tauri-apps/plugin-os";
-import type { ConfigView } from "../lib/types";
+import { detectSystemProxy } from "../lib/ipc";
+import type { ConfigView, ProxyModeView, SystemProxyView } from "../lib/types";
 import {
   SettingSection,
   SettingAction,
@@ -20,9 +21,12 @@ import {
   SettingChip,
   SettingChips,
   SettingGroupLabel,
+  SettingNote,
   SettingRow,
   SettingValue,
+  chips,
   type ChipOption,
+  type Choice,
 } from "./ui/SettingControls";
 
 interface Props {
@@ -49,9 +53,42 @@ function sizeOptionsFor(current: number): ReadonlyArray<ChipOption<string>> {
   ];
 }
 
+const PROXY_CHOICES: ReadonlyArray<Choice<ProxyModeView>> = [
+  ["off", "settings.terminal.proxyOff"],
+  ["system", "settings.terminal.proxySystem"],
+  ["manual", "settings.terminal.proxyManual"],
+];
+
+const INPUT_CLASS = `flex-none w-[190px] h-control-sm px-2 border border-rule rounded-sm bg-panel
+  text-text font-mono text-[11.5px] outline-none transition-colors duration-[var(--t-fast)]
+  ease-smooth hover:border-rule-strong focus:border-accent placeholder:text-subtle`;
+
 export function TerminalSettings({ config, onChange }: Props) {
   const { t } = useTranslation();
   const [shell, setShell] = useState<string | null>(null);
+  const [detected, setDetected] = useState<SystemProxyView | null>(null);
+  const proxy = config.proxy;
+
+  // Only fetched while the user is looking at "follow the system" — it shells
+  // out to scutil, and in the other modes the answer isn't shown anywhere.
+  useEffect(() => {
+    if (proxy.mode !== "system") return;
+    let live = true;
+    // async-wrapped so a synchronous throw from the IPC bridge (no Tauri
+    // host — tests, a browser preview) lands in the same catch as a
+    // rejection and just leaves the row showing "—".
+    void (async () => {
+      try {
+        const p = await detectSystemProxy();
+        if (live) setDetected(p);
+      } catch {
+        if (live) setDetected(null);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [proxy.mode]);
 
   useEffect(() => {
     // The backend spawns the user's login shell; read the same env var it
@@ -98,7 +135,65 @@ export function TerminalSettings({ config, onChange }: Props) {
         >
           <SettingChip>{t("settings.terminal.seeAgents")}</SettingChip>
         </SettingRow>
+        <SettingRow
+          name={t("settings.terminal.proxy")}
+          desc={t("settings.terminal.proxyDesc")}
+        >
+          <SettingChips
+            label={t("settings.terminal.proxy")}
+            options={chips(PROXY_CHOICES, t)}
+            value={proxy.mode}
+            onChange={(mode) => onChange({ ...config, proxy: { ...proxy, mode } })}
+          />
+        </SettingRow>
+        {proxy.mode === "system" && (
+          <SettingRow
+            name={t("settings.terminal.proxyDetected")}
+            desc={t("settings.terminal.proxyDetectedDesc")}
+          >
+            <SettingValue align="end">{detectedSummary(detected, t)}</SettingValue>
+          </SettingRow>
+        )}
+        {proxy.mode === "manual" && (
+          <>
+            <SettingRow
+              name={t("settings.terminal.proxyUrl")}
+              desc={t("settings.terminal.proxyUrlDesc")}
+            >
+              <input
+                className={INPUT_CLASS}
+                value={proxy.url}
+                spellCheck={false}
+                aria-label={t("settings.terminal.proxyUrl")}
+                placeholder="127.0.0.1:7897"
+                onChange={(e) =>
+                  onChange({ ...config, proxy: { ...proxy, url: e.target.value } })
+                }
+              />
+            </SettingRow>
+            <SettingRow
+              name={t("settings.terminal.proxyNoProxy")}
+              desc={t("settings.terminal.proxyNoProxyDesc")}
+            >
+              <input
+                className={INPUT_CLASS}
+                value={proxy.no_proxy}
+                spellCheck={false}
+                aria-label={t("settings.terminal.proxyNoProxy")}
+                placeholder="localhost,127.0.0.1,*.local"
+                onChange={(e) =>
+                  onChange({ ...config, proxy: { ...proxy, no_proxy: e.target.value } })
+                }
+              />
+            </SettingRow>
+          </>
+        )}
       </SettingCard>
+      {proxy.mode !== "off" && (
+        <SettingNote>
+          <Trans i18nKey="settings.terminal.proxyNote" components={{ 1: <b /> }} />
+        </SettingNote>
+      )}
 
       <SettingGroupLabel>{t("settings.terminal.display")}</SettingGroupLabel>
       <SettingCard>
@@ -145,6 +240,26 @@ export function TerminalSettings({ config, onChange }: Props) {
         </SettingRow>
       </SettingCard>
     </SettingSection>
+  );
+}
+
+/// What "follow the system" actually resolved to. Three states worth telling
+/// apart: not read yet, a PAC script (which no env-var-reading client can
+/// use, so we say so rather than showing an empty result and looking broken),
+/// and the address itself. HTTPS is the one that matters for an agent CLI —
+/// every API call it makes is https — so that's the one shown.
+function detectedSummary(
+  detected: SystemProxyView | null,
+  t: (key: string) => string,
+): string {
+  if (!detected) return "—";
+  if (detected.pac_url) return t("settings.terminal.proxyPac");
+  const vars = new Map(detected.vars);
+  return (
+    vars.get("HTTPS_PROXY") ??
+    vars.get("HTTP_PROXY") ??
+    vars.get("ALL_PROXY") ??
+    t("settings.terminal.proxyNone")
   );
 }
 

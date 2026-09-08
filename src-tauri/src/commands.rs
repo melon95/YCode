@@ -16,8 +16,8 @@ use ycode_ipc::{
     DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
     GitFileChange, GitFileDiff, GitHunkAction, LspManifestView, OpenInExternalEditorRequest,
     ProjectView, RenameSessionRequest, ResizePtyRequest, ReviewCheckpointView, SearchHit,
-    SessionView, SpawnPtyRequest, TodoView, UnifiedEvent, WorkspaceUsageView, WorktreeCloseState,
-    WriteFileRequest, WritePtyRequest,
+    SessionView, SpawnPtyRequest, SystemProxyView, TodoView, UnifiedEvent, WorkspaceUsageView,
+    WorktreeCloseState, WriteFileRequest, WritePtyRequest,
 };
 
 use crate::state::{AppState, PendingCliOpen};
@@ -51,6 +51,11 @@ pub async fn reset_config(state: State<'_, AppState>) -> Result<Vec<AgentProfile
         .reset_config()
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn detect_system_proxy(state: State<'_, AppState>) -> Result<SystemProxyView, String> {
+    Ok(state.service.detect_system_proxy().await)
 }
 
 #[tauri::command]

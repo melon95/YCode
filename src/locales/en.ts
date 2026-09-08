@@ -590,6 +590,23 @@ export default {
       envVarsDesc:
         "Each agent carries its own variables, set under Agent catalogue — there's no global layer they stack on top of",
       seeAgents: "See Agent catalogue",
+      proxy: "Proxy",
+      proxyDesc:
+        "Agent CLIs read HTTPS_PROXY and friends; none of them read your system proxy settings",
+      proxyOff: "Off",
+      proxySystem: "Follow system",
+      proxyManual: "Manual",
+      proxyDetected: "System proxy",
+      proxyDetectedDesc:
+        "Read again every time a terminal opens, so toggling your proxy needs no restart",
+      proxyNone: "Not configured",
+      proxyPac: "PAC script — can't become an environment variable",
+      proxyUrl: "Address",
+      proxyUrlDesc: "Used for both HTTP and HTTPS; a missing scheme is read as http://",
+      proxyNoProxy: "Exceptions",
+      proxyNoProxyDesc: "Hosts, suffixes and CIDRs for NO_PROXY, comma-separated",
+      proxyNote:
+        "These are a fallback: the terminal starts a login shell, so anything exported in <1>~/.zshrc</1> runs afterwards and wins.",
       display: "Display",
       font: "Font",
       fontDesc: "The system monospace stack (SF Mono / Menlo / Consolas)",

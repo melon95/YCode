@@ -44,8 +44,8 @@ pub use ycode_lsp::{
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use ycode_config::{
-    AgentLaunchProfile, CheckpointSettings, FontSizes, NotificationSettings, SessionOpenMode,
-    StartupMode, WorktreeCloseAction, WorktreeSettings,
+    AgentLaunchProfile, CheckpointSettings, FontSizes, NotificationSettings, ProxyMode,
+    ProxySettings, SessionOpenMode, StartupMode, WorktreeCloseAction, WorktreeSettings,
 };
 use ycode_persist::{CheckpointListRow, ProjectRow, SessionRow, TodoRow};
 use ycode_terminal::TerminalStatus;
@@ -256,6 +256,7 @@ pub struct ConfigView {
     pub worktree: WorktreeSettingsView,
     pub checkpoints: CheckpointSettingsView,
     pub session_open_mode: SessionOpenModeView,
+    pub proxy: ProxySettingsView,
 }
 
 /// Mirrors [`ycode_config::StartupMode`]. The serde rename keeps the JSON
@@ -403,6 +404,82 @@ impl From<CheckpointSettingsView> for CheckpointSettings {
     }
 }
 
+/// Mirrors [`ycode_config::ProxyMode`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyModeView {
+    Off,
+    System,
+    Manual,
+}
+
+impl From<ProxyMode> for ProxyModeView {
+    fn from(m: ProxyMode) -> Self {
+        match m {
+            ProxyMode::Off => Self::Off,
+            ProxyMode::System => Self::System,
+            ProxyMode::Manual => Self::Manual,
+        }
+    }
+}
+
+impl From<ProxyModeView> for ProxyMode {
+    fn from(v: ProxyModeView) -> Self {
+        match v {
+            ProxyModeView::Off => Self::Off,
+            ProxyModeView::System => Self::System,
+            ProxyModeView::Manual => Self::Manual,
+        }
+    }
+}
+
+/// Editable mirror of [`ycode_config::ProxySettings`].
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ProxySettingsView {
+    pub mode: ProxyModeView,
+    /// Manual-mode address for both HTTP and HTTPS. A missing scheme is
+    /// filled in as `http://` on the Rust side, so the UI can accept the
+    /// bare `host:port` people copy out of their proxy app.
+    pub url: String,
+    /// Manual-mode `NO_PROXY`, comma-separated.
+    pub no_proxy: String,
+}
+
+impl From<ProxySettings> for ProxySettingsView {
+    fn from(p: ProxySettings) -> Self {
+        Self {
+            mode: p.mode.into(),
+            url: p.url,
+            no_proxy: p.no_proxy,
+        }
+    }
+}
+
+impl From<ProxySettingsView> for ProxySettings {
+    fn from(v: ProxySettingsView) -> Self {
+        Self {
+            mode: v.mode.into(),
+            url: v.url,
+            no_proxy: v.no_proxy,
+        }
+    }
+}
+
+/// What the OS proxy configuration currently says, for the Settings page to
+/// show under "follow the system". Read-only — a snapshot, not a setting.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SystemProxyView {
+    /// Resolved env pairs, upper-case spellings only (the lower-case
+    /// duplicates ycode also injects would just be noise in the UI).
+    pub vars: Vec<(String, String)>,
+    /// Set when the system is on a PAC script, which cannot be expressed as
+    /// proxy env vars — the UI explains that instead of showing "none".
+    pub pac_url: Option<String>,
+}
+
 /// Editable mirror of [`ycode_config::NotificationSettings`].
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -473,6 +550,7 @@ impl From<ycode_config::Config> for ConfigView {
             worktree: c.worktree.into(),
             checkpoints: c.checkpoints.into(),
             session_open_mode: c.session_open_mode.into(),
+            proxy: c.proxy.into(),
         }
     }
 }
@@ -490,6 +568,7 @@ impl From<ConfigView> for ycode_config::Config {
             worktree: v.worktree.into(),
             checkpoints: v.checkpoints.into(),
             session_open_mode: v.session_open_mode.into(),
+            proxy: v.proxy.into(),
         }
     }
 }

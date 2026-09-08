@@ -31,6 +31,7 @@ function makeConfig(fontSizes: ConfigView["font_sizes"]): ConfigView {
     },
     checkpoints: { enabled: true, keep: 50 },
     session_open_mode: "replace_focused",
+    proxy: { mode: "system", url: "", no_proxy: "" },
   };
 }
 

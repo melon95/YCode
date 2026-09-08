@@ -67,6 +67,7 @@ const config: ConfigView = {
     close_action: "ask",
   },
   checkpoints: { enabled: true, keep: 50 },
+  proxy: { mode: "system", url: "", no_proxy: "" },
   session_open_mode: "replace_focused",
 };
 

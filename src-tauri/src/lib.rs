@@ -768,6 +768,7 @@ pub fn run() {
             commands::list_agents,
             commands::get_config,
             commands::save_config,
+            commands::detect_system_proxy,
             commands::reset_config,
             commands::probe_command,
             commands::list_sessions,

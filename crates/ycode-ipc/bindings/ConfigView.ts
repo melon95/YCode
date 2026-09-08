@@ -3,6 +3,7 @@ import type { AgentLaunchProfileView } from "./AgentLaunchProfileView";
 import type { CheckpointSettingsView } from "./CheckpointSettingsView";
 import type { FontSizesView } from "./FontSizesView";
 import type { NotificationSettingsView } from "./NotificationSettingsView";
+import type { ProxySettingsView } from "./ProxySettingsView";
 import type { SessionOpenModeView } from "./SessionOpenModeView";
 import type { StartupModeView } from "./StartupModeView";
 import type { WorktreeSettingsView } from "./WorktreeSettingsView";
@@ -32,4 +33,4 @@ auto_hide_top_bar: boolean,
 /**
  * What the window opens on. Mirrors [`ycode_config::StartupMode`].
  */
-startup: StartupModeView, worktree: WorktreeSettingsView, checkpoints: CheckpointSettingsView, session_open_mode: SessionOpenModeView, };
+startup: StartupModeView, worktree: WorktreeSettingsView, checkpoints: CheckpointSettingsView, session_open_mode: SessionOpenModeView, proxy: ProxySettingsView, };

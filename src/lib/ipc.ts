@@ -33,6 +33,7 @@ import type {
   UiEvent,
   WorkspaceUsageView,
   WorktreeCloseState,
+  SystemProxyView,
 } from "./types";
 
 export const listAgents = (): Promise<AgentProfileView[]> => invoke("list_agents");
@@ -41,6 +42,10 @@ export const getConfig = (): Promise<ConfigView> => invoke("get_config");
 
 export const saveConfig = (config: ConfigView): Promise<AgentProfileView[]> =>
   invoke("save_config", { config });
+
+/** Read-only snapshot of the OS proxy config, for the Terminal settings page. */
+export const detectSystemProxy = (): Promise<SystemProxyView> =>
+  invoke("detect_system_proxy");
 
 export const resetConfig = (): Promise<AgentProfileView[]> => invoke("reset_config");
 

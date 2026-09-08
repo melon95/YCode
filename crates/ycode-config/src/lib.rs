@@ -49,6 +49,9 @@ use thiserror::Error;
 
 pub mod agent_patcher;
 pub mod cli_installer;
+pub mod proxy;
+
+pub use proxy::{ProxyMode, ProxySettings};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -89,6 +92,10 @@ pub struct Config {
     /// Where a session opened from the sidebar lands on the canvas.
     #[serde(default)]
     pub session_open_mode: SessionOpenMode,
+    /// Proxy variables seeded onto every spawned terminal. See [`proxy`] for
+    /// why this exists and how it interacts with the user's shell rc.
+    #[serde(default)]
+    pub proxy: ProxySettings,
 }
 
 fn default_theme() -> String {
@@ -317,6 +324,7 @@ impl Default for Config {
             worktree: WorktreeSettings::default(),
             checkpoints: CheckpointSettings::default(),
             session_open_mode: SessionOpenMode::default(),
+            proxy: ProxySettings::default(),
         }
     }
 }
