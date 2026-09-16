@@ -484,6 +484,14 @@ interface AppState {
   /// 不在时角标也随之消失(null 即"没有可信数据")。
   changesFileCount: number | null;
 
+  /// 主仓库 HEAD 变过的次数。`useMainBranch` 把它放进 effect 依赖里,
+  /// 借此在应用内切分支后重新取一次分支名 —— 否则状态栏、Files/变更卡
+  /// 的 chip、以及终端 picker 的「主仓库」项会一直显示切换前的分支,
+  /// 而 picker 是个控件,标错等于骗人。
+  ///
+  /// 计数器而不是布尔:连切两次分支也能各触发一次重取。
+  branchEpoch: number;
+
   setAgents: (list: AgentProfileView[]) => void;
   setProjects: (list: ProjectView[]) => void;
   upsertProject: (p: ProjectView) => void;
@@ -518,6 +526,8 @@ interface AppState {
   setTodos: (projectId: string, list: TodoView[]) => void;
   /// 写入/清除变更面板的 diff 文件数(见 `changesFileCount`)。
   setChangesFileCount: (count: number | null) => void;
+  /// 应用内切换主仓库分支后调用,让 `useMainBranch` 重新取值。
+  bumpBranchEpoch: () => void;
   setSessions: (list: SessionView[]) => void;
   upsertSession: (s: SessionView) => void;
   removeSession: (id: string) => void;
@@ -616,6 +626,7 @@ export const useStore = create<AppState>((set) => ({
   activityBySession: {},
   todos: {},
   changesFileCount: null,
+  branchEpoch: 0,
 
   setTodos: (projectId, list) =>
     set((state) => ({ todos: { ...state.todos, [projectId]: list } })),
@@ -624,6 +635,8 @@ export const useStore = create<AppState>((set) => ({
     set((state) =>
       state.changesFileCount === count ? state : { changesFileCount: count },
     ),
+
+  bumpBranchEpoch: () => set((state) => ({ branchEpoch: state.branchEpoch + 1 })),
 
   markAttention: (sessionId) =>
     set((state) => {

@@ -28,9 +28,13 @@ import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 // shrink 为 1,标签挤不下时一起收窄(名字省略号截断)而不是直接溢出,
 // 收到 128px 的下限后才让整条带横向滚动 —— 再窄下去名字只剩 ".gitlab-…"
 // 这种读不出是哪个文件的残片,不如让它滚。
+//
+// 上限写在调用处而不是这里:只有一个标签时整条带都是它的,让它撑到完整
+// 文件名,不必卡在 220px 截断。两个 Tailwind max-w 类谁赢取决于生成 CSS
+// 的先后而非 class 串的顺序,所以是二选一给出,不做覆盖。
 const FILE_TAB = `inline-flex items-center gap-1.5 h-8 pt-0 pr-[7px] pb-0 pl-3
   border-0 rounded-sm cursor-pointer font-[inherit]
-  flex-[0_1_auto] min-w-[128px] max-w-[220px]`.replace(/\s+/g, " ");
+  flex-[0_1_auto] min-w-[128px]`.replace(/\s+/g, " ");
 
 export function RightPane() {
   const { t } = useTranslation();
@@ -390,6 +394,8 @@ export function RightPane() {
               type="button"
               className={[
                 FILE_TAB,
+                // 独苗标签把整条带让给它,显示完整文件名(见 FILE_TAB)。
+                openFiles.length === 1 ? "max-w-none" : "max-w-[220px]",
                 active
                   ? "bg-panel-raised text-text shadow-[inset_0_0_0_1px_var(--color-rule)]"
                   : "bg-transparent text-muted hover:bg-highlight-hover hover:text-text",
@@ -688,7 +694,10 @@ export function RightPane() {
           // and change which checkout the right column's tools point at.
           bind={
             activeProject ? (
-              <WorkspaceTargetPicker projectId={activeProject.id} />
+              <WorkspaceTargetPicker
+                projectId={activeProject.id}
+                mainBranch={mainBranch}
+              />
             ) : undefined
           }
           solo={solo === "terminal"}

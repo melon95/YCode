@@ -344,6 +344,10 @@ export function ChangesPanel({
       .then(() => {
         setBranchMenuOpen(false);
         refresh();
+        // 切的是主工作树时,主仓库的 HEAD 变了 —— 通知那些显示「主仓库
+        // (分支)」的地方重新取值(状态栏、Files/变更卡的 chip、终端
+        // picker)。worktree 会话有自己的 HEAD,与它们无关。
+        if (!treeSid) useStore.getState().bumpBranchEpoch();
       })
       .catch((e) => {
         const msg = cleanError(e);

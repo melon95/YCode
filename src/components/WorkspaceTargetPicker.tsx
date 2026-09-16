@@ -10,7 +10,18 @@ import type { SessionView } from "../lib/types";
  * Choosing a session worktree here changes Files, Editor, Changes, LSP,
  * terminal links, and the manual terminal as one atomic UI context.
  */
-export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
+export function WorkspaceTargetPicker({
+  projectId,
+  // 「主仓库」那一项要带分支。由宿主传进来而不是自己 useMainBranch:
+  // RightPane 已经为各卡片的 chip 取过同一个值,而本组件是它的子节点且
+  // 常驻挂载(终端卡关闭时 PanelCard 只是 hidden,不卸载),自己再取一次
+  // 就是每次切项目多跑一趟 git IPC —— 后端那头是 3~4 个 git 子进程。
+  // 没传则自取,留给将来可能出现的独立宿主。
+  mainBranch,
+}: {
+  projectId: string;
+  mainBranch?: string | null;
+}) {
   const { t } = useTranslation();
   const sessions = useStore((s) => s.sessions);
   const selectedSessionId = useStore(
@@ -23,9 +34,10 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
     s.activeProjectId === projectId ? Object.keys(s.dirtyFiles).length : 0,
   );
   const setWorkspaceSessionId = useStore((s) => s.setWorkspaceSessionId);
-  // 下拉里「主仓库」那一项要带分支,所以无论当前选中的是不是 worktree
-  // 都得查 —— 这跟状态栏(只描述当前目标)不同。
-  const mainBranch = useMainBranch(projectId);
+  // 宿主传了就用宿主的,没传才自己取(`skip` 避免白跑一趟 IPC)。hook 不
+  // 能写在条件里,所以两条路都要调用,靠 skip 而不是分支来省开销。
+  const ownMainBranch = useMainBranch(projectId, mainBranch !== undefined);
+  const branch = mainBranch !== undefined ? mainBranch : ownMainBranch;
 
   const worktrees = useMemo(
     () =>
@@ -72,7 +84,7 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
       >
         {/* 「主仓库」这一项也带上它 checked-out 的分支 —— 与状态栏、
             其余卡片的绑定 chip 是同一句话。 */}
-        <option value="">{checkoutLabel(t, null, mainBranch)}</option>
+        <option value="">{checkoutLabel(t, null, branch)}</option>
         {worktrees.map((session) => (
           <option key={session.id} value={session.id}>
             {worktreeLabel(session)}
