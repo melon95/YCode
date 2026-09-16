@@ -54,6 +54,11 @@ export default {
     mainRepo: "main repo",
     mainRepoOn: "main repo/{{branch}}",
     noWorktree: "no worktree",
+    // The "×N" form is compact enough for the status bar and reads the same
+    // at any count, so both plural branches are identical — they exist only
+    // because English declares two categories and i18next needs the match.
+    worktreeCount_one: "worktree ×{{count}}",
+    worktreeCount_other: "worktree ×{{count}}",
     // Chinese needs a measure word here ("N 个X"); English just juxtaposes.
     // Keeping this a template rather than concatenating at the call site is
     // what lets the two languages disagree about word order.

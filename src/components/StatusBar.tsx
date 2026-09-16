@@ -107,7 +107,9 @@ export function StatusBar() {
         </span>
       )}
       <span className={`${SB_GROUP} text-muted`}>
-        {worktrees > 0 ? `worktree ×${worktrees}` : t("statusBar.noWorktree")}
+        {worktrees > 0
+          ? t("statusBar.worktreeCount", { count: worktrees })
+          : t("statusBar.noWorktree")}
       </span>
       <span className="toolbar-spacer" />
       {total > 0 &&

@@ -48,6 +48,9 @@ export default {
     mainRepo: "主仓库",
     mainRepoOn: "主仓库/{{branch}}",
     noWorktree: "无 worktree",
+    // 「worktree ×3」。worktree 是术语不译(与 `noWorktree` 一致),
+    // 这里只是给它配个数量。
+    worktreeCount_other: "worktree ×{{count}}",
     // 「3 个进行中」。状态名由 status.* 传进来,这里只管数字与量词的
     // 摆法 —— 中文是「N 个X」,英文是「N X」,两边语序不同。
     //
