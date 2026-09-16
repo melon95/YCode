@@ -71,6 +71,10 @@ export function StatusBar() {
       ? t("statusBar.mainRepoOn", { branch: mainBranch })
       : t("statusBar.mainRepo");
 
+  // 状态点的统计是全局的(见文件头:后台项目里卡住的 agent 也该冒头),
+  // 但 worktree 数不是 —— 它紧挨着「项目 · checkout」那一组显示,读起来
+  // 就是「这个项目有几个 worktree」。跨项目求和会让每个项目都显示同一个
+  // 数字,所以这一项按当前项目过滤。
   const { counts, worktrees, total } = useMemo(() => {
     const counts = { working: 0, blocked: 0, done: 0, error: 0, idle: 0 } as Record<
       StatusKind,
@@ -83,10 +87,10 @@ export function StatusBar() {
       total += 1;
       const light: SessionLight = sessionLight(s.status, activityBySession[s.id]);
       counts[statusFromLight(light)] += 1;
-      if (s.worktree_path) worktrees += 1;
+      if (s.worktree_path && s.project_id === activeProjectId) worktrees += 1;
     }
     return { counts, worktrees, total };
-  }, [sessions, activityBySession]);
+  }, [sessions, activityBySession, activeProjectId]);
 
   return (
     <footer
