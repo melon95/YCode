@@ -137,6 +137,7 @@ export function RightPane() {
   // 主仓库(带上它 checked-out 的分支);tooltip 里补充来源(锁定 / 跟随
   // 焦点 / 手选)与会话标题。措辞与状态栏共用 `checkoutLabel`。
   const changesBindLabel = checkoutLabel(t, changesSession, mainBranch);
+  const filesBindLabel = checkoutLabel(t, activeWorkspaceSession, mainBranch);
   const changesBindTitle = changesLockValid
     ? changesSession
       ? t("panels.lockedTo", {
@@ -465,9 +466,10 @@ export function RightPane() {
           bind={
             <>
               <BindArrow />
-              <span className="mono">
-                {/* 与变更卡、状态栏共用 `checkoutLabel`。 */}
-                {checkoutLabel(t, activeWorkspaceSession, mainBranch)}
+              {/* 与变更卡、状态栏共用 `checkoutLabel`。chip 窄时 `.mono`
+                  会省略号截断,所以把全文挂在 title 上兜底。 */}
+              <span className="mono" title={filesBindLabel}>
+                {filesBindLabel}
               </span>
             </>
           }

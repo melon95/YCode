@@ -83,9 +83,20 @@ export function StatusBar() {
       aria-label="Workspace status"
     >
       {activeProject && (
-        <span className={SB_GROUP} title={activeProject.repo_path}>
-          <ProjectPickerMenu>{activeProject.name}</ProjectPickerMenu>
-          <span className="text-muted">· {checkout}</span>
+        // `min-w-0` 让这一组在分支名很长时可以收缩:默认 `min-width: auto`
+        // 配上 `whitespace-nowrap`,长分支会把右侧的会话计数和版本号顶出
+        // 视口,而不是自己截断。checkout 全文挂在 title 上兜底 —— 仓库路径
+        // 移到项目名那一段,各自说明自己。
+        <span className={`${SB_GROUP} min-w-0`}>
+          <ProjectPickerMenu className="flex-none">
+            <span title={activeProject.repo_path}>{activeProject.name}</span>
+          </ProjectPickerMenu>
+          <span
+            className="text-muted min-w-0 overflow-hidden text-ellipsis"
+            title={checkout}
+          >
+            · {checkout}
+          </span>
         </span>
       )}
       <span className={`${SB_GROUP} text-muted`}>

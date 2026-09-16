@@ -875,16 +875,23 @@ body {
 }
 
 /* xterm 自绘滚动条(VS Code 那套 scrollable-element),走不到全局的
-   `::-webkit-scrollbar` 规则,所以要单独收窄:默认 14px 宽、直角、
-   不透明,在细滚动条的其余界面里显得又粗又硬。
-   宽度由 `overviewRuler.width` 这个 JS 选项决定(见 TerminalPane 的
-   TERMINAL_BASE_OPTIONS),这里只管滑块的画法 —— 用左右 margin 把
-   14px 的命中区收成 3px 的视觉宽度,命中区保持原样更好点中。 */
-.xterm .xterm-scrollable-element > .scrollbar > .slider {
+   `::-webkit-scrollbar` 规则,所以要单独收窄:默认 14px 宽、直角,
+   在细滚动条的其余界面里显得又粗又硬。
+   轨道宽 14px 是 xterm 的兜底值(`overviewRuler?.width || 14`),本仓库
+   两处 Terminal 都没设 `overviewRuler`。滑块由 JS 在构造时写死内联
+   `width: 14px; left: 0`,所以 `width` 这条必须 `!important` 才压得住。
+   剩下 11px 用 margin 分配:左 10px、右 1px —— 让这条滚动条贴着内容
+   右缘,与全局滚动条的 2.5px 边距观感接近(居中会留 6px,显得往里缩)。
+   只匹配 vertical:横向滑块的 width 是按比例逐帧重写的长度,被
+   `!important` 钉住就成了一个固定短条。它当前恒为隐藏,纯属防雷。
+   颜色不在这里设 —— xterm 会往 <body> 注入同名选择器(还带 :hover /
+   .active 三态)覆盖本规则,要改得去 lib/themes.ts 的 xterm 主题里
+   设 scrollbarSlider*Background,那样三态才一致。 */
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
   width: 3px !important;
-  margin-left: 5px;
+  margin-left: 10px;
+  margin-right: 1px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--subtle) 55%, transparent);
 }
 
 /* Drag handles sitting on top of the grid's gap lines. Wider than the
