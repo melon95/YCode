@@ -92,13 +92,16 @@ export function ProjectPickerMenu({ children, className, asSpan }: Props) {
   );
 }
 
-/// 箭头平时几乎看不见,hover 才实起来 —— 常驻一个实心箭头会让这行文字
-/// 看着像个下拉框控件,而它首先是一句话。
+/// 箭头常驻,但很淡(35%),hover 才实起来。
+///
+/// 原来平时是全透明的 —— 版面确实干净,代价是「这行字能点」只有把鼠标
+/// 移上去才知道,而没人会去试探一句看着像纯文本的话。留一个淡箭头是这
+/// 两者之间的折中:够一眼认出是可点的,又不至于让它读起来像个下拉框。
 function ChevronIcon() {
   return (
     <svg
-      className="flex-none opacity-0 transition-opacity duration-[var(--t-fast)] ease-smooth
-        group-hover:opacity-55 group-data-[popup-open]:opacity-55"
+      className="flex-none opacity-35 transition-opacity duration-[var(--t-fast)] ease-smooth
+        group-hover:opacity-70 group-data-[popup-open]:opacity-70"
       width="10"
       height="10"
       viewBox="0 0 24 24"
