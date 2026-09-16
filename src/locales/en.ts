@@ -52,7 +52,10 @@ export default {
 
   statusBar: {
     mainRepo: "main repo",
-    mainRepoOn: "main repo/{{branch}}",
+    // Parenthesised, not slashed: branch names contain slashes of their own
+    // ("feat/sno"), so "main repo/feat/sno" reads as one filesystem path
+    // rather than a repo plus its branch.
+    mainRepoOn: "main repo ({{branch}})",
     noWorktree: "no worktree",
     // The "×N" form is compact enough for the status bar and reads the same
     // at any count, so both plural branches are identical — they exist only

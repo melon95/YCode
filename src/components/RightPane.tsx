@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { checkoutLabel, useMainBranch } from "../lib/checkoutLabel";
 import { displaySessionTitle, useStore, type RightTab } from "../lib/store";
 import type { SessionView } from "../lib/types";
 import { FileTreePanel } from "./FileTreePanel";
@@ -69,6 +70,10 @@ export function RightPane() {
         sessions,
       )
     : null;
+  // 主仓库的当前分支,供各卡片的绑定 chip 使用。不按「当前是否指向
+  // worktree」跳过查询:几张卡各指各的目标,Files 卡在 worktree 上时
+  // 变更卡可能仍锁在主仓库,那时依然要显示分支。
+  const mainBranch = useMainBranch(activeProjectId);
   const activeWorkspaceSessionId = activeWorkspaceSession?.id;
   const activeWorkspaceRoot =
     activeWorkspaceSession?.worktree_path ?? activeProject?.repo_path;
@@ -125,10 +130,9 @@ export function RightPane() {
     : "none";
 
   // chip 文字如实反映当前跟随的目标:worktree 会话显示其分支,否则显示
-  // 主仓库;tooltip 里补充来源(锁定 / 跟随焦点 / 手选)与会话标题。
-  const changesBindLabel = changesSession?.worktree_path
-    ? (changesSession.branch ?? changesSession.base_branch ?? "worktree")
-    : t("statusBar.mainRepo");
+  // 主仓库(带上它 checked-out 的分支);tooltip 里补充来源(锁定 / 跟随
+  // 焦点 / 手选)与会话标题。措辞与状态栏共用 `checkoutLabel`。
+  const changesBindLabel = checkoutLabel(t, changesSession, mainBranch);
   const changesBindTitle = changesLockValid
     ? changesSession
       ? t("panels.lockedTo", {
@@ -465,12 +469,8 @@ export function RightPane() {
             <>
               <BindArrow />
               <span className="mono">
-                {/* checked-out 的分支,不是 base_branch —— 与变更卡一致。 */}
-                {activeWorkspaceSession?.worktree_path
-                  ? (activeWorkspaceSession.branch ??
-                    activeWorkspaceSession.base_branch ??
-                    "worktree")
-                  : t("statusBar.mainRepo")}
+                {/* 与变更卡、状态栏共用 `checkoutLabel`。 */}
+                {checkoutLabel(t, activeWorkspaceSession, mainBranch)}
               </span>
             </>
           }

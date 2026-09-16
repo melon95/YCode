@@ -1,12 +1,9 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { checkoutLabel, useMainBranch, worktreeLabel } from "../lib/checkoutLabel";
 import { toast } from "../lib/toast";
 import { useStore } from "../lib/store";
 import type { SessionView } from "../lib/types";
-
-function targetLabel(session: SessionView): string {
-  return session.branch ?? `ycode/${session.id.slice(-8)}`;
-}
 
 /**
  * Shared workspace switcher for every repo-facing surface in the right pane.
@@ -26,6 +23,9 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
     s.activeProjectId === projectId ? Object.keys(s.dirtyFiles).length : 0,
   );
   const setWorkspaceSessionId = useStore((s) => s.setWorkspaceSessionId);
+  // 下拉里「主仓库」那一项要带分支,所以无论当前选中的是不是 worktree
+  // 都得查 —— 这跟状态栏(只描述当前目标)不同。
+  const mainBranch = useMainBranch(projectId);
 
   const worktrees = useMemo(
     () =>
@@ -47,8 +47,10 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
     // `workspace-target-picker` 留作钩子:嵌在 canvas 工具条和 panel-card
     // 绑定标签里时要去掉 margin,那两处宿主还没迁移。
     <label
-      className="workspace-target-picker h-8 min-w-0 max-w-[150px] px-2 inline-flex items-center
-        flex-[0_1_150px] max-[1200px]:max-w-[124px] max-[1200px]:flex-[0_1_124px]
+      // 上限从 150px 放宽到 190px:「主仓库」这项带上分支后(`main repo
+      // (feat/AM-1241)`)在 150px 里会被截掉右半个括号,读不出分支名。
+      className="workspace-target-picker h-8 min-w-0 max-w-[190px] px-2 inline-flex items-center
+        flex-[0_1_190px] max-[1200px]:max-w-[150px] max-[1200px]:flex-[0_1_150px]
         border border-rule rounded-sm bg-panel-sunken text-muted
         focus-within:border-accent-half focus-within:shadow-[0_0_0_2px_var(--color-accent-ring)]"
     >
@@ -68,10 +70,12 @@ export function WorkspaceTargetPicker({ projectId }: { projectId: string }) {
         title={t("ui.workspaceTargetHint")}
         aria-label={t("ui.workspaceTarget")}
       >
-        <option value="">{t("statusBar.mainRepo")}</option>
+        {/* 「主仓库」这一项也带上它 checked-out 的分支 —— 与状态栏、
+            其余卡片的绑定 chip 是同一句话。 */}
+        <option value="">{checkoutLabel(t, null, mainBranch)}</option>
         {worktrees.map((session) => (
           <option key={session.id} value={session.id}>
-            {targetLabel(session)}
+            {worktreeLabel(session)}
           </option>
         ))}
       </select>

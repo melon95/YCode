@@ -8,9 +8,9 @@
 // a background project with a blocked agent still shows up while you're
 // heads-down somewhere else.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { gitBranch } from "../lib/ipc";
+import { checkoutLabel, useMainBranch } from "../lib/checkoutLabel";
 import { useStore } from "../lib/store";
 import { sessionLight, type SessionLight } from "../lib/types";
 import {
@@ -43,33 +43,15 @@ export function StatusBar() {
     activeProjectId ? (s.workspaceSessionByProject[activeProjectId] ?? null) : null,
   );
   const workspaceSession = workspaceSessionId ? sessions[workspaceSessionId] : null;
-  // 主仓库的当前 git 分支。切项目 / 切回主仓库时取一次;失败(非 git 目录等)
-  // 静默回落到「主仓库」。不做轮询 —— 状态栏不值得为一根分支名常驻开销,
-  // checkout 切换本身就是这里唯一会让答案变化的入口。
-  const [mainBranch, setMainBranch] = useState<string | null>(null);
-  useEffect(() => {
-    setMainBranch(null);
-    if (!activeProjectId || workspaceSession?.worktree_path) return;
-    let cancelled = false;
-    gitBranch(activeProjectId)
-      .then((info) => {
-        if (!cancelled) setMainBranch(info.head);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [activeProjectId, workspaceSession?.worktree_path]);
+  const mainBranch = useMainBranch(
+    activeProjectId,
+    !!workspaceSession?.worktree_path,
+  );
   // Which checkout the tools are pointed at — the same answer the terminal
   // card's picker gives, repeated here because the status bar is the one
-  // line that's visible no matter which panels are open.
-  // worktree 会话显示 checked-out 的分支(branch),不是它分叉自的
-  // base_branch —— 用户正在浏览的是前者,标成后者会让人以为在改主干。
-  const checkout = workspaceSession?.worktree_path
-    ? (workspaceSession.branch ?? workspaceSession.base_branch ?? "worktree")
-    : mainBranch
-      ? t("statusBar.mainRepoOn", { branch: mainBranch })
-      : t("statusBar.mainRepo");
+  // line that's visible no matter which panels are open. Shared with the
+  // panel cards via `checkoutLabel` so the two never word it differently.
+  const checkout = checkoutLabel(t, workspaceSession, mainBranch);
 
   // 状态点的统计是全局的(见文件头:后台项目里卡住的 agent 也该冒头),
   // 但 worktree 数不是 —— 它紧挨着「项目 · checkout」那一组显示,读起来

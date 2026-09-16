@@ -46,7 +46,9 @@ export default {
 
   statusBar: {
     mainRepo: "主仓库",
-    mainRepoOn: "主仓库/{{branch}}",
+    // 用括号不用斜杠:分支名自带斜杠(`feat/sno`),写成「主仓库/feat/sno」
+    // 会整串读成一条路径,而不是「主仓库 + 它的分支」。
+    mainRepoOn: "主仓库 ({{branch}})",
     noWorktree: "无 worktree",
     // 「worktree ×3」。worktree 是术语不译(与 `noWorktree` 一致),
     // 这里只是给它配个数量。
