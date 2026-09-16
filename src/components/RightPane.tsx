@@ -22,11 +22,15 @@ import { StackResizer } from "./ui/StackResizer";
 import { IconButton } from "./ui/IconButton";
 import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
+// 标签宽度跟着文件名走:basis 必须是 auto(内容宽),不能给固定值 ——
+// 给了 220px 的话两个短名标签就各占 220px、中间全是空白,而同一个标签
+// 单独在时却是窄的。grow 为 0,所以标签永远不会被拉宽去填满整条带;
+// shrink 为 1,标签挤不下时一起收窄(名字省略号截断)而不是直接溢出,
+// 收到 128px 的下限后才让整条带横向滚动 —— 再窄下去名字只剩 ".gitlab-…"
+// 这种读不出是哪个文件的残片,不如让它滚。
 const FILE_TAB = `inline-flex items-center gap-1.5 h-8 pt-0 pr-[7px] pb-0 pl-3
-  border-0 rounded-sm cursor-pointer font-[inherit] min-w-[112px]`.replace(
-  /\s+/g,
-  " ",
-);
+  border-0 rounded-sm cursor-pointer font-[inherit]
+  flex-[0_1_auto] min-w-[128px] max-w-[220px]`.replace(/\s+/g, " ");
 
 export function RightPane() {
   const { t } = useTranslation();
@@ -366,15 +370,11 @@ export function RightPane() {
     window.dispatchEvent(new CustomEvent("ycode:close-file", { detail: path }));
   }
 
-  return (
-    <section className="h-full bg-bg flex flex-col min-h-0 min-w-0">
-      {/* Panel switching moved to the canvas toolbar (see CanvasToolbar) —
-          the strip here now only carries open editor files, which are a
-          different axis: *which file*, not *which panel*. With no files open
-          it isn't rendered at all, rather than leaving an empty band. */}
-      {openFiles.length > 0 && (
+  // 打开的文件标签条。它属于编辑器,所以渲染在 Files 卡片内部 —— 放在
+  // 右栏顶部时既和卡片栈脱节,关掉 Files 卡片后还会孤零零地挂在那儿。
+  const fileTabs = openFiles.length > 0 && (
       <div
-        className="flex items-center gap-0.5 py-2 px-3.5 min-h-[54px] bg-surface
+        className="flex items-center gap-0.5 py-1 px-2 bg-surface
           border-b border-rule overflow-x-auto flex-none
           [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
@@ -389,12 +389,6 @@ export function RightPane() {
               type="button"
               className={[
                 FILE_TAB,
-                // A lone open tab has the whole strip to itself — let it grow
-                // to fit the full filename instead of clamping at 220px and
-                // ellipsizing.
-                openFiles.length === 1
-                  ? "max-w-none flex-[0_1_auto]"
-                  : "max-w-[220px] flex-[0_1_220px]",
                 active
                   ? "bg-panel-raised text-text shadow-[inset_0_0_0_1px_var(--color-rule)]"
                   : "bg-transparent text-muted hover:bg-highlight-hover hover:text-text",
@@ -446,7 +440,10 @@ export function RightPane() {
           );
         })}
       </div>
-      )}
+    );
+
+  return (
+    <section className="h-full bg-bg flex flex-col min-h-0 min-w-0">
       {/* `panel-stack` 留作钩子:solo 联动是 `:has()`,几个 host 的布局
           修正是后代选择器,两者元素自己都写不出来。
           gap 归零是因为卡片间距由 StackResizer 的 8px 高度承担,留着 gap
@@ -497,13 +494,18 @@ export function RightPane() {
             hasOpenFiles &&
             !!selectedFilePath;
           return (
+            <>
+            {/* 标签条跟着卡片走:卡片关掉它就一起消失(不再孤零零留在
+                右栏顶部)。卡片开着时只要有打开的文件就画 —— 此刻即使正
+                在看文件树,点一下标签仍要能切回编辑器。 */}
+            {workspaceVisible && fileTabs}
             <div
               className={[
                 // 行高必须钉死在卡片内,不许跟随内容。缺了这条,树的容器
                 // 被内容越撑越高,ResizeObserver 把更大的高度喂回虚拟化
                 // 列表,列表再渲染更多行 —— 一个每帧自增的反馈循环,表现
                 // 为文件树「从上往下慢慢渲染」。
-                "h-full min-h-0 grid grid-rows-[minmax(0,1fr)]",
+                "flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]",
                 !workspaceVisible && "hidden",
                 editorVisible
                   ? // 3-column template (tree | 1px handle | editor) comes in
@@ -599,6 +601,7 @@ export function RightPane() {
                 </div>
               )}
             </div>
+            </>
           );
         })()}
         {!activeProject && (
