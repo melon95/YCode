@@ -874,6 +874,19 @@ body {
   background-color: transparent !important;
 }
 
+/* xterm 自绘滚动条(VS Code 那套 scrollable-element),走不到全局的
+   `::-webkit-scrollbar` 规则,所以要单独收窄:默认 14px 宽、直角、
+   不透明,在细滚动条的其余界面里显得又粗又硬。
+   宽度由 `overviewRuler.width` 这个 JS 选项决定(见 TerminalPane 的
+   TERMINAL_BASE_OPTIONS),这里只管滑块的画法 —— 用左右 margin 把
+   14px 的命中区收成 3px 的视觉宽度,命中区保持原样更好点中。 */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  width: 3px !important;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--subtle) 55%, transparent);
+}
+
 /* Drag handles sitting on top of the grid's gap lines. Wider than the
    8px gap so the grab area is forgiving; centered via transform so the
    `left`/`top` values match the split percentage exactly. z-index 50

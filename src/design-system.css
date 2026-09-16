@@ -52,13 +52,16 @@ select {
   font-family: var(--font-ui);
 }
 
+/* 滚动条按「够用就好」调细:轨道 8px,减去两侧各 2.5px 的透明边框后
+   滑块实际 3px。边框是留白手段 —— `background-clip: padding-box` 让
+   背景只画在内边距区,滑块因此不贴着内容边缘。 */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
+  border: 2.5px solid transparent;
   border-radius: 999px;
   background: color-mix(in srgb, var(--subtle) 55%, transparent);
   background-clip: padding-box;
