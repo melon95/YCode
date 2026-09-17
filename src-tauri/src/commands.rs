@@ -15,7 +15,7 @@ use ycode_ipc::{
     AgentProfileView, ConfigView, CreateProjectRequest, CreateSessionRequest,
     DiscoveredSessionView, FileContents, FileEntry, GitBranchInfo, GitBranchListView,
     GitFileChange, GitFileDiff, GitHunkAction, LspManifestView, OpenInExternalEditorRequest,
-    ProjectView, RenameSessionRequest, ResizePtyRequest, ReviewCheckpointView, SearchHit,
+    ProjectView, RenameSessionRequest, ResizePtyRequest, SearchHit,
     SessionView, SpawnPtyRequest, SystemProxyView, TodoView, UnifiedEvent, WorkspaceUsageView,
     WorktreeCloseState, WriteFileRequest, WritePtyRequest,
 };
@@ -442,72 +442,6 @@ pub async fn git_diff_file(
     state
         .service
         .git_diff_file(project_id, session_id, file_path)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn git_branch_status(
-    state: State<'_, AppState>,
-    project_id: String,
-    session_id: String,
-) -> Result<Vec<GitFileChange>, String> {
-    state
-        .service
-        .git_branch_status(project_id, session_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn git_branch_diff_file(
-    state: State<'_, AppState>,
-    project_id: String,
-    session_id: String,
-    file_path: String,
-) -> Result<GitFileDiff, String> {
-    state
-        .service
-        .git_branch_diff_file(project_id, session_id, file_path)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn list_review_checkpoints(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> Result<Vec<ReviewCheckpointView>, String> {
-    state
-        .service
-        .list_review_checkpoints(project_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn git_checkpoint_status(
-    state: State<'_, AppState>,
-    project_id: String,
-    checkpoint_id: String,
-) -> Result<Vec<GitFileChange>, String> {
-    state
-        .service
-        .git_checkpoint_status(project_id, checkpoint_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn git_checkpoint_diff_file(
-    state: State<'_, AppState>,
-    project_id: String,
-    checkpoint_id: String,
-    file_path: String,
-) -> Result<GitFileDiff, String> {
-    state
-        .service
-        .git_checkpoint_diff_file(project_id, checkpoint_id, file_path)
         .await
         .map_err(|e| e.to_string())
 }

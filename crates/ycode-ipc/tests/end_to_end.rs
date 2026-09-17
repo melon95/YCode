@@ -541,35 +541,6 @@ async fn isolated_session_with_turn(
     (project.id, session.id, checkpoint.id)
 }
 
-/// A file the agent created inside an isolated worktree has no counterpart in
-/// the main checkout. Reviewing that turn must diff against the worktree, or
-/// the per-file path validation rejects a path that legitimately exists.
-#[tokio::test(flavor = "multi_thread")]
-async fn checkpoint_review_reads_files_created_inside_the_session_worktree() {
-    let (svc, _container, repo) = git_fixture().await;
-    init_repo_with_commit(&repo);
-    let (project_id, session_id, checkpoint_id) =
-        isolated_session_with_turn(&svc, &repo, "checkpoint-worktree").await;
-
-    let changes = svc
-        .git_checkpoint_status(project_id.clone(), checkpoint_id.clone())
-        .await
-        .unwrap();
-    assert!(
-        changes.iter().any(|c| c.path == "src/brandnew/f.ts"),
-        "turn should list the worktree-only file, got {:?}",
-        changes.iter().map(|c| &c.path).collect::<Vec<_>>()
-    );
-
-    let diff = svc
-        .git_checkpoint_diff_file(project_id, checkpoint_id, "src/brandnew/f.ts".into())
-        .await
-        .expect("worktree-only file must be reviewable");
-    assert!(diff.patch.contains("+export const x = 1;"));
-
-    svc.kill_session(session_id).await.ok();
-}
-
 /// Pruning deletes the low-sequence rows, so the oldest surviving checkpoint
 /// has nothing left to diff against. It must come back with
 /// `has_previous: false` — before the fix it was derived from `sequence > 0`,
@@ -635,16 +606,6 @@ async fn pruned_sessions_oldest_survivor_is_not_reviewable() {
     );
     let newest = listed.iter().find(|c| c.sequence == 3).unwrap();
     assert!(newest.has_previous, "the newest turn still diffs against 2");
-
-    // The backend agrees with what it advertised: reviewing the newest works,
-    // and the oldest survivor is rejected rather than offered.
-    svc.git_checkpoint_status(project.id.clone(), newest.id.clone())
-        .await
-        .expect("advertised turn must be reviewable");
-    assert!(svc
-        .git_checkpoint_status(project.id.clone(), oldest.id.clone())
-        .await
-        .is_err());
 
     svc.kill_session(session.id).await.ok();
 }

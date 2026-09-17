@@ -968,41 +968,11 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("git_diff task: {e}")))?
     }
 
-    /// Committed changes on an isolated worktree branch relative to the merge
-    /// base with the branch it forked from. Uncommitted edits remain exclusively
-    /// in the Working tree scope so the two review modes never double-count.
-    pub async fn git_branch_status(
-        &self,
-        project_id: String,
-        session_id: String,
-    ) -> Result<Vec<GitFileChange>, IpcError> {
-        let (repo, base_branch) = self
-            .resolve_branch_review_target(&project_id, &session_id)
-            .await?;
-        tokio::task::spawn_blocking(move || git_branch_status_blocking(&repo, &base_branch))
-            .await
-            .map_err(|e| IpcError::BadInput(format!("git branch status task: {e}")))?
-    }
-
-    pub async fn git_branch_diff_file(
-        &self,
-        project_id: String,
-        session_id: String,
-        file_path: String,
-    ) -> Result<GitFileDiff, IpcError> {
-        let (repo, base_branch) = self
-            .resolve_branch_review_target(&project_id, &session_id)
-            .await?;
-        tokio::task::spawn_blocking(move || {
-            git_branch_diff_file_blocking(&repo, &base_branch, file_path)
-        })
-        .await
-        .map_err(|e| IpcError::BadInput(format!("git branch diff task: {e}")))?
-    }
-
     /// Every durable baseline/turn checkpoint for a project, newest first.
-    /// Sequence-zero baselines are returned so the frontend can explain the
-    /// timeline, but only entries with `has_previous` form a reviewable turn.
+    ///
+    /// 不再有 UI 消费它 —— 逐回合评审的界面已撤。留着是因为捕获、裁剪
+    /// (`keep`)和归档清理这三条链路仍在跑,而「时间线里还剩哪些回合」是
+    /// 它们唯一可观测的出口(见 end_to_end 的 prune / archive 两个用例)。
     pub async fn list_review_checkpoints(
         &self,
         project_id: String,
@@ -1018,78 +988,6 @@ impl Service {
             .into_iter()
             .map(ReviewCheckpointView::from)
             .collect())
-    }
-
-    /// Files changed during one completed agent turn (the selected checkpoint
-    /// compared with the immediately preceding checkpoint in the same session).
-    pub async fn git_checkpoint_status(
-        &self,
-        project_id: String,
-        checkpoint_id: String,
-    ) -> Result<Vec<GitFileChange>, IpcError> {
-        let (repo, before, after) = self
-            .resolve_checkpoint_review_target(&project_id, &checkpoint_id)
-            .await?;
-        tokio::task::spawn_blocking(move || git_range_status_blocking(&repo, &before, &after))
-            .await
-            .map_err(|e| IpcError::BadInput(format!("git checkpoint status task: {e}")))?
-    }
-
-    pub async fn git_checkpoint_diff_file(
-        &self,
-        project_id: String,
-        checkpoint_id: String,
-        file_path: String,
-    ) -> Result<GitFileDiff, IpcError> {
-        let (repo, before, after) = self
-            .resolve_checkpoint_review_target(&project_id, &checkpoint_id)
-            .await?;
-        tokio::task::spawn_blocking(move || {
-            git_range_diff_file_blocking(
-                &repo,
-                &before,
-                &after,
-                file_path,
-                GitDiffSource::Checkpoint,
-            )
-        })
-        .await
-        .map_err(|e| IpcError::BadInput(format!("git checkpoint diff task: {e}")))?
-    }
-
-    async fn resolve_checkpoint_review_target(
-        &self,
-        project_id: &str,
-        checkpoint_id: &str,
-    ) -> Result<(Utf8PathBuf, String, String), IpcError> {
-        let checkpoint = self.db.checkpoints().get(checkpoint_id).await?;
-        if checkpoint.project_id != project_id {
-            return Err(IpcError::BadInput(format!(
-                "checkpoint {checkpoint_id} does not belong to project {project_id}"
-            )));
-        }
-        let previous = self
-            .db
-            .checkpoints()
-            .previous(&checkpoint.session_id, checkpoint.sequence)
-            .await?
-            .ok_or_else(|| {
-                IpcError::BadInput("the initial checkpoint has no previous turn state".into())
-            })?;
-        // Run the diff in the same checkout the snapshot was captured from.
-        // The commits live in the shared object database either way, but the
-        // per-file path validation resolves against this root — a file the
-        // agent created inside an isolated worktree has no counterpart in the
-        // main checkout, so reviewing it from there would fail outright.
-        // Fall back to the main tree when the worktree is already gone.
-        let project = self.db.projects().get(project_id).await?;
-        let session = self.db.sessions().get(&checkpoint.session_id).await?;
-        let repo = session
-            .worktree_path
-            .map(Utf8PathBuf::from)
-            .filter(|path| path.exists())
-            .unwrap_or_else(|| Utf8PathBuf::from(project.repo_path));
-        Ok((repo, previous.commit_sha, checkpoint.commit_sha))
     }
 
     /// Apply exactly one displayed hunk to the index or working tree. The
@@ -1111,28 +1009,6 @@ impl Service {
         })
         .await
         .map_err(|e| IpcError::BadInput(format!("git hunk task: {e}")))?
-    }
-
-    async fn resolve_branch_review_target(
-        &self,
-        project_id: &str,
-        session_id: &str,
-    ) -> Result<(Utf8PathBuf, String), IpcError> {
-        let session = self.db.sessions().get(session_id).await?;
-        if session.project_id != project_id {
-            return Err(IpcError::BadInput(format!(
-                "session {session_id} does not belong to project {project_id}"
-            )));
-        }
-        let repo = session
-            .worktree_path
-            .map(Utf8PathBuf::from)
-            .ok_or_else(|| IpcError::BadInput("selected session has no worktree".into()))?;
-        let base_branch = session
-            .base_branch
-            .filter(|branch| !branch.trim().is_empty())
-            .ok_or_else(|| IpcError::BadInput("selected worktree has no base branch".into()))?;
-        Ok((repo, base_branch))
     }
 
     /// Stage every working-tree change (`git add -A`) and commit it with
@@ -1247,7 +1123,7 @@ impl Service {
             .map_err(|e| IpcError::BadInput(format!("git_push task: {e}")))?
     }
 
-    /// List local branches for the header's branch-switcher menu.
+    /// List local branches for the header's new-session branch picker.
     pub async fn git_list_branches(
         &self,
         project_id: String,
@@ -3222,132 +3098,11 @@ fn git_diff_file_blocking(repo: &Utf8Path, file_path: String) -> Result<GitFileD
     })
 }
 
-fn git_branch_status_blocking(
-    repo: &Utf8Path,
-    base_branch: &str,
-) -> Result<Vec<GitFileChange>, IpcError> {
-    let range = branch_review_range(base_branch)?;
-    git_diff_range_status_blocking(repo, &range)
-}
-
-fn git_range_status_blocking(
-    repo: &Utf8Path,
-    before: &str,
-    after: &str,
-) -> Result<Vec<GitFileChange>, IpcError> {
-    validate_checkpoint_oid(before)?;
-    validate_checkpoint_oid(after)?;
-    git_diff_range_status_blocking(repo, &format!("{before}..{after}"))
-}
-
-fn git_diff_range_status_blocking(
-    repo: &Utf8Path,
-    range: &str,
-) -> Result<Vec<GitFileChange>, IpcError> {
-    use std::process::Command;
-
-    let status_out = Command::new("git")
-        .arg("-C")
-        .arg(repo.as_std_path())
-        .args(["diff", "--name-status", "-z", "--no-renames"])
-        .arg(range)
-        .output()
-        .map_err(|e| IpcError::BadInput(format!("spawn branch status: {e}")))?;
-    if !status_out.status.success() {
-        let stderr = String::from_utf8_lossy(&status_out.stderr).into_owned();
-        return Err(IpcError::BadInput(format!(
-            "git branch status failed: {stderr}"
-        )));
-    }
-
-    let numstat_out = Command::new("git")
-        .arg("-C")
-        .arg(repo.as_std_path())
-        .args(["diff", "--numstat", "-z", "--no-renames"])
-        .arg(range)
-        .output()
-        .map_err(|e| IpcError::BadInput(format!("spawn branch numstat: {e}")))?;
-    if !numstat_out.status.success() {
-        let stderr = String::from_utf8_lossy(&numstat_out.stderr).into_owned();
-        return Err(IpcError::BadInput(format!(
-            "git branch numstat failed: {stderr}"
-        )));
-    }
-    let numstat = parse_numstat_z(&numstat_out.stdout);
-
-    let status_text = String::from_utf8_lossy(&status_out.stdout);
-    let fields: Vec<&str> = status_text
-        .split('\0')
-        .filter(|field| !field.is_empty())
-        .collect();
-    let mut changes = Vec::new();
-    for pair in fields.chunks_exact(2) {
-        let status = match pair[0].as_bytes().first().copied() {
-            Some(b'A') => GitFileStatus::Added,
-            Some(b'D') => GitFileStatus::Deleted,
-            Some(b'M') => GitFileStatus::Modified,
-            _ => GitFileStatus::Other,
-        };
-        let path = pair[1].to_string();
-        let (additions, deletions) = numstat.get(&path).copied().unwrap_or((0, 0));
-        changes.push(GitFileChange {
-            path,
-            status,
-            additions,
-            deletions,
-            staged: false,
-        });
-    }
-    changes.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(changes)
-}
-
-fn git_branch_diff_file_blocking(
-    repo: &Utf8Path,
-    base_branch: &str,
-    file_path: String,
-) -> Result<GitFileDiff, IpcError> {
-    let _ = resolve_under_repo(repo, &file_path)?;
-    let range = branch_review_range(base_branch)?;
-    git_diff_range_file_blocking(repo, &range, file_path, GitDiffSource::Branch)
-}
-
-fn git_range_diff_file_blocking(
-    repo: &Utf8Path,
-    before: &str,
-    after: &str,
-    file_path: String,
-    source: GitDiffSource,
-) -> Result<GitFileDiff, IpcError> {
-    validate_checkpoint_oid(before)?;
-    validate_checkpoint_oid(after)?;
-    git_diff_range_file_blocking(repo, &format!("{before}..{after}"), file_path, source)
-}
-
-fn git_diff_range_file_blocking(
-    repo: &Utf8Path,
-    range: &str,
-    file_path: String,
-    source: GitDiffSource,
-) -> Result<GitFileDiff, IpcError> {
-    let _ = resolve_under_repo(repo, &file_path)?;
-    let patch = git_diff_output(repo, &[range, "--"], Some(&file_path))?;
-    Ok(GitFileDiff { patch, source })
-}
-
 fn validate_checkpoint_oid(value: &str) -> Result<(), IpcError> {
     if !(40..=64).contains(&value.len()) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(IpcError::BadInput("invalid checkpoint object id".into()));
     }
     Ok(())
-}
-
-fn branch_review_range(base_branch: &str) -> Result<String, IpcError> {
-    let base = base_branch.trim();
-    if base.is_empty() || base.starts_with('-') || base.contains(char::is_whitespace) {
-        return Err(IpcError::BadInput("invalid base branch".into()));
-    }
-    Ok(format!("{base}...HEAD"))
 }
 
 fn git_diff_output(
@@ -4039,6 +3794,7 @@ fn git_push_blocking(repo: &Utf8Path) -> Result<(), IpcError> {
 /// worktrees). git forbids checking one of these out in a second tree, so the
 /// main tree's branch switcher must exclude them. The main worktree's own
 /// branch (the current one) is not included — it stays listed as current.
+
 fn linked_worktree_branches(repo: &Utf8Path) -> std::collections::HashSet<String> {
     let mut occupied = std::collections::HashSet::new();
     let out = std::process::Command::new("git")
@@ -5408,32 +5164,6 @@ mod tests {
     }
 
     #[test]
-    fn branch_review_lists_and_diffs_committed_changes_from_merge_base() {
-        let tmp = tempfile::tempdir().unwrap();
-        let repo = init_repo_with_commit(tmp.path());
-        let base = current_branch(&repo).unwrap();
-        git_in(repo.as_std_path(), &["checkout", "-q", "-b", "feature"]);
-        std::fs::write(repo.join("f.txt"), "feature\n").unwrap();
-        std::fs::write(repo.join("new.txt"), "one\ntwo\n").unwrap();
-        git_in(repo.as_std_path(), &["add", "-A"]);
-        git_in(repo.as_std_path(), &["commit", "-q", "-m", "feature"]);
-
-        let changes = git_branch_status_blocking(&repo, &base).unwrap();
-        assert_eq!(changes.len(), 2);
-        assert!(changes
-            .iter()
-            .any(|change| change.path == "f.txt" && change.status == GitFileStatus::Modified));
-        assert!(changes
-            .iter()
-            .any(|change| change.path == "new.txt" && change.status == GitFileStatus::Added));
-
-        let diff = git_branch_diff_file_blocking(&repo, &base, "new.txt".into()).unwrap();
-        assert_eq!(diff.source, GitDiffSource::Branch);
-        assert!(diff.patch.contains("+one"));
-        assert!(diff.patch.contains("+two"));
-    }
-
-    #[test]
     fn checkpoints_capture_uncommitted_and_untracked_files_without_touching_index() {
         let tmp = tempfile::tempdir().unwrap();
         let repo = init_repo_with_commit(tmp.path());
@@ -5449,24 +5179,20 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let changes = git_range_status_blocking(&repo, &baseline, &turn).unwrap();
-        assert!(changes
-            .iter()
-            .any(|change| change.path == "f.txt" && change.status == GitFileStatus::Modified));
-        assert!(changes
-            .iter()
-            .any(|change| change.path == "new.txt" && change.status == GitFileStatus::Added));
-        let diff = git_range_diff_file_blocking(
-            &repo,
-            &baseline,
-            &turn,
-            "new.txt".into(),
-            GitDiffSource::Checkpoint,
-        )
-        .unwrap();
-        assert_eq!(diff.source, GitDiffSource::Checkpoint);
-        assert!(diff.patch.contains("+new"));
-        assert!(diff.patch.contains("+file"));
+        // 快照之间的比对不再有专门的 IPC(评审界面已撤),直接问 git:
+        // 这条断言要守的是「捕获确实把未提交和未跟踪的内容写进了快照」。
+        let named = git_out(
+            repo.as_std_path(),
+            &["diff", "--name-status", &format!("{baseline}..{turn}")],
+        );
+        assert!(named.contains("M\tf.txt"), "{named:?}");
+        assert!(named.contains("A\tnew.txt"), "{named:?}");
+        let patch = git_out(
+            repo.as_std_path(),
+            &["diff", &format!("{baseline}..{turn}"), "--", "new.txt"],
+        );
+        assert!(patch.contains("+new"));
+        assert!(patch.contains("+file"));
 
         assert!(git_out(repo.as_std_path(), &["diff", "--cached"]).is_empty());
         let status = git_out(repo.as_std_path(), &["status", "--porcelain"]);

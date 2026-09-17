@@ -200,13 +200,15 @@ describe("RightPane 卡片头计数", () => {
     vi.clearAllMocks();
   });
 
-  it("变更卡片显示 diff 文件数(ChangesPanel 经 onFileCount 上报)", async () => {
+  // 文件数不再挂在卡片头上(它和面板头部的 +/− 同属一句话,一起显示在
+  // 面板里),但上报链路仍在 —— 画布工具条的角标读的就是这个字段。
+  it("变更面板上报的 diff 文件数进入共享 store(工具条角标用)", async () => {
     render(<RightPane />);
-    await waitFor(() =>
-      expect(screen.getByText(i18next.t("panels.fileCount", { count: 3 }))).toBeInTheDocument(),
-    );
-    // 工具条角标共用的 store 字段也被写入。
-    expect(useStore.getState().changesFileCount).toBe(3);
+    await waitFor(() => expect(useStore.getState().changesFileCount).toBe(3));
+    const changesCard = screen.getByRole("region", {
+      name: i18next.t("panels.changes"),
+    });
+    expect(changesCard.querySelector(".pcard-count")).toBeNull();
   });
 
   it("待办卡片显示未完成 todo 数(不含 done)", () => {

@@ -2467,12 +2467,17 @@ textarea.native-input {
   height: 100%;
   min-height: 0;
   background: var(--bg);
+  /* 头部那排工具按响应式收缩,量的是这块面板自己的宽度,不是视口 ——
+     右栏是用户拖出来的,屏幕再宽也可能只剩 380px。 */
+  container: changes / inline-size;
 }
 
 .changes-panel-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
+  row-gap: 8px;
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--rule);
   flex: 0 0 auto;
@@ -2498,138 +2503,22 @@ textarea.native-input {
   border-color: var(--accent);
 }
 
-/* Live branch label — replaces the old static "Working Tree" title with the
-   real HEAD: branch name (or short SHA when detached) + ahead/behind. Doubles
-   as the trigger for the branch-switcher menu. */
-.changes-panel-branch-wrap {
-  /* Size to the branch name and never shrink — otherwise the adjacent
-     `flex: 1` count collapses the name's min-content (it has overflow:hidden)
-     to almost nothing. The name itself caps at a px width for long branches. */
-  flex: 0 0 auto;
-  position: relative;
-}
-
+/* Live branch label — the real HEAD: branch name (or short SHA when detached)
+   plus ahead/behind. Read-only; switching branches lives on the new-session
+   card, where the working tree is likely clean enough for git to allow it. */
 .changes-panel-branch {
+  /* 可以被压缩,但压力优先由右边的计数吃掉(它 flex-basis 是 0)——
+     早先写死 `0 0 auto` 是为了不被计数挤扁,代价是面板一窄整条头部就
+     溢出卡片,分支名和远端按钮一起被 overflow:hidden 裁掉。 */
+  flex: 0 1 auto;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--text);
-  border: 0;
-  background: transparent;
-  padding: 2px 4px;
-  margin: -2px -4px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
-}
-
-.changes-panel-branch:hover:not(:disabled) {
-  color: var(--accent);
-  background: var(--hover);
-}
-
-.changes-panel-branch:disabled {
-  cursor: default;
 }
 
 .changes-panel-branch > svg {
-  flex: 0 0 auto;
-  color: var(--muted);
-}
-
-/* Down-caret hint that the label is a menu. The shared ChevronIcon points
-   right, so rotate it to point down; flip when the menu is open. */
-.changes-panel-branch-caret {
-  display: inline-flex;
-  color: var(--subtle);
-  transform: rotate(90deg);
-  transition: transform var(--duration-fast) var(--ease-out);
-}
-
-.changes-panel-branch-caret > svg {
-  width: 12px;
-  height: 12px;
-}
-
-.changes-panel-branch[aria-expanded="true"] .changes-panel-branch-caret {
-  transform: rotate(-90deg);
-}
-
-/* Invisible full-viewport catcher so a click anywhere else closes the menu. */
-.changes-panel-branch-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
-
-.changes-panel-branch-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 41;
-  min-width: 180px;
-  max-width: 280px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 4px;
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
-}
-
-.changes-panel-branch-empty {
-  padding: 8px 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.changes-panel-branch-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 0;
-  background: transparent;
-  border-radius: 5px;
-  color: var(--text);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.changes-panel-branch-item:hover:not(:disabled) {
-  background: var(--hover);
-}
-
-.changes-panel-branch-item:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.changes-panel-branch-item.current {
-  color: var(--accent);
-}
-
-.changes-panel-branch-check {
-  flex: 0 0 auto;
-  width: 12px;
-  color: var(--accent);
-  font-size: 11px;
-}
-
-.changes-panel-branch-item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-}
-
-.changes-panel-branch-item-spin {
   flex: 0 0 auto;
   color: var(--muted);
 }
@@ -2658,8 +2547,27 @@ textarea.native-input {
   color: var(--muted);
 }
 
+/* detached HEAD 提示。平时不出现,出现时要能一眼看出「现在不在任何分支
+   上」—— 用警示色而不是 muted。 */
+.changes-panel-detached {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--st-working, var(--accent));
+}
+
 .changes-panel-count {
-  flex: 1;
+  /* basis 0:只吃剩余空间,不参与「我本来要多宽」的争抢,所以空间不够时
+     第一个让步的是它(卡片标题上已经有一份文件数)。 */
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);

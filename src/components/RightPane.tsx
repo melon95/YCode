@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { checkoutLabel, useMainBranch } from "../lib/checkoutLabel";
 import { displaySessionTitle, useStore, type RightTab } from "../lib/store";
@@ -171,10 +171,9 @@ export function RightPane() {
     );
   }, [activeProject, changesSession]);
 
-  // —— 卡片头计数 ——
-  // diff 文件数由 ChangesPanel 经 onFileCount 上报进 store(画布工具条
-  // 角标共用);面板关闭/无项目时清空,避免角标挂着过期数字。
-  const changesFileCount = useStore((s) => s.changesFileCount);
+  // —— 画布工具条的角标 ——
+  // diff 文件数由 ChangesPanel 经 onFileCount 上报进 store;面板关闭/无
+  // 项目时清空,避免角标挂着过期数字。
   const setChangesFileCount = useStore((s) => s.setChangesFileCount);
   const changesMounted = !!activeProject && isOpen("changes");
   useEffect(() => {
@@ -219,6 +218,10 @@ export function RightPane() {
   // pointermove effect below. A ref (not state) so updating it during a
   // drag doesn't trigger re-renders.
   const dragStartRef = useRef<{ x: number; w: number } | null>(null);
+  // 拖拽途中的宽度只写进 CSS 变量(见 gridRef),不进 state —— 松手时才
+  // 落一次。这里存最后一次的值给 pointerup 用。
+  const liveWidthRef = useRef(fileTreeWidth);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const onResizerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       // Only the primary mouse button / single touch. Right-clicks shouldn't
@@ -226,6 +229,7 @@ export function RightPane() {
       if (e.button !== 0) return;
       e.preventDefault();
       dragStartRef.current = { x: e.clientX, w: fileTreeWidth };
+      liveWidthRef.current = fileTreeWidth;
       setResizing(true);
     },
     [fileTreeWidth],
@@ -238,15 +242,27 @@ export function RightPane() {
   // `resizing` makes start/stop symmetric.
   useEffect(() => {
     if (!resizing) return;
+    // 每帧只改一个 CSS 变量。原先这里 setFileTreeWidth,于是每一次
+    // pointermove 都要重渲染整个右栏 —— 变更卡那棵上千行的文件树、编辑
+    // 器、终端全跟着走一遍,还顺带同步写一次 localStorage(那个 effect 挂
+    // 在 fileTreeWidth 上)。拖起来自然发涩。
     const onMove = (ev: PointerEvent) => {
       const start = dragStartRef.current;
       if (!start) return;
       const dx = ev.clientX - start.x;
-      setFileTreeWidth(
-        Math.min(FILE_TREE_MAX, Math.max(FILE_TREE_MIN, start.w + dx)),
+      const next = Math.min(
+        FILE_TREE_MAX,
+        Math.max(FILE_TREE_MIN, start.w + dx),
       );
+      liveWidthRef.current = next;
+      gridRef.current?.style.setProperty("--file-tree-w", `${next}px`);
     };
-    const onUp = () => setResizing(false);
+    // 松手时才落进 state:这一次重渲染是必要的(要持久化,也要让下次
+    // 挂载拿到正确的初值),但一次拖拽只发生一次。
+    const onUp = () => {
+      setFileTreeWidth(liveWidthRef.current);
+      setResizing(false);
+    };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     // Keep the cursor steady and prevent text selection during the drag,
@@ -527,14 +543,19 @@ export function RightPane() {
               ]
                 .filter(Boolean)
                 .join(" ")}
+              ref={gridRef}
               style={
                 editorVisible
-                  ? {
+                  ? ({
                       // 3-column grid only in editor mode: tree | 1px handle |
                       // editor. 只有文件树时不加这个内联样式,由 class 上的
                       // `grid-cols-[1fr]` 决定。
-                      gridTemplateColumns: `${fileTreeWidth}px 1px minmax(0, 1fr)`,
-                    }
+                      //
+                      // 宽度走 CSS 变量而不是直接写进 template:拖拽时只改
+                      // 这一个变量,React 完全不参与(见 onMove)。
+                      "--file-tree-w": `${fileTreeWidth}px`,
+                      gridTemplateColumns: "var(--file-tree-w) 1px minmax(0, 1fr)",
+                    } as CSSProperties)
                   : undefined
               }
             >
@@ -629,12 +650,10 @@ export function RightPane() {
               </span>
             </>
           }
-          // 预览稿的「3 个文件」计数;仅在面板挂载、数字可信时显示。
-          count={
-            changesFileCount != null
-                  ? t("panels.fileCount", { count: changesFileCount })
-                  : undefined
-          }
+          // 文件数不放这儿:它和面板头部那行的 +/− 是同一句话的两半,
+          // 拆到两行里读起来像两组不相干的数字。标题只留「绑到哪个
+          // checkout」这一件标题该说的事。(画布工具条的角标另有来源,
+          // 直接读 store.changesFileCount。)
           // 预览稿的 #chg-pin:锁定后停止跟随焦点,固定在锁定那一刻的目标。
           actions={
             <IconButton
@@ -667,7 +686,6 @@ export function RightPane() {
               key={changesKey}
               projectId={activeProject.id}
               sessionId={changesSessionId}
-              baseBranch={changesSession?.base_branch ?? undefined}
               onFileCount={setChangesFileCount}
             />
           )}

@@ -8,12 +8,19 @@
 // see at a glance which CLIs they still need to install.
 
 import { useMemo, useState } from "react";
+import { Popover } from "@base-ui/react/popover";
 import { useTranslation } from "react-i18next";
-import { createSession, setProjectIsolateSessions } from "../lib/ipc";
+import {
+  createSession,
+  gitCheckoutBranch,
+  gitListBranches,
+  setProjectIsolateSessions,
+} from "../lib/ipc";
+import { useMainBranch } from "../lib/checkoutLabel";
 import { useStore } from "../lib/store";
-import type { AgentProfileView, ProjectView } from "../lib/types";
+import type { AgentProfileView, GitBranchListView, ProjectView } from "../lib/types";
 import { ProjectPickerMenu } from "./ui/ProjectPickerMenu";
-import { ToggleTrack } from "./ui/SettingControls";
+import { MENU_ITEM_ON, MENU_ITEM_REST, MENU_POPUP, POPOVER_LAYER } from "./ui/menuStyles";
 import { AgentIcon } from "./AgentIcon";
 
 const COMPOSER_LABEL =
@@ -21,7 +28,11 @@ const COMPOSER_LABEL =
 
 /// 卡内的可选项:内嵌元素不该有和外层卡一样强的投影,给一层极浅的贴底
 /// 阴影就够 —— 它要表达的是「可点」,不是「浮在上面」。
-const CARD = `flex items-center gap-[11px] w-full py-2.5 px-[13px] border-none rounded-xl
+///
+/// agent 排成一行(而不是一个一个竖着堆):这张卡上真正要做的决定只有
+/// 「用哪个 agent」,竖排把两三个等价选项拉成一列,读起来像清单而不像
+/// 一次选择,还把下面的 worktree/分支挤出视线。
+const CARD = `flex items-center gap-[11px] py-2.5 px-[13px] border-none rounded-xl
   bg-surface text-[inherit] text-left cursor-pointer
   shadow-[0_0_0_0.5px_rgba(0,0,0,0.04),0_1px_2px_rgba(0,0,0,0.05)]
   transition-[background-color,transform,box-shadow] duration-[var(--t-fast)] ease-smooth
@@ -29,8 +40,6 @@ const CARD = `flex items-center gap-[11px] w-full py-2.5 px-[13px] border-none r
   not-disabled:hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.06),0_2px_6px_rgba(0,0,0,0.08)]
   not-disabled:active:scale-[0.985] disabled:opacity-45 disabled:cursor-not-allowed`
   .replace(/\s+/g, " ");
-
-const CHIP = "font-mono text-[9.5px] rounded-[5px] py-px px-1.5";
 
 export function NewSessionPicker({ project }: { project: ProjectView }) {
   const { t } = useTranslation();
@@ -104,7 +113,7 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
         {error && <div className="form-error">{error}</div>}
 
         <div className={`${COMPOSER_LABEL} mt-[18px] mb-2`}>Agent</div>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
           {sorted.length === 0 && !error && (
             <div className="empty" style={{ padding: 12 }}>
               {t("picker.noAgents")}
@@ -115,13 +124,16 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
             <button
               key={agent.id}
               type="button"
-              className={CARD}
+              className={`${CARD} flex-1 basis-[46%] min-w-[150px]`}
               onClick={() => pick(agent)}
               disabled={!agent.available || creatingId !== null}
+              // 命令名从卡面移进 title:一行里并排两三个 agent,名字下面再
+              // 挂一行等宽的 `claude`/`codex` 会把每块撑到两倍高,而这个
+              // 信息只在「装没装、指向哪个二进制」时才有人看。
               title={
                 agent.available
-                        ? agent.command
-                        : t("picker.notOnPath", { command: agent.command })
+                  ? agent.command
+                  : t("picker.notOnPath", { command: agent.command })
               }
             >
               <span className="flex-none flex">
@@ -129,25 +141,11 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
                   icon={agent.icon}
                   variant={agent.icon_variant}
                   fallbackChar={agent.display_name}
-                  size={24}
+                  size={20}
                 />
               </span>
-              <span className="flex-1 min-w-0 flex flex-col gap-1">
-                <span className="text-[13px] font-semibold text-text">
-                  {agent.display_name}
-                </span>
-                {/* 「历史可读」的 chip 不在这里出现:选 agent 时要判断的是
-                    「用哪个」,而 introspect 能力对这个决定没有影响 —— 它是
-                    agent 的固有属性,不是此刻的选项差异。真要查它,设置页的
-                    Agent 目录里那份带 tooltip 的更合适。 */}
-                <span className="flex items-center gap-1.5 flex-wrap [&_code]:font-mono [&_code]:text-[10px] [&_code]:text-subtle">
-                  <code>{agent.command}</code>
-                  {!agent.available && (
-                    <span className={`${CHIP} text-st-working bg-st-working-tint`}>
-                      {t("picker.notInstalled")}
-                    </span>
-                  )}
-                </span>
+              <span className="flex-1 min-w-0 truncate text-[13px] font-semibold text-text">
+                {agent.display_name}
               </span>
               {creatingId === agent.id && (
                 <span className="flex-none font-mono text-[10px] text-st-working">
@@ -158,24 +156,210 @@ export function NewSessionPicker({ project }: { project: ProjectView }) {
           ))}
         </div>
 
-        <button
-          type="button"
-          className={`${CARD} items-start bg-transparent mt-3.5 py-[11px]`}
-          onClick={toggleIsolate}
-          aria-pressed={project.isolate_sessions}
-        >
-          {/* 与设置页同一套开关外观 —— 组件级统一,别再各处自绘。 */}
-          <ToggleTrack checked={project.isolate_sessions} />
-          <span className="flex-1 min-w-0 flex flex-col gap-[3px]">
-            <span
-              className="text-[12.5px] font-medium text-text"
+        {/* 分支与 worktree 合成一颗 pill:它们回答的是同一个问题 ——
+            这次会话在哪儿落地。勾上就各自开一棵 worktree(从左边这根分支
+            fork),不勾就直接在主仓库的这根分支上干活。两个控件挨在一起、
+            共用一圈描边,比拆成两块各自带底色的卡更像「一个决定」。 */}
+        <div className="flex items-center mt-3.5">
+          <div className="inline-flex items-stretch h-[34px] rounded-[10px] border border-rule bg-surface overflow-hidden">
+            <BranchPicker
+              projectId={project.id}
+              onError={setError}
+              onSwitched={() => setError(null)}
+            />
+            <span className="self-center w-px h-[17px] bg-rule" aria-hidden />
+            <label
+              className="flex items-center gap-[7px] px-[11px] cursor-pointer
+                transition-colors duration-[var(--t-fast)] ease-smooth hover:bg-panel-raised"
               title={t("picker.worktreeHint")}
             >
-              Worktree
-            </span>
-          </span>
-        </button>
+              <span className="relative flex-none inline-flex">
+                <input
+                  type="checkbox"
+                  className="peer size-[14px] appearance-none rounded-[4px] border-[1.5px] border-rule-strong
+                    bg-panel cursor-pointer transition-colors duration-[var(--t-fast)] ease-smooth
+                    hover:border-accent checked:bg-accent checked:border-accent"
+                  checked={project.isolate_sessions}
+                  onChange={toggleIsolate}
+                />
+                <CheckGlyph />
+              </span>
+              <span className="text-[12px] text-text">worktree</span>
+            </label>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+/// 勾。盖在 input 上方,跟着 `peer-checked` 显隐 —— input 自己
+/// `appearance-none` 后没有对勾可用,而伪元素画的折线在缩放下容易糊。
+function CheckGlyph() {
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 m-auto size-[10px] text-white
+        opacity-0 transition-opacity duration-[var(--t-fast)] peer-checked:opacity-100"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m5 13 4 4 10-10" />
+    </svg>
+  );
+}
+
+/// 主仓库的分支选择器。
+///
+/// 放在新建会话这张卡上,而不是变更卡的头部:切分支要求工作区干净,而
+/// 变更卡的存在前提恰恰是「有改动」—— 在那儿点几乎注定失败。开一个新
+/// 会话前才是工作区最可能干净、也最需要决定「从哪根分支出发」的时刻。
+function BranchPicker({
+  projectId,
+  onError,
+  onSwitched,
+}: {
+  projectId: string;
+  onError: (message: string) => void;
+  onSwitched: () => void;
+}) {
+  const { t } = useTranslation();
+  const current = useMainBranch(projectId);
+  const bumpBranchEpoch = useStore((s) => s.bumpBranchEpoch);
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<GitBranchListView | null>(null);
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  // 每次打开都重取:fetch、终端里的 checkout、别处新建的 worktree 都会
+  // 改变这份清单,而它太小了,不值得为它常驻一个订阅。
+  function openMenu() {
+    setList(null);
+    setOpen(true);
+    gitListBranches(projectId)
+      .then(setList)
+      .catch(() => setList({ current: null, branches: [] }));
+  }
+
+  function choose(name: string) {
+    if (name === list?.current) {
+      setOpen(false);
+      return;
+    }
+    setSwitching(name);
+    gitCheckoutBranch(projectId, name)
+      .then(() => {
+        setOpen(false);
+        onSwitched();
+        // 「主仓库 (分支)」在状态栏、Files/变更卡的 chip、终端 picker 上
+        // 各有一份,都靠这个 epoch 重新取值。
+        bumpBranchEpoch();
+      })
+      .catch((err) => {
+        const msg = String(err).replace(/^bad input:\s*/i, "");
+        // git 拒绝切换时吐的是多行 stderr,换成一句能照做的。
+        onError(
+          /would be overwritten|commit your changes or stash/i.test(msg)
+            ? t("picker.switchBlocked", { branch: name })
+            : msg,
+        );
+      })
+      .finally(() => setSwitching(null));
+  }
+
+  return (
+    <Popover.Root open={open} onOpenChange={(next) => (next ? openMenu() : setOpen(false))}>
+      <Popover.Trigger
+        className="inline-flex items-center gap-[7px] px-[11px] max-w-[190px]
+          border-none bg-transparent text-text cursor-pointer
+          transition-colors duration-[var(--t-fast)] ease-smooth
+          hover:bg-panel-raised data-[popup-open]:bg-panel-raised"
+        title={t("picker.switchBranch")}
+        aria-label={t("picker.switchBranch")}
+      >
+        <BranchGlyph />
+        <span className="min-w-0 truncate font-mono text-[12px]">{current ?? "—"}</span>
+        <ChevronGlyph />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner className={POPOVER_LAYER} sideOffset={6} align="start">
+          <Popover.Popup className={`${MENU_POPUP} min-w-[200px] max-h-[50vh] overflow-y-auto`}>
+            {list === null ? (
+              <div className="py-[7px] px-[9px] font-mono text-[11px] text-muted">
+                {t("common.loading")}
+              </div>
+            ) : list.branches.length === 0 ? (
+              <div className="py-[7px] px-[9px] font-mono text-[11px] text-muted">
+                {t("picker.noLocalBranch")}
+              </div>
+            ) : (
+              list.branches.map((name) => (
+                // 条目用普通 button 而不是 Popover.Close:后者点完立刻关,
+                // 而切换要等 git 回来 —— 失败时(工作区不干净)菜单得留在
+                // 原地,让人直接换一根,而不是重新点开。
+                <button
+                  key={name}
+                  type="button"
+                  className={`flex items-center gap-2 w-full py-[7px] px-[9px] border-none rounded-lg
+                    bg-none font-mono text-[12px] text-left cursor-pointer
+                    hover:bg-panel-raised disabled:opacity-40 disabled:cursor-default
+                    ${name === list.current ? MENU_ITEM_ON : MENU_ITEM_REST}`}
+                  disabled={switching !== null}
+                  onClick={() => choose(name)}
+                >
+                  <span className="flex-1 min-w-0 truncate">{name}</span>
+                  {switching === name && <span className="flex-none text-muted">…</span>}
+                </button>
+              ))
+            )}
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+function BranchGlyph() {
+  return (
+    <svg
+      className="flex-none text-muted"
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="8" r="2.5" />
+      <path d="M6 8.5v7" />
+      <path d="M18 10.5c0 4-4 3.5-6 5.5" />
+    </svg>
+  );
+}
+
+function ChevronGlyph() {
+  return (
+    <svg
+      className="flex-none text-subtle"
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   );
 }

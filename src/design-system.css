@@ -524,17 +524,6 @@ select {
   background: var(--surface);
 }
 
-.changes-panel-tree,
-.changes-panel-branch-menu {
-  background: var(--panel);
-  border-color: var(--rule-strong);
-  border-radius: var(--radius-sm);
-}
-
-.changes-panel-branch-menu {
-  box-shadow: var(--elevation-menu);
-}
-
 .changes-panel-branch-name {
   font-family: var(--font-ui);
   font-size: 13px;
@@ -649,111 +638,7 @@ select {
   --diff-gutter-delete-background-color: rgba(var(--diff-del-rgb), 0.12);
   --diff-code-insert-background-color: rgba(var(--diff-add-rgb), 0.055);
   --diff-code-delete-background-color: rgba(var(--diff-del-rgb), 0.055);
-}
-
-.changes-review-scope {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-md);
-  background: var(--panel-sunken);
-}
-
-.changes-review-scope button {
-  height: 26px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--subtle);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.changes-review-scope button:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--control-hover);
-}
-
-.changes-review-scope button.active {
-  color: var(--text);
-  background: var(--panel-raised);
-  box-shadow: inset 0 0 0 1px var(--rule-strong);
-}
-
-.changes-review-scope button:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-
-.changes-checkpoint-picker {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 290px;
-  align-items: center;
-  gap: 7px;
-  color: var(--subtle);
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.changes-checkpoint-picker select {
-  min-width: 0;
-  height: 28px;
-  flex: 1 1 auto;
-  padding: 0 28px 0 9px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-sm);
-  outline: 0;
-  background: var(--panel-raised);
-  color: var(--text-soft);
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 550;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.changes-checkpoint-picker select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
-}
-
-.changes-review-context {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 180px;
-  gap: 6px;
-  color: var(--text-soft);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.changes-review-context > span:not(.changes-review-base) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.changes-review-context svg {
-  flex: 0 0 auto;
-  color: var(--accent);
-}
-
-.changes-review-base {
-  flex: 0 0 auto;
-  color: var(--subtle);
-}
-
-.changes-diff-pane {
+}.changes-diff-pane {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -970,22 +855,25 @@ select {
   text-transform: uppercase;
 }
 
-@media (max-width: 1180px) {
-  .changes-review-context,
-  .changes-panel-remote {
+/* 变更卡头部的收缩梯度。量的是卡片自身宽度(`.changes-panel` 是
+   container),不是视口:原先写成 `@media (max-width: 1180px)`,小屏上哪怕
+   面板拖得很宽也会把 fetch/pull/push 整组藏掉,而大屏上把右栏拖窄时又不
+   触发 —— 头部照样溢出。远端按钮不再靠隐藏让位:头部可换行,挤不下时它
+   们整组落到第二行,功能始终够得着。 */
+@container changes (max-width: 620px) {
+  .changes-panel-branch-name {
+    max-width: 140px;
+  }
+}
+
+@container changes (max-width: 440px) {
+  /* 文件数在卡片标题上还有一份,这里让位给分支名和按钮。 */
+  .changes-panel-count {
     display: none;
   }
 
-  .changes-review-scope button {
-    padding-inline: 7px;
-  }
-
-  .changes-checkpoint-picker > span {
-    display: none;
-  }
-
-  .changes-checkpoint-picker {
-    max-width: 220px;
+  .changes-panel-branch-name {
+    max-width: 96px;
   }
 }
 

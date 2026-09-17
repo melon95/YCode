@@ -20,41 +20,29 @@ import "react-diff-view/style/index.css";
 import {
   gitApplyHunk,
   gitBranch,
-  gitBranchDiffFile,
-  gitBranchStatus,
-  gitCheckpointDiffFile,
-  gitCheckpointStatus,
-  gitCheckoutBranch,
   gitCommit,
   gitDiffFile,
   gitDiscardFile,
   gitFetch,
-  gitListBranches,
   gitPull,
   gitPush,
   gitStageFile,
   gitStatus,
   gitUnstageFile,
-  listReviewCheckpoints,
-  listenSessionEvents,
 } from "../lib/ipc";
 import { confirmDialog } from "../lib/confirm";
 import { extractHunkPatch, hunkTotals } from "../lib/diffReview";
 import { useStore } from "../lib/store";
-import { useEscapeGuard } from "../lib/useEscapeGuard";
 import type {
   GitBranchInfo,
-  GitBranchListView,
   GitDiffSource,
   GitFileDiff,
   GitFileChange,
   GitFileStatus,
   GitHunkAction,
-  ReviewCheckpointView,
 } from "../lib/types";
 
 type ViewMode = "list" | "tree";
-type ReviewScope = "working" | "branch" | "checkpoint";
 type DiffLayout = "unified" | "split";
 
 const EMPTY_DIFF: GitFileDiff = { patch: "", source: "unstaged" };
@@ -68,12 +56,10 @@ function cleanError(e: unknown): string {
 export function ChangesPanel({
   projectId,
   sessionId,
-  baseBranch,
   onFileCount,
 }: {
   projectId: string;
   sessionId?: string;
-  baseBranch?: string;
   /// 变更文件数上报回调:文件列表每次刷新都通知宿主(RightPane),
   /// 供卡片头计数与画布工具条角标使用 —— 数字只在面板挂载期间可信。
   onFileCount?: (count: number) => void;
@@ -83,9 +69,6 @@ export function ChangesPanel({
   const [branch, setBranch] = useState<GitBranchInfo | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [fileDiff, setFileDiff] = useState<GitFileDiff>(EMPTY_DIFF);
-  const [scope, setScope] = useState<ReviewScope>("working");
-  const [checkpoints, setCheckpoints] = useState<ReviewCheckpointView[]>([]);
-  const [checkpointId, setCheckpointId] = useState<string | null>(null);
   const [diffLayout, setDiffLayout] = useState<DiffLayout>("unified");
   const [diffRevision, setDiffRevision] = useState(0);
   const [hunkOp, setHunkOp] = useState<string | null>(null);
@@ -95,41 +78,17 @@ export function ChangesPanel({
   const [viewMode, setViewMode] = useState<ViewMode>("tree");
   // Set of directory paths that are *collapsed*. Default empty = all expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [commitMsg, setCommitMsg] = useState("");
   const [committing, setCommitting] = useState(false);
   // Remote/branch state. `remoteOp` gates the Fetch/Pull/Push cluster so only
   // one network op runs at a time; the branch menu lazy-loads its list on open.
   const [remoteOp, setRemoteOp] = useState<null | "fetch" | "pull" | "push">(
     null,
   );
-  const [branchList, setBranchList] = useState<GitBranchListView | null>(null);
-  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
-  const [checkingOut, setCheckingOut] = useState<string | null>(null);
   // The target is owned by RightPane's shared Workspace picker. Every git
   // operation therefore reads the same checkout as Files, Editor, and LSP.
   const treeSid = sessionId;
-  // True when the panel targets an agent's isolated worktree (not the main
-  // tree). Such a worktree is pinned to its own `ycode/*` branch, so the branch
-  // switcher is meaningless — worse, since worktrees share one ref DB it would
-  // list the *main tree's* branches. We render the branch read-only instead.
-  const onWorktree = treeSid !== undefined;
-  const canReviewBranch = !!treeSid && !!baseBranch;
-  const reviewableCheckpoints = useMemo(
-    () => checkpoints.filter((checkpoint) => checkpoint.has_previous),
-    [checkpoints],
-  );
-  const selectedCheckpoint = useMemo(
-    () =>
-      reviewableCheckpoints.find(
-        (checkpoint) => checkpoint.id === checkpointId,
-      ) ?? null,
-    [checkpointId, reviewableCheckpoints],
-  );
-  const canReviewCheckpoint = reviewableCheckpoints.length > 0;
   const openFile = useStore((s) => s.openFile);
   const setRightTab = useStore((s) => s.setRightTab);
-  // Escape closes the branch switcher (only while it's open).
-  useEscapeGuard(() => setBranchMenuOpen(false), branchMenuOpen);
 
   // Monotonic id for the in-flight refresh. Switching trees fires a new refresh
   // before the previous one's async git calls resolve; without this guard a
@@ -138,68 +97,17 @@ export function ChangesPanel({
   // showing the old tree's branch/files. Each result checks it's still current.
   const reqSeq = useRef(0);
 
-  useEffect(() => {
-    if (!canReviewBranch && scope === "branch") setScope("working");
-    if (!canReviewCheckpoint && scope === "checkpoint") setScope("working");
-  }, [canReviewBranch, canReviewCheckpoint, scope]);
-
   // 每次文件列表变化就把数量上报给宿主(onFileCount 见 props 注释)。
   useEffect(() => {
     onFileCount?.(changes.length);
   }, [changes.length, onFileCount]);
-
-  const refreshCheckpoints = useCallback(() => {
-    return listReviewCheckpoints(projectId)
-      .then((rows) => {
-        setCheckpoints(rows);
-        const reviewable = rows.filter((checkpoint) => checkpoint.has_previous);
-        setCheckpointId((current) =>
-          current && reviewable.some((checkpoint) => checkpoint.id === current)
-            ? current
-            : (reviewable[0]?.id ?? null),
-        );
-      })
-      .catch(() => {
-        // Checkpoint history is an enhancement to normal Git review. Keep the
-        // working-tree panel usable when migration/repository state prevents
-        // the timeline from loading.
-        setCheckpoints([]);
-        setCheckpointId(null);
-      });
-  }, [projectId]);
-
-  useEffect(() => {
-    void refreshCheckpoints();
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    void listenSessionEvents((event) => {
-      if (event.kind.type === "CheckpointCreated") {
-        void refreshCheckpoints();
-      }
-    })
-      .then((stop) => {
-        if (disposed) stop();
-        else unlisten = stop;
-      })
-      .catch(() => {});
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [refreshCheckpoints]);
 
   const refresh = useCallback(() => {
     const my = ++reqSeq.current;
     const fresh = () => my === reqSeq.current;
     setLoadingList(true);
     setError(null);
-    const rowsPromise =
-      scope === "checkpoint" && checkpointId
-        ? gitCheckpointStatus(projectId, checkpointId)
-        : scope === "branch" && treeSid
-          ? gitBranchStatus(projectId, treeSid)
-          : gitStatus(projectId, treeSid);
-    rowsPromise
+    gitStatus(projectId, treeSid)
       .then((rows) => {
         if (!fresh()) return;
         setChanges(rows);
@@ -224,7 +132,7 @@ export function ChangesPanel({
       .catch(() => {
         if (fresh()) setBranch(null);
       });
-  }, [checkpointId, projectId, scope, treeSid]);
+  }, [projectId, treeSid]);
 
   useEffect(() => {
     refresh();
@@ -237,13 +145,7 @@ export function ChangesPanel({
     }
     let cancelled = false;
     setLoadingDiff(true);
-    const detailPromise =
-      scope === "checkpoint" && checkpointId
-        ? gitCheckpointDiffFile(projectId, checkpointId, selected)
-        : scope === "branch" && treeSid
-        ? gitBranchDiffFile(projectId, treeSid, selected)
-        : gitDiffFile(projectId, selected, treeSid);
-    detailPromise
+    gitDiffFile(projectId, selected, treeSid)
       .then((detail) => {
         if (!cancelled) setFileDiff(detail);
       })
@@ -259,7 +161,7 @@ export function ChangesPanel({
     return () => {
       cancelled = true;
     };
-  }, [checkpointId, diffRevision, projectId, scope, selected, treeSid]);
+  }, [diffRevision, projectId, selected, treeSid]);
 
   const files: FileData[] = useMemo(() => {
     if (!fileDiff.patch) return [];
@@ -288,26 +190,21 @@ export function ChangesPanel({
       return next;
     });
 
-  const trimmedMsg = commitMsg.trim();
-  // Disabled unless there's something staged-able AND a non-empty message,
-  // and we're not mid-commit.
-  const canCommit =
-    scope === "working" &&
-    changes.length > 0 &&
-    trimmedMsg.length > 0 &&
-    !committing;
-
-  const doCommit = () => {
-    if (!canCommit) return;
+  /// 返回 true 表示提交成功,CommitBox 据此清空自己的输入框。
+  const doCommit = async (message: string) => {
+    if (changes.length === 0 || committing) return false;
     setCommitting(true);
     setError(null);
-    gitCommit(projectId, trimmedMsg, treeSid)
-      .then(() => {
-        setCommitMsg("");
-        refresh();
-      })
-      .catch((e) => setError(cleanError(e)))
-      .finally(() => setCommitting(false));
+    try {
+      await gitCommit(projectId, message, treeSid);
+      refresh();
+      return true;
+    } catch (e) {
+      setError(cleanError(e));
+      return false;
+    } finally {
+      setCommitting(false);
+    }
   };
 
   // Run one remote op (fetch/pull/push), refreshing the panel on success so the
@@ -321,48 +218,6 @@ export function ChangesPanel({
       .then(refresh)
       .catch((e) => setError(cleanError(e)))
       .finally(() => setRemoteOp(null));
-  };
-
-  const openBranchMenu = () => {
-    // Lazy-load the branch list each time the menu opens so it stays fresh
-    // after a fetch/checkout, without polling on every refresh.
-    setBranchList(null);
-    gitListBranches(projectId, treeSid)
-      .then(setBranchList)
-      .catch(() => setBranchList({ current: null, branches: [] }));
-    setBranchMenuOpen(true);
-  };
-
-  const doCheckout = (name: string) => {
-    if (branchList?.current === name) {
-      setBranchMenuOpen(false);
-      return;
-    }
-    setCheckingOut(name);
-    setError(null);
-    gitCheckoutBranch(projectId, name, treeSid)
-      .then(() => {
-        setBranchMenuOpen(false);
-        refresh();
-        // 切的是主工作树时,主仓库的 HEAD 变了 —— 通知那些显示「主仓库
-        // (分支)」的地方重新取值(状态栏、Files/变更卡的 chip、终端
-        // picker)。worktree 会话有自己的 HEAD,与它们无关。
-        if (!treeSid) useStore.getState().bumpBranchEpoch();
-      })
-      .catch((e) => {
-        const msg = cleanError(e);
-        // git refuses to switch when uncommitted changes would be clobbered.
-        // Swap its multi-line stderr for a one-line, actionable hint; keep the
-        // raw message for other failures (unknown branch, etc.).
-        const dirtyTree =
-          /would be overwritten|commit your changes or stash/i.test(msg);
-        setError(
-          dirtyTree
-            ? `切换到「${name}」前,请先提交或 stash 当前改动。`
-            : msg,
-        );
-      })
-      .finally(() => setCheckingOut(null));
   };
 
   // Aggregate +/− across every change — mirrors the header total in the
@@ -470,162 +325,19 @@ export function ChangesPanel({
   return (
     <div className="changes-panel">
       <div className="changes-panel-header">
-        <div className="changes-review-scope" role="tablist" aria-label={t("changes.reviewScope")}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={scope === "working"}
-            className={scope === "working" ? "active" : ""}
-            onClick={() => setScope("working")}
-          >
-            {t("changes.scopeWorking")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={scope === "branch"}
-            className={scope === "branch" ? "active" : ""}
-            disabled={!canReviewBranch}
-            onClick={() => setScope("branch")}
-            title={
-              canReviewBranch
-                ? t("changes.branchTabHint", { base: baseBranch })
-                : t("changes.branchTabDisabled")
-            }
-          >
-            {t("changes.scopeBranch")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={scope === "checkpoint"}
-            className={scope === "checkpoint" ? "active" : ""}
-            disabled={!canReviewCheckpoint}
-            onClick={() => setScope("checkpoint")}
-            title={
-              canReviewCheckpoint
-                ? t("changes.checkpointTabHint")
-                : t("changes.checkpointTabDisabled")
-            }
-          >
-            {t("changes.scopeCheckpoint")}
-          </button>
-        </div>
-        {scope === "checkpoint" && selectedCheckpoint && (
-          <label className="changes-checkpoint-picker">
-            <span>{t("changes.snapshot")}</span>
-            <select
-              aria-label={t("changes.snapshotAria")}
-              value={selectedCheckpoint.id}
-              onChange={(event) => setCheckpointId(event.target.value)}
-            >
-              {reviewableCheckpoints.map((checkpoint) => (
-                <option key={checkpoint.id} value={checkpoint.id}>
-                  {t("changes.checkpointOption", {
-                    title: checkpoint.session_title,
-                    sequence: checkpoint.sequence,
-                    time: formatCheckpointTime(checkpoint.created_at_ms),
-                  })}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {/* The branch switcher belongs to the main tree only. An isolated
-            worktree is pinned to its own `ycode/*` branch (already shown as the
-            tree-picker label), so we hide this entirely when one is selected —
-            no redundant branch, no meaningless switch to the main tree's
-            branches. */}
-        {scope !== "checkpoint" && !onWorktree && (
-          <div className="changes-panel-branch-wrap">
-            <button
-              type="button"
-              className="changes-panel-branch"
-              disabled={!branch}
-              onClick={() =>
-                branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu()
-              }
-              aria-haspopup="menu"
-              aria-expanded={branchMenuOpen}
-              title={
-                branch
-                  ? branch.detached
-                    ? t("changes.detachedHead", { head: branch.head })
-                    : branch.upstream
-                      ? `${branch.head} → ${branch.upstream}`
-                      : t("changes.noUpstream", { head: branch.head })
-                  : undefined
-              }
-            >
-              <BranchIcon />
-              <span className="changes-panel-branch-name">
-                {branch ? branch.head : "—"}
-              </span>
-              {branch && (branch.ahead > 0 || branch.behind > 0) && (
-                <span className="changes-panel-branch-track">
-                  {branch.ahead > 0 && <span title={t("changes.ahead")}>↑{branch.ahead}</span>}
-                  {branch.behind > 0 && <span title={t("changes.behind")}>↓{branch.behind}</span>}
-                </span>
-              )}
-              <span className="changes-panel-branch-caret">
-                <ChevronIcon />
-              </span>
-            </button>
-            {branchMenuOpen && (
-              <>
-                <div
-                  className="changes-panel-branch-backdrop"
-                  onClick={() => setBranchMenuOpen(false)}
-                />
-                <div className="changes-panel-branch-menu" role="menu">
-                  {branchList === null ? (
-                    <div className="changes-panel-branch-empty">{t("common.loading")}</div>
-                  ) : branchList.branches.length === 0 ? (
-                    <div className="changes-panel-branch-empty">{t("changes.noLocalBranch")}</div>
-                  ) : (
-                    branchList.branches.map((name) => (
-                      <button
-                        key={name}
-                        type="button"
-                        role="menuitem"
-                        className={
-                          "changes-panel-branch-item" +
-                          (name === branchList.current ? " current" : "")
-                        }
-                        disabled={checkingOut !== null}
-                        onClick={() => doCheckout(name)}
-                      >
-                        <span className="changes-panel-branch-check">
-                          {name === branchList.current ? "✓" : ""}
-                        </span>
-                        <span className="changes-panel-branch-item-name">{name}</span>
-                        {checkingOut === name && (
-                          <span className="changes-panel-branch-item-spin">…</span>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        {scope !== "checkpoint" && onWorktree && branch && (
-          <span className="changes-review-context" title={branch.head}>
-            <BranchIcon />
-            <span>{branch.head}</span>
-            {scope === "branch" && baseBranch && (
-              <span className="changes-review-base">{t("changes.basedOn", { base: baseBranch })}</span>
-            )}
+        {/* 分支名不在这里重复:卡片标题那行的绑定 chip 已经写着「主仓库
+            (分支)」。文件数和 +/− 是同一句话的两半,一起放在这行。领先/
+            落后也不单列 —— pull / push 按钮上的角标就是它。 */}
+        {/* detached 是唯一一条卡片标题说不出来的状态:那边的 chip 在
+            detached 时只会退回不带括号的「主仓库」。别的都不重复。 */}
+        {branch?.detached && (
+          <span className="changes-panel-detached">
+            {t("changes.detachedHead", { head: branch.head })}
           </span>
         )}
         <span className="changes-panel-count">
           {changes.length === 0
-            ? scope === "branch"
-              ? t("changes.noBranchChanges")
-              : scope === "checkpoint"
-                ? t("changes.noTurnChanges")
-              : t("changes.noChanges")
+            ? t("changes.noChanges")
             : t("panels.fileCount", { count: changes.length })}
           {changes.length > 0 &&
             (totals.additions > 0 || totals.deletions > 0) && (
@@ -639,7 +351,6 @@ export function ChangesPanel({
               </span>
             )}
         </span>
-        {scope !== "checkpoint" && (
         <div className="changes-panel-remote" role="group" aria-label={t("changes.remoteOps")}>
           <button
             type="button"
@@ -694,7 +405,6 @@ export function ChangesPanel({
             )}
           </button>
         </div>
-        )}
         <div className="changes-panel-mode" role="tablist" aria-label={t("changes.viewMode")}>
           <button
             type="button"
@@ -733,47 +443,12 @@ export function ChangesPanel({
           <RefreshIcon />
         </button>
       </div>
-      {scope === "working" && <div className="changes-commit-box">
-        <textarea
-          className="changes-commit-input"
-          value={commitMsg}
-          onChange={(e) => setCommitMsg(e.target.value)}
-          onKeyDown={(e) => {
-            // ⌘/Ctrl+Enter commits, matching the VS Code affordance.
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-              e.preventDefault();
-              doCommit();
-            }
-          }}
-          placeholder={t("changes.commitMessage")}
-          // 快捷键提示挂 title 而不是 placeholder:输入框只有一行高,
-          // 英文的「Commit message · ⌘⏎ to commit to main」会换行,
-          // 第二行被 min-height 裁掉。
-          title={
-            branch && !branch.detached
-              ? t("changes.commitHintTo", { branch: branch.head })
-              : t("changes.commitHint")
-          }
-          rows={1}
-          aria-label={t("changes.commitMessageAria")}
-        />
-        <button
-          type="button"
-          className="changes-commit-btn"
-          onClick={doCommit}
-          disabled={!canCommit}
-          title={
-            changes.length === 0
-              ? t("changes.nothingToCommit")
-              : trimmedMsg.length === 0
-                ? t("changes.needCommitMessage")
-                : t("changes.commitAll")
-          }
-        >
-          <CommitIcon />
-          <span>{committing ? t("changes.committing") : t("common.commit")}</span>
-        </button>
-      </div>}
+      <CommitBox
+        canCommit={changes.length > 0}
+        committing={committing}
+        branch={branch}
+        onCommit={doCommit}
+      />
       <div className="changes-panel-body">
         <div className="changes-file-pane">
           {loadingList && changes.length === 0 && (
@@ -781,11 +456,7 @@ export function ChangesPanel({
           )}
           {!loadingList && changes.length === 0 && !error && (
             <div className="changes-empty">
-              {scope === "branch"
-                ? t("changes.noCommittedSince", { base: baseBranch })
-                : scope === "checkpoint"
-                  ? t("changes.turnTouchedNothing")
-                : t("changes.workingTreeClean")}
+              {t("changes.workingTreeClean")}
             </div>
           )}
           {error && <div className="changes-empty error">{error}</div>}
@@ -799,7 +470,6 @@ export function ChangesPanel({
                     onClick={() => setSelected(c.path)}
                     onToggleStage={() => toggleStage(c)}
                     onDiscard={() => discardFile(c)}
-                    readOnly={scope !== "working"}
                     showDir
                     indent={0}
                   />
@@ -820,7 +490,6 @@ export function ChangesPanel({
                   onSelectFile={setSelected}
                   onToggleStage={toggleStage}
                   onDiscard={discardFile}
-                  readOnly={scope !== "working"}
                 />
               ))}
             </ul>
@@ -866,7 +535,7 @@ export function ChangesPanel({
                 onClick={openSelectedFile}
                 disabled={!selected}
               >
-                {scope === "checkpoint" ? t("changes.openCurrentFile") : t("changes.openFile")}
+                {t("changes.openFile")}
               </button>
             </div>
           </div>
@@ -984,13 +653,78 @@ function diffSourceLabel(source: GitDiffSource, t: TFunction): string {
   }
 }
 
-function formatCheckpointTime(createdAtMs: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(createdAtMs));
+/// 提交框自带输入状态。
+///
+/// 它原先是 ChangesPanel 的一个 `commitMsg` state —— 每敲一个字符,整张
+/// 面板跟着重渲染一次,包括那棵上千行的文件树和右边的 diff 视图;文件一多
+/// 打字就一顿一顿的。把输入圈在这个组件里,击键只重渲染它自己。
+function CommitBox({
+  canCommit,
+  committing,
+  branch,
+  onCommit,
+}: {
+  /// 有没有可提交的改动(消息是否为空由这里自己判断)。
+  canCommit: boolean;
+  committing: boolean;
+  branch: GitBranchInfo | null;
+  onCommit: (message: string) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const [msg, setMsg] = useState("");
+  const trimmed = msg.trim();
+  const ready = canCommit && trimmed.length > 0 && !committing;
+
+  const commit = () => {
+    if (!ready) return;
+    void onCommit(trimmed).then((ok) => {
+      if (ok) setMsg("");
+    });
+  };
+
+  return (
+    <div className="changes-commit-box">
+      <textarea
+        className="changes-commit-input"
+        value={msg}
+        onChange={(e) => setMsg(e.target.value)}
+        onKeyDown={(e) => {
+          // ⌘/Ctrl+Enter commits, matching the VS Code affordance.
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        placeholder={t("changes.commitMessage")}
+        // 快捷键提示挂 title 而不是 placeholder:输入框只有一行高,
+        // 英文的「Commit message · ⌘⏎ to commit to main」会换行,
+        // 第二行被 min-height 裁掉。
+        title={
+          branch && !branch.detached
+            ? t("changes.commitHintTo", { branch: branch.head })
+            : t("changes.commitHint")
+        }
+        rows={1}
+        aria-label={t("changes.commitMessageAria")}
+      />
+      <button
+        type="button"
+        className="changes-commit-btn"
+        onClick={commit}
+        disabled={!ready}
+        title={
+          !canCommit
+            ? t("changes.nothingToCommit")
+            : trimmed.length === 0
+              ? t("changes.needCommitMessage")
+              : t("changes.commitAll")
+        }
+      >
+        <CommitIcon />
+        <span>{committing ? t("changes.committing") : t("common.commit")}</span>
+      </button>
+    </div>
+  );
 }
 
 /// ---- Tree model ----
@@ -1082,7 +816,6 @@ function TreeRow({
   onSelectFile,
   onToggleStage,
   onDiscard,
-  readOnly,
 }: {
   node: TreeNode;
   depth: number;
@@ -1092,7 +825,6 @@ function TreeRow({
   onSelectFile: (path: string) => void;
   onToggleStage: (change: GitFileChange) => void;
   onDiscard: (change: GitFileChange) => void;
-  readOnly: boolean;
 }) {
   if (node.kind === "file") {
     return (
@@ -1103,7 +835,6 @@ function TreeRow({
           onClick={() => onSelectFile(node.change.path)}
           onToggleStage={() => onToggleStage(node.change)}
           onDiscard={() => onDiscard(node.change)}
-          readOnly={readOnly}
           showDir={false}
           indent={depth}
         />
@@ -1142,7 +873,6 @@ function TreeRow({
               onSelectFile={onSelectFile}
               onToggleStage={onToggleStage}
               onDiscard={onDiscard}
-              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -1159,7 +889,6 @@ function FileRow({
   onDiscard,
   showDir,
   indent,
-  readOnly,
 }: {
   change: GitFileChange;
   active: boolean;
@@ -1168,7 +897,6 @@ function FileRow({
   onDiscard: () => void;
   showDir: boolean;
   indent: number;
-  readOnly: boolean;
 }) {
   const { t } = useTranslation();
   // The row is a container (not a <button>) so it can hold three independent
@@ -1204,31 +932,27 @@ function FileRow({
           )}
         </span>
       </button>
-      {!readOnly && (
-        <>
-          <button
-            type="button"
-            className="changes-file-discard"
-            onClick={onDiscard}
-            aria-label={t("changes.discardFileAria", { name: basename(change.path) })}
-            title={t("changes.discardFile")}
-          >
-            <DiscardIcon />
-          </button>
-          <input
-            type="checkbox"
-            className="changes-file-stage"
-            checked={change.staged}
-            onChange={onToggleStage}
-            aria-label={
-              change.staged
-                ? t("changes.unstageFile", { name: basename(change.path) })
-                : t("changes.stageFile", { name: basename(change.path) })
-            }
-            title={change.staged ? t("changes.unstage") : t("changes.stage")}
-          />
-        </>
-      )}
+      <button
+        type="button"
+        className="changes-file-discard"
+        onClick={onDiscard}
+        aria-label={t("changes.discardFileAria", { name: basename(change.path) })}
+        title={t("changes.discardFile")}
+      >
+        <DiscardIcon />
+      </button>
+      <input
+        type="checkbox"
+        className="changes-file-stage"
+        checked={change.staged}
+        onChange={onToggleStage}
+        aria-label={
+          change.staged
+            ? t("changes.unstageFile", { name: basename(change.path) })
+            : t("changes.stageFile", { name: basename(change.path) })
+        }
+        title={change.staged ? t("changes.unstage") : t("changes.stage")}
+      />
     </div>
   );
 }
@@ -1260,27 +984,6 @@ function dirname(path: string): string {
 
 // Git branch glyph: two commit dots on a line with a fork — mirrors the
 // Changes tab icon in the right-pane strip.
-function BranchIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="13"
-      height="13"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="6" cy="6" r="2.4" />
-      <circle cx="6" cy="18" r="2.4" />
-      <circle cx="18" cy="7" r="2.4" />
-      <path d="M6 8.4v7.2" />
-      <path d="M18 9.4a6 6 0 0 1-6 6h-1.6" />
-    </svg>
-  );
-}
 
 // Commit glyph: a commit dot on a line — the classic git-commit mark.
 function CommitIcon() {

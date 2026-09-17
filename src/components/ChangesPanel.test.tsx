@@ -5,14 +5,8 @@ import userEvent from "@testing-library/user-event";
 import {
   gitApplyHunk,
   gitBranch,
-  gitBranchDiffFile,
-  gitBranchStatus,
-  gitCheckpointDiffFile,
-  gitCheckpointStatus,
   gitDiffFile,
   gitStatus,
-  listReviewCheckpoints,
-  listenSessionEvents,
 } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import type { GitFileChange } from "../lib/types";
@@ -21,23 +15,15 @@ import { ChangesPanel } from "./ChangesPanel";
 vi.mock("../lib/ipc", () => ({
   gitApplyHunk: vi.fn(),
   gitBranch: vi.fn(),
-  gitBranchDiffFile: vi.fn(),
-  gitBranchStatus: vi.fn(),
-  gitCheckpointDiffFile: vi.fn(),
-  gitCheckpointStatus: vi.fn(),
-  gitCheckoutBranch: vi.fn(),
   gitCommit: vi.fn(),
   gitDiffFile: vi.fn(),
   gitDiscardFile: vi.fn(),
   gitFetch: vi.fn(),
-  gitListBranches: vi.fn(),
   gitPull: vi.fn(),
   gitPush: vi.fn(),
   gitStageFile: vi.fn(),
   gitStatus: vi.fn(),
   gitUnstageFile: vi.fn(),
-  listReviewCheckpoints: vi.fn(),
-  listenSessionEvents: vi.fn(),
 }));
 
 vi.mock("../lib/confirm", () => ({
@@ -63,13 +49,12 @@ const change: GitFileChange = {
 
 const initialState = useStore.getState();
 
-describe("ChangesPanel review workflow", () => {
+describe("ChangesPanel working-tree review", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     useStore.setState(initialState, true);
     vi.mocked(gitStatus).mockResolvedValue([change]);
-    vi.mocked(gitBranchStatus).mockResolvedValue([change]);
     vi.mocked(gitBranch).mockResolvedValue({
       head: "ycode/review",
       detached: false,
@@ -81,26 +66,15 @@ describe("ChangesPanel review workflow", () => {
       patch: PATCH,
       source: "unstaged",
     });
-    vi.mocked(gitBranchDiffFile).mockResolvedValue({
-      patch: PATCH,
-      source: "branch",
-    });
-    vi.mocked(gitCheckpointStatus).mockResolvedValue([change]);
-    vi.mocked(gitCheckpointDiffFile).mockResolvedValue({
-      patch: PATCH,
-      source: "checkpoint",
-    });
-    vi.mocked(listReviewCheckpoints).mockResolvedValue([]);
-    vi.mocked(listenSessionEvents).mockResolvedValue(vi.fn());
     vi.mocked(gitApplyHunk).mockResolvedValue();
   });
 
   afterEach(cleanup);
 
-  it("stages only the displayed hunk in working-tree scope", async () => {
+  it("stages only the displayed hunk", async () => {
     const user = userEvent.setup();
     render(
-      <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
+      <ChangesPanel projectId="project-a" sessionId="session-a" />,
     );
 
     await user.click(await screen.findByRole("button", { name: i18next.t("changes.stageHunk") }));
@@ -114,68 +88,5 @@ describe("ChangesPanel review workflow", () => {
         "session-a",
       ),
     );
-  });
-
-  it("switches to a read-only branch-vs-base review", async () => {
-    const user = userEvent.setup();
-    render(
-      <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
-    );
-
-    await user.click(
-      screen.getByRole("tab", { name: i18next.t("changes.scopeBranch") }),
-    );
-
-    await waitFor(() =>
-      expect(gitBranchStatus).toHaveBeenCalledWith("project-a", "session-a"),
-    );
-    expect(await screen.findByText(i18next.t("changes.committedChange"))).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: i18next.t("changes.stageHunk") })).toBeNull();
-  });
-
-  it("reviews a completed agent turn without exposing working-tree actions", async () => {
-    vi.mocked(listReviewCheckpoints).mockResolvedValue([
-      {
-        id: "checkpoint-1",
-        session_id: "session-a",
-        session_title: "Polish review flow",
-        agent_profile: "codex",
-        sequence: 1,
-        kind: "turn",
-        source: "codex",
-        event_kind: "turn_complete",
-        body_preview: "Finished the review flow",
-        created_at_ms: 1_721_332_800_000,
-        has_previous: true,
-      },
-    ]);
-    const user = userEvent.setup();
-    render(
-      <ChangesPanel projectId="project-a" sessionId="session-a" baseBranch="main" />,
-    );
-
-    const agentTurnTab = screen.getByRole("tab", { name: i18next.t("changes.scopeCheckpoint") });
-    await waitFor(() => expect(agentTurnTab).toBeEnabled());
-    await user.click(agentTurnTab);
-
-    await waitFor(() =>
-      expect(gitCheckpointStatus).toHaveBeenCalledWith(
-        "project-a",
-        "checkpoint-1",
-      ),
-    );
-    await waitFor(() =>
-      expect(gitCheckpointDiffFile).toHaveBeenCalledWith(
-        "project-a",
-        "checkpoint-1",
-        "src/app.ts",
-      ),
-    );
-    expect(await screen.findByText(i18next.t("changes.turnSnapshot"))).toBeInTheDocument();
-    expect(screen.getByLabelText(i18next.t("changes.snapshotAria"))).toHaveValue(
-      "checkpoint-1",
-    );
-    expect(screen.queryByRole("button", { name: i18next.t("changes.stageHunk") })).toBeNull();
-    expect(screen.queryByLabelText("提交信息")).toBeNull();
   });
 });

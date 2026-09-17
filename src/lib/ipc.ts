@@ -27,7 +27,6 @@ import type {
   GitHunkAction,
   GitBranchInfo,
   GitBranchListView,
-  ReviewCheckpointView,
   LspManifestView,
   OpenInExternalEditorRequest,
   UiEvent,
@@ -224,37 +223,6 @@ export const gitDiffFile = (
   sessionId?: string,
 ): Promise<GitFileDiff> =>
   invoke("git_diff_file", { projectId, sessionId: sessionId ?? null, filePath });
-
-export const gitBranchStatus = (
-  projectId: string,
-  sessionId: string,
-): Promise<GitFileChange[]> =>
-  invoke("git_branch_status", { projectId, sessionId });
-
-export const gitBranchDiffFile = (
-  projectId: string,
-  sessionId: string,
-  filePath: string,
-): Promise<GitFileDiff> =>
-  invoke("git_branch_diff_file", { projectId, sessionId, filePath });
-
-export const listReviewCheckpoints = (
-  projectId: string,
-): Promise<ReviewCheckpointView[]> =>
-  invoke("list_review_checkpoints", { projectId });
-
-export const gitCheckpointStatus = (
-  projectId: string,
-  checkpointId: string,
-): Promise<GitFileChange[]> =>
-  invoke("git_checkpoint_status", { projectId, checkpointId });
-
-export const gitCheckpointDiffFile = (
-  projectId: string,
-  checkpointId: string,
-  filePath: string,
-): Promise<GitFileDiff> =>
-  invoke("git_checkpoint_diff_file", { projectId, checkpointId, filePath });
 
 export const gitApplyHunk = (
   projectId: string,
