@@ -54,7 +54,7 @@ pub fn scan_workspace(home: &Path, cwd: &Path) -> Result<Vec<DiscoveredSession>,
             .pointer("/payload/originator")
             .and_then(|s| s.as_str())
             .unwrap_or("");
-        if originator.eq_ignore_ascii_case("Codex Desktop") {
+        if is_codex_desktop_originator(originator) {
             continue;
         }
         let payload_cwd = v
@@ -78,6 +78,11 @@ pub fn scan_workspace(home: &Path, cwd: &Path) -> Result<Vec<DiscoveredSession>,
         });
     }
     Ok(out)
+}
+
+fn is_codex_desktop_originator(value: &str) -> bool {
+    value.eq_ignore_ascii_case("Codex Desktop")
+        || value.eq_ignore_ascii_case("codex_work_desktop")
 }
 
 /// Read the first ~60 lines of `path` looking for the first real user
@@ -478,6 +483,13 @@ mod tests {
             RawEvent::SessionMeta { cwd } => assert_eq!(cwd.as_deref(), Some("/repo")),
             other => panic!("got {other:?}"),
         }
+    }
+
+    #[test]
+    fn recognizes_legacy_and_current_desktop_originators() {
+        assert!(is_codex_desktop_originator("Codex Desktop"));
+        assert!(is_codex_desktop_originator("codex_work_desktop"));
+        assert!(!is_codex_desktop_originator("Codex CLI"));
     }
 
     #[test]

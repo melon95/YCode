@@ -1608,7 +1608,14 @@ fn parse_codex_session_meta(line: &str, cwd: &str) -> Option<String> {
         return None;
     }
     let payload = value.get("payload")?;
-    if payload.get("originator").and_then(|v| v.as_str()) == Some("Codex Desktop") {
+    if payload
+        .get("originator")
+        .and_then(|v| v.as_str())
+        .is_some_and(|value| {
+            value.eq_ignore_ascii_case("Codex Desktop")
+                || value.eq_ignore_ascii_case("codex_work_desktop")
+        })
+    {
         return None;
     }
     if payload.get("cwd")?.as_str()? != cwd {
@@ -2799,6 +2806,8 @@ mod tests {
     fn ignores_codex_desktop_session_meta() {
         let line = r#"{"type":"session_meta","payload":{"id":"019e5794-57d2-7493-a762-a1fc7c1a5040","cwd":"/repo","originator":"Codex Desktop"}}"#;
         assert!(parse_codex_session_meta(line, "/repo").is_none());
+        let current = r#"{"type":"session_meta","payload":{"id":"019e5794-57d2-7493-a762-a1fc7c1a5040","cwd":"/repo","originator":"codex_work_desktop"}}"#;
+        assert!(parse_codex_session_meta(current, "/repo").is_none());
     }
 
     #[test]
