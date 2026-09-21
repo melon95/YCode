@@ -1,11 +1,6 @@
 import Foundation
 import YCodeCore
 
-enum YCodeFileWorkspaceMode {
-    case files
-    case editor
-}
-
 enum YCodeEditorPresentation {
     case preview
     case source
@@ -161,7 +156,10 @@ final class YCodeEditorWorkspace: ObservableObject {
 
     @Published private(set) var tabs = YCodeEditorTabs()
     @Published private(set) var documents: [String: YCodeEditorDocument] = [:]
-    @Published var mode: YCodeFileWorkspaceMode = .files
+    /// 文件树露不露面，只由卡头上那枚开关说了算 —— 打开文件不动它。
+    /// 以前这里是「树」和「编辑器」二选一，点开一个文件树就整个消失，
+    /// 想回去还得再点一次，回去的路上树还要重新读一遍目录。现在两边并排站。
+    @Published var isFileTreeVisible = true
     @Published var errorMessage: String?
     @Published var pendingClosePath: String?
     @Published var pendingSaveConflictPath: String?
@@ -210,7 +208,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         let replaced = next.open(path, preview: preview)
         tabs = next
         if let replaced, replaced != path { documents.removeValue(forKey: replaced) }
-        mode = .editor
         guard documents[path] == nil else { return }
         let document = YCodeEditorDocument(path: path)
         documents[path] = document
@@ -221,7 +218,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         var next = tabs
         next.select(path)
         tabs = next
-        mode = .editor
     }
 
     func pin(_ path: String) {
@@ -387,7 +383,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         let removed = next.removePath(path)
         for path in removed { documents.removeValue(forKey: path) }
         tabs = next
-        if tabs.paths.isEmpty { mode = .files }
     }
 
     func hasDirtyDocument(atOrBelow url: URL) -> Bool {
@@ -416,7 +411,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         next.close(path)
         tabs = next
         documents.removeValue(forKey: path)
-        if tabs.paths.isEmpty { mode = .files }
     }
 
     private func load(_ document: YCodeEditorDocument) async {

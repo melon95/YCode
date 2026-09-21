@@ -6,27 +6,59 @@ import YCodeEditorSupport
 struct ProjectFileWorkspaceView: View {
     let project: ProjectRecord
     @ObservedObject var workspace: YCodeEditorWorkspace
+    let header: YCodePanelHeaderSpec
     let editorFontSize: CGFloat
     let theme: YCodeThemeOption
     let selectedFileURL: URL?
     let onSelectFile: (URL?) -> Void
+    let onOpenFile: (URL) -> Void
     let onMovePath: (URL, URL) -> Void
     let onDeletePath: (URL) -> Void
     @Environment(\.ycodeL10n) private var l10n
 
+    /// 一张卡里是「树 ｜ 编辑器」并排，不是二选一。树在不在只看卡头上那枚开关；
+    /// 一篇文档都没开时强制留着树 —— 否则把它收起来这张卡就是一片空白。
+    /// 卡头上没有编辑器的动作：保存走 ⌘S 与「文件 › 保存」，不值得在那排图标里再占一格。
+    private var treeIsVisible: Bool { workspace.isFileTreeVisible || workspace.tabs.paths.isEmpty }
+    private var showsEditor: Bool { !workspace.tabs.paths.isEmpty }
+
+    /// 树的开关就是卡头最前面那枚图标（跟变更面板的树／平铺是同一套做法），
+    /// 不在右边另起一个按钮。没开文档时树必须在场，这枚图标就退回成纯标识。
+    private var headerSpec: YCodePanelHeaderSpec {
+        var spec = header
+        guard showsEditor else { return spec }
+        spec.iconIsOn = treeIsVisible
+        spec.iconHelp = l10n.text("fileTree")
+        spec.iconAction = { workspace.isFileTreeVisible.toggle() }
+        return spec
+    }
+
+    /// 文件名占住卡头最上面那一行；一篇都没开时这格还是面板名。
+    @ViewBuilder private var headerLeading: some View {
+        if showsEditor {
+            YCodeEditorTabStrip(workspace: workspace) { path in
+                onSelectFile(workspace.url(for: path))
+            }
+        } else {
+            YCodePanelHeaderTitle(spec: headerSpec)
+        }
+    }
+
     var body: some View {
-        Group {
-            switch workspace.mode {
-            case .files:
-                ProjectFileTreeView(
-                    project: project,
-                    selectedFileURL: selectedFileURL,
-                    onSelectFile: onSelectFile,
-                    onMovePath: onMovePath,
-                    onDeletePath: onDeletePath,
-                    mayDeletePath: { !workspace.hasDirtyDocument(atOrBelow: $0) }
-                )
-            case .editor:
+        ProjectFileTreeView(
+            project: project,
+            header: headerSpec,
+            treeIsVisible: treeIsVisible,
+            showsDetail: showsEditor,
+            selectedFileURL: selectedFileURL,
+            onSelectFile: onSelectFile,
+            onOpenFile: onOpenFile,
+            onMovePath: onMovePath,
+            onDeletePath: onDeletePath,
+            mayDeletePath: { !workspace.hasDirtyDocument(atOrBelow: $0) },
+            headerLeading: { headerLeading }
+        ) {
+            if showsEditor {
                 YCodeEditorWorkspaceView(workspace: workspace, editorFontSize: editorFontSize, theme: theme) { path in
                     onSelectFile(workspace.url(for: path))
                 }
@@ -35,6 +67,8 @@ struct ProjectFileWorkspaceView: View {
     }
 }
 
+/// 卡头不在这里 —— 它属于整张文件卡，由 `ProjectFileWorkspaceView` 摆，
+/// 好让树和编辑器并排时上面只有一条卡头，而不是一边一条。
 private struct YCodeEditorWorkspaceView: View {
     @ObservedObject var workspace: YCodeEditorWorkspace
     let editorFontSize: CGFloat
@@ -44,10 +78,13 @@ private struct YCodeEditorWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            editorToolbar
-            Divider()
-            tabs
-            Divider()
+            // 标签条不在这里 —— 文件名在卡头最上面那一行，横跨树与编辑器（设计稿）。
+            // 这一条上的东西（LSP、跳定义、预览／源码）只属于当前选中的那篇文档，
+            // 所以它得站在标签条**下面** —— 浮在标签之上会读成「这排标签的工具条」。
+            if hasDocumentBar {
+                documentBar
+                Divider()
+            }
             if let document = workspace.selectedDocument, document.hasExternalConflict {
                 conflictBanner(document)
                 Divider()
@@ -116,21 +153,15 @@ private struct YCodeEditorWorkspaceView: View {
         }
     }
 
-    private var editorToolbar: some View {
+    /// 属于「当前这篇文档」的那几样（LSP、跳定义、预览／源码）留在这一条，
+    /// 没有内容时整条不出现。面板级的动作在卡头上，不在这儿。
+    private var hasDocumentBar: Bool {
+        guard let document = workspace.selectedDocument else { return false }
+        return document.lspActive || document.canTogglePreview || document.previewKind == .image
+    }
+
+    private var documentBar: some View {
         HStack(spacing: 10) {
-            Button {
-                workspace.mode = .files
-            } label: {
-                Label(l10n.text("fileTree"), systemImage: "sidebar.left")
-            }
-            .buttonStyle(.borderless)
-            Button {
-                workspace.saveSelected()
-            } label: {
-                Label(l10n.text("save"), systemImage: "square.and.arrow.down")
-            }
-            .buttonStyle(.borderless)
-            .disabled(workspace.selectedDocument?.isDirty != true)
             Spacer()
             if let document = workspace.selectedDocument {
                 if document.lspActive {
@@ -160,13 +191,10 @@ private struct YCodeEditorWorkspaceView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(document.isDirty ? l10n.text("unsaved") : l10n.text("saved"))
-                    .font(.caption)
-                    .foregroundStyle(document.isDirty ? Color.orange : Color.secondary)
             }
         }
         .padding(.horizontal, 10)
-        .frame(height: 32)
+        .frame(height: 28)
     }
 
     private func presentationButton(
@@ -187,57 +215,6 @@ private struct YCodeEditorWorkspaceView: View {
         .buttonStyle(.plain)
         .help(title)
         .accessibilityLabel(title)
-    }
-
-    private var tabs: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 2) {
-                ForEach(workspace.tabs.paths, id: \.self) { path in
-                    HStack(spacing: 5) {
-                        Button {
-                            workspace.select(path)
-                            onSelectionChanged(path)
-                        } label: {
-                            HStack(spacing: 5) {
-                                Text(displayName(path))
-                                    .italic(workspace.tabs.previewPath == path)
-                                    .lineLimit(1)
-                                if workspace.tabs.dirtyPaths.contains(path) {
-                                    Circle().fill(Color.orange).frame(width: 6, height: 6)
-                                        .accessibilityLabel(l10n.text("unsaved"))
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .simultaneousGesture(TapGesture(count: 2).onEnded {
-                            workspace.select(path)
-                            workspace.pin(path)
-                            onSelectionChanged(path)
-                        })
-                        Button {
-                            workspace.requestClose(path)
-                            if workspace.pendingClosePath == nil {
-                                onSelectionChanged(workspace.tabs.selectedPath)
-                            }
-                        } label: {
-                            Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
-                        }
-                        .buttonStyle(.borderless)
-                        .help(l10n.text("close"))
-                    }
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .frame(height: 30)
-                    .background(workspace.tabs.selectedPath == path ? Color.accentColor.opacity(0.15) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .help(workspace.tabs.previewPath == path ? l10n.text("previewTabHelpFormat", path) : path)
-                }
-            }
-            .padding(.horizontal, 8)
-        }
-        .scrollIndicators(.hidden)
-        .frame(height: 38)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func conflictBanner(_ document: YCodeEditorDocument) -> some View {
@@ -703,5 +680,130 @@ private struct YCodeNativeImagePreview: NSViewRepresentable {
 
     func updateNSView(_ view: NSImageView, context: Context) {
         view.image = image
+    }
+}
+
+/// 卡头上那一行文件名。放不下的标签收进末尾的 ⌄ 菜单里 ——
+/// 横向滚动条在一条 22 高的卡头上既看不见也不好拨。
+/// 当前选中的那张永远留在外面：它要是被挤进菜单，这一行就再也说不出「你在看哪篇」。
+private struct YCodeEditorTabStrip: View {
+    @ObservedObject var workspace: YCodeEditorWorkspace
+    let onSelectionChanged: (String?) -> Void
+    @Environment(\.ycodeL10n) private var l10n
+
+    /// 标签自己定宽，不让 HStack 去分 —— 宽度算得出来，才知道第几张开始放不下。
+    private static let font = NSFont.systemFont(ofSize: 11)
+    private static let spacing: CGFloat = 2
+    private static let overflowWidth: CGFloat = 24
+
+    var body: some View {
+        GeometryReader { proxy in
+            let split = split(in: proxy.size.width)
+            HStack(spacing: Self.spacing) {
+                ForEach(split.visible, id: \.self) { path in
+                    tab(path).frame(width: width(of: path))
+                }
+                if !split.overflow.isEmpty { overflowMenu(split.overflow) }
+                Spacer(minLength: 0)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+        }
+        .frame(height: 24)
+    }
+
+    /// 从左往右能塞几张就塞几张；塞不下的进菜单。选中的那张一定在 `visible` 里。
+    private func split(in total: CGFloat) -> (visible: [String], overflow: [String]) {
+        let paths = workspace.tabs.paths
+        let full = paths.reduce(CGFloat.zero) { $0 + width(of: $1) } + Self.spacing * CGFloat(max(0, paths.count - 1))
+        guard full > total else { return (paths, []) }
+
+        let budget = total - Self.overflowWidth - Self.spacing
+        var visible: [String] = []
+        var used: CGFloat = 0
+        for path in paths {
+            let step = width(of: path) + (visible.isEmpty ? 0 : Self.spacing)
+            guard used + step <= budget else { break }
+            visible.append(path)
+            used += step
+        }
+        if let selected = workspace.tabs.selectedPath, !visible.contains(selected) {
+            let step = width(of: selected)
+            while used + Self.spacing + step > budget, let dropped = visible.popLast() {
+                used -= width(of: dropped) + (visible.isEmpty ? 0 : Self.spacing)
+            }
+            visible.append(selected)
+        }
+        let kept = Set(visible)
+        return (visible, paths.filter { !kept.contains($0) })
+    }
+
+    private func width(of path: String) -> CGFloat {
+        let text = (displayName(path) as NSString).size(withAttributes: [.font: Self.font]).width
+        let dirtyDot: CGFloat = workspace.tabs.dirtyPaths.contains(path) ? 11 : 0
+        // 8 左内边距 + 5 间距 + 9 的 ✕ + 8 右内边距，取整到 32。
+        return min(max(ceil(text) + dirtyDot + 32, 58), 150)
+    }
+
+    private func tab(_ path: String) -> some View {
+        HStack(spacing: 5) {
+            Button {
+                workspace.select(path)
+                onSelectionChanged(path)
+            } label: {
+                HStack(spacing: 5) {
+                    Text(displayName(path))
+                        .italic(workspace.tabs.previewPath == path)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if workspace.tabs.dirtyPaths.contains(path) {
+                        Circle().fill(Color.orange).frame(width: 6, height: 6)
+                            .accessibilityLabel(l10n.text("unsaved"))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                workspace.select(path)
+                workspace.pin(path)
+                onSelectionChanged(path)
+            })
+            Button {
+                workspace.requestClose(path)
+                if workspace.pendingClosePath == nil {
+                    onSelectionChanged(workspace.tabs.selectedPath)
+                }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .help(l10n.text("close"))
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(workspace.tabs.selectedPath == path ? Color.accentColor.opacity(0.15) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .help(workspace.tabs.previewPath == path ? l10n.text("previewTabHelpFormat", path) : path)
+    }
+
+    private func overflowMenu(_ paths: [String]) -> some View {
+        Menu {
+            ForEach(paths, id: \.self) { path in
+                Button(displayName(path)) {
+                    workspace.select(path)
+                    onSelectionChanged(path)
+                }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+        }
+        .ycodePanelMenu()
+        .help(l10n.text("moreTabsFormat", "\(paths.count)"))
+    }
+
+    private func displayName(_ path: String) -> String {
+        path.split(separator: "/").last.map(String.init) ?? path
     }
 }

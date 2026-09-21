@@ -107,24 +107,42 @@ public struct YCodeTerminalTheme: Equatable, Sendable {
 }
 
 public enum YCodeThemeCatalog {
-    public static let defaultID = "foundry"
-    public static let options: [YCodeThemeOption] = [
-        .init(id: "system", label: "System", systemColorScheme: nil, background: "#0f0d0a", surface: "#15120e", panel: "#191510", text: "#ebe1cf", textSoft: "#d4c8b3", accent: "#d97757", terminal: .init(background: "#13120f", foreground: "#f0eee6", cursor: "#d97757")),
-        .init(id: "foundry", label: "Foundry", systemColorScheme: "dark", background: "#0f0d0a", surface: "#15120e", panel: "#191510", text: "#ebe1cf", textSoft: "#d4c8b3", accent: "#d97757", terminal: .init(background: "#13120f", foreground: "#f0eee6", cursor: "#d97757")),
-        .init(id: "midnight", label: "Midnight", systemColorScheme: "dark", background: "#0a0e15", surface: "#0f1320", panel: "#131826", text: "#e2e8f5", textSoft: "#c5cee0", accent: "#6c9bd1", terminal: .init(background: "#0f1320", foreground: "#e2e8f5", cursor: "#6c9bd1")),
-        .init(id: "forest", label: "Forest", systemColorScheme: "dark", background: "#0c100c", surface: "#121712", panel: "#161c16", text: "#e3ead8", textSoft: "#c8d3b8", accent: "#88a86a", terminal: .init(background: "#121712", foreground: "#e3ead8", cursor: "#a8c47e")),
-        .init(id: "parchment", label: "Parchment", systemColorScheme: "light", background: "#f3ecdd", surface: "#ede5d3", panel: "#e8e0cc", text: "#2a241a", textSoft: "#4a402e", accent: "#c2664a", terminal: .init(background: "#f3ecdd", foreground: "#2a241a", cursor: "#c2664a")),
-        .init(id: "daylight", label: "Daylight", systemColorScheme: "light", background: "#f4f5f7", surface: "#ebedf1", panel: "#e3e6ec", text: "#1d2230", textSoft: "#364056", accent: "#4a6dc4", terminal: .init(background: "#f4f5f7", foreground: "#1d2230", cursor: "#4a6dc4")),
-        .init(id: "synapse", label: "Synapse", systemColorScheme: "dark", background: "#08060f", surface: "#0e0b1a", panel: "#141027", text: "#f0e8ff", textSoft: "#d4c8eb", accent: "#d946ef", terminal: .init(background: "#0e0b1a", foreground: "#f0e8ff", cursor: "#d946ef")),
-        .init(id: "lagoon", label: "Lagoon", systemColorScheme: "dark", background: "#0d1518", surface: "#121b1f", panel: "#162127", text: "#cfdde0", textSoft: "#b3c3c6", accent: "#6eb4af", terminal: .init(background: "#121b1f", foreground: "#cfdde0", cursor: "#6eb4af")),
-        .init(id: "linen", label: "Linen", systemColorScheme: "light", background: "#fbfaf6", surface: "#f4f2ec", panel: "#ecebe5", text: "#0c0c08", textSoft: "#26241d", accent: "#1d4ed8", terminal: .init(background: "#fbfaf6", foreground: "#0c0c08", cursor: "#1d4ed8")),
-        .init(id: "glacier", label: "Glacier", systemColorScheme: "light", background: "#eef3f7", surface: "#e4ebf1", panel: "#dae3eb", text: "#1a2733", textSoft: "#324554", accent: "#1f547a", terminal: .init(background: "#eef3f7", foreground: "#1a2733", cursor: "#1f547a"))
-    ]
+    /// 只有浅色与深色两套配色，外加「跟随系统」。
+    /// 值取自设计稿 §02 的 token —— 整个窗口（含终端画布）跟着系统外观走，
+    /// 不存在一块不听系统话的区域，所以也不需要十套主题。
+    public static let systemID = "system"
+    public static let defaultID = systemID
+
+    public static let light = YCodeThemeOption(
+        id: "light", label: "Light", systemColorScheme: "light",
+        background: "#ffffff", surface: "#f4f4f6", panel: "#fbfbfc",
+        text: "#1d1d1f", textSoft: "#5a5a5e", accent: "#0b63e5",
+        terminal: .init(background: "#ffffff", foreground: "#1d1d1f", cursor: "#0b63e5")
+    )
+
+    public static let dark = YCodeThemeOption(
+        id: "dark", label: "Dark", systemColorScheme: "dark",
+        background: "#1e1e20", surface: "#242426", panel: "#242426",
+        text: "#f2f2f4", textSoft: "#b4b4b8", accent: "#4c8dff",
+        terminal: .init(background: "#16181d", foreground: "#e8e8ea", cursor: "#4c8dff")
+    )
+
+    public static let options: [YCodeThemeOption] = [light, dark]
 
     public static func option(id: String) -> YCodeThemeOption? {
         options.first { $0.id == id }
     }
+
+    /// 解析当前该用哪套。`system` 与任何旧的主题 id 都跟随系统外观。
+    public static func resolve(id: String, prefersDark: Bool) -> YCodeThemeOption {
+        switch id {
+        case light.id: light
+        case dark.id: dark
+        default: prefersDark ? dark : light
+        }
+    }
 }
+
 
 public struct YCodeAppearanceSettings: Equatable, Sendable {
     public var theme: String

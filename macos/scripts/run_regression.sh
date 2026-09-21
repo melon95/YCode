@@ -9,6 +9,7 @@ REPORT_DIR="$NATIVE_DIR/dist/validation/$STAMP"
 mkdir -p "$REPORT_DIR"
 
 cd "$NATIVE_DIR"
+scripts/check_localization_keys.sh 2>&1 | tee "$REPORT_DIR/localization-keys.log"
 env CLANG_MODULE_CACHE_PATH="$NATIVE_DIR/.build/module-cache" swift test 2>&1 | tee "$REPORT_DIR/swift-test.log"
 scripts/build_and_run.sh build 2>&1 | tee "$REPORT_DIR/app-build.log"
 /usr/bin/codesign --verify --deep --strict "$NATIVE_DIR/dist/YCode Native Dev.app" 2>&1 | tee "$REPORT_DIR/codesign.log"

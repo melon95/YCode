@@ -34,6 +34,61 @@ struct GitServiceTests {
         #expect(try fixture.git("status", "--porcelain").isEmpty)
     }
 
+    @Test("diff scopes: uncommitted, whole branch and a single commit each answer with their own file list")
+    func diffScopes() throws {
+        let fixture = try GitFixture()
+        defer { fixture.remove() }
+        try fixture.file("base.txt", "base\n")
+        try fixture.git("add", "base.txt")
+        try fixture.git("commit", "-m", "initial")
+
+        try fixture.git("checkout", "-b", "feature")
+        try fixture.file("first.txt", "first\n")
+        try fixture.git("add", "first.txt")
+        try fixture.git("commit", "-m", "add first")
+        let firstSHA = try fixture.git("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        try fixture.file("second.txt", "second\n")
+        try fixture.git("add", "second.txt")
+        try fixture.git("commit", "-m", "add second")
+
+        // 提交之外还留一处没提交的改动，它只该出现在 uncommitted 与 branch 两个范围里。
+        try fixture.file("base.txt", "base changed\n")
+
+        let service = YCodeGitService()
+
+        let uncommitted = try service.changes(root: fixture.root, scope: .uncommitted).map(\.path)
+        #expect(uncommitted == ["base.txt"])
+
+        let branch = try service.changes(root: fixture.root, scope: .branch(base: "main")).map(\.path)
+        #expect(branch == ["base.txt", "first.txt", "second.txt"])
+
+        let commit = try service.changes(root: fixture.root, scope: .commit(sha: firstSHA)).map(\.path)
+        #expect(commit == ["first.txt"])
+
+        // 只读范围里没有工作区那一列（状态只有一个字符），写操作也由 scope 直接挡住。
+        #expect(YCodeGitDiffScope.uncommitted.allowsWrites)
+        #expect(!YCodeGitDiffScope.branch(base: "main").allowsWrites)
+        #expect(!YCodeGitDiffScope.commit(sha: firstSHA).allowsWrites)
+        #expect(try service.changes(root: fixture.root, scope: .commit(sha: firstSHA)).allSatisfy { $0.worktreeStatus == " " })
+        #expect(try service.changes(root: fixture.root, scope: .commit(sha: firstSHA)).first?.kind == .added)
+
+        let stats = try service.lineStats(root: fixture.root, scope: .branch(base: "main"))
+        #expect(stats["first.txt"]?.additions == 1)
+        #expect(stats["second.txt"]?.additions == 1)
+
+        let patch = try service.diff(root: fixture.root, scope: .commit(sha: firstSHA), path: "first.txt")
+        #expect(patch.contains("+first"))
+
+        let log = try service.commits(root: fixture.root, limit: 10)
+        #expect(log.count == 3)
+        #expect(log.first?.subject == "add second")
+        #expect(log.first?.shortSHA.isEmpty == false)
+
+        #expect(try service.defaultBranch(root: fixture.root) == "main")
+        #expect(try service.mergeBase(root: fixture.root, base: "main").isEmpty == false)
+    }
+
     @Test("apply hunk affects only the supplied patch")
     func applyHunk() throws {
         let fixture = try GitFixture()

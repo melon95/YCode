@@ -54,6 +54,17 @@ public struct YCodeGitBranchInfo: Equatable, Sendable {
     }
 }
 
+/// 一个文件的增删行数，变更列表上那个 `+2 −0`。
+public struct YCodeGitLineStat: Equatable, Sendable {
+    public let additions: Int
+    public let deletions: Int
+
+    public init(additions: Int, deletions: Int) {
+        self.additions = additions
+        self.deletions = deletions
+    }
+}
+
 public struct YCodeGitStatus: Equatable, Sendable {
     public let root: URL
     public let branch: YCodeGitBranchInfo
@@ -77,6 +88,38 @@ public struct YCodeGitBranch: Identifiable, Equatable, Sendable {
         self.name = name
         self.current = current
         self.remote = remote
+    }
+}
+
+/// 变更区顶部那个范围选择器选中的东西（设计稿 §09）。
+/// 它决定 diff 从哪儿来，也决定文件行上的暂存／丢弃出不出现——只有 `.uncommitted` 能写。
+public enum YCodeGitDiffScope: Equatable, Sendable {
+    /// 未提交的改动：git status + 工作区/暂存区 diff。唯一允许暂存、取消暂存、丢弃、逐块暂存的范围。
+    case uncommitted
+    /// 全部变更：从与基准分支的 merge-base 到工作区，也就是「这条分支到目前为止做了什么」。只读。
+    case branch(base: String)
+    /// 某一次提交（含 ycode 自己落的检查点）。只读。
+    case commit(sha: String)
+
+    public var allowsWrites: Bool { self == .uncommitted }
+}
+
+/// 范围选择器「提交 ›」二级菜单里的一条。
+public struct YCodeGitCommit: Identifiable, Equatable, Sendable {
+    public let sha: String
+    public let shortSHA: String
+    public let subject: String
+    public let author: String
+    public let relativeDate: String
+
+    public var id: String { sha }
+
+    public init(sha: String, shortSHA: String, subject: String, author: String, relativeDate: String) {
+        self.sha = sha
+        self.shortSHA = shortSHA
+        self.subject = subject
+        self.author = author
+        self.relativeDate = relativeDate
     }
 }
 
@@ -113,6 +156,33 @@ public struct YCodeGitService: Sendable {
             args.append(try safePath(path))
         }
         return try run(args, root: repo).stdout
+    }
+
+    /// 工作区相对 HEAD 的增删行数（已暂存与未暂存合在一起看）。
+    /// 二进制文件 numstat 给的是 `-`，直接跳过。
+    public func lineStats(root: URL) throws -> [String: YCodeGitLineStat] {
+        let repo = try repositoryRoot(root)
+        let output = runIgnoringExitCode(["diff", "--no-ext-diff", "--numstat", "HEAD"], root: repo)
+        var stats: [String: YCodeGitLineStat] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 2).map(String.init)
+            guard parts.count == 3, let additions = Int(parts[0]), let deletions = Int(parts[1]) else { continue }
+            stats[parts[2]] = YCodeGitLineStat(additions: additions, deletions: deletions)
+        }
+        return stats
+    }
+
+    /// 未跟踪文件在 `git diff` 里没有输出，用 --no-index 跟空文件比一次，
+    /// 拿到的补丁格式与普通 diff 一致，变更面板可以照常逐块渲染。
+    public func diffUntracked(root: URL, path: String) throws -> String {
+        let repo = try repositoryRoot(root)
+        let safe = try safePath(path)
+        // git status 把整个未跟踪目录报成一条（`foo/`），对目录没法做 --no-index，列出里面的文件。
+        if safe.hasSuffix("/") {
+            return runIgnoringExitCode(["ls-files", "--others", "--exclude-standard", "--", safe], root: repo)
+        }
+        // --no-index 发现差异时退出码是 1，这里的非零退出是正常结果，不是失败。
+        return runIgnoringExitCode(["diff", "--no-ext-diff", "--no-index", "--", "/dev/null", safe], root: repo)
     }
 
     public func diffTree(root: URL, oldCommit: String?, newCommit: String) throws -> String {
@@ -190,6 +260,107 @@ public struct YCodeGitService: Sendable {
             throw YCodeGitError.commandFailed(arguments: ["commit"], exitCode: 1, stderr: "提交信息不能为空")
         }
         return try run(["commit", "-m", trimmed], root: repo).stdout
+    }
+
+    // MARK: 对比范围（设计稿 §09 的范围选择器）
+
+    /// 范围里有哪些文件变了。`.uncommitted` 走 status（带工作区/暂存区两列状态），
+    /// 另外两种走 name-status —— 它们是只读的，状态只有一列。
+    public func changes(root: URL, scope: YCodeGitDiffScope, ignoreWhitespace: Bool = false) throws -> [YCodeGitFileChange] {
+        switch scope {
+        case .uncommitted:
+            return try status(root: root).changes
+        case let .branch(base):
+            let repo = try repositoryRoot(root)
+            let start = try mergeBase(root: repo, base: base)
+            var args = ["diff", "--no-ext-diff", "--name-status", "--find-renames"]
+            if ignoreWhitespace { args.append("-w") }
+            args.append(start)
+            return parseNameStatus(runIgnoringExitCode(args, root: repo))
+        case let .commit(sha):
+            let repo = try repositoryRoot(root)
+            var args = ["show", "--no-ext-diff", "--name-status", "--find-renames", "--format="]
+            if ignoreWhitespace { args.append("-w") }
+            args.append(try safeRevision(sha))
+            return parseNameStatus(runIgnoringExitCode(args, root: repo))
+        }
+    }
+
+    /// 范围里每个文件的增删行数。
+    public func lineStats(root: URL, scope: YCodeGitDiffScope) throws -> [String: YCodeGitLineStat] {
+        switch scope {
+        case .uncommitted:
+            return try lineStats(root: root)
+        case let .branch(base):
+            let repo = try repositoryRoot(root)
+            let start = try mergeBase(root: repo, base: base)
+            return parseNumstat(runIgnoringExitCode(["diff", "--no-ext-diff", "--numstat", start], root: repo))
+        case let .commit(sha):
+            let repo = try repositoryRoot(root)
+            return parseNumstat(runIgnoringExitCode(["show", "--no-ext-diff", "--numstat", "--format=", try safeRevision(sha)], root: repo))
+        }
+    }
+
+    /// 范围里某个文件的补丁。未跟踪文件在 `.uncommitted` 下走 --no-index（`diffUntracked`）。
+    public func diff(root: URL, scope: YCodeGitDiffScope, path: String, ignoreWhitespace: Bool = false) throws -> String {
+        let repo = try repositoryRoot(root)
+        let safe = try safePath(path)
+        switch scope {
+        case .uncommitted:
+            var args = ["diff", "--no-ext-diff", "--binary", "HEAD"]
+            if ignoreWhitespace { args.append("-w") }
+            args.append(contentsOf: ["--", safe])
+            return runIgnoringExitCode(args, root: repo)
+        case let .branch(base):
+            let start = try mergeBase(root: repo, base: base)
+            var args = ["diff", "--no-ext-diff", "--binary", start]
+            if ignoreWhitespace { args.append("-w") }
+            args.append(contentsOf: ["--", safe])
+            return runIgnoringExitCode(args, root: repo)
+        case let .commit(sha):
+            var args = ["show", "--no-ext-diff", "--binary", "--format=", try safeRevision(sha)]
+            if ignoreWhitespace { args.append("-w") }
+            args.append(contentsOf: ["--", safe])
+            return runIgnoringExitCode(args, root: repo)
+        }
+    }
+
+    /// `<base>` 与 HEAD 的分叉点。范围选「全部变更」时从这里开始算，
+    /// 这样基准分支后来的提交不会混进来。
+    public func mergeBase(root: URL, base: String) throws -> String {
+        let repo = try repositoryRoot(root)
+        let revision = try safeRevision(base)
+        let output = runIgnoringExitCode(["merge-base", revision, "HEAD"], root: repo)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // 没有共同祖先（比如全新的孤立分支）时退回基准本身。
+        return output.isEmpty ? revision : output
+    }
+
+    /// 范围选择器「提交 ›」的列表。
+    public func commits(root: URL, limit: Int = 50) throws -> [YCodeGitCommit] {
+        let repo = try repositoryRoot(root)
+        let separator = "\u{1f}"
+        let format = ["%H", "%h", "%s", "%an", "%cr"].joined(separator: separator)
+        let output = runIgnoringExitCode(["log", "--max-count=\(max(1, limit))", "--format=\(format)"], root: repo)
+        return output.split(separator: "\n").compactMap { line in
+            let parts = line.components(separatedBy: separator)
+            guard parts.count == 5 else { return nil }
+            return YCodeGitCommit(sha: parts[0], shortSHA: parts[1], subject: parts[2], author: parts[3], relativeDate: parts[4])
+        }
+    }
+
+    /// 仓库的默认分支：先问 origin/HEAD，问不到就按 main / master 猜，再不行用当前分支。
+    public func defaultBranch(root: URL) throws -> String {
+        let repo = try repositoryRoot(root)
+        let head = runIgnoringExitCode(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root: repo)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !head.isEmpty { return head.replacingOccurrences(of: "origin/", with: "") }
+        for candidate in ["main", "master"] {
+            let exists = runIgnoringExitCode(["rev-parse", "--verify", "--quiet", candidate], root: repo)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !exists.isEmpty { return candidate }
+        }
+        return try branchInfo(root: repo).current ?? "HEAD"
     }
 
     public func branches(root: URL) throws -> [YCodeGitBranch] {
@@ -273,6 +444,55 @@ public struct YCodeGitService: Sendable {
         return URL(fileURLWithPath: output.trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true)
     }
 
+    /// `M\tpath` / `A\tpath` / `R100\told\tnew`。只读范围里没有暂存区那一列，
+    /// 所以 worktreeStatus 一律留空格，`isStaged` / `hasWorktreeChange` 都为假。
+    private func parseNameStatus(_ output: String) -> [YCodeGitFileChange] {
+        var changes: [YCodeGitFileChange] = []
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t").map(String.init)
+            guard let raw = parts.first, let marker = raw.first else { continue }
+            let kind: YCodeGitChangeKind
+            switch marker {
+            case "A": kind = .added
+            case "D": kind = .deleted
+            case "R": kind = .renamed
+            case "C": kind = .copied
+            case "T": kind = .typeChanged
+            case "U": kind = .conflicted
+            case "M": kind = .modified
+            default: kind = .unknown
+            }
+            let isRenameLike = (marker == "R" || marker == "C") && parts.count >= 3
+            let path = isRenameLike ? parts[2] : (parts.count >= 2 ? parts[1] : "")
+            guard !path.isEmpty else { continue }
+            changes.append(YCodeGitFileChange(
+                path: path,
+                originalPath: isRenameLike ? parts[1] : nil,
+                indexStatus: marker,
+                worktreeStatus: " ",
+                kind: kind
+            ))
+        }
+        return changes.sorted { $0.path < $1.path }
+    }
+
+    private func parseNumstat(_ output: String) -> [String: YCodeGitLineStat] {
+        var stats: [String: YCodeGitLineStat] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 2).map(String.init)
+            guard parts.count == 3, let additions = Int(parts[0]), let deletions = Int(parts[1]) else { continue }
+            stats[parts[2]] = YCodeGitLineStat(additions: additions, deletions: deletions)
+        }
+        return stats
+    }
+
+    /// 分支名与 sha 会拼进 git 命令，挡掉以 `-` 开头的值，免得被当成选项。
+    private func safeRevision(_ revision: String) throws -> String {
+        let trimmed = revision.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("-") else { throw YCodeGitError.invalidPath(revision) }
+        return trimmed
+    }
+
     private func safePath(_ path: String) throws -> String {
         guard !path.isEmpty,
               !path.hasPrefix("/"),
@@ -333,6 +553,24 @@ public struct YCodeGitService: Sendable {
     }
 
     @discardableResult
+    private func runIgnoringExitCode(_ arguments: [String], root: URL) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.currentDirectoryURL = root
+        let outPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return ""
+        }
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     private func run(
         _ arguments: [String],
         root: URL,

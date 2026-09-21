@@ -28,6 +28,7 @@ BIN_DIR="$(swift build --show-bin-path)"
 cp "$BIN_DIR/YCodeApp" "$APP_CONTENTS/MacOS/YCodeApp"
 /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$APP_CONTENTS/MacOS/YCodeApp" 2>/dev/null || true
 cp "$NATIVE_DIR/Resources/YCodeApp-Info.plist" "$APP_CONTENTS/Info.plist"
+cp "$NATIVE_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 cp "$BIN_DIR/ycode" "$BIN_DIR/ycode-mcp" "$BIN_DIR/ycode-notify" "$BIN_DIR/ycode-migrate" "$APP_CONTENTS/Resources/"
 mkdir -p "$APP_CONTENTS/Frameworks"
 SPARKLE_FRAMEWORK="$(find "$NATIVE_DIR/.build" -path '*/Sparkle.framework' -type d -print -quit)"

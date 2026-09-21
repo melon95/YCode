@@ -72,21 +72,21 @@ struct UsageSettingsView: View {
             }
         }
         .task { await model.load() }
-        .toolbar {
-            ToolbarItem {
-                Button { Task { await model.load() } } label: { Image(systemName: "arrow.clockwise") }
-                    .help(l10n.text("recalculate"))
-                    .disabled(model.isLoading)
-            }
-        }
     }
 
     private var report: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text(l10n.text("usageEstimateHelp"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(l10n.text("usageEstimateHelp"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button { Task { await model.load() } } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless)
+                        .help(l10n.text("recalculate"))
+                        .disabled(model.isLoading)
+                }
 
                 HStack(spacing: 10) {
                     summaryCard(l10n.text("estimatedCost"), value: currency(model.usage.totalCostUSD), emphasized: true)

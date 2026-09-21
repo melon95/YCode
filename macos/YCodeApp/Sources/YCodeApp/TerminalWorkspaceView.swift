@@ -3,420 +3,479 @@ import SwiftTerm
 import SwiftUI
 import YCodeCore
 
+/// 设计稿 §03 标注 4／5：终端就是画布，不是面板。
+/// 画布右边固定一个检查器，tab 互斥；原来的画布工具条（布局菜单 + 面板开关 + 字号加减）已拆到
+/// 工具栏、检查器 tab 与状态栏。
 struct TerminalWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.ycodeL10n) private var l10n
+    @State private var renameTarget: SessionMetadata?
+    @State private var renameDraft = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            canvasToolbar
-            Divider()
-            HStack(spacing: 0) {
-                terminalCanvas
-                if !model.openPanels.isEmpty {
-                    Divider()
-                    utilityPanels
-                        .frame(
-                            minWidth: 180,
-                            idealWidth: CGFloat(model.preferences.fileTreeWidth),
-                            maxWidth: 600
-                        )
+        terminalCanvas
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert(l10n.text("renameSession"), isPresented: renameIsPresented) {
+            TextField(l10n.text("name"), text: $renameDraft)
+            Button(l10n.text("cancel"), role: .cancel) { renameTarget = nil }
+            Button(l10n.text("save")) {
+                if let target = renameTarget {
+                    model.selectSession(target.id)
+                    model.renameSelectedSession(renameDraft)
                 }
+                renameTarget = nil
             }
         }
-        .navigationTitle(model.selectedProject?.name ?? l10n.text("workspace"))
     }
 
-    private var canvasToolbar: some View {
-        HStack(spacing: 8) {
-            Menu {
-                ForEach(YCodeTerminalLayout.allCases) { layout in
-                    Button {
-                        model.setTerminalLayout(layout)
-                    } label: {
-                        if model.terminalLayout == layout {
-                            Label(layout.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(layout.displayName)
-                        }
-                    }
-                    .disabled(!model.validTerminalLayouts.contains(layout))
-                }
-            } label: {
-                Label(model.terminalLayout.displayName, systemImage: "rectangle.split.2x1")
+    private var renameIsPresented: Binding<Bool> {
+        Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })
+    }
+
+    // MARK: 画布
+
+    /// 画布上的一格：要么是一个会话，要么是 agent 选择器。
+    /// ⌘N 不覆盖整块画布 —— 它只是多占一格，其它会话照常在跑（设计稿 §04 标注 3）。
+    private enum CanvasPane: Identifiable {
+        case session(SessionMetadata, slot: Int)
+        case picker
+
+        var id: String {
+            switch self {
+            case let .session(session, _): session.id
+            case .picker: "new-session-picker"
             }
-            .disabled(model.visibleSessionIDs.isEmpty)
-
-            Divider().frame(height: 18)
-
-            ForEach(YCodeWorkspacePanel.allCases) { panel in
-                Button {
-                    model.togglePanel(panel)
-                } label: {
-                    Label(panel.localizedTitle(l10n), systemImage: panelIcon(panel))
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(model.openPanels.contains(panel) ? Color.accentColor : Color.secondary)
-                .help(l10n.text("showHidePanelHelpFormat", panel.localizedTitle(l10n)))
-            }
-
-            Spacer()
-            Button { model.adjustTerminalFontSize(by: -1) } label: { Image(systemName: "textformat.size.smaller") }
-                .buttonStyle(.borderless)
-                .disabled(model.terminalFontSize <= 8)
-                .help(l10n.text("smallerTerminalFont"))
-            Text("\(Int(model.terminalFontSize))")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 20)
-            Button { model.adjustTerminalFontSize(by: 1) } label: { Image(systemName: "textformat.size.larger") }
-                .buttonStyle(.borderless)
-                .disabled(model.terminalFontSize >= 32)
-                .help(l10n.text("largerTerminalFont"))
         }
-        .padding(.horizontal, 12)
-        .frame(height: 42)
+    }
+
+    private var canvasPanes: [CanvasPane] {
+        let sessions = model.visibleSessions
+        var panes = sessions.enumerated().map { CanvasPane.session($1, slot: $0) }
+        // 没有会话时画布本身就是选择器；按了 ⌘N 就在末尾多开一格，满 4 格则占用焦点格。
+        if sessions.isEmpty {
+            return [.picker]
+        }
+        if model.isPresentingNewSession {
+            if panes.count < YCodeTerminalCanvasRouting.maximumVisibleSessions {
+                panes.append(.picker)
+            } else {
+                panes[model.focusedCanvasSlot] = .picker
+            }
+        }
+        return panes
     }
 
     @ViewBuilder
     private var terminalCanvas: some View {
-        let sessions = model.visibleSessions
-        if sessions.isEmpty {
-            ContentUnavailableView(
-                l10n.text("chooseOrCreateSession"),
-                systemImage: "terminal",
-                description: Text(l10n.text("upTo4AgentTerminals"))
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            switch model.terminalLayout {
-            case .single:
-                terminalPane(sessions[0], slot: 0)
-            case .stack:
-                VSplitView {
-                    ForEach(Array(sessions.enumerated()), id: \.element.id) { slot, session in
-                        terminalPane(session, slot: slot)
-                    }
-                }
-            case .columns:
+        let panes = canvasPanes
+        let layout = YCodeTerminalLayout.reflow(model.terminalLayout, for: panes.count)
+        switch layout {
+        case .single:
+            pane(panes[0], standalone: panes.count == 1)
+        case .stack:
+            VSplitView {
+                ForEach(panes) { item in pane(item) }
+            }
+        case .columns:
+            HSplitView {
+                ForEach(panes) { item in pane(item) }
+            }
+        case .grid2x2:
+            VSplitView {
                 HSplitView {
-                    ForEach(Array(sessions.enumerated()), id: \.element.id) { slot, session in
-                        terminalPane(session, slot: slot)
-                    }
+                    ForEach(Array(panes.prefix(2))) { item in pane(item) }
                 }
-            case .grid2x2:
-                VSplitView {
-                    HSplitView {
-                        ForEach(Array(sessions.prefix(2).enumerated()), id: \.element.id) { slot, session in
-                            terminalPane(session, slot: slot)
-                        }
-                    }
-                    HSplitView {
-                        ForEach(Array(sessions.dropFirst(2).enumerated()), id: \.element.id) { offset, session in
-                            terminalPane(session, slot: offset + 2)
-                        }
-                    }
-                }
-            case .mainSide:
                 HSplitView {
-                    terminalPane(sessions[0], slot: 0)
-                    VSplitView {
-                        ForEach(Array(sessions.dropFirst().enumerated()), id: \.element.id) { offset, session in
-                            terminalPane(session, slot: offset + 1)
-                        }
-                    }
+                    ForEach(Array(panes.dropFirst(2))) { item in pane(item) }
+                }
+            }
+        case .mainSide:
+            HSplitView {
+                pane(panes[0])
+                VSplitView {
+                    ForEach(Array(panes.dropFirst())) { item in pane(item) }
                 }
             }
         }
     }
 
-    private func terminalPane(_ session: SessionMetadata, slot: Int) -> some View {
+    @ViewBuilder
+    private func pane(_ item: CanvasPane, standalone: Bool = false) -> some View {
+        switch item {
+        case let .session(session, slot):
+            terminalPane(session, slot: slot)
+        case .picker:
+            pickerPane(standalone: standalone)
+        }
+    }
+
+    /// 空着的窗格就是 agent 选择器：点一下这个窗格就有 agent 在跑，不用先回侧栏。
+    /// 画布上还有别的会话时给它一条窗格头，好把这一格关掉。
+    private func pickerPane(standalone: Bool) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(model.attentionEvent(for: session.id) != nil
-                        ? Color.orange
-                        : (model.runtimeStatus(for: session)?.isLive == true ? Color.green : Color.secondary.opacity(0.6)))
-                    .frame(width: 7, height: 7)
-                Text(session.title.isEmpty ? l10n.text("newSessionFallback") : session.title)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                if let title = model.runtime(for: session)?.title, !title.isEmpty {
-                    Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            if !standalone {
+                HStack(spacing: 8) {
+                    YCodeStatusDot(presence: .needsYou)
+                    Text(l10n.text("newSessionFallback"))
+                        .font(.caption.weight(.medium).italic())
+                    Spacer(minLength: 4)
+                    Button { model.isPresentingNewSession = false } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(l10n.text("cancel"))
                 }
-                Spacer()
-                if let pid = model.runtimePID(for: session), model.runtimeStatus(for: session)?.isLive == true {
-                    Text("PID \(pid)").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
-                }
-                Button {
-                    model.focusCanvasSlot(slot)
-                    model.openTerminalSearch(sessionID: session.id)
-                } label: { Image(systemName: "magnifyingglass") }
-                    .buttonStyle(.borderless)
-                    .help(l10n.text("findTerminal"))
-                Button {
-                    model.closeCanvasSlot(slot)
-                } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
-                    .help(l10n.text("hideDoNotStopAgent"))
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background(slot == model.focusedCanvasSlot ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor))
-            .contentShape(Rectangle())
-            .onTapGesture { model.focusCanvasSlot(slot) }
-
-            Divider()
-
-            if model.terminalSearchSessionID == session.id {
-                HStack(spacing: 6) {
-                    TextField(l10n.text("findTerminal"), text: Binding(
-                        get: { model.terminalSearchQuery },
-                        set: { value in model.setTerminalSearchQuery(value) }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.searchTerminal() }
-                    Text(model.terminalSearchResult)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(model.terminalSearchResult == l10n.text("noMatches") ? Color.orange : Color.secondary)
-                        .frame(minWidth: 42)
-                    Button { model.searchTerminal(backwards: true) } label: { Image(systemName: "chevron.up") }
-                        .buttonStyle(.borderless)
-                    Button { model.searchTerminal() } label: { Image(systemName: "chevron.down") }
-                        .buttonStyle(.borderless)
-                    Button { model.closeTerminalSearch() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless)
-                }
-                .padding(.horizontal, 8)
-                .frame(height: 34)
+                .padding(.horizontal, 10)
+                .frame(height: YCodeMetrics.paneHeaderHeight)
+                .background(Color(nsColor: .controlBackgroundColor))
                 Divider()
             }
+            NewSessionPickerView(model: model)
+        }
+        .frame(minWidth: 220, minHeight: 150)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
 
-            if let runtime = model.runtime(for: session), runtime.status.isLive {
-                YCodeTerminalView(
-                    sessionID: session.id,
-                    runtime: runtime,
-                    workingDirectory: model.selectedProject?.repositoryURL,
-                    fontSize: model.terminalFontSize,
-                    theme: model.activeTheme,
-                    locale: model.locale,
-                    focused: slot == model.focusedCanvasSlot,
-                    searchRequest: model.terminalSearchRequest,
-                    onFilePath: model.recordTerminalPath
-                ) { result, generation in
-                    model.updateTerminalSearchResult(result, generation: generation)
-                }
-                .background(Color(nsColor: .textBackgroundColor))
-            } else {
-                ContentUnavailableView {
-                    Label(l10n.text("agentNotRunning"), systemImage: "pause.circle")
-                } description: {
-                    Text(session.lastExitCode.map { l10n.text("lastExitStatusFormat", $0) } ?? l10n.text("canRecoverOriginalSession"))
-                } actions: {
-                    Button(l10n.text("recoverSession")) { model.restartSession(session.id) }
-                        .disabled(session.recoveryAvailability != .available)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+    private func terminalPane(_ session: SessionMetadata, slot: Int) -> some View {
+        let focused = slot == model.focusedCanvasSlot
+        return VStack(spacing: 0) {
+            paneHeader(session, slot: slot, focused: focused)
+            Divider()
+            if model.terminalSearchSessionID == session.id { searchBar }
+            paneBody(session, slot: slot)
         }
         .frame(minWidth: 220, minHeight: 150)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
+            // 焦点有两层标记：窗格头带强调底色，窗格四周一圈 1px 强调描边（设计稿 §04 标注 1）。
             RoundedRectangle(cornerRadius: 4)
-                .stroke(slot == model.focusedCanvasSlot ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1)
+                .stroke(focused ? Color.accentColor : Color.clear, lineWidth: 1)
         }
     }
 
-    private var utilityPanels: some View {
-        VStack(spacing: 8) {
-            ForEach(YCodeWorkspacePanel.allCases.filter(model.openPanels.contains)) { panel in
-                VStack(spacing: 0) {
-                    HStack {
-                        Label(panel.localizedTitle(l10n), systemImage: panelIcon(panel)).font(.caption.weight(.semibold))
-                        Spacer()
-                        Button { model.togglePanel(panel) } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.borderless)
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
-                    Divider()
-                    panelBody(panel)
-                }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay { RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2)) }
+    /// 窗格头 28px，只放会话本身：状态点、agent 图标、名称、⌘⇧N、移出画布。
+    /// 名字后面什么都不跟——是哪个 agent 由图标回答，CLI 吐的终端标题各家格式不一，
+    /// 而且终端第一行就在说同一件事。查找（⌘F）有快捷键和右键菜单，不在这条上占按钮。
+    private func paneHeader(_ session: SessionMetadata, slot: Int, focused: Bool) -> some View {
+        HStack(spacing: 8) {
+            YCodeStatusDot(presence: model.presence(for: session))
+            YCodeAgentIconView(profile: model.agentProfiles.first { $0.id == session.agentProfile }, size: 12)
+            Text(session.title.isEmpty ? l10n.text("newSessionFallback") : session.title)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text("⌘⇧\(slot + 1)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            Button { model.closeCanvasSlot(slot) } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(l10n.text("hideDoNotStopAgent"))
         }
-        .padding(8)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .padding(.horizontal, 10)
+        .frame(height: YCodeMetrics.paneHeaderHeight)
+        .background(focused ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor))
+        .contentShape(Rectangle())
+        .onTapGesture { model.focusCanvasSlot(slot) }
+        .contextMenu { paneMenu(session, slot: slot) }
     }
 
     @ViewBuilder
-    private func panelBody(_ panel: YCodeWorkspacePanel) -> some View {
+    private func paneMenu(_ session: SessionMetadata, slot: Int) -> some View {
+        Button(l10n.text("findTerminal")) {
+            model.focusCanvasSlot(slot)
+            model.openTerminalSearch(sessionID: session.id)
+        }
+        Button(l10n.text("renameEllipsis")) {
+            renameDraft = session.title
+            renameTarget = session
+        }
+        Divider()
+        Button(l10n.text("removeFromCanvas")) { model.closeCanvasSlot(slot) }
+        Button(l10n.text("stop"), role: .destructive) { model.stopSession(session.id) }
+            .disabled(model.runtimeStatus(for: session)?.isLive != true)
+    }
+
+    private var searchBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                TextField(l10n.text("findTerminal"), text: Binding(
+                    get: { model.terminalSearchQuery },
+                    set: { value in model.setTerminalSearchQuery(value) }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { model.searchTerminal() }
+                Text(model.terminalSearchResult)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(model.terminalSearchResult == l10n.text("noMatches") ? Color.ycodeWarn : Color.secondary)
+                    .frame(minWidth: 42)
+                Button { model.searchTerminal(backwards: true) } label: { Image(systemName: "chevron.up") }
+                    .buttonStyle(.borderless)
+                Button { model.searchTerminal() } label: { Image(systemName: "chevron.down") }
+                    .buttonStyle(.borderless)
+                Button { model.closeTerminalSearch() } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 34)
+            Divider()
+        }
+    }
+
+    @ViewBuilder
+    private func paneBody(_ session: SessionMetadata, slot: Int) -> some View {
+        if let runtime = model.runtime(for: session), runtime.status.isLive {
+            YCodeTerminalView(
+                sessionID: session.id,
+                runtime: runtime,
+                workingDirectory: model.selectedProject?.repositoryURL,
+                fontSize: model.terminalFontSize,
+                theme: model.activeTheme,
+                locale: model.locale,
+                focused: slot == model.focusedCanvasSlot,
+                searchRequest: model.terminalSearchRequest,
+                onFilePath: model.recordTerminalPath
+            ) { result, generation in
+                model.updateTerminalSearchResult(result, generation: generation)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        } else if let failure = model.startError(for: session.id) {
+            // 启动失败才有例外：命令找不到、worktree 路径不存在这类硬失败，就地给原因与重试。
+            VStack(spacing: 10) {
+                Text(l10n.text("sessionStartFailedTitle")).font(.subheadline.weight(.medium))
+                Text(failure)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                Button(l10n.text("retry")) { model.restartSession(session.id) }
+                    .controlSize(.small)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: model.activeTheme.nsTerminalBackground))
+        } else {
+            // 会话总是自己起来：不给「正在接着跑…」这类过场屏，窗格里永远是终端底色。
+            Color(nsColor: model.activeTheme.nsTerminalBackground)
+                .onAppear { model.resumeIfNeeded(session.id) }
+        }
+    }
+
+}
+
+/// 右侧检查器的内容。外壳（开合、拖宽、分隔条）交给系统的 `.inspector`，
+/// 这里只管 tab 条与四个面板本身。
+/// 面板区：文件 / 变更 / 待办 / 终端各自开关。
+/// 开着的按顺序纵向堆在一列里，**每列最多两张，开第三个就另起一列**；卡与卡、列与列之间留 8 的间距。
+/// 自绘而不是用系统 `.inspector`：那条会在顶上留一段永远空着的工具栏区，也撑不起多列（设计稿 §07）。
+struct WorkspaceInspectorView: View {
+    @ObservedObject var model: WorkspaceModel
+    @Environment(\.ycodeL10n) private var l10n
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(model.panelColumns.enumerated()), id: \.offset) { index, column in
+                if index > 0 { panelGrip(vertical: true) }
+                VStack(spacing: 0) {
+                    ForEach(Array(column.enumerated()), id: \.element) { row, panel in
+                        if row > 0 { panelGrip(vertical: false) }
+                        // 每列第一张卡的卡头站在窗口最顶那一行，高度跟画布顶栏一样 44，
+                        // 于是顶栏下面那条横线横穿画布与面板区，中间不断档（设计稿 §04）。
+                        panelCard(panel, headOfColumn: row == 0)
+                    }
+                }
+                // 列宽定死，不跟着容器等分：加列那一下容器是动画着变宽的，
+                // 等分会让原有的列先缩到一半再长回来。定死之后新列是被"露"出来的。
+                .frame(maxHeight: .infinity)
+                .frame(width: model.resolvedPanelColumnWidth)
+            }
+        }
+        // 靠左钉住：容器还没长到位的那几帧，多出来的那列先探到窗口右缘外面，由窗口裁掉。
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Color.ycodeChrome)
+    }
+
+    /// 卡与卡、列与列之间的 5 px 隔条（设计稿 §07 的 `.grip`）。一条 1 px 的线不够 ——
+    /// 上一张卡的最后一行会像是直接续在下一张的卡头上，两列之间的两片内容也会连成一片。
+    private func panelGrip(vertical: Bool) -> some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(width: vertical ? YCodeMetrics.panelGrip : nil,
+                   height: vertical ? nil : YCodeMetrics.panelGrip)
+    }
+
+    /// 卡本身不画卡头 —— 卡头交给面板自己，好让面板把自己的动作按钮摆进同一行。
+    private func panelCard(_ panel: YCodeWorkspacePanel, headOfColumn: Bool) -> some View {
+        panelBody(panel, spec: headerSpec(panel, headOfColumn: headOfColumn))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// 列首那张 44（与画布顶栏同高），其余 30。
+    /// 没有折叠箭头 —— 一张收起来的卡只剩一条占着高度的卡头，要它不如直接 ✕ 关掉；
+    /// ✕ 等同于灭掉画布顶栏上那个开关，再点亮就回来。
+    private func headerSpec(_ panel: YCodeWorkspacePanel, headOfColumn: Bool) -> YCodePanelHeaderSpec {
+        YCodePanelHeaderSpec(
+            panel: panel,
+            badge: badgeCount(panel),
+            height: headOfColumn ? YCodeMetrics.topBarHeight : YCodeMetrics.panelHeaderHeight,
+            close: { model.togglePanel(panel) },
+            moveUp: { model.movePanel(panel, by: -1) },
+            moveDown: { model.movePanel(panel, by: 1) },
+            canMoveUp: model.openPanels.first != panel,
+            canMoveDown: model.openPanels.last != panel
+        )
+    }
+
+    private func badgeCount(_ panel: YCodeWorkspacePanel) -> Int? {
         switch panel {
-        case .history:
-            HistoryPanelView(model: model)
-                .frame(minHeight: 320, maxHeight: .infinity)
+        case .changes: model.scopedChanges.count
+        case .todos: model.todos.filter { $0.status != .done }.count
+        default: nil
+        }
+    }
+
+    @ViewBuilder
+    private func panelBody(_ panel: YCodeWorkspacePanel, spec: YCodePanelHeaderSpec) -> some View {
+        switch panel {
         case .files:
             if let project = model.selectedProject, let workspace = model.selectedEditorWorkspace {
                 ProjectFileWorkspaceView(
                     project: project,
                     workspace: workspace,
+                    header: spec,
                     editorFontSize: model.editorFontSize,
                     theme: model.activeTheme,
                     selectedFileURL: model.selectedTerminalPath,
                     onSelectFile: model.selectProjectFile,
+                    onOpenFile: model.pinProjectFile,
                     onMovePath: model.projectFileMoved,
                     onDeletePath: model.projectFileDeleted
                 )
                 .id(project.id)
-                .frame(minHeight: 320, maxHeight: .infinity)
             } else {
-                ContentUnavailableView(l10n.text("noProjectSelected"), systemImage: "folder")
+                VStack(spacing: 0) {
+                    YCodePanelHeader(spec: spec)
+                    Divider()
+                    YCodeInspectorEmptyState(title: l10n.text("noProjectSelected"), message: "")
+                }
             }
-        case .terminal:
-            ProjectShellWorkspaceView(model: model)
-                .frame(minHeight: 280, maxHeight: .infinity)
         case .changes:
-            ChangesPanelView(model: model)
-                .frame(minHeight: 320, maxHeight: .infinity)
+            ChangesPanelView(model: model, header: spec)
         case .todos:
-            TodoPanelView(model: model)
-                .frame(minHeight: 300, maxHeight: .infinity)
-        }
-    }
-
-    private func panelIcon(_ panel: YCodeWorkspacePanel) -> String {
-        switch panel {
-        case .terminal: "terminal"
-        case .history: "clock.arrow.circlepath"
-        case .files: "folder"
-        case .changes: "arrow.triangle.branch"
-        case .todos: "checklist"
+            TodoPanelView(model: model, header: spec)
+        case .terminal:
+            ProjectShellWorkspaceView(model: model, header: spec)
         }
     }
 }
 
+/// 终端面板 = 一排标签 + 一格终端。分屏树在 Core 里原样留着，界面上一次只显示一格；
+/// ＋ 开出来的新格子在这里表现为一个标签（设计稿 §07 的终端面板先做成这样）。
 private struct ProjectShellWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
+    let header: YCodePanelHeaderSpec
     @Environment(\.ycodeL10n) private var l10n
 
     var body: some View {
-        if let workspace = model.selectedShellWorkspace, let project = model.selectedProject {
-            shellNode(workspace.tree, project: project, paneCount: workspace.paneIDs.count, path: [])
-                .padding(4)
-        } else {
-            ContentUnavailableView(l10n.text("shellUnavailable"), systemImage: "terminal", description: Text(l10n.text("selectProjectFirst")))
-        }
-    }
-
-    private func shellNode(
-        _ node: YCodeShellSplitNode,
-        project: ProjectRecord,
-        paneCount: Int,
-        path: [Bool]
-    ) -> AnyView {
-        switch node {
-        case let .leaf(paneID):
-            return AnyView(shellPane(paneID, project: project, canClose: paneCount > 1))
-        case let .split(orientation, ratio, first, second):
-            return AnyView(GeometryReader { proxy in
-                let divider: CGFloat = 6
-                if orientation == .vertical {
-                    let available = max(0, proxy.size.width - divider)
-                    HStack(spacing: 0) {
-                        shellNode(first, project: project, paneCount: paneCount, path: path + [true])
-                            .frame(width: available * ratio)
-                        shellDivider(vertical: true, path: path, available: available, ratio: ratio)
-                        shellNode(second, project: project, paneCount: paneCount, path: path + [false])
-                            .frame(width: available * (1 - ratio))
-                    }
-                } else {
-                    let available = max(0, proxy.size.height - divider)
-                    VStack(spacing: 0) {
-                        shellNode(first, project: project, paneCount: paneCount, path: path + [true])
-                            .frame(height: available * ratio)
-                        shellDivider(vertical: false, path: path, available: available, ratio: ratio)
-                        shellNode(second, project: project, paneCount: paneCount, path: path + [false])
-                            .frame(height: available * (1 - ratio))
-                    }
-                }
-            })
-        }
-    }
-
-    private func shellDivider(vertical: Bool, path: [Bool], available: CGFloat, ratio: Double) -> some View {
-        Rectangle()
-            .fill(Color.secondary.opacity(0.18))
-            .frame(width: vertical ? 6 : nil, height: vertical ? nil : 6)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                guard available > 0 else { return }
-                let delta = vertical ? value.translation.width : value.translation.height
-                model.updateShellSplitRatio(path: path, ratio: ratio + delta / available)
-            })
-            .help(vertical ? l10n.text("dragShellWidth") : l10n.text("dragShellHeight"))
-    }
-
-    private func shellPane(_ paneID: String, project: ProjectRecord, canClose: Bool) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "terminal")
-                Text("Shell \(YCodeProjectShellWorkspace.paneNumber(paneID) ?? 0)")
-                    .font(.caption.weight(.medium))
-                Spacer()
-                if let runtime = model.shellRuntime(paneID: paneID), runtime.status.isLive {
-                    Text("PID \(runtime.processIdentifier)")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Menu {
-                    Button(l10n.text("splitRight")) { model.splitShellPane(paneID, direction: .right) }
-                    Button(l10n.text("splitDown")) { model.splitShellPane(paneID, direction: .down) }
-                    Button(l10n.text("splitLeft")) { model.splitShellPane(paneID, direction: .left) }
-                    Button(l10n.text("splitUp")) { model.splitShellPane(paneID, direction: .up) }
-                } label: {
-                    Image(systemName: "rectangle.split.2x1")
-                }
-                .menuStyle(.borderlessButton)
-                .help(l10n.text("split"))
-                if canClose {
-                    Button { model.closeShellPane(paneID) } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless)
-                        .help(l10n.text("closeShellPane"))
+            YCodePanelHeader(spec: header) {
+                tabStrip
+            } actions: {
+                Button { model.addShellPane() } label: { Image(systemName: "plus") }
+                    .ycodePanelAction()
+                    .help(l10n.text("newShellTab"))
+                    .disabled(model.selectedShellPaneID == nil)
+            }
+            Divider()
+            content
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var paneIDs: [String] { model.selectedShellWorkspace?.paneIDs ?? [] }
+
+    /// 标签顶掉了卡头上的「终端」两个字 —— 左边那个图标已经在说这是终端面板，
+    /// 标签自己又写着「终端 1」，再放一个标题就是第三遍。
+    private var tabStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 3) {
+                ForEach(paneIDs, id: \.self) { paneID in
+                    shellTab(paneID, canClose: paneIDs.count > 1)
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(height: 28)
-            .background(Color(nsColor: .controlBackgroundColor))
-            Divider()
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.never)
+    }
 
-            if let runtime = model.shellRuntime(paneID: paneID), runtime.status.isLive {
-                YCodeTerminalView(
-                    sessionID: paneID,
-                    runtime: runtime,
-                    workingDirectory: project.repositoryURL,
-                    fontSize: model.terminalFontSize,
-                    theme: model.activeTheme,
-                    locale: model.locale,
-                    focused: false,
-                    searchRequest: nil,
-                    onFilePath: model.recordTerminalPath,
-                    onSearchResult: { _, _ in }
-                )
-            } else {
-                ContentUnavailableView {
-                    Label(l10n.text("shellExited"), systemImage: "terminal")
-                } actions: {
-                    Button(l10n.text("restart")) { model.restartShellPane(paneID) }
+    private func shellTab(_ paneID: String, canClose: Bool) -> some View {
+        let selected = model.selectedShellPaneID == paneID
+        return HStack(spacing: 4) {
+            Text("\(l10n.text("terminal")) \(YCodeProjectShellWorkspace.paneNumber(paneID) ?? 0)")
+                .font(.caption.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Color.primary : Color.secondary)
+                .fixedSize()
+            if canClose {
+                Button { model.closeShellPane(paneID) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 13, height: 13)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(l10n.text("closeShellPane"))
             }
         }
-        .frame(minWidth: 120, minHeight: 90)
-        .background(Color(nsColor: .textBackgroundColor))
-        .overlay { RoundedRectangle(cornerRadius: 3).stroke(Color.secondary.opacity(0.25)) }
+        .padding(.horizontal, 7)
+        .frame(height: 22)
+        .background(
+            selected ? Color.primary.opacity(0.09) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { model.selectShellPane(paneID) }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let project = model.selectedProject, let paneID = model.selectedShellPaneID {
+            shellPane(paneID, project: project)
+        } else {
+            YCodeInspectorEmptyState(
+                title: l10n.text("shellUnavailable"),
+                message: l10n.text("selectProjectFirst")
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func shellPane(_ paneID: String, project: ProjectRecord) -> some View {
+        if let runtime = model.shellRuntime(paneID: paneID), runtime.status.isLive {
+            YCodeTerminalView(
+                sessionID: paneID,
+                runtime: runtime,
+                workingDirectory: project.repositoryURL,
+                fontSize: model.terminalFontSize,
+                theme: model.activeTheme,
+                locale: model.locale,
+                focused: false,
+                searchRequest: nil,
+                onFilePath: model.recordTerminalPath,
+                onSearchResult: { _, _ in }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 8) {
+                Text(l10n.text("shellExited")).font(.subheadline.weight(.semibold))
+                Button(l10n.text("restart")) { model.restartShellPane(paneID) }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 

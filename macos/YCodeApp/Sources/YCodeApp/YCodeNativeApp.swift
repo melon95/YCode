@@ -17,6 +17,9 @@ struct YCodeNativeApp: App {
             DeferredNativeRootView().frame(minWidth: 980, minHeight: 640)
         }
         .defaultSize(width: 1240, height: 780)
+        // 画布与面板区是同级的两块：标题栏交给内容自己画，
+        // 系统工具栏会横贯整窗、把面板区压在下面（设计稿 §04／§07）。
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button(commandLocalization.l10n.text("checkForUpdatesEllipsis")) {
@@ -56,7 +59,11 @@ struct YCodeNativeApp: App {
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
             }
             CommandMenu(commandLocalization.l10n.text("workspaceMenu")) {
-                Button(commandLocalization.l10n.text("newAgentSessionEllipsis")) {
+                Button(commandLocalization.l10n.text("commandPalette")) {
+                    postYCodeWindowCommand(.showYCodeCommandPalette)
+                }
+                .keyboardShortcut("k")
+                Button(commandLocalization.l10n.text("newSessionEllipsis")) {
                     postYCodeWindowCommand(.newYCodeSession)
                 }
                 .keyboardShortcut("n")
@@ -65,17 +72,21 @@ struct YCodeNativeApp: App {
                     postYCodeWindowCommand(.toggleYCodeProjectSidebar)
                 }
                 .keyboardShortcut("b")
+                Button(commandLocalization.l10n.text("hideInspector")) {
+                    postYCodeWindowCommand(.toggleYCodeInspector)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                ForEach(Array(YCodeWorkspacePanel.shortcutPanels.enumerated()), id: \.element.id) { index, panel in
+                    Button(commandLocalization.l10n.text("inspectorTabFormat", panel.localizedTitle(commandLocalization.l10n))) {
+                        postYCodeWindowCommand(.toggleYCodeWorkspacePanel, payload: panel.rawValue)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                }
                 Divider()
                 Button(commandLocalization.l10n.text("findCurrentTerminal")) {
                     postYCodeWindowCommand(.requestFindYCodeTerminal)
                 }
                 .keyboardShortcut("f")
-                ForEach(Array(YCodeWorkspacePanel.shortcutPanels.enumerated()), id: \.element.id) { index, panel in
-                    Button(commandLocalization.l10n.text("showHidePanelFormat", panel.localizedTitle(commandLocalization.l10n))) {
-                        postYCodeWindowCommand(.toggleYCodeWorkspacePanel, payload: panel.rawValue)
-                    }
-                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
-                }
                 Divider()
                 ForEach(0..<4, id: \.self) { index in
                     Button(commandLocalization.l10n.text("focusCanvasFormat", index + 1)) {
@@ -83,28 +94,11 @@ struct YCodeNativeApp: App {
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .shift])
                 }
-            }
-            CommandMenu(commandLocalization.l10n.text("history")) {
-                Button(commandLocalization.l10n.text("searchProjectHistory")) {
-                    postYCodeWindowCommand(.showYCodeHistorySearch)
-                }
-                .keyboardShortcut("k")
+                Divider()
                 Button(commandLocalization.l10n.text("refreshHistory")) {
                     postYCodeWindowCommand(.refreshYCodeHistory)
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-            }
-            CommandMenu(commandLocalization.l10n.text("attention")) {
-                Button(commandLocalization.l10n.text("openAttentionInbox")) {
-                    postYCodeWindowCommand(.toggleYCodeAttentionInbox)
-                }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-            }
-            CommandMenu(commandLocalization.l10n.text("migration")) {
-                Button(commandLocalization.l10n.text("showBuildInfo")) {
-                    postYCodeWindowCommand(.showYCodeBuildInfo)
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
             }
         }
 
@@ -180,9 +174,9 @@ extension Notification.Name {
     static let toggleYCodeWorkspacePanel = Notification.Name("dev.ycode.native.toggle-workspace-panel")
     static let focusYCodeCanvasSlot = Notification.Name("dev.ycode.native.focus-canvas-slot")
     static let openYCodeProjectWindow = Notification.Name("dev.ycode.native.open-project-window")
-    static let showYCodeHistorySearch = Notification.Name("dev.ycode.native.show-history-search")
     static let refreshYCodeHistory = Notification.Name("dev.ycode.native.refresh-history")
-    static let toggleYCodeAttentionInbox = Notification.Name("dev.ycode.native.toggle-attention-inbox")
+    static let toggleYCodeInspector = Notification.Name("dev.ycode.native.toggle-inspector")
+    static let showYCodeCommandPalette = Notification.Name("dev.ycode.native.show-command-palette")
     static let saveYCodeEditorFile = Notification.Name("dev.ycode.native.save-editor-file")
     static let ycodeAppearanceSettingsChanged = Notification.Name("dev.ycode.native.appearance-settings-changed")
 }
@@ -194,11 +188,13 @@ private struct NativeRootView: View {
     @State private var showingBuildInfo = false
     @State private var pendingDelete: ProjectRecord?
     @State private var pendingArchive: SessionMetadata?
-    @State private var showingNewSession = false
     @State private var showingRename = false
     @State private var renameDraft = ""
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showingAttentionInbox = false
+    @State private var showingCommandPalette = false
+    @State private var renameTarget: SessionMetadata?
+    @State private var isDropTargeted = false
+    @State private var dropRejection: String?
 
     init(initialProjectID: String? = nil, lockedProjectID: String? = nil, windowToken: String? = nil) {
         _model = StateObject(wrappedValue: WorkspaceModel(initialProjectID: initialProjectID))
@@ -209,27 +205,78 @@ private struct NativeRootView: View {
     var body: some View {
         presentedWorkspace
             .environment(\.ycodeL10n, YCodeLocalization(locale: model.locale))
-            .font(.system(size: model.uiFontSize))
-            .preferredColorScheme(model.activeTheme.systemColorScheme == "light" ? .light : (model.activeTheme.systemColorScheme == "dark" ? .dark : nil))
+            .dynamicTypeSize(model.uiDynamicTypeSize)
+            .preferredColorScheme(model.preferredColorScheme)
             .tint(Color(hex: model.activeTheme.accent))
-            .background(Color(hex: model.activeTheme.background))
+            // 窗口底色交给系统：主题的 background 是给终端画布用的深色，
+            // 铺在窗口上会在浅色外观下从各栏之间的缝隙里露出一条黑边。
+            .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var baseWorkspace: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            projectSidebar
-        } content: {
-            sessionColumn
+            WorkspaceSidebarView(
+                model: model,
+                lockedProjectID: lockedProjectID,
+                onNewSession: presentNewSession,
+                onAddProject: openProjectPanel,
+                onRenameSession: { session in
+                    renameDraft = session.title
+                    renameTarget = session
+                    showingRename = true
+                },
+                onArchiveSession: { session in pendingArchive = session },
+                onRemoveProject: { project in pendingDelete = project }
+            )
+            .ignoresSafeArea(.container, edges: .top)
+            .navigationSplitViewColumnWidth(
+                min: YCodeMetrics.sidebarMinWidth,
+                ideal: YCodeMetrics.sidebarWidth,
+                max: YCodeMetrics.sidebarMaxWidth
+            )
+            .toolbar(removing: .sidebarToggle)
+            .navigationTitle("YCode")
         } detail: {
-            projectDetail
+            // 画布 + 面板区并排。面板区自绘而不是用系统 `.inspector`：
+            // 系统那条会在顶上留一段永远空着的工具栏区，而且撑不起多列（设计稿 §07）。
+            // 面板区能拉多宽取决于这块**容器**有多宽（画布留够最小宽，剩下的都归面板区）。
+            // GeometryReader 得套在外面：套成 `.background` 量到的是 HStack 自己撑开后的宽度，
+            // 面板区一旦超宽，那个宽度就跟着变大，等于拿自己的结果给自己当上限，钳不住。
+            GeometryReader { proxy in
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        canvasTopBar
+                        Divider()
+                        projectDetail
+                    }
+                    .frame(minWidth: YCodeMetrics.canvasMinWidth, maxWidth: .infinity, maxHeight: .infinity)
+                    if model.inspectorIsVisible, !model.openPanels.isEmpty {
+                        panelAreaDivider
+                            .transition(.move(edge: .trailing))
+                        WorkspaceInspectorView(model: model)
+                            .frame(width: model.panelAreaWidth)
+                            .transition(.move(edge: .trailing))
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                // 只认这两件事：面板区开合、列数增减。宽度还会因为拖分隔条和窗口改宽而变，
+                // 那两种是跟手的，`value:` 里不带它们，就不会被这条动画接管。
+                .animation(YCodeMotion.panelArea, value: model.inspectorIsVisible)
+                .animation(YCodeMotion.panelArea, value: model.panelColumns.count)
+                .onAppear { model.setAvailableDetailWidth(proxy.size.width) }
+                .onChange(of: proxy.size.width) { _, width in model.setAvailableDetailWidth(width) }
+            }
+            // 挂在 detail 的内容上而不是 `NavigationSplitView` 上：挂在外面那层，
+            // 两列各自的安全区不受影响，顶上会留一条标题栏高度的空带（画布顶栏因此被压到 44+28）。
+            .ignoresSafeArea(.container, edges: .top)
         }
-        .toolbar { toolbarContent }
         .background {
             if lockedProjectID == nil { NativeWindowStateBridge(dataRoot: model.dataRoot) }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .background(YCodeWindowTagBridge(
             token: windowToken,
-            title: lockedProjectID == nil ? nil : YCodeLocalization(locale: model.locale).text("projectWindowTitleFormat", model.selectedProject?.name ?? YCodeLocalization(locale: model.locale).text("project"))
+            title: lockedProjectID == nil ? nil : YCodeLocalization(locale: model.locale).text("projectWindowTitleFormat", model.selectedProject?.displayTitle ?? YCodeLocalization(locale: model.locale).text("project"))
         ))
     }
 
@@ -261,7 +308,7 @@ private struct NativeRootView: View {
         projectCommandWorkspace
         .onReceive(NotificationCenter.default.publisher(for: .toggleYCodeProjectSidebar)) { note in
             guard commandTargetsThisWindow(note) else { return }
-            columnVisibility = columnVisibility == .all ? .doubleColumn : .all
+            toggleSidebar()
         }
         .onReceive(NotificationCenter.default.publisher(for: .newYCodeSession)) { note in
             guard commandTargetsThisWindow(note) else { return }
@@ -295,18 +342,17 @@ private struct NativeRootView: View {
 
     private var routedWorkspace: some View {
         workspaceCommandWorkspace
-        .onReceive(NotificationCenter.default.publisher(for: .showYCodeHistorySearch)) { note in
-            guard commandTargetsThisWindow(note) else { return }
-            model.showHistorySearch()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .refreshYCodeHistory)) { note in
             guard commandTargetsThisWindow(note) else { return }
-            model.showPanel(.history)
             model.refreshHistory()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleYCodeAttentionInbox)) { note in
+        .onReceive(NotificationCenter.default.publisher(for: .toggleYCodeInspector)) { note in
             guard commandTargetsThisWindow(note) else { return }
-            showingAttentionInbox.toggle()
+            model.toggleInspector()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showYCodeCommandPalette)) { note in
+            guard commandTargetsThisWindow(note) else { return }
+            showingCommandPalette = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .ycodeExternalOpenReady)) { note in
             guard commandTargetsThisWindow(note) else { return }
@@ -337,15 +383,21 @@ private struct NativeRootView: View {
 
     private var presentedWorkspace: some View {
         routedWorkspace
-        .sheet(isPresented: $showingNewSession) {
-            NewAgentSessionView(profiles: model.agentProfiles) { profileID, title in
-                model.createSession(agentProfileID: profileID, title: title)
-            }
+        .sheet(isPresented: $showingCommandPalette) {
+            CommandPaletteView(
+                model: model,
+                onClose: { showingCommandPalette = false },
+                onNewSession: presentNewSession
+            )
         }
         .alert(YCodeLocalization(locale: model.locale).text("renameSession"), isPresented: $showingRename) {
             TextField(YCodeLocalization(locale: model.locale).text("name"), text: $renameDraft)
-            Button(YCodeLocalization(locale: model.locale).text("cancel"), role: .cancel) {}
-            Button(YCodeLocalization(locale: model.locale).text("save")) { model.renameSelectedSession(renameDraft) }
+            Button(YCodeLocalization(locale: model.locale).text("cancel"), role: .cancel) { renameTarget = nil }
+            Button(YCodeLocalization(locale: model.locale).text("save")) {
+                if let target = renameTarget { model.selectSession(target.id) }
+                model.renameSelectedSession(renameDraft)
+                renameTarget = nil
+            }
         }
         .alert(YCodeLocalization(locale: model.locale).text("buildInfo"), isPresented: $showingBuildInfo) {
             Button(YCodeLocalization(locale: model.locale).text("ok")) {}
@@ -419,217 +471,303 @@ private struct NativeRootView: View {
         )
     }
 
-    private var projectSidebar: some View {
-        List(selection: Binding(
-            get: { model.selectedProjectID },
-            set: { value in
-                if lockedProjectID == nil || value == lockedProjectID { model.selectProject(value) }
-            }
-        )) {
-            Section(YCodeLocalization(locale: model.locale).text("projects")) {
-                ForEach(visibleProjects) { project in
-                    let pathExists = project.pathExists
-                    HStack(spacing: 8) {
-                        Image(systemName: pathExists ? "folder" : "folder.badge.questionmark")
-                            .foregroundStyle(pathExists ? Color.secondary : Color.orange)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(project.name).lineLimit(1)
-                            Text(YCodeLocalization(locale: model.locale).text("liveSessionCountFormat", project.liveSessionCount))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .tag(Optional(project.id))
-                    .help(project.repositoryURL.path)
-                }
-            }
-        }
-        .overlay {
-            if model.projects.isEmpty {
-                ContentUnavailableView(
-                    YCodeLocalization(locale: model.locale).text("noProjectsYet"),
-                    systemImage: "folder.badge.plus",
-                    description: Text(YCodeLocalization(locale: model.locale).text("addProjectShortcutHint"))
-                )
-            }
-        }
-        .navigationTitle("YCode")
-        .navigationSplitViewColumnWidth(min: 210, ideal: 250)
-    }
-
-    @ViewBuilder
-    private var sessionColumn: some View {
-        if let project = model.selectedProject {
-            List(selection: Binding(
-                get: { model.selectedSessionID },
-                set: { model.selectSession($0) }
-            )) {
-                if model.sessions.isEmpty {
-                    ContentUnavailableView(YCodeLocalization(locale: model.locale).text("noSessions"), systemImage: "bubble.left.and.bubble.right", description: Text(YCodeLocalization(locale: model.locale).text("newSessionShortcutHint")))
-                }
-                if !model.availableSessions.isEmpty {
-                    Section(YCodeLocalization(locale: model.locale).text("normalSessions")) {
-                        ForEach(model.availableSessions) { sessionRow($0).tag(Optional($0.id)) }
-                    }
-                }
-                if !model.unsupportedWorktreeSessions.isEmpty {
-                    Section(YCodeLocalization(locale: model.locale).text("isolatedUnsupportedSessions")) {
-                        ForEach(model.unsupportedWorktreeSessions) { sessionRow($0).tag(Optional($0.id)) }
-                    }
-                }
-            }
-            .navigationTitle(project.name)
-        } else {
-            ProjectOverview(projects: model.projects)
-                .navigationTitle(YCodeLocalization(locale: model.locale).text("projectOverview"))
-        }
-    }
-
-    private func sessionRow(_ session: SessionMetadata) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(session.title).lineLimit(1)
-                Spacer()
-                sessionStatusBadge(session).font(.caption2)
-            }
-            Text(session.agentThreadName ?? session.agentSessionID ?? session.agentProfile)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if session.recoveryAvailability == .unsupportedWorktree {
-                Label(YCodeLocalization(locale: model.locale).text("metadataOnlyWorktree"), systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
+    /// 终端占满整个内容区，底下压一条状态栏 —— 进程信息、分支、字号都归它（设计稿问题 01）。
     @ViewBuilder
     private var projectDetail: some View {
-        if let session = model.selectedSession {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(session.title.isEmpty ? YCodeLocalization(locale: model.locale).text("newSessionFallback") : session.title).font(.title2.bold())
-                        Text(session.agentProfile).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    sessionStatusBadge(session)
-                }
-                if let pid = model.runtimePID(for: session), model.runtimeStatus(for: session)?.isLive == true {
-                    LabeledContent(YCodeLocalization(locale: model.locale).text("process"), value: "PID \(pid)")
-                }
-                if let nativeID = session.agentSessionID {
-                    LabeledContent("Agent 会话 ID") {
-                        Text(nativeID).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                    }
-                }
-                Divider()
-                HStack {
-                    Button(YCodeLocalization(locale: model.locale).text("stop"), systemImage: "stop.fill") { model.stopSelectedSession() }
-                        .disabled(model.runtimeStatus(for: session)?.isLive != true)
-                    Button(YCodeLocalization(locale: model.locale).text("recoverRestart"), systemImage: "arrow.clockwise") { model.restartSelectedSession() }
-                        .disabled(session.recoveryAvailability != .available)
-                    Button(YCodeLocalization(locale: model.locale).text("renameEllipsis"), systemImage: "pencil") {
-                        renameDraft = session.title
-                        showingRename = true
-                    }
-                    Button(YCodeLocalization(locale: model.locale).text("archiveEllipsis"), systemImage: "archivebox", role: .destructive) {
-                        pendingArchive = session
-                    }
-                }
-                TerminalWorkspaceView(model: model)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(12)
-            .navigationTitle(YCodeLocalization(locale: model.locale).text("sessions"))
-        } else if let project = model.selectedProject {
-            VStack(alignment: .leading, spacing: 18) {
-                Label(project.name, systemImage: "folder.fill")
-                    .font(.title2.weight(.semibold))
-                Text(project.repositoryURL.path)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                if !project.pathExists {
-                    Label(YCodeLocalization(locale: model.locale).text("projectPathMissing"), systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-                Divider()
-                statusRow(YCodeLocalization(locale: model.locale).text("currentSessions"), detail: "\(project.liveSessionCount)")
-                statusRow(YCodeLocalization(locale: model.locale).text("allRecords"), detail: "\(project.totalSessionCount)")
-                statusRow(YCodeLocalization(locale: model.locale).text("isolationSwitchRecord"), detail: project.isolateSessions ? YCodeLocalization(locale: model.locale).text("preservedNotRun") : YCodeLocalization(locale: model.locale).text("closed"))
-                statusRow(YCodeLocalization(locale: model.locale).text("fileTreeWidth"), detail: YCodeLocalization(locale: model.locale).text("fileTreeWidthEffective", Int(model.preferences.fileTreeWidth)))
-                if !model.openPanels.isEmpty {
-                    TerminalWorkspaceView(model: model)
-                        .frame(maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
-                } else {
-                    Spacer()
-                }
-                Text(YCodeLocalization(locale: model.locale).text("dataDirectoryFormat", model.dataRoot.path))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-            }
-            .padding(24)
-            .navigationTitle(YCodeLocalization(locale: model.locale).text("projectInfo"))
+        if model.selectedProject != nil {
+            TerminalWorkspaceView(model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle(model.selectedProject?.displayTitle ?? "YCode")
+                .navigationSubtitle(breadcrumb)
         } else {
-            VStack(spacing: 16) {
-                Image(systemName: "rectangle.grid.2x2")
-                    .font(.system(size: 50))
-                    .foregroundStyle(.tint)
-                Text("\(model.projects.count) \(YCodeLocalization(locale: model.locale).text("projects"))")
-                    .font(.title2.weight(.semibold))
-                Text(YCodeLocalization(locale: model.locale).text("nativeProjectOverview")).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(YCodeLocalization(locale: model.locale).text("overview"))
+            noProjectState
         }
     }
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup {
-            Button(action: openProjectPanel) { Label(YCodeLocalization(locale: model.locale).text("addProject"), systemImage: "plus") }
-                .disabled(lockedProjectID != nil)
-            Button(action: presentNewSession) { Label(YCodeLocalization(locale: model.locale).text("newSession"), systemImage: "plus.bubble") }
-                .disabled(model.selectedProject == nil)
-            Button {
-                if let project = model.selectedProject { YCodeProjectWindowManager.shared.open(project: project) }
-            } label: {
-                Label(YCodeLocalization(locale: model.locale).text("separateWindow"), systemImage: "macwindow.badge.plus")
+    /// 整份稿子只有这一个真正的空状态（设计稿 §07）。
+    /// 第一屏：该做什么（加项目）→ 有几种做法（选 / 拖 / 命令行）→ 环境齐了没有（设计稿 §12）。
+    private var noProjectState: some View {
+        let l10n = YCodeLocalization(locale: model.locale)
+        return VStack(spacing: 0) {
+            ycodeLogo
+                .padding(.bottom, 12)
+            Text(l10n.text("addFirstProjectTitle")).font(.title3.weight(.semibold))
+            Text(l10n.text("addFirstProjectBody"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 5)
+
+            HStack(spacing: 9) {
+                Button(l10n.text("chooseFolderEllipsis"), action: openProjectPanel)
+                    .buttonStyle(.borderedProminent)
+                Text("⌘O")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
             }
-            .disabled(model.selectedProject == nil || lockedProjectID != nil)
-            Button {
-                pendingDelete = model.selectedProject
-            } label: {
-                Label(YCodeLocalization(locale: model.locale).text("removeProject"), systemImage: "trash")
+            .padding(.top, 16)
+
+            // 拖放区：拖着文件夹进窗口时整块高亮，松手后逐个入库并选中第一个。
+            VStack(spacing: 3) {
+                Text(l10n.text("dropFolderHere"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(l10n.text("dropFolderHint"))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
-            .disabled(model.selectedProject == nil || lockedProjectID != nil)
-            Button { model.moveSelectedProject(by: -1) } label: {
-                Label(YCodeLocalization(locale: model.locale).text("moveUp"), systemImage: "arrow.up")
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isDropTargeted ? Color.accentColor.opacity(0.10) : .clear)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(
+                        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.35),
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4, 3])
+                    )
             }
-            .disabled(model.selectedProject == nil || lockedProjectID != nil)
-            Button { model.moveSelectedProject(by: 1) } label: {
-                Label(YCodeLocalization(locale: model.locale).text("moveDown"), systemImage: "arrow.down")
+            .padding(.top, 14)
+
+            if let rejection = dropRejection {
+                Text(rejection)
+                    .font(.caption)
+                    .foregroundStyle(Color.ycodeWarn)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8)
             }
-            .disabled(model.selectedProject == nil || lockedProjectID != nil)
-            Button {
-                showingAttentionInbox.toggle()
-            } label: {
-                Label(
-                    model.unreadAttentionCount > 0
-                        ? YCodeLocalization(locale: model.locale).text("attentionUnreadFormat", model.unreadAttentionCount)
-                        : YCodeLocalization(locale: model.locale).text("attention"),
-                    systemImage: model.unreadAttentionCount > 0 ? "tray.full.fill" : "tray"
+
+            Divider().padding(.top, 16).padding(.bottom, 12)
+            environmentProbe
+        }
+        .padding(24)
+        .frame(width: 452)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.18)) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            adoptDroppedFolders(providers)
+            return true
+        }
+        .onAppear { model.refreshAgentAvailability() }
+    }
+
+    @ViewBuilder
+    private var ycodeLogo: some View {
+        if let logo = YCodeAgentIconRenderer.ycodeLogo {
+            Image(nsImage: logo)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 9))
+        } else {
+            Image(systemName: "terminal.fill").font(.system(size: 30)).foregroundStyle(.tint)
+        }
+    }
+
+    /// 环境自检是状态不是动作：绿 = 可用，灰 = 没装。第一次打开就能确认环境，不用进设置翻。
+    private var environmentProbe: some View {
+        let l10n = YCodeLocalization(locale: model.locale)
+        return HStack(spacing: 8) {
+            ForEach(model.agentProfiles.prefix(3)) { profile in
+                probeChip(
+                    title: profile.resolvedDisplayName,
+                    ready: model.availableAgentProfileIDs.contains(profile.id)
                 )
             }
-            .help(model.unreadAttentionCount > 0
-                ? YCodeLocalization(locale: model.locale).text("unreadAttentionFormat", model.unreadAttentionCount)
-                : YCodeLocalization(locale: model.locale).text("attentionInbox"))
-            .popover(isPresented: $showingAttentionInbox, arrowEdge: .bottom) {
-                AttentionInboxView(model: model) { showingAttentionInbox = false }
+            probeChip(title: l10n.text("ycodeCommand"), ready: cliToolInstalled)
+            if !cliToolInstalled {
+                Button(l10n.text("install")) { openSettingsWindow() }
+                    .buttonStyle(.link)
+                    .font(.caption)
             }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func probeChip(title: String, ready: Bool) -> some View {
+        HStack(spacing: 5) {
+            YCodeStatusDot(presence: ready ? .running : .idle, size: 5)
+            Text(title).font(.caption)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 20)
+        .background(Color.secondary.opacity(0.10), in: Capsule())
+    }
+
+    private var cliToolInstalled: Bool {
+        let path = "/usr/local/bin/ycode"
+        guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else {
+            return FileManager.default.isExecutableFile(atPath: path)
+        }
+        return FileManager.default.isExecutableFile(atPath: destination)
+    }
+
+    private func openSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    /// 拖进来的若不是目录，落地后在卡片下方给一句具体原因，不弹窗。
+    private func adoptDroppedFolders(_ providers: [NSItemProvider]) {
+        let l10n = YCodeLocalization(locale: model.locale)
+        dropRejection = nil
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                var isDirectory: ObjCBool = false
+                let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                Task { @MainActor in
+                    guard exists, isDirectory.boolValue else {
+                        dropRejection = l10n.text("dropNotAFolderFormat", url.lastPathComponent)
+                        return
+                    }
+                    model.addProject(directory: url)
+                }
+            }
+        }
+    }
+
+    /// 工具栏面包屑 —— 窗口标题就该说明在看什么（设计稿 §09）。
+    private var breadcrumb: String {
+        guard let session = model.focusedCanvasSessionID.flatMap({ id in model.sessions.first { $0.id == id } }) else { return "" }
+        let title = session.title.isEmpty ? YCodeLocalization(locale: model.locale).text("newSessionFallback") : session.title
+        return title
+    }
+
+    /// 两列的 `NavigationSplitView` 里 `.doubleColumn` 就是「两列都显示」，跟 `.all` 同义 ——
+    /// 原先在这两者之间来回切，等于没切。收起侧栏要用 `.detailOnly`。
+    private func toggleSidebar() {
+        withAnimation(YCodeMotion.panelArea) {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        }
+    }
+
+    private var sidebarIsHidden: Bool { columnVisibility == .detailOnly }
+
+    /// 画布顶栏 44：它只属于画布，右缘就是画布的右边界；面板区不在它下面，而是它右边的另一块。
+    private var canvasTopBar: some View {
+        let l10n = YCodeLocalization(locale: model.locale)
+        return HStack(spacing: 6) {
+            Button {
+                toggleSidebar()
+            } label: {
+                Image(systemName: "sidebar.leading")
+            }
+            .buttonStyle(YCodeIconButtonStyle())
+            .help(l10n.text("showHideProjectSidebar") + " ⌘B")
+
+            if let project = model.selectedProject {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(project.displayTitle).font(.system(size: 13, weight: .semibold))
+                    if !breadcrumb.isEmpty {
+                        Text(breadcrumb).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+                .padding(.leading, 2)
+            }
+            Spacer(minLength: 8)
+
+            Button { showingCommandPalette = true } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(YCodeIconButtonStyle())
+            .help(l10n.text("commandPalette") + " ⌘K")
+
+            Picker("", selection: Binding(
+                get: { model.terminalLayout },
+                set: { model.setTerminalLayout($0) }
+            )) {
+                ForEach(YCodeTerminalLayout.allCases) { layout in
+                    Image(systemName: layoutSymbol(layout))
+                        .help(layout.displayName)
+                        .tag(layout)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            // 不收成 .small：它会矮过旁边 24 的图标按钮，一排控件里就它塌下去一截。
+            .fixedSize()
+            .disabled(model.visibleSessionIDs.isEmpty)
+            .padding(.horizontal, 2)
+
+            Divider().frame(height: 16)
+
+            // 四个开关是一组，彼此挨着站（2），跟左边的布局控件之间才拉开距离。
+            HStack(spacing: 2) {
+                ForEach(YCodeWorkspacePanel.shortcutPanels) { panel in
+                    panelToggle(panel)
+                }
+            }
+            .padding(.leading, 2)
+        }
+        // 侧栏收起后红绿灯就浮在画布顶栏左上角，得给它让开一段，不然会压在第一个按钮上。
+        .padding(.leading, sidebarIsHidden ? YCodeMetrics.trafficLightWidth : 10)
+        .padding(.trailing, 6)
+        .frame(height: YCodeMetrics.topBarHeight)
+        .background(Color.ycodeChrome)
+    }
+
+    /// 画布与面板区之间的分隔条。列宽在 260–460 之间，画布最小 420。
+    private var panelAreaDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.08))
+            .frame(width: 1)
+            .overlay {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 7)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in model.dragPanelArea(by: -value.translation.width) }
+                            .onEnded { _ in model.commitPanelAreaWidth() }
+                    )
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+            }
+    }
+
+    /// 面板开关：亮起 = 这个面板正在面板区里；再按一次关掉它。
+    /// 右上角 4 px 圆点只回答「有没有」，具体数字在卡头上。
+    private func panelToggle(_ panel: YCodeWorkspacePanel) -> some View {
+        let l10n = YCodeLocalization(locale: model.locale)
+        let isOn = model.openPanels.contains(panel) && model.inspectorIsVisible
+        return Button { model.togglePanel(panel) } label: {
+            Image(systemName: panel.symbolName)
+                .overlay(alignment: .topTrailing) {
+                    if panelHasContent(panel) {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 4, height: 4)
+                            .offset(x: 4, y: -2)
+                    }
+                }
+        }
+        .buttonStyle(YCodeIconButtonStyle(isOn: isOn))
+        .help("\(panel.localizedTitle(l10n)) \(panel.shortcutHint)")
+    }
+
+    private func panelHasContent(_ panel: YCodeWorkspacePanel) -> Bool {
+        switch panel {
+        case .changes: !(model.gitStatus?.changes.isEmpty ?? true)
+        case .todos: model.todos.contains { $0.status != .done }
+        default: false
+        }
+    }
+
+    private func layoutSymbol(_ layout: YCodeTerminalLayout) -> String {
+        switch layout {
+        case .single: "square"
+        case .stack: "square.split.1x2"
+        case .columns: "square.split.2x1"
+        case .grid2x2: "square.split.2x2"
+        case .mainSide: "rectangle.trailinghalf.inset.filled.arrow.trailing"
         }
     }
 
@@ -648,15 +786,6 @@ private struct NativeRootView: View {
         }
     }
 
-    private func statusRow(_ title: String, detail: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(detail).foregroundStyle(.secondary)
-        }
-        .font(.callout)
-    }
-
     private func openProjectPanel() {
         let panel = NSOpenPanel()
         let l10n = YCodeLocalization(locale: model.locale)
@@ -669,36 +798,13 @@ private struct NativeRootView: View {
         model.addProject(directory: url)
     }
 
+    /// ⌘N 就地把选择器摆进画布，没有中间对话框（设计稿 §06 标注 1）。
     private func presentNewSession() {
         guard model.selectedProject != nil else { return }
         model.reloadAgentProfiles()
-        showingNewSession = true
+        model.isPresentingNewSession = true
     }
 
-    @ViewBuilder
-    private func sessionStatusBadge(_ session: SessionMetadata) -> some View {
-        if let event = model.attentionEvent(for: session.id), model.runtimeStatus(for: session)?.isLive == true {
-            Label(event.needsApproval ? YCodeLocalization(locale: model.locale).text("pendingApproval") : YCodeLocalization(locale: model.locale).text("waitingInput"), systemImage: "exclamationmark.circle.fill")
-                .foregroundStyle(event.needsApproval ? Color.red : Color.orange)
-        } else {
-        switch model.runtimeStatus(for: session) {
-        case .running:
-            Label(YCodeLocalization(locale: model.locale).text("running"), systemImage: "circle.fill").foregroundStyle(.green)
-        case .starting:
-            Label(YCodeLocalization(locale: model.locale).text("starting"), systemImage: "circle.dotted").foregroundStyle(.orange)
-        case let .exited(code):
-            Text(YCodeLocalization(locale: model.locale).text("exitedFormat", code.map(String.init) ?? "-")).foregroundStyle(.secondary)
-        case let .signaled(signal):
-            Text(YCodeLocalization(locale: model.locale).text("stoppedSignalFormat", signal)).foregroundStyle(.secondary)
-        case nil:
-            if let code = session.lastExitCode {
-                Text(YCodeLocalization(locale: model.locale).text("exitedFormat", "\(code)")).foregroundStyle(.secondary)
-            } else {
-                Text(YCodeLocalization(locale: model.locale).text("recoverable")).foregroundStyle(.secondary)
-            }
-        }
-        }
-    }
 }
 
 private extension Color {
@@ -730,6 +836,11 @@ private struct YCodeWindowTagBridge: NSViewRepresentable {
             guard let window = view.window else { return }
             window.identifier = NSUserInterfaceItemIdentifier(token)
             if let title { window.title = title }
+            // 内容一直铺到窗口最顶：画布顶栏与面板区的第一张卡就画在原来标题栏那一行里，
+            // 不再有一条横贯整窗、什么都不放的空白（设计稿 §04）。
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
         }
     }
 }
@@ -766,7 +877,7 @@ final class YCodeProjectWindowManager: NSObject, NSWindowDelegate {
         let root = NativeRootView(initialProjectID: project.id, lockedProjectID: project.id, windowToken: token)
         let controller = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: controller)
-        window.title = YCodeLocalization.zh.text("projectWindowTitleFormat", project.name)
+        window.title = YCodeLocalization.zh.text("projectWindowTitleFormat", project.displayTitle)
         window.identifier = NSUserInterfaceItemIdentifier(token)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 1120, height: 720))
@@ -787,48 +898,6 @@ final class YCodeProjectWindowManager: NSObject, NSWindowDelegate {
               let projectID = projectIDByWindow.removeValue(forKey: ObjectIdentifier(window)) else { return }
         NSApplication.shared.removeWindowsItem(window)
         windows.removeValue(forKey: projectID)
-    }
-}
-
-private struct NewAgentSessionView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.ycodeL10n) private var l10n
-    let profiles: [YCodeAgentProfile]
-    let onCreate: (String, String) -> Void
-    @State private var selectedProfileID = ""
-    @State private var title = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(l10n.text("newAgentSession")).font(.title2.bold())
-            Form {
-                Picker("Agent", selection: $selectedProfileID) {
-                    ForEach(profiles) { profile in
-                        Text(profile.resolvedDisplayName).tag(profile.id)
-                    }
-                }
-                TextField(l10n.text("sessionName"), text: $title, prompt: Text(l10n.text("newSessionFallback")))
-            }
-            if profiles.isEmpty {
-                Label(l10n.text("addAgentFirst"), systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Spacer()
-                Button(l10n.text("cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(l10n.text("start")) {
-                    let fallback = profiles.first(where: { $0.id == selectedProfileID })?.resolvedDisplayName ?? l10n.text("newSessionFallback")
-                    let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                    onCreate(selectedProfileID, name.isEmpty ? fallback : name)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(selectedProfileID.isEmpty)
-            }
-        }
-        .padding(22)
-        .frame(width: 440, height: 260)
-        .onAppear { if selectedProfileID.isEmpty { selectedProfileID = profiles.first?.id ?? "" } }
     }
 }
 

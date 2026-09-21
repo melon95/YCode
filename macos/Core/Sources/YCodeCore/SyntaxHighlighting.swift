@@ -67,7 +67,13 @@ public enum YCodeSyntaxRegistry {
     public static let groups: [YCodeSyntaxLanguageGroup] = [
         .init(id: "javascript", extensions: ["js", "jsx", "mjs", "cjs"], verificationSample: "const answer = 42"),
         .init(id: "typescript", extensions: ["ts", "tsx"], verificationSample: "interface User { name: string }"),
-        .init(id: "json", extensions: ["json", "jsonc", "json5"], verificationSample: "{\"enabled\": true}"),
+        // lock 文件没有可识别的扩展名，但内容就是 JSON / TOML，按文件名认出来才有高亮
+        .init(
+            id: "json",
+            extensions: ["json", "jsonc", "json5"],
+            filenames: ["bun.lock", "deno.lock", "flake.lock", "composer.lock", ".babelrc", ".eslintrc", ".prettierrc"],
+            verificationSample: "{\"enabled\": true}"
+        ),
         .init(id: "markdown", extensions: ["md", "markdown"], verificationSample: "# Heading"),
         .init(id: "rust", extensions: ["rs"], indentWidth: 4, verificationSample: "fn main() { let value = 1; }"),
         .init(id: "python", extensions: ["py"], indentWidth: 4, verificationSample: "def greet(name): return name"),
@@ -79,7 +85,7 @@ public enum YCodeSyntaxRegistry {
         .init(id: "php", extensions: ["php", "phtml"], verificationSample: "<?php function greet() { return true; }"),
         .init(id: "css", extensions: ["css", "scss", "less"], verificationSample: ".item { color: red; }"),
         .init(id: "html", extensions: ["html", "htm"], verificationSample: "<main class=\"page\">Hello</main>"),
-        .init(id: "yaml", extensions: ["yaml", "yml"], verificationSample: "enabled: true"),
+        .init(id: "yaml", extensions: ["yaml", "yml"], filenames: ["pnpm-lock.yaml"], verificationSample: "enabled: true"),
         .init(id: "xml", extensions: ["xml", "svg", "xsd", "xsl", "xslt", "plist"], verificationSample: "<node key=\"value\"/>"),
         .init(id: "ruby", extensions: ["rb", "rake", "gemspec", "podspec"], filenames: ["gemfile", "rakefile", "podfile", "brewfile", "vagrantfile", "guardfile"], verificationSample: "class Greeter; def call; end; end"),
         .init(id: "kotlin", extensions: ["kt", "kts"], verificationSample: "data class User(val name: String)"),
@@ -100,7 +106,12 @@ public enum YCodeSyntaxRegistry {
         .init(id: "scheme", extensions: ["scm", "ss"], verificationSample: "(define (greet name) name)"),
         .init(id: "protobuf", extensions: ["proto"], verificationSample: "message User { string name = 1; }"),
         .init(id: "diff", extensions: ["diff", "patch"], verificationSample: "+added line"),
-        .init(id: "toml", extensions: ["toml"], verificationSample: "name = \"ycode\""),
+        .init(
+            id: "toml",
+            extensions: ["toml"],
+            filenames: ["cargo.lock", "poetry.lock", "uv.lock", "pdm.lock"],
+            verificationSample: "name = \"ycode\""
+        ),
         .init(id: "properties", extensions: ["ini", "cfg", "conf", "properties", "env", "editorconfig"], verificationSample: "enabled=true"),
         .init(id: "shell", extensions: ["sh", "bash", "zsh", "ksh", "fish", "bashrc", "zshrc", "profile", "bash_profile"], verificationSample: "if true; then echo \"ok\"; fi"),
         .init(id: "dockerfile", filenames: ["dockerfile", "dockerfile.*"], verificationSample: "FROM swift:latest\nRUN echo ok")

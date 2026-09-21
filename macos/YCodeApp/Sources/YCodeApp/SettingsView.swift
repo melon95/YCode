@@ -46,13 +46,6 @@ final class BasicSettingsModel: ObservableObject {
         }
     }
 
-    var hasChanges: Bool {
-        startupMode != persistedStartupMode
-            || notifications != persistedNotifications
-            || appearance != persistedAppearance
-            || YCodeAgentSettings(agents: agents, proxy: proxy) != persistedAgentSettings
-    }
-
     var isAtDefaults: Bool {
         startupMode == .resume
             && notifications == YCodeNotificationSettings()
@@ -76,14 +69,6 @@ final class BasicSettingsModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
         }
-    }
-
-    func cancel() {
-        startupMode = persistedStartupMode
-        notifications = persistedNotifications
-        appearance = persistedAppearance
-        agents = persistedAgentSettings.agents
-        proxy = persistedAgentSettings.proxy
     }
 
     func restoreDefaults() {
@@ -133,16 +118,38 @@ final class BasicSettingsModel: ObservableObject {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, sessions, panels, agents, integrations, notifications, usage
+    case general, sessions, agents, integrations, notifications, usage
     case terminal, languages, appearance, keyboard, data, about
 
     var id: String { rawValue }
+
+    /// 设计稿 §08：分组按用户心智，而不是按模块。
+    enum Group: String, CaseIterable, Identifiable {
+        case general, agent, system
+
+        var id: String { rawValue }
+
+        func localizedTitle(_ l10n: YCodeLocalization) -> String {
+            switch self {
+            case .general: l10n.text("general")
+            case .agent: "Agent"
+            case .system: l10n.text("system")
+            }
+        }
+
+        var sections: [SettingsSection] {
+            switch self {
+            case .general: [.general, .appearance, .sessions, .keyboard]
+            case .agent: [.agents, .terminal, .languages, .integrations, .usage]
+            case .system: [.notifications, .data, .about]
+            }
+        }
+    }
 
     func localizedTitle(_ l10n: YCodeLocalization) -> String {
         switch self {
         case .general: l10n.text("general")
         case .sessions: l10n.text("sessions")
-        case .panels: l10n.text("panels")
         case .agents: l10n.text("agents")
         case .integrations: l10n.text("integrations")
         case .notifications: l10n.text("notifications")
@@ -152,7 +159,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: l10n.text("appearance")
         case .keyboard: l10n.text("keyboard")
         case .data: l10n.text("data")
-        case .about: l10n.text("about")
+        case .about: l10n.text("diagnostics")
         }
     }
 
@@ -160,7 +167,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .sessions: "bubble.left.and.bubble.right"
-        case .panels: "rectangle.split.3x1"
         case .agents: "cpu"
         case .integrations: "puzzlepiece.extension"
         case .notifications: "bell"
@@ -174,16 +180,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
-    var deliveryStage: String {
-        switch self {
-        case .sessions, .agents: "M2"
-        case .panels, .terminal: "M2–M4"
-        case .integrations, .notifications, .usage: "M3"
-        case .languages: "M4"
-        case .appearance, .keyboard: "M5"
-        case .general, .data, .about: "M1–M5"
-        }
-    }
 }
 
 struct BasicSettingsView: View {
@@ -195,44 +191,56 @@ struct BasicSettingsView: View {
     @State private var selectedSection: SettingsSection = .general
     @State private var editingAgent: AgentEditorState?
     private var l10n: YCodeLocalization { YCodeLocalization(locale: model.appearance.locale) }
+    private var theme: YCodeThemeOption {
+        YCodeThemeCatalog.resolve(id: model.appearance.theme, prefersDark: YCodeAppearanceProbe.prefersDark)
+    }
+    /// 设置窗跟着 app 的外观走，不然主窗口是深色、设置窗是浅色。
+    private var preferredScheme: ColorScheme? {
+        switch model.appearance.theme {
+        case YCodeThemeCatalog.light.id: .light
+        case YCodeThemeCatalog.dark.id: .dark
+        default: nil
+        }
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedSection) {
-                ForEach(SettingsSection.allCases) { section in
-                    Label(section.localizedTitle(l10n), systemImage: section.icon).tag(section)
+        // 自绘两栏：NavigationSplitView 是给主窗口用的，放进设置窗会带上一条空的
+        // 工具栏区和一个侧栏折叠按钮 —— 系统设置里没有这两样东西。
+        HStack(spacing: 0) {
+            navigationColumn
+            Divider()
+            VStack(spacing: 0) {
+                // 页名放在内容区顶部：设置窗的标题栏由系统给（「设置」），
+                // navigationTitle 没有 navigation 容器托管，不能指望它显示页名。
+                HStack {
+                    Text(selectedSection.localizedTitle(l10n))
+                        .font(.title3.weight(.semibold))
+                    Spacer()
                 }
+                .padding(.horizontal, 20)
+                .frame(height: 44)
+                Divider()
+                settingsContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle(l10n.text("settings"))
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190)
-        } detail: {
-            settingsContent
-                .navigationTitle(selectedSection.localizedTitle(l10n))
         }
         .frame(width: 780, height: 540)
-        .environment(\.ycodeL10n, l10n)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Button(l10n.text("restoreDefaults")) {
-                    model.restoreDefaults()
-                }
-                .disabled(model.isAtDefaults)
-                Spacer()
-                Button(l10n.text("cancel")) {
-                    model.cancel()
-                    dismiss()
-                }
+        // Esc 关窗原本挂在「取消」按钮上，按钮去掉后要单独接回来（⌘W 由系统管）
+        .background {
+            Button("") { closeWindow() }
                 .keyboardShortcut(.cancelAction)
-                Button(l10n.text("save")) {
-                    model.save()
-                    if model.errorMessage == nil { dismiss() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!model.hasChanges)
-            }
-            .padding()
-            .background(.bar)
+                .opacity(0)
+                .accessibilityHidden(true)
         }
+        .environment(\.ycodeL10n, l10n)
+        .preferredColorScheme(preferredScheme)
+        .tint(Color(themeHex: theme.accent))
+        // macOS 的设置是即时生效的，所以不放「保存 / 取消」，改完就写盘
+        .onChange(of: model.startupMode) { _, _ in model.save() }
+        .onChange(of: model.notifications) { _, _ in model.save() }
+        .onChange(of: model.appearance) { _, _ in model.save() }
+        .onChange(of: model.proxy) { _, _ in model.save() }
+        .onChange(of: model.agents) { _, _ in model.save() }
         .alert(l10n.text("settingsSaveFailed"), isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
@@ -248,6 +256,85 @@ struct BasicSettingsView: View {
         }
     }
 
+    private var navigationColumn: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                ForEach(SettingsSection.Group.allCases) { group in
+                    Text(group.localizedTitle(l10n))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                        .padding(.bottom, 3)
+                    ForEach(group.sections) { section in
+                        navigationRow(section)
+                    }
+                }
+            }
+            .padding(.bottom, 12)
+        }
+        .frame(width: 196)
+        .background(.ultraThinMaterial)
+    }
+
+    private func navigationRow(_ section: SettingsSection) -> some View {
+        let selected = selectedSection == section
+        return HStack(spacing: 9) {
+            Image(systemName: section.icon)
+                .font(.system(size: 13))
+                .frame(width: 18)
+                .foregroundStyle(selected ? Color.white : Color.accentColor)
+            Text(section.localizedTitle(l10n))
+                .font(.system(size: 13))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 26)
+        .background(
+            RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius)
+                .fill(selected ? Color.accentColor : .clear)
+        )
+        .foregroundStyle(selected ? Color.white : Color.primary)
+        .padding(.horizontal, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedSection = section }
+    }
+
+    private var uiScaleBinding: Binding<Int> {
+        Binding(
+            get: {
+                switch model.appearance.fontSizes.ui {
+                case ..<14: 13
+                case 14..<16: 14
+                default: 16
+                }
+            },
+            set: { model.appearance.fontSizes.ui = YCodeFontSizes.clamp($0) }
+        )
+    }
+
+    private func closeWindow() {
+        if let window = NSApp.keyWindow, window.styleMask.contains(.closable) {
+            window.performClose(nil)
+        } else {
+            dismiss()
+        }
+    }
+
+    private func copyDiagnostics() {
+        let lines = [
+            "\(YCodeBuildInfo.displayName) \(YCodeBuildInfo.installedVersion)",
+            YCodeBuildInfo.bundleIdentifier,
+            "arch: \(YCodeBuildInfo.releaseArchitectures.joined(separator: ", "))",
+            "data: \(model.dataRoot.path)",
+            "fileTreeWidth: \(Int(model.fileTreeWidth)) px",
+            "lastError: \(model.errorMessage ?? "-")"
+        ]
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
     @ViewBuilder
     private var settingsContent: some View {
         switch selectedSection {
@@ -261,16 +348,6 @@ struct BasicSettingsView: View {
                     }
                     .pickerStyle(.radioGroup)
                     Text(l10n.text("startupTakesEffectNextLaunch"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-        case .panels:
-            Form {
-                Section(l10n.text("migratedInterfaceState")) {
-                    LabeledContent(l10n.text("fileTreeWidth"), value: "\(Int(model.fileTreeWidth)) px")
-                    Text(l10n.text("importedWidthUsed"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -408,14 +485,11 @@ struct BasicSettingsView: View {
             Form {
                 Section(l10n.text("theme")) {
                     Picker(l10n.text("theme"), selection: $model.appearance.theme) {
-                        ForEach(YCodeThemeCatalog.options) { option in
-                            Text(option.label).tag(option.id)
-                        }
+                        Text(l10n.text("followSystem")).tag(YCodeThemeCatalog.systemID)
+                        Text(l10n.text("lightAppearance")).tag(YCodeThemeCatalog.light.id)
+                        Text(l10n.text("darkAppearance")).tag(YCodeThemeCatalog.dark.id)
                     }
-                    .pickerStyle(.menu)
-                    if YCodeThemeCatalog.option(id: model.appearance.theme) == nil {
-                        LabeledContent(l10n.text("unknownTheme"), value: model.appearance.theme)
-                    }
+                    .pickerStyle(.segmented)
                     Text(l10n.text("themeHelp"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -430,10 +504,19 @@ struct BasicSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Section(l10n.text("fontSize")) {
-                    Stepper(value: fontBinding(\.ui), in: 8...32) {
-                        LabeledContent(l10n.text("interface"), value: "\(model.appearance.fontSizes.ui) pt")
+                Section(l10n.text("uiScale")) {
+                    // 三档按系统字阶整体缩放，不再整棵视图树覆盖一个绝对字号（设计稿问题 07）。
+                    Picker(l10n.text("uiScale"), selection: uiScaleBinding) {
+                        Text(l10n.text("uiScaleCompact")).tag(13)
+                        Text(l10n.text("uiScaleStandard")).tag(14)
+                        Text(l10n.text("uiScaleLoose")).tag(16)
                     }
+                    .pickerStyle(.segmented)
+                    Text(l10n.text("uiScaleHint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section(l10n.text("fontSize")) {
                     Stepper(value: fontBinding(\.editor), in: 8...32) {
                         LabeledContent(l10n.text("editor"), value: "\(model.appearance.fontSizes.editor) pt")
                     }
@@ -450,12 +533,15 @@ struct BasicSettingsView: View {
             Form {
                 Section(l10n.text("currentShortcuts")) {
                     keyboardRow(l10n.text("addProject"), "⌘O")
-                    keyboardRow(l10n.text("newAgentSession"), "⌘N")
+                    keyboardRow(l10n.text("newSession"), "⌘N")
+                    keyboardRow(l10n.text("commandPalette"), "⌘K")
                     keyboardRow(l10n.text("save"), "⌘S")
-                    keyboardRow(l10n.text("searchProjectHistory"), "⌘K")
+                    keyboardRow(l10n.text("findTerminal"), "⌘F")
+                    keyboardRow(l10n.text("showHideProjectSidebar"), "⌘B")
+                    keyboardRow(l10n.text("hideInspector"), "⌥⌘→")
+                    keyboardRow(l10n.text("inspectorTabFormat", "1–4"), "⌘1–⌘4")
+                    keyboardRow(l10n.text("focusCanvasFormat", 1) + "–4", "⇧⌘1–⇧⌘4")
                     keyboardRow(l10n.text("refreshHistory"), "⇧⌘R")
-                    keyboardRow(l10n.text("panels") + " 1–4", "⌘1–⌘4")
-                    keyboardRow("Canvas 1–4", "⇧⌘1–⇧⌘4")
                 }
                 Section {
                     Text(l10n.text("shortcutsReadOnly"))
@@ -517,13 +603,36 @@ struct BasicSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                // 内部状态不进产品界面（设计稿问题 05 / L-04）：它们的正式家在这里。
+                Section(l10n.text("diagnostics")) {
+                    LabeledContent(l10n.text("dataDirectory")) {
+                        Text(model.dataRoot.path)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent(l10n.text("fileTreeWidth"), value: "\(Int(model.fileTreeWidth)) px")
+                    LabeledContent(l10n.text("architecture"), value: YCodeBuildInfo.releaseArchitectures.joined(separator: ", "))
+                    LabeledContent(l10n.text("lastError")) {
+                        Text(model.errorMessage ?? l10n.text("none"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Button(l10n.text("copyDiagnostics")) { copyDiagnostics() }
+                }
+
+                Section {
+                    Button(l10n.text("restoreDefaults"), role: .destructive) { model.restoreDefaults() }
+                        .disabled(model.isAtDefaults)
+                }
             }
             .formStyle(.grouped)
         case let section:
             ContentUnavailableView(
                 l10n.text("sectionUnavailableFormat", section.localizedTitle(l10n)),
                 systemImage: section.icon,
-                description: Text(l10n.text("sectionStageFormat", section.deliveryStage))
+                description: Text(l10n.text("sectionPendingBody"))
             )
         }
     }
@@ -568,32 +677,6 @@ private enum AgentIconRegistry {
         "MetaAI", "Cohere", "Perplexity", "Replit",
     ]
 
-    static func systemName(for key: String?) -> String? {
-        switch key {
-        case "ClaudeCode": "sparkles"
-        case "Claude", "Anthropic": "brain.head.profile"
-        case "Codex", "OpenAI": "shippingbox.fill"
-        case "GeminiCLI", "Gemini", "Google": "diamond.fill"
-        case "Cline": "command"
-        case "Copilot", "GithubCopilot": "airplane"
-        case "KiloCode": "k.square.fill"
-        case "Trae": "t.square.fill"
-        case "Amp": "bolt.fill"
-        case "Phind", "Perplexity": "magnifyingglass"
-        case "Ollama": "brain"
-        case "Mistral": "wind"
-        case "DeepSeek": "wave.3.right"
-        case "Qwen": "q.square.fill"
-        case "Doubao": "d.circle.fill"
-        case "Kimi": "moon.fill"
-        case "Moonshot": "moon.stars.fill"
-        case "Grok", "XAI": "xmark.circle.fill"
-        case "Meta", "MetaAI": "infinity"
-        case "Cohere": "circle.grid.2x2.fill"
-        case "Replit": "terminal"
-        default: nil
-        }
-    }
 }
 
 private struct AgentBadge: View {
@@ -605,15 +688,8 @@ private struct AgentBadge: View {
     }
 
     var body: some View {
-        Group {
-            if let systemName = AgentIconRegistry.systemName(for: profile.icon) {
-                Image(systemName: systemName)
-                    .symbolRenderingMode(profile.iconVariant == "mono" ? .monochrome : .hierarchical)
-            } else {
-                Text(String(profile.resolvedDisplayName.prefix(1)).uppercased()).font(.caption.bold())
-            }
-        }
-        .frame(width: 26, height: 26)
+        YCodeAgentIconView(profile: profile, size: 16, tint: tint)
+            .frame(width: 26, height: 26)
         .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
         .foregroundStyle(tint)
     }
