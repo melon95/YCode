@@ -99,7 +99,13 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
         case .authorized, .provisional, .ephemeral:
             return
         case .notDetermined:
-            guard try await center.requestAuthorization(options: [.alert]) else {
+            let granted = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+                center.requestAuthorization(options: [.alert]) { granted, error in
+                    if let error { continuation.resume(throwing: error) }
+                    else { continuation.resume(returning: granted) }
+                }
+            }
+            guard granted else {
                 throw YCodeSystemNotificationError.permissionDenied
             }
         case .denied:
@@ -139,7 +145,12 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            }
+        }
     }
 
     nonisolated func userNotificationCenter(
