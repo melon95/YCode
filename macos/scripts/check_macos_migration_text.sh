@@ -14,9 +14,6 @@ find macos \
   -print > "$CHECK_LIST"
 find docs/macos-native -type f -name '*.md' -print >> "$CHECK_LIST"
 printf '%s\n' docs/macos-native-refactor-plan.md >> "$CHECK_LIST"
-if [[ -d crates/ycode-introspect/examples ]]; then
-  find crates/ycode-introspect/examples -type f -name '*.rs' -print >> "$CHECK_LIST"
-fi
 
 checked=0
 while IFS= read -r relative_path; do

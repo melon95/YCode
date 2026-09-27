@@ -76,8 +76,8 @@ struct TodoPanelView: View {
         }
         .padding(.horizontal, 9)
         .frame(height: 28)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
-        .overlay { RoundedRectangle(cornerRadius: 7).stroke(Color.secondary.opacity(0.22)) }
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius))
+        .overlay { RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius).stroke(Color.secondary.opacity(0.22)) }
         .padding(.horizontal, 10)
         .padding(.top, 7)
         .padding(.bottom, 3)
@@ -185,7 +185,8 @@ struct TodoPanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         .frame(minHeight: YCodeMetrics.rowHeight, alignment: .top)
-        .contentShape(Rectangle())
+        // 待办行可以双击改名、可以右键 —— 但改之前它对指针毫无表示。
+        .ycodeRow(isSelected: false, cornerRadius: 0)
         .onHover { inside in hoveredID = inside ? item.id : (hoveredID == item.id ? nil : hoveredID) }
         // 已经在改这一条了就别再进一次 —— 在输入框里双击选词会打到这条手势上，
         // 再走一遍 beginEditing 就把已经改了一半的标题重置回原样了。
@@ -196,14 +197,17 @@ struct TodoPanelView: View {
         .id("\(item.id)|\(item.updatedAtMilliseconds)|\(item.title)|\(item.status.rawValue)|\(item.sortOrder)")
     }
 
+    /// 点方块按 队列 → 进行中 → 完成 → 队列 循环：三种状态都点得到，
+    /// 不用为了「我开始做了」去翻一次 ⋯ 菜单。
     private func statusBox(_ item: YCodeTodo) -> some View {
-        Button {
-            model.updateTodo(id: item.id, status: item.status == .done ? .todo : .done)
+        let next = nextStatus(item.status)
+        return Button {
+            model.updateTodo(id: item.id, status: next)
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
                     .fill(boxFill(item))
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
                     .strokeBorder(item.status == .todo ? Color.secondary.opacity(0.55) : .clear, lineWidth: 1.5)
                 if item.status == .done {
                     Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
@@ -212,10 +216,33 @@ struct TodoPanelView: View {
                 }
             }
             .frame(width: 14, height: 14)
+            // 未完成时方框里是透明的，只有那圈 1.5pt 描边算「画出来的内容」，
+            // 不补形状就只有描边能点中 —— 勾不上，却能取消已完成的那种怪逻辑。
+            // 负 padding 把命中区放大到 20×20，行里的间距保持设计稿的样子。
+            .padding(3)
+            .contentShape(Rectangle())
+            .padding(-3)
         }
         .buttonStyle(.plain)
         .padding(.top, 1)
-        .help(item.status == .done ? l10n.text("reopen") : l10n.text("markDone"))
+        .help(hint(for: next))
+    }
+
+    private func nextStatus(_ status: YCodeTodoStatus) -> YCodeTodoStatus {
+        switch status {
+        case .todo: .doing
+        case .doing: .done
+        case .done: .todo
+        }
+    }
+
+    /// tooltip 说的是「点下去会变成什么」，和菜单里那三条同一套文案。
+    private func hint(for status: YCodeTodoStatus) -> String {
+        switch status {
+        case .todo: l10n.text("moveToQueue")
+        case .doing: l10n.text("markDoing")
+        case .done: l10n.text("markDone")
+        }
     }
 
     private func boxFill(_ item: YCodeTodo) -> Color {
@@ -258,10 +285,13 @@ struct TodoPanelView: View {
         }
     }
 
+    /// 粒度只到分钟。待办面板在轮询，秒级的相对时间会跟着每秒重算一次，
+    /// 于是「11秒前 / 12秒前」在眼角一直闪 —— 而那个秒数没有任何信息量。
+    /// 一分钟内一律「刚刚」，之后按分钟走，文案就稳住了。
     private func relative(_ milliseconds: Int64) -> String {
         let date = Date(timeIntervalSince1970: Double(milliseconds) / 1_000)
         let now = Date()
-        if abs(date.timeIntervalSince(now)) < 5 { return l10n.text("justNow") }
+        if abs(date.timeIntervalSince(now)) < 60 { return l10n.text("justNow") }
         return Self.relativeFormatter.localizedString(for: date, relativeTo: now)
     }
 
@@ -283,6 +313,8 @@ struct TodoPanelView: View {
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
+        // 跨天的那条读「昨天」比「1 天前」自然（设计稿 §03c 副行）。
+        formatter.dateTimeStyle = .named
         return formatter
     }()
 }

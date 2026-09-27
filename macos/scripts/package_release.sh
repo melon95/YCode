@@ -2,15 +2,16 @@
 set -euo pipefail
 
 MODE="${1:-prepare}"
-VERSION="${VERSION:-}"
+NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="${VERSION:-$(cat "$NATIVE_DIR/VERSION")}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN:-}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-}"
 CLEAN_BUILD="${CLEAN_BUILD:-0}"
 UPDATE_FEED_URL="${UPDATE_FEED_URL:-https://github.com/melon95/YCode/releases/latest/download/appcast.xml}"
 BUNDLE_ID="dev.ycode.app"
-NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_ROOT="$NATIVE_DIR/.build/release-universal"
 ARM_BUILD_ROOT="$BUILD_ROOT/arm64"
 INTEL_BUILD_ROOT="$BUILD_ROOT/x86_64"
@@ -20,17 +21,39 @@ CONTENTS="$APP_BUNDLE/Contents"
 ARCHIVE="$OUTPUT_ROOT/YCode-$VERSION.zip"
 VERIFY_CANDIDATE="$NATIVE_DIR/scripts/verify_release_candidate.sh"
 
-if [[ -z "$VERSION" || -z "$BUILD_NUMBER" ]]; then
-  echo "VERSION and BUILD_NUMBER are required" >&2
-  exit 2
-fi
-if [[ "$MODE" == "release" && ( -z "$SIGNING_IDENTITY" || -z "$SPARKLE_PUBLIC_KEY" ) ]]; then
-  echo "release mode requires SIGNING_IDENTITY and SPARKLE_PUBLIC_KEY" >&2
+if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  echo "VERSION must be x.y.z and BUILD_NUMBER must be a positive integer" >&2
   exit 2
 fi
 if [[ "$MODE" != "prepare" && "$MODE" != "release" && "$MODE" != "notarize" ]]; then
   echo "usage: VERSION=x BUILD_NUMBER=n $0 [prepare|release|notarize]" >&2
   exit 2
+fi
+if [[ "$MODE" == "prepare" ]]; then
+  if [[ -n "$SIGNING_IDENTITY" || -n "$SPARKLE_PUBLIC_KEY" ]]; then
+    echo "prepare mode is an ad-hoc candidate without update credentials" >&2
+    exit 2
+  fi
+else
+  SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-$(cat "$NATIVE_DIR/Resources/SparklePublicKey.txt")}"
+  python3 - "$SPARKLE_PUBLIC_KEY" "$UPDATE_FEED_URL" <<'PY'
+import base64, sys
+from urllib.parse import urlsplit
+assert len(base64.b64decode(sys.argv[1], validate=True)) == 32, 'Invalid Sparkle public key'
+url = urlsplit(sys.argv[2])
+assert url.scheme == 'https' and url.netloc and not url.username, 'Invalid HTTPS update feed'
+PY
+fi
+if [[ "$MODE" == "release" ]]; then
+  if [[ -z "$SIGNING_IDENTITY" || -z "$NOTARY_PROFILE" ]]; then
+    echo "release requires SIGNING_IDENTITY and NOTARY_PROFILE before building" >&2
+    exit 2
+  fi
+  identity_details="$(/usr/bin/security find-identity -v -p codesigning)"
+  if ! printf '%s\n' "$identity_details" | /usr/bin/grep -F "$SIGNING_IDENTITY" | /usr/bin/grep -q '"Developer ID Application:'; then
+    echo "SIGNING_IDENTITY must select an installed Developer ID Application certificate" >&2
+    exit 2
+  fi
 fi
 
 if [[ "$MODE" != "notarize" ]]; then
@@ -38,8 +61,8 @@ if [[ "$MODE" != "notarize" ]]; then
   rm -rf "$OUTPUT_ROOT"
   mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Frameworks"
   cd "$NATIVE_DIR"
-  swift build -c release --scratch-path "$ARM_BUILD_ROOT" --arch arm64
-  swift build -c release --scratch-path "$INTEL_BUILD_ROOT" --arch x86_64
+  swift build -c release --scratch-path "$ARM_BUILD_ROOT" --arch arm64 --force-resolved-versions
+  swift build -c release --scratch-path "$INTEL_BUILD_ROOT" --arch x86_64 --force-resolved-versions
   ARM_BIN_DIR="$(swift build -c release --scratch-path "$ARM_BUILD_ROOT" --arch arm64 --show-bin-path)"
   INTEL_BIN_DIR="$(swift build -c release --scratch-path "$INTEL_BUILD_ROOT" --arch x86_64 --show-bin-path)"
 
@@ -50,6 +73,8 @@ if [[ "$MODE" != "notarize" ]]; then
   done
   cp "$NATIVE_DIR/Resources/YCodeApp-Info.plist" "$CONTENTS/Info.plist"
   cp "$NATIVE_DIR/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
+  mkdir -p "$CONTENTS/Resources/ThirdPartyNotices"
+  cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$CONTENTS/Resources/ThirdPartyNotices/"
   chmod +x "$CONTENTS/MacOS/YCodeApp" "$CONTENTS/Resources/ycode" "$CONTENTS/Resources/ycode-mcp" "$CONTENTS/Resources/ycode-notify" "$CONTENTS/Resources/ycode-migrate"
 
   SPARKLE_FRAMEWORK="$(find "$NATIVE_DIR/.build/artifacts" "$ARM_BUILD_ROOT" -path '*/Sparkle.framework' -type d -print -quit)"
@@ -109,7 +134,9 @@ if [[ "$MODE" == "notarize" ]]; then
     echo "notarize mode requires NOTARY_PROFILE and an existing $ARCHIVE" >&2
     exit 2
   fi
-  /usr/bin/xcrun notarytool submit "$ARCHIVE" --keychain-profile "$NOTARY_PROFILE" --wait
+  NOTARY_ARGS=(--keychain-profile "$NOTARY_PROFILE")
+  if [[ -n "$NOTARY_KEYCHAIN" ]]; then NOTARY_ARGS+=(--keychain "$NOTARY_KEYCHAIN"); fi
+  /usr/bin/xcrun notarytool submit "$ARCHIVE" "${NOTARY_ARGS[@]}" --wait
   /usr/bin/xcrun stapler staple "$APP_BUNDLE"
   /usr/bin/xcrun stapler validate "$APP_BUNDLE"
   rm -f "$ARCHIVE"

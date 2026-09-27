@@ -1,0 +1,1338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ycode · Pi 形态可交互原型</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#0b0e13; --surface:#0f1319; --panel:#12171f; --panel-raised:#181e28;
+  --panel-sunken:#080b10; --rule:#202733; --rule-strong:#303a49;
+  --text:#edf1f7; --text-soft:#c9d0dc; --muted:#8d97a8; --subtle:#626d7e;
+  --whisper:#394351; --accent:#6e9cff; --accent-soft:#83aaff;
+  --accent-rgb:110,156,255; --accent-tint:rgba(110,156,255,.10);
+  --ok:#4ea88a; --warn:#d99b4e; --danger:#d9635e;
+  --rx:4px; --rs:6px; --rm:8px;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-feature-settings:"ss01","cv02","cv11";letter-spacing:-.006em;
+  font-size:13px;line-height:1.55;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;}
+input,textarea{font:inherit;color:inherit;background:none;border:0;outline:none;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+::-webkit-scrollbar{width:9px;height:9px;}
+::-webkit-scrollbar-thumb{border:3px solid transparent;border-radius:99px;
+  background:color-mix(in srgb,var(--subtle) 50%,transparent);background-clip:padding-box;}
+::selection{background:rgba(var(--accent-rgb),.3);}
+[hidden]{display:none!important;}
+
+/* ══ 外壳 ══ */
+.app{display:flex;flex-direction:column;height:100vh;}
+.titlebar{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;flex:none;
+  background:var(--surface);border-bottom:1px solid var(--rule);}
+.dots{display:flex;gap:6px;}
+.dots i{width:11px;height:11px;border-radius:50%;background:var(--whisper);}
+.sp{flex:1;}
+.tbtn{padding:3px 8px;border-radius:var(--rx);color:var(--subtle);font-size:11.5px;}
+.tbtn:hover{background:var(--panel-raised);color:var(--text);}
+.tbtn.alert{color:var(--warn);}
+.pill{background:var(--warn);color:#1a1206;border-radius:99px;padding:0 5px;
+  font-size:9.5px;font-weight:700;margin-left:4px;}
+.main{flex:1;display:flex;min-height:0;}
+
+/* ══ 侧栏 ══ */
+.side{width:206px;flex:none;background:var(--surface);border-right:1px solid var(--rule);
+  display:flex;flex-direction:column;min-height:0;}
+.srch{margin:9px 10px;padding:5px 9px;border-radius:var(--rs);background:var(--panel-sunken);
+  border:1px solid var(--rule);color:var(--text-soft);font-size:11.5px;width:calc(100% - 20px);}
+.srch::placeholder{color:var(--subtle);}
+.sfilter{display:flex;gap:4px;padding:0 10px 8px;flex:none;}
+.fchip{flex:1;padding:3px 0;border-radius:var(--rx);font-size:10.5px;color:var(--muted);
+  border:1px solid transparent;}
+.fchip:hover{background:var(--panel);}
+.fchip.on{background:var(--panel-raised);color:var(--text);border-color:var(--rule-strong);}
+.fchip .cnt{font-variant-numeric:tabular-nums;opacity:.7;}
+.fchip.alert .cnt{color:var(--warn);opacity:1;font-weight:600;}
+.slist{flex:1;overflow-y:auto;padding-bottom:8px;}
+.ghead{display:flex;align-items:center;gap:5px;padding:6px 11px 4px;color:var(--muted);
+  font-size:10px;font-weight:600;letter-spacing:.055em;text-transform:uppercase;}
+.srow{display:flex;align-items:flex-start;gap:8px;padding:6px 11px 6px 19px;width:100%;
+  text-align:left;border-left:2px solid transparent;color:var(--text-soft);}
+.srow .dot{margin-top:5px;}
+.srow.attn{background:rgba(217,155,78,.05);}
+.srow.attn.on{background:var(--panel-raised);}
+.ssub{font-size:10px;color:var(--warn);margin-top:1px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;}
+.ssub.calm{color:var(--subtle);}
+.stime{font-size:9px;color:var(--whisper);font-variant-numeric:tabular-nums;flex:none;margin-top:5px;}
+.srow:hover{background:var(--panel);}
+.srow.on{background:var(--panel-raised);border-left-color:var(--accent);color:var(--text);}
+.srow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;}
+.srow .mdl{font-size:9.5px;color:var(--subtle);font-family:var(--mono);}
+.dot{width:6px;height:6px;border-radius:50%;flex:none;}
+.dot.working{background:var(--accent);animation:pulse 1.4s ease-in-out infinite;}
+.dot.blocked{background:var(--warn);box-shadow:0 0 0 3px rgba(217,155,78,.18);}
+.dot.done{background:var(--ok);}
+.dot.error{background:var(--danger);}
+.dot.idle{background:var(--whisper);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.newbtn{margin:0 10px 10px;padding:6px;border:1px dashed var(--rule-strong);border-radius:var(--rs);
+  color:var(--muted);font-size:11.5px;width:calc(100% - 20px);}
+.newbtn:hover{border-color:var(--accent);color:var(--accent-soft);}
+
+/* ══ 中栏 ══ */
+.center{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg);}
+.phead{display:flex;align-items:center;gap:8px;padding:8px 14px;flex:none;
+  background:var(--surface);border-bottom:1px solid var(--rule);}
+.phead .ttl{font-size:12.5px;font-weight:500;flex:1;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;}
+.ctx{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);}
+.meter{width:54px;height:4px;border-radius:99px;background:var(--panel-sunken);overflow:hidden;}
+.meter i{display:block;height:100%;background:var(--accent);transition:width .5s;}
+.meter.warn i{background:var(--warn);}
+.conv{flex:1;overflow-y:auto;padding:16px 18px 8px;display:flex;flex-direction:column;gap:14px;}
+.msg{display:flex;gap:10px;}
+.av{width:20px;height:20px;border-radius:var(--rx);flex:none;display:grid;place-items:center;
+  font-size:9px;font-weight:600;}
+.av.u{background:var(--panel-raised);color:var(--muted);}
+.av.a{background:var(--accent-tint);color:var(--accent-soft);}
+.mb{flex:1;min-width:0;}
+.who{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:3px;display:flex;align-items:center;gap:7px;}
+.mact{opacity:0;display:flex;gap:7px;font-size:9.5px;color:var(--subtle);
+  text-transform:none;letter-spacing:0;font-weight:400;}
+.msg:hover .mact{opacity:1;}
+.mact button:hover{color:var(--accent-soft);}
+.txt{font-size:12.5px;color:var(--text-soft);line-height:1.65;}
+.txt code{font-family:var(--mono);font-size:11.5px;background:var(--panel);
+  padding:1px 4px;border-radius:3px;color:var(--accent-soft);}
+.cursor{display:inline-block;width:6px;height:13px;background:var(--accent);
+  vertical-align:-2px;animation:blink .9s step-end infinite;}
+@keyframes blink{50%{opacity:0}}
+.think{border-left:2px solid var(--whisper);padding:2px 0 2px 10px;margin:7px 0;
+  color:var(--subtle);font-size:11.5px;font-style:italic;}
+
+.tool{border:1px solid var(--rule);border-radius:var(--rs);background:var(--panel);
+  margin:8px 0;overflow:hidden;}
+.th{display:flex;align-items:center;gap:8px;padding:6px 10px;width:100%;text-align:left;
+  font-family:var(--mono);font-size:11px;color:var(--text-soft);}
+.th:hover{background:var(--panel-raised);}
+.chev{color:var(--subtle);font-size:8px;width:8px;transition:transform .15s;}
+.tool.open .chev{transform:rotate(90deg);}
+.tn{color:var(--accent-soft);}
+.ta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.ts{font-size:9.5px;padding:1px 6px;border-radius:99px;font-family:"Geist",sans-serif;
+  font-weight:500;flex:none;}
+.ts.ok{background:rgba(78,168,138,.14);color:var(--ok);}
+.ts.run{background:var(--accent-tint);color:var(--accent-soft);}
+.ts.no{background:rgba(217,99,94,.14);color:var(--danger);}
+.tbody{border-top:1px solid var(--rule);background:var(--panel-sunken);
+  font-family:var(--mono);font-size:10.5px;line-height:1.7;padding:5px 0;max-height:190px;
+  overflow:auto;}
+.dl{display:flex;padding:0 10px;white-space:pre;}
+.dl .ln{width:30px;color:var(--whisper);flex:none;text-align:right;padding-right:10px;
+  font-variant-numeric:tabular-nums;}
+.dl.add{background:rgba(78,168,138,.09);color:#9fd6c0;}
+.dl.del{background:rgba(217,99,94,.09);color:#e3a8a5;}
+.dl.ctx{color:var(--subtle);}
+.sysnote{font-size:11px;color:var(--subtle);border:1px dashed var(--rule-strong);
+  border-radius:var(--rs);padding:6px 10px;display:flex;align-items:center;gap:7px;}
+.sysnote b{color:var(--text-soft);font-weight:500;}
+
+/* ══ 输入区 ══ */
+.compose{flex:none;border-top:1px solid var(--rule);background:var(--surface);padding:10px 14px;}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--rule-strong);
+  border-radius:99px;font-size:11px;color:var(--text-soft);background:var(--panel);}
+.chip:hover{border-color:var(--muted);}
+.chip.act{border-color:rgba(var(--accent-rgb),.45);color:var(--accent-soft);background:var(--accent-tint);}
+.chip .ic{color:var(--subtle);font-size:10px;}
+.qchip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;
+  background:rgba(217,155,78,.13);color:var(--warn);font-size:10.5px;}
+.qchip button{color:var(--warn);opacity:.6;}
+.qchip button:hover{opacity:1;}
+.inbox-wrap{position:relative;}
+.ta-wrap{border:1px solid var(--rule-strong);border-radius:var(--rm);background:var(--panel-sunken);
+  padding:9px 12px;display:flex;align-items:flex-end;gap:8px;}
+.ta-wrap:focus-within{border-color:rgba(var(--accent-rgb),.5);}
+#ta{flex:1;resize:none;font-size:12.5px;line-height:1.5;max-height:96px;min-height:19px;}
+#ta::placeholder{color:var(--subtle);}
+.sendk{color:var(--whisper);font-size:12px;flex:none;padding-bottom:1px;}
+.cfoot{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px;color:var(--muted);}
+.cfoot .rt{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.permtag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;
+  font-size:10.5px;font-weight:500;}
+.permtag.safe{background:rgba(78,168,138,.13);color:var(--ok);}
+.permtag.bypass{background:rgba(217,99,94,.14);color:var(--danger);
+  border:1px solid rgba(217,99,94,.32);}
+.picker{position:relative;}
+.pk{padding:2px 8px;border-radius:var(--rx);font-size:11px;color:var(--text-soft);}
+.pk:hover{background:var(--panel-raised);}
+.menu{position:absolute;bottom:calc(100% + 6px);right:0;min-width:172px;z-index:40;
+  background:var(--panel-raised);border:1px solid var(--rule-strong);border-radius:var(--rm);
+  padding:4px;box-shadow:0 16px 44px rgba(0,0,0,.5);}
+.mi{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:var(--rx);
+  font-size:11.5px;color:var(--text-soft);width:100%;text-align:left;}
+.mi:hover{background:var(--panel);}
+.mi.on{color:var(--accent-soft);}
+.mi .ck{width:10px;font-size:9px;}
+.mi .sub{margin-left:auto;font-size:9.5px;color:var(--subtle);font-family:var(--mono);}
+.stopbtn{width:15px;height:15px;border-radius:50%;border:2px solid var(--danger);flex:none;}
+.stopbtn.idle{border-color:var(--whisper);}
+
+/* 内联权限请求 */
+.ask{border:1px solid rgba(217,155,78,.45);border-radius:var(--rm);background:var(--panel);
+  overflow:hidden;animation:rise .18s ease-out;}
+@keyframes rise{from{opacity:0;transform:translateY(5px)}}
+.ah{display:flex;align-items:center;gap:8px;padding:7px 11px;border-bottom:1px solid var(--rule);
+  background:rgba(217,155,78,.07);}
+.ah .k{font-size:10px;font-weight:600;letter-spacing:.055em;text-transform:uppercase;color:var(--warn);}
+.ah .t{font-family:var(--mono);font-size:11px;color:var(--text-soft);flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* .cd（倒计时）已移除：v1 默认不超时 */
+.aq{padding:8px 11px 4px;font-size:12px;color:var(--text);}
+.opts{padding:0 9px 9px;display:flex;flex-direction:column;gap:1px;}
+.opt{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--rx);
+  font-size:11.5px;color:var(--text-soft);width:100%;text-align:left;}
+.opt .n{font-family:var(--mono);font-size:10.5px;color:var(--subtle);width:11px;flex:none;}
+.opt.sel{background:var(--accent-tint);color:var(--text);box-shadow:inset 2px 0 0 var(--accent);}
+.opt.sel .n{color:var(--accent-soft);}
+.opt .hint{margin-left:auto;font-size:10px;color:var(--whisper);}
+.afoot{padding:7px 14px 0;font-size:10px;color:var(--whisper);display:flex;gap:12px;}
+/* 「拒绝并说明理由」的落脚点：输入框不消失，跟在选项下面 */
+.askta{display:block;width:calc(100% - 18px);margin:0 9px 9px;padding:6px 8px;resize:none;
+  border:1px solid var(--rule);border-radius:var(--rx);background:var(--panel-sunken);
+  font-size:11.5px;line-height:1.5;color:var(--text);min-height:30px;}
+.askta::placeholder{color:var(--whisper);}
+.askta:focus{border-color:var(--accent);}
+
+/* ══ 右栏 ══ */
+.right{width:294px;flex:none;background:var(--surface);border-left:1px solid var(--rule);
+  display:flex;flex-direction:column;min-height:0;}
+.rtabs{display:flex;flex:none;border-bottom:1px solid var(--rule);}
+.rtab{flex:1;padding:8px 0;font-size:11px;color:var(--muted);border-bottom:2px solid transparent;}
+.rtab:hover{color:var(--text-soft);}
+.rtab.on{color:var(--text);border-bottom-color:var(--accent);background:var(--panel);}
+.rbody{flex:1;overflow-y:auto;padding:11px 13px;}
+.fh{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-soft);
+  padding:4px 0;font-family:var(--mono);}
+.stat{font-size:9.5px;padding:0 5px;border-radius:3px;font-family:"Geist",sans-serif;flex:none;}
+.stat.m{background:rgba(217,155,78,.15);color:var(--warn);}
+.stat.a{background:rgba(78,168,138,.15);color:var(--ok);}
+.hunk{border:1px solid var(--rule);border-radius:var(--rx);margin:6px 0 12px;overflow:hidden;
+  font-family:var(--mono);font-size:10px;background:var(--panel-sunken);}
+.hbar{display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--panel);
+  border-bottom:1px solid var(--rule);color:var(--subtle);font-size:9.5px;}
+.hbar button{margin-left:auto;color:var(--accent-soft);font-family:"Geist",sans-serif;font-size:9.5px;}
+.tree{font-family:var(--mono);font-size:11px;}
+.tnode{display:flex;align-items:center;gap:6px;padding:2.5px 0;color:var(--text-soft);width:100%;
+  text-align:left;}
+.tnode:hover{color:var(--text);}
+.tnode .i{color:var(--subtle);font-size:9px;width:9px;}
+.term{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--text-soft);
+  white-space:pre-wrap;}
+.term .pr{color:var(--ok);}
+.term .cm{color:var(--text);}
+.todo{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--rule);
+  width:100%;text-align:left;}
+.tbox{width:13px;height:13px;border-radius:3px;border:1px solid var(--rule-strong);flex:none;
+  display:grid;place-items:center;font-size:8px;color:var(--bg);}
+.tbox.doing{border-color:var(--warn);color:var(--warn);}
+.tbox.done{background:var(--ok);border-color:var(--ok);}
+.todo .tt{flex:1;font-size:11.5px;color:var(--text-soft);}
+.todo.done .tt{color:var(--subtle);text-decoration:line-through;}
+.code{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--text-soft);}
+.code .ln{color:var(--whisper);display:inline-block;width:26px;text-align:right;
+  padding-right:11px;font-variant-numeric:tabular-nums;}
+.kw{color:#c792ea;}.st{color:#a3d99b;}.fn{color:var(--accent-soft);}.cmt{color:var(--whisper);}
+
+/* ══ 空/错误态 ══ */
+.empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:9px;text-align:center;padding:24px;}
+.eic{font-size:22px;}
+.ett{font-size:13px;color:var(--text);font-weight:500;}
+.edc{font-size:11.5px;color:var(--muted);max-width:32ch;line-height:1.6;}
+.ebtn{margin-top:4px;font-size:11.5px;padding:5px 14px;border-radius:var(--rs);
+  background:var(--accent);color:#08101f;font-weight:500;}
+.ebtn.ghost{background:transparent;border:1px solid var(--rule-strong);color:var(--text-soft);}
+
+/* ══ 浮层 ══ */
+.scrim{position:fixed;inset:0;background:rgba(4,6,10,.62);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:24px;}
+.inbox{position:absolute;top:calc(100% + 7px);right:0;width:310px;z-index:50;
+  background:var(--panel-raised);border:1px solid var(--rule-strong);border-radius:var(--rm);
+  overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.5);}
+.ibh{padding:8px 12px;border-bottom:1px solid var(--rule);font-size:11px;color:var(--muted);
+  display:flex;align-items:center;gap:7px;}
+.ibr{display:flex;gap:9px;padding:9px 12px;border-bottom:1px solid var(--rule);width:100%;
+  text-align:left;}
+.ibr:last-child{border-bottom:0;}
+.ibr:hover{background:var(--panel);}
+.ibt{font-size:11.5px;color:var(--text);}
+.ibs{font-size:10.5px;color:var(--muted);margin-top:1px;}
+.ibtime{font-size:9.5px;color:var(--whisper);flex:none;font-variant-numeric:tabular-nums;}
+
+/* 设置 */
+.settings{width:812px;max-width:100%;height:534px;background:var(--bg);border-radius:10px;
+  border:1px solid var(--rule-strong);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 24px 70px rgba(0,0,0,.55);}
+.sthead{display:flex;align-items:center;padding:11px 16px;border-bottom:1px solid var(--rule);
+  background:var(--surface);flex:none;}
+.sthead h2{font-size:13.5px;font-weight:600;}
+.stmain{flex:1;display:flex;min-height:0;}
+.stnav{width:190px;flex:none;background:var(--surface);border-right:1px solid var(--rule);
+  overflow-y:auto;padding:8px 0;}
+.ng{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--whisper);padding:10px 15px 4px;}
+.ni{display:flex;align-items:center;gap:9px;padding:5px 15px;font-size:11.5px;
+  color:var(--text-soft);border-left:2px solid transparent;width:100%;text-align:left;}
+.ni:hover{background:var(--panel);}
+.ni.on{background:var(--panel-raised);border-left-color:var(--accent);color:var(--text);}
+.ni.gone{color:var(--whisper);text-decoration:line-through;cursor:not-allowed;}
+.ni.gone:hover{background:transparent;}
+.ni .ic{width:11px;font-size:10px;color:var(--subtle);text-align:center;}
+.bdg{margin-left:auto;font-size:8.5px;font-weight:600;padding:0 4px;border-radius:3px;letter-spacing:.04em;}
+.bdg.nw{background:rgba(139,122,217,.2);color:#a897e6;}
+.bdg.rm{background:rgba(217,99,94,.15);color:var(--danger);}
+.bdg.ch{background:rgba(217,155,78,.16);color:var(--warn);}
+.stpane{flex:1;overflow-y:auto;padding:18px 22px;}
+.ph1{font-size:14.5px;font-weight:600;margin-bottom:2px;}
+.ph2{font-size:11px;color:var(--muted);margin-bottom:16px;}
+.grp{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);margin:17px 0 7px;}
+.grp:first-of-type{margin-top:0;}
+.row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--rule);}
+.row:last-child{border-bottom:0;}
+.rm_{flex:1;min-width:0;}
+.rt{font-size:12px;color:var(--text);}
+.rd{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.5;}
+.rd a{color:var(--accent-soft);}
+.sw{width:27px;height:15px;border-radius:99px;background:var(--whisper);flex:none;
+  position:relative;transition:background .15s;}
+.sw.on{background:var(--accent);}
+.sw i{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+  background:#fff;transition:left .15s;}
+.sw.on i{left:14px;}
+.sel{border:1px solid var(--rule-strong);border-radius:var(--rs);padding:3px 10px;font-size:11px;
+  color:var(--text-soft);background:var(--panel);flex:none;}
+.sel:hover{border-color:var(--muted);}
+.field{border:1px solid var(--rule-strong);border-radius:var(--rs);padding:5px 10px;font-size:11px;
+  color:var(--subtle);background:var(--panel-sunken);flex:1;font-family:var(--mono);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.conn{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;padding:1px 8px;
+  border-radius:99px;flex:none;}
+.conn.ok{background:rgba(78,168,138,.14);color:var(--ok);}
+.conn.no{background:var(--panel);color:var(--subtle);border:1px solid var(--rule-strong);}
+.sb{font-size:10.5px;padding:4px 11px;border-radius:var(--rs);flex:none;
+  border:1px solid var(--rule-strong);color:var(--text-soft);background:var(--panel-raised);}
+.sb:hover{border-color:var(--muted);}
+.sb.pri{background:var(--accent);border-color:var(--accent);color:#08101f;font-weight:500;}
+.sb.dgr{border-color:rgba(217,99,94,.35);color:var(--danger);}
+.sb.off{color:var(--whisper);border-color:var(--rule);cursor:not-allowed;}
+.rule_{font-family:var(--mono);font-size:10.5px;color:var(--accent-soft);}
+.scope{font-size:9.5px;color:var(--subtle);margin-top:2px;}
+.tag{font-size:9px;padding:0 5px;border-radius:3px;background:var(--panel);color:var(--subtle);
+  border:1px solid var(--rule);flex:none;}
+.src{font-family:var(--mono);font-size:9px;padding:0 5px;border-radius:3px;flex:none;
+  white-space:nowrap;}
+.src.pi{background:rgba(var(--accent-rgb),.12);color:var(--accent-soft);}
+.src.yc{background:rgba(139,122,217,.15);color:#a897e6;}
+.warnbox{border:1px solid rgba(217,155,78,.4);background:rgba(217,155,78,.07);
+  border-radius:var(--rs);padding:9px 12px;font-size:11px;color:var(--text-soft);
+  line-height:1.6;margin-bottom:14px;}
+.warnbox b{color:var(--warn);}
+.legend{display:flex;gap:14px;font-size:10px;color:var(--subtle);margin-bottom:14px;
+  padding-bottom:11px;border-bottom:1px solid var(--rule);}
+
+/* 命令面板 */
+.palette{width:520px;max-width:100%;background:var(--panel-raised);border:1px solid var(--rule-strong);
+  border-radius:var(--rm);overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.55);align-self:flex-start;
+  margin-top:12vh;}
+.pin{width:100%;padding:13px 16px;font-size:14px;border-bottom:1px solid var(--rule);}
+.pres{max-height:290px;overflow-y:auto;padding:5px;}
+.pr_{display:flex;align-items:center;gap:10px;padding:7px 11px;border-radius:var(--rs);
+  width:100%;text-align:left;font-size:12px;color:var(--text-soft);}
+.pr_.on{background:var(--panel);color:var(--text);}
+.pr_ .k{font-size:9.5px;color:var(--subtle);font-family:var(--mono);margin-left:auto;}
+
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:80;
+  background:var(--panel-raised);border:1px solid var(--rule-strong);border-radius:99px;
+  padding:7px 16px;font-size:11.5px;color:var(--text-soft);box-shadow:0 12px 32px rgba(0,0,0,.45);
+  animation:rise .2s ease-out;}
+
+.hintbar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--surface);
+  border-top:1px solid var(--rule);padding:5px 14px;font-size:10.5px;color:var(--whisper);
+  display:flex;gap:16px;align-items:center;}
+.hintbar b{color:var(--muted);font-weight:500;}
+.hintbar kbd{font-family:var(--mono);font-size:9.5px;background:var(--panel);
+  border:1px solid var(--rule);border-radius:3px;padding:0 4px;color:var(--subtle);}
+.app{padding-bottom:26px;}
+
+@media (max-width:900px){
+  .right{display:none;}
+  .side{width:170px;}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="titlebar">
+    <div class="dots"><i></i><i></i><i></i></div>
+    <span class="sp"></span>
+    <button class="tbtn" id="paletteBtn">⌘K</button>
+    <button class="tbtn" id="setBtn">⚙</button>
+  </div>
+
+  <div class="main">
+    <!-- 侧栏 -->
+    <div class="side">
+      <input class="srch" id="sideSearch" placeholder="搜索会话">
+      <div class="sfilter" id="sideFilter"></div>
+      <div class="slist" id="sideList"></div>
+      <button class="newbtn" id="newBtn">＋ 新建会话</button>
+    </div>
+
+    <!-- 中栏 -->
+    <div class="center">
+      <div class="phead">
+        <span class="dot" id="headDot"></span>
+        <span class="ttl" id="headTitle"></span>
+        <span class="ctx" id="headCtx"></span>
+      </div>
+      <div class="conv" id="conv"></div>
+      <div class="compose" id="compose"></div>
+    </div>
+
+    <!-- 右栏 -->
+    <div class="right">
+      <div class="rtabs" id="rtabs"></div>
+      <div class="rbody" id="rbody"></div>
+    </div>
+  </div>
+</div>
+
+<div class="hintbar">
+  <b>可交互原型</b>
+  <span>发消息看完整流程 <kbd>↵</kbd></span>
+  <span>权限请求用 <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 或 <kbd>esc</kbd></span>
+  <span>运行中打字 = 插话</span>
+  <span><kbd>⌘K</kbd> 命令面板</span>
+</div>
+
+<script>
+"use strict";
+
+/* ═══════════ 状态 ═══════════ */
+const S = {
+  sessions: [
+    { id:"s1", proj:"ycode", name:"ToolUse 加 call id", model:"Opus 5", think:"High",
+      status:"idle", ctx:34, perm:"ask", msgs:[
+        { role:"user", blocks:[{t:"text", v:"给 <code>UnifiedEvent::ToolUse</code> 加 call id。<code>claude.rs:265</code> 已经读到 <code>tool_use_id</code> 了，是我们自己扔的。"}]},
+        { role:"agent", model:"Opus 5", blocks:[
+          {t:"think", v:"先确认 ToolResult 那侧是不是也缺同一个字段，否则加了也配不上对。"},
+          {t:"text", v:"两侧都缺。<code>ToolUse</code> 只有 <code>tool / input_json / status</code>，同一回合调用两次同名工具就配不上。我先看一眼现在的定义。"},
+          {t:"tool", name:"read", arg:"crates/ycode-introspect/src/unified.rs", stat:"ok", statTxt:"54 行", open:false,
+            body:[["ctx",54,"    ToolUse {"],["ctx",55,"        tool: String,"],["ctx",56,"        input_json: String,"],["ctx",57,"        status: ToolStatus,"],["ctx",58,"    },"]]}
+        ]}
+      ]},
+    { id:"s2", proj:"ycode", name:"权限扩展骨架", model:"Opus 5", think:"High",
+      status:"blocked", ctx:22, perm:"ask", msgs:[
+        { role:"user", blocks:[{t:"text", v:"写一个 pi 扩展，拦 <code>tool_call</code> 把确认请求转给 ycode。"}]},
+        { role:"agent", model:"Opus 5", blocks:[
+          {t:"text", v:"扩展要读会话 id，得把 <code>spawn_pty</code> 换成 RPC 那条路径。"},
+          {t:"tool", name:"read", arg:"crates/ycode-ipc/src/service.rs", stat:"ok", statTxt:"1613 行", open:false,
+            body:[["ctx",1612,"let profile = self.resolve(agent_id)?;"],["ctx",1613,"    .spawn_pty(&id, &profile, &row, cwd, mode)"],["ctx",1614,"    .await?;"]]}
+        ]}
+      ], pending:{ kind:"编辑", target:"crates/ycode-ipc/src/service.rs",
+        diff:[["ctx",1612,"let profile = self.resolve(agent_id)?;"],
+              ["del",1613,"- .spawn_pty(&id, &profile, &row, cwd, mode)"],
+              ["add",1613,"+ .spawn_pi_rpc(&id, &profile, cwd, mode)"],
+              ["ctx",1614,".await?;"]],
+        scope:"crates/ycode-ipc/**" },
+      attn:{ txt:"要改 service.rs — 等确认", time:"2 分钟" } },
+    { id:"s3", proj:"ycode", name:"FTS5 迁移脚本", model:"Sonnet 5", think:"Medium",
+      status:"done", ctx:61, perm:"ask", msgs:[
+        { role:"user", blocks:[{t:"text", v:"写事件表的 migration，带 format_version。"}]},
+        { role:"agent", model:"Sonnet 5", blocks:[
+          {t:"text", v:"建好了。<code>events</code> 表加 <code>format_version</code> 列，FTS5 虚表跟着建但先不启用查询路径——全文搜索排在 v1.1。"},
+          {t:"tool", name:"write", arg:"migrations/003_events.sql", stat:"ok", statTxt:"已写入", open:false,
+            body:[["add",1,"CREATE TABLE events ("],["add",2,"  id INTEGER PRIMARY KEY,"],["add",3,"  session_id TEXT NOT NULL,"],["add",4,"  seq INTEGER NOT NULL,"],["add",5,"  format_version INTEGER NOT NULL DEFAULT 1"],["add",6,");"]]}
+        ]}
+      ]},
+    { id:"s4", proj:"ycode", name:"RPC 分帧单测", model:"Opus 5", think:"High",
+      status:"error", ctx:12, perm:"ask", msgs:[
+        { role:"user", blocks:[{t:"text", v:"测一下 U+2028 在 JSON 字符串里不会被当行分隔符切开。"}]}
+      ], crashed:true, attn:{ txt:"pi 退出，代码 1 — 可重连", time:"6 分钟" } },
+    { id:"s5", proj:"allineate", name:"重构 auth 模块", model:"Haiku 4.5", think:"Off",
+      status:"idle", ctx:8, perm:"bypass", msgs:[] }
+  ],
+  active:"s1",
+  rtab:"changes",
+  preview:null,
+  queue:[],
+  running:false,
+  filter:"all",
+  settingsPane:"models",
+  toggles:{ telemetry:true, ext1:true, ext2:true, ext3:true, ext4:false },
+  changes:[
+    { file:"unified.rs", stat:"m", hunks:[{h:"@@ 54,4 +54,5 @@",
+      lines:[["ctx",54,"ToolUse {"],["add",55,"+ call_id: String,"],["ctx",56,"  tool: String,"]]}]}
+  ],
+  todos:[
+    { t:"UnifiedEvent 加 call_id", s:"doing" },
+    { t:"pi RPC 分帧 codec", s:"todo" },
+    { t:"权限扩展骨架", s:"todo" },
+    { t:"事件表 migration", s:"done" }
+  ]
+};
+
+const $  = (s,r=document)=>r.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e;};
+const cur = ()=>S.sessions.find(x=>x.id===S.active);
+
+/* ═══════════ 侧栏 ═══════════ */
+const RANK = { blocked:0, error:1, working:2, done:3, idle:4 };
+const needsYou = x => x.status==="blocked" || x.status==="error";
+
+function renderSide(){
+  const q = ($("#sideSearch").value||"").toLowerCase();
+  const all = S.sessions.filter(x=>!q || x.name.toLowerCase().includes(q));
+  const attnN = S.sessions.filter(needsYou).length;
+
+  // 过滤条
+  const f = $("#sideFilter"); f.innerHTML="";
+  [["all",`全部 <span class="cnt">${all.length}</span>`,false],
+   ["attn",`等你处理 <span class="cnt">${attnN}</span>`,attnN>0]].forEach(([id,label,alert])=>{
+    const b = el("button","fchip"+(S.filter===id?" on":"")+(alert&&id==="attn"?" alert":""), label);
+    b.onclick=()=>{ S.filter=id; renderSide(); };
+    f.appendChild(b);
+  });
+
+  const shown = S.filter==="attn" ? all.filter(needsYou) : all;
+  const box = $("#sideList"); box.innerHTML="";
+
+  if(!shown.length){
+    box.appendChild(el("div","ghead", S.filter==="attn" ? "没有等你的会话" : "没有匹配的会话"));
+    return;
+  }
+  [...new Set(shown.map(x=>x.proj))].forEach(p=>{
+    const items = shown.filter(x=>x.proj===p)
+      .sort((a,b)=>(RANK[a.status]-RANK[b.status]));
+    box.appendChild(el("div","ghead","▾ "+p));
+    items.forEach(x=>{
+      const b = el("button","srow"+(x.id===S.active?" on":"")+(needsYou(x)?" attn":""));
+      const sub = x.attn
+        ? `<div class="ssub${needsYou(x)?"":" calm"}">${x.attn.txt}</div>` : "";
+      b.innerHTML = `<span class="dot ${x.status}"></span>
+        <span class="nm" style="flex:1;min-width:0">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.name}</div>
+          ${sub}
+        </span>
+        ${x.attn ? `<span class="stime">${x.attn.time}</span>`
+                 : `<span class="mdl" style="margin-top:4px">${x.model.split(" ")[0]}</span>`}`;
+      b.onclick=()=>{ S.active=x.id; renderAll(); };
+      box.appendChild(b);
+    });
+  });
+}
+
+/* ═══════════ 对话 ═══════════ */
+function blockEl(b, mi, bi){
+  if(b.t==="text")  return el("div","txt", b.v + (b.streaming?'<span class="cursor"></span>':""));
+  if(b.t==="think") return el("div","think", b.v + (b.streaming?'<span class="cursor"></span>':""));
+  if(b.t==="note")  return el("div","sysnote", b.v);
+  if(b.t==="tool"){
+    const w = el("div","tool"+(b.open?" open":""));
+    const h = el("button","th");
+    h.innerHTML = `<span class="chev">▶</span><span class="tn">${b.name}</span>
+      <span class="ta">${b.arg}</span><span class="ts ${b.stat}">${b.statTxt}</span>`;
+    h.onclick=()=>{ b.open=!b.open; renderConv(); };
+    w.appendChild(h);
+    if(b.open && b.body){
+      const bd = el("div","tbody");
+      b.body.forEach(([k,n,tx])=>{
+        bd.appendChild(el("div","dl "+k,`<span class="ln">${n}</span><span>${esc(tx)}</span>`));
+      });
+      w.appendChild(bd);
+    }
+    return w;
+  }
+  return el("div");
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function renderConv(){
+  const s = cur(), c = $("#conv");
+  const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 60;
+  c.innerHTML="";
+
+  if(s.crashed){
+    const e = el("div","empty");
+    e.innerHTML = `<div class="eic" style="color:var(--danger)">⊘</div>
+      <div class="ett">会话已断开</div>
+      <div class="edc">pi 退出，代码 1。最后 1 条消息已存，重连后接着跑。</div>`;
+    const b1 = el("button","ebtn","重连");
+    b1.onclick=()=>{ s.crashed=false; s.status="idle"; clearAttn(s.id); toast("已重连"); renderAll(); };
+    const b2 = el("button","ebtn ghost","查看 stderr");
+    b2.onclick=()=>toast("thread 'main' panicked at codec.rs:88");
+    e.append(b1,b2); c.appendChild(e); return;
+  }
+  if(!s.msgs.length){
+    const e = el("div","empty");
+    e.innerHTML = `<div class="eic" style="color:var(--subtle)">◇</div>
+      <div class="ett">还没开始</div>
+      <div class="edc">说一句话就开始。会话跑在 ycode 里，关掉面板也不会停。</div>`;
+    c.appendChild(e); return;
+  }
+
+  s.msgs.forEach((m,mi)=>{
+    const row = el("div","msg");
+    row.appendChild(el("div","av "+(m.role==="user"?"u":"a"), m.role==="user"?"你":"pi"));
+    const body = el("div","mb");
+    const who = el("div","who");
+    who.innerHTML = m.role==="user" ? "你" : `${m.model} · 思考 ${s.think}`;
+    const act = el("div","mact");
+    const cp = el("button",null,"复制");
+    cp.onclick=()=>toast("已复制这条消息");
+    act.appendChild(cp);
+    if(m.role==="user"){
+      const ed = el("button",null,"编辑并重发");
+      ed.onclick=()=>{ $("#ta").value = m.blocks[0].v.replace(/<[^>]+>/g,""); $("#ta").focus(); toast("已放回输入框，改完再发"); };
+      act.appendChild(ed);
+    } else {
+      const rt = el("button",null,"重试本轮");
+      rt.onclick=()=>toast("重试本轮（原型未接）");
+      act.appendChild(rt);
+    }
+    who.appendChild(act);
+    body.appendChild(who);
+    m.blocks.forEach((b,bi)=>body.appendChild(blockEl(b,mi,bi)));
+    row.appendChild(body);
+    c.appendChild(row);
+  });
+  if(atBottom) c.scrollTop = c.scrollHeight;
+}
+
+/* ═══════════ 输入区 ═══════════ */
+function renderCompose(){
+  const s = cur(), box = $("#compose"); box.innerHTML="";
+
+  if(s.pending){ renderAsk(box,s); return; }
+
+  const chips = el("div","chips");
+  const c1 = el("button","chip",`<span class="ic">▤</span>${s.proj}`);
+  c1.onclick=()=>toast("切换项目（原型未接）");
+  const c2 = el("button","chip act",`<span class="ic">⑂</span>main · worktree`);
+  c2.onclick=()=>toast("worktree 隔离已开：改动落在 wt/ 分支，合并前不碰主仓");
+  chips.append(c1,c2);
+  S.queue.forEach((q,i)=>{
+    const qc = el("div","qchip",`排队：${esc(q).slice(0,22)}`);
+    const x = el("button",null,"✕");
+    x.onclick=()=>{ S.queue.splice(i,1); renderCompose(); };
+    qc.appendChild(x); chips.appendChild(qc);
+  });
+  box.appendChild(chips);
+
+  const w = el("div","ta-wrap");
+  const ta = el("textarea"); ta.id="ta"; ta.rows=1;
+  ta.placeholder = S.running ? "运行中 — Enter 插话，Alt+Enter 排队" : "描述任务或提问";
+  ta.oninput=()=>{ ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,96)+"px"; };
+  ta.onkeydown=(e)=>{
+    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(e.altKey?"followUp":"now"); }
+    if(e.key==="Escape" && S.running){ e.preventDefault(); abort(); }
+  };
+  w.append(ta, el("span","sendk","↵"));
+  box.appendChild(w);
+
+  const f = el("div","cfoot");
+  const pt = el("button","permtag "+(s.perm==="ask"?"safe":"bypass"),
+    s.perm==="ask" ? "◈ 需确认" : "⚠ 已跳过确认");
+  pt.onclick=()=>{ s.perm = s.perm==="ask"?"bypass":"ask";
+    toast(s.perm==="ask" ? "恢复为每次确认" : "本会话跳过确认 — agent 将直接改文件、跑命令");
+    renderCompose(); };
+  const at = el("button",null,"＋"); at.onclick=()=>toast("粘贴截图 Cmd-V，或把文件拖进输入框");
+  const mic = el("button",null,"🎤"); mic.onclick=()=>toast("语音输入排在 v2");
+  f.append(pt,at,mic);
+
+  const rt = el("div","rt");
+  rt.appendChild(picker(s.model, ["Opus 5","Sonnet 5","Haiku 4.5"], v=>{ s.model=v; toast("已切到 "+v); }));
+  rt.appendChild(picker(s.think, ["Off","Minimal","Low","Medium","High","XHigh","Max"], v=>{ s.think=v; toast("思考等级 "+v); }));
+  const stop = el("button","stopbtn"+(S.running?"":" idle"));
+  stop.title = S.running ? "中断" : "空闲";
+  stop.onclick=()=>{ if(S.running) abort(); else toast("当前没有在跑"); };
+  rt.appendChild(stop);
+  f.appendChild(rt);
+  box.appendChild(f);
+}
+
+function picker(val, opts, cb){
+  const w = el("div","picker");
+  const b = el("button","pk", val);
+  const m = el("div","menu"); m.hidden=true;
+  opts.forEach(o=>{
+    const i = el("button","mi"+(o===val?" on":""), `<span class="ck">${o===val?"✓":""}</span>${o}`);
+    i.onclick=()=>{ m.hidden=true; cb(o); renderCompose(); };
+    m.appendChild(i);
+  });
+  b.onclick=(e)=>{ e.stopPropagation(); document.querySelectorAll(".menu").forEach(x=>{ if(x!==m) x.hidden=true; }); m.hidden=!m.hidden; };
+  w.append(b,m); return w;
+}
+document.addEventListener("click",()=>document.querySelectorAll(".menu").forEach(m=>m.hidden=true));
+
+/* ═══════════ 权限请求 ═══════════ */
+let askSel=0, askTyping=false, askReason="";   // v1 默认不超时：没有倒计时状态
+function renderAsk(box, s){
+  const p = s.pending;
+  const wrap = el("div","ask");
+  const h = el("div","ah");
+  h.innerHTML = `<span class="k">${p.kind}</span><span class="t">${p.target}</span>`;
+  wrap.appendChild(h);
+  const bd = el("div","tbody"); bd.style.borderTop="0";
+  p.diff.forEach(([k,n,tx])=>bd.appendChild(el("div","dl "+k,`<span class="ln">${n}</span><span>${esc(tx)}</span>`)));
+  wrap.appendChild(bd);
+  wrap.appendChild(el("div","aq","要做这个修改吗？"));
+
+  const opts = el("div","opts");
+  const list = [
+    ["1","允许",""],
+    ["2",`允许，本会话内 <code style="font-family:var(--mono);font-size:10.5px;color:var(--accent-soft)">${p.scope}</code> 不再问`,""],
+    ["3","拒绝，并告诉 pi 该怎么做","esc"]
+  ];
+  list.forEach((o,i)=>{
+    const b = el("button","opt"+(i===askSel?" sel":""));
+    b.innerHTML = `<span class="n">${o[0]}</span><span>${o[1]}</span>`+(o[2]?`<span class="hint">${o[2]}</span>`:"");
+    b.onmouseenter=()=>{ askSel=i; renderCompose(); };
+    b.onclick=()=>resolveAsk(i);
+    opts.appendChild(b);
+  });
+  wrap.appendChild(opts);
+  box.appendChild(wrap);
+  // 「拒绝并说明理由」要有地方打字：输入框不消失，跟在选项下面。
+  // 焦点默认在选项列表、数字键直选；一旦开始打字就把焦点交给输入框并解除数字键绑定。
+  const ta = el("textarea","askta");
+  ta.id="askta"; ta.rows=1;
+  ta.placeholder = askTyping ? "告诉 pi 该怎么做，↵ 发送即拒绝" : "或直接打字说明理由（会自动切到这里）";
+  ta.value = askReason;
+  ta.oninput = () => { askReason = ta.value; };
+  wrap.appendChild(ta);
+
+  box.appendChild(el("div","afoot",
+    `<span>↑↓ 选择 · 数字键直选 · ↵ 确认</span>`
+    +`<span style="margin-left:auto">不会自动超时 · 开始打字即切到输入框</span>`));
+
+  if(askTyping){ requestAnimationFrame(()=>{ const t=$("#askta"); if(t){ t.focus(); t.selectionStart=t.selectionEnd=t.value.length; } }); }
+}
+function stopAskTimer(){ askSel=0; askTyping=false; askReason=""; }
+
+function resolveAsk(choice){
+  const s = cur(), p = s.pending;
+  const why = (askReason||"").trim();   // 先存：stopAskTimer 会清掉 askReason
+  stopAskTimer();
+  s.pending = null;
+  const last = s.msgs[s.msgs.length-1];
+  clearAttn(s.id);
+
+  if(choice===0 || choice===1){
+    last.blocks.push({t:"tool", name:"edit", arg:p.target.split("/").pop(), stat:"ok",
+      statTxt:"已修改", open:true, body:p.diff});
+    if(choice===1) toast(`记住了：本会话内 ${p.scope} 不再问`);
+    S.changes.unshift({ file:p.target.split("/").pop(), stat:"m",
+      hunks:[{h:"@@ 1612,3 +1612,3 @@", lines:p.diff}] });
+    s.status="working"; renderAll();
+    setTimeout(()=>{
+      last.blocks.push({t:"text", v:"改完了。<code>spawn_pi_rpc</code> 的签名比 PTY 那条少一个 <code>row</code> 参数——PTY 需要它写回终端尺寸，RPC 不需要。右栏能看到这次改动。"});
+      s.status="done"; s.ctx=Math.min(97,s.ctx+9); renderAll();
+      setAttn(s.id, "已完成 · 2 个文件待审");
+    }, 1400);
+  } else {
+    last.blocks.push({t:"tool", name:"edit", arg:p.target.split("/").pop(), stat:"no",
+      statTxt:"已拒绝", open:false, body:p.diff});
+    last.blocks.push({t:"note", v: why
+      ? `<b>你拒绝了这次修改。</b>理由已作为工具结果回传给 pi：「${esc(why)}」`
+      : "<b>你拒绝了这次修改。</b>没给理由，pi 可能会原地重试同一件事 —— 所以选项 3 才留了输入框。"});
+    s.status="working"; renderAll();
+    setTimeout(()=>{
+      last.blocks.push({t:"text", v:"明白，不动 <code>service.rs</code>。那我把 RPC 分支写成独立函数放到新文件里，你审完再决定要不要接进 <code>create_session</code>。"});
+      s.status="done"; renderAll();
+    }, 1500);
+  }
+}
+
+/* ═══════════ 发送 / 脚本化回复 ═══════════ */
+function send(mode){
+  const ta = $("#ta"); const v = (ta.value||"").trim();
+  if(!v) return;
+  const s = cur();
+  ta.value=""; ta.style.height="auto";
+
+  if(S.running){
+    S.queue.push(v);
+    toast(mode==="followUp" ? "已排队：等 pi 完全停下再送达" : "已插话：当前工具跑完就送达");
+    renderCompose(); return;
+  }
+  if(s.crashed){ toast("先重连再发"); return; }
+
+  s.msgs.push({role:"user", blocks:[{t:"text", v:esc(v)}]});
+  s.status="working"; S.running=true;
+  const agent = {role:"agent", model:s.model, blocks:[]};
+  s.msgs.push(agent);
+  renderAll();
+  runScript(s, agent, v);
+}
+
+function runScript(s, agent, prompt){
+  const steps = [
+    ()=>streamInto(agent, {t:"think", v:""},
+      "先定位这块代码在哪，再决定动哪一层。"),
+    ()=>streamInto(agent, {t:"text", v:""},
+      `明白了：「${esc(prompt).slice(0,40)}」。我先读一下相关文件。`),
+    ()=>{
+      agent.blocks.push({t:"tool", name:"read", arg:"crates/ycode-ipc/src/service.rs",
+        stat:"run", statTxt:"读取中", open:false});
+      renderConv();
+      return wait(900).then(()=>{
+        const b = agent.blocks[agent.blocks.length-1];
+        b.stat="ok"; b.statTxt="1613 行";
+        b.body=[["ctx",1611,"pub async fn create_session(&self, …) {"],
+                ["ctx",1612,"    let profile = self.resolve(agent_id)?;"],
+                ["ctx",1613,"    .spawn_pty(&id, &profile, &row, cwd, mode)"]];
+        renderConv();
+      });
+    },
+    ()=>streamInto(agent, {t:"text", v:""},
+      "找到了，<code>create_session</code> 里写死了 <code>spawn_pty</code>。要改成 RPC 那条路径。"),
+    ()=>{
+      if(s.perm==="bypass"){
+        agent.blocks.push({t:"note", v:"<b>已跳过确认</b> — 直接改了 <code>service.rs</code>。"});
+        agent.blocks.push({t:"tool", name:"edit", arg:"service.rs", stat:"ok", statTxt:"已修改",
+          open:true, body:[["ctx",1612,"let profile = self.resolve(agent_id)?;"],
+                           ["del",1613,"- .spawn_pty(&id, &profile, &row, cwd, mode)"],
+                           ["add",1613,"+ .spawn_pi_rpc(&id, &profile, cwd, mode)"]]});
+        S.changes.unshift({file:"service.rs", stat:"m", hunks:[{h:"@@ 1612,3 +1612,3 @@",
+          lines:[["del",1613,"- .spawn_pty(…)"],["add",1613,"+ .spawn_pi_rpc(…)"]]}]});
+        renderConv(); renderRight();
+        return wait(700);
+      }
+      S.running=false; s.status="blocked";
+      s.pending = { kind:"编辑", target:"crates/ycode-ipc/src/service.rs",
+        diff:[["ctx",1612,"let profile = self.resolve(agent_id)?;"],
+              ["del",1613,"- .spawn_pty(&id, &profile, &row, cwd, mode)"],
+              ["add",1613,"+ .spawn_pi_rpc(&id, &profile, cwd, mode)"],
+              ["ctx",1614,".await?;"]],
+        scope:"crates/ycode-ipc/**" };
+      setAttn(s.id, "要改 service.rs — 等确认");
+      renderAll();
+      return "STOP";
+    },
+    ()=>streamInto(agent, {t:"text", v:""}, "改完了。跑一下测试确认没破坏别的。"),
+    ()=>{ s.status="done"; s.ctx=Math.min(97,s.ctx+7); S.running=false;
+      renderAll(); setAttn(s.id, "已完成");
+      flushQueue(s); return Promise.resolve(); }
+  ];
+  (async ()=>{
+    for(const st of steps){
+      const r = await st();
+      if(r==="STOP") return;
+      await wait(260);
+    }
+  })();
+}
+
+function flushQueue(s){
+  if(!S.queue.length) return;
+  const next = S.queue.shift();
+  toast("送达排队的消息");
+  setTimeout(()=>{ $("#ta").value = next; send("now"); }, 500);
+}
+
+function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function streamInto(agent, block, full){
+  agent.blocks.push(block); block.streaming=true;
+  const chunks = full.match(/.{1,3}/g) || [];
+  let i=0;
+  return new Promise(res=>{
+    const iv = setInterval(()=>{
+      block.v += chunks[i++]||"";
+      renderConv();
+      if(i>=chunks.length){ clearInterval(iv); block.streaming=false; renderConv(); res(); }
+    }, 26);
+  });
+}
+function abort(){
+  const s=cur();
+  if(S.queue.length){ toast(`先清了 ${S.queue.length} 条队列，再中断 — 顺序反了会继续处理它们`); S.queue=[]; }
+  S.running=false; s.status="idle";
+  const last=s.msgs[s.msgs.length-1];
+  if(last && last.role==="agent") last.blocks.push({t:"note", v:"<b>已中断。</b>"});
+  renderAll();
+}
+
+/* ═══════════ 右栏 ═══════════ */
+const RTABS=[["files","文件"],["terminal","终端"],["changes","变更"],["todos","待办"]];
+function renderRight(){
+  const tabs=$("#rtabs"); tabs.innerHTML="";
+  RTABS.forEach(([id,label])=>{
+    const b=el("button","rtab"+(S.rtab===id?" on":""),label);
+    b.onclick=()=>{ S.rtab=id; renderRight(); };
+    tabs.appendChild(b);
+  });
+  const b=$("#rbody"); b.innerHTML="";
+
+  if(S.rtab==="changes"){
+    if(!S.changes.length){ b.appendChild(emptyBox("◇","没有改动","agent 改了文件之后，这里会出现逐块可审的 diff。")); return; }
+    S.changes.forEach((f,fi)=>{
+      b.appendChild(el("div","fh",`<span class="stat ${f.stat}">${f.stat.toUpperCase()}</span>${f.file}`));
+      f.hunks.forEach(h=>{
+        const w=el("div","hunk");
+        const bar=el("div","hbar",`<span>${h.h}</span>`);
+        const btn=el("button",null,"应用");
+        btn.onclick=()=>{ toast(`已应用 ${f.file} 的这一块`); S.changes.splice(fi,1); renderRight(); };
+        bar.appendChild(btn); w.appendChild(bar);
+        h.lines.forEach(([k,n,tx])=>w.appendChild(el("div","dl "+k,`<span class="ln">${n}</span><span>${esc(tx)}</span>`)));
+        b.appendChild(w);
+      });
+    });
+  }
+  else if(S.rtab==="todos"){
+    S.todos.forEach((t,i)=>{
+      const r=el("button","todo"+(t.s==="done"?" done":""));
+      const mark = t.s==="done"?"✓":(t.s==="doing"?"◐":"");
+      r.innerHTML=`<span class="tbox ${t.s}">${mark}</span><span class="tt">${t.t}</span>`;
+      r.onclick=()=>{ t.s = t.s==="todo"?"doing":(t.s==="doing"?"done":"todo"); renderRight(); };
+      b.appendChild(r);
+    });
+    b.appendChild(el("div","rd",`<div style="margin-top:11px;color:var(--subtle);font-size:10.5px">
+      agent 通过 ycode-todos 扩展读写同一份清单。</div>`));
+  }
+  else if(S.rtab==="files"){
+    if(S.preview){ renderPreview(b, S.preview); return; }
+    const tree=el("div","tree");
+    [["▾","crates",0],["▾","ycode-pi",1],["","lib.rs",2],["","codec.rs",2],
+     ["▾","ycode-ipc",1],["","service.rs",2],["▾","src",0],["","App.tsx",1],
+     ["▾","components",1],["","ConversationPane.tsx",2],["","PermissionAsk.tsx",2]].forEach(([ic,nm,d])=>{
+      const n=el("button","tnode",`<span class="i">${ic||"·"}</span>${nm}`);
+      n.style.paddingLeft=(d*13)+"px";
+      n.onclick=()=>{ if(nm.includes(".")){ S.preview=nm; renderRight(); } else toast("展开 "+nm); };
+      tree.appendChild(n);
+    });
+    b.appendChild(tree);
+  }
+  else if(S.rtab==="terminal"){
+    b.appendChild(el("div","term",
+`<span class="pr">➜</span> <span class="cm">pi auth check --json</span>
+{"anthropic":{"ok":true,"kind":"api_key"}}
+<span class="pr">➜</span> <span class="cm">cargo test -p ycode-pi</span>
+running 4 tests
+test codec::splits_on_lf_only ... ok
+test codec::keeps_u2028_inline ... ok
+test rpc::prompt_roundtrip ... ok
+test rpc::abort_clears_queue ... ok
+<span class="pr">➜</span> <span class="cursor"></span>`));
+  }
+}
+const PREVIEW = {
+  "lib.rs":[[1,'<span class="cmt">//! pi RPC 客户端。</span>'],
+            [2,''],
+            [3,'<span class="kw">pub struct</span> <span class="fn">PiClient</span> {'],
+            [4,'    child: <span class="fn">Child</span>,'],
+            [5,'    tx: <span class="fn">Sender</span>&lt;<span class="fn">Command</span>&gt;,'],
+            [6,'}']],
+  "codec.rs":[[1,'<span class="cmt">// 只按 \\n 切。不能用会在 U+2028/2029</span>'],
+              [2,'<span class="cmt">// 处切分的通用行读取器 —— 那两个字符</span>'],
+              [3,'<span class="cmt">// 在 JSON 字符串里是合法的。</span>'],
+              [4,'<span class="kw">impl</span> <span class="fn">Decoder</span> <span class="kw">for</span> <span class="fn">JsonlCodec</span> {'],
+              [5,'    <span class="kw">fn</span> <span class="fn">decode</span>(&amp;<span class="kw">mut</span> self, buf: &amp;<span class="kw">mut</span> <span class="fn">BytesMut</span>)']],
+  "service.rs":[[1611,'<span class="kw">pub async fn</span> <span class="fn">create_session</span>(&amp;self) {'],
+                [1612,'    <span class="kw">let</span> profile = self.<span class="fn">resolve</span>(agent_id)?;'],
+                [1613,'    .<span class="fn">spawn_pi_rpc</span>(&amp;id, &amp;profile, cwd, mode)'],
+                [1614,'    .<span class="kw">await</span>?;'],
+                [1615,'}']],
+  "_default":[[1,'<span class="cmt">// 只读预览</span>'],
+              [2,'<span class="kw">export function</span> <span class="fn">Component</span>() {'],
+              [3,'  <span class="kw">return</span> <span class="st">&lt;div /&gt;</span>;'],
+              [4,'}']]
+};
+function renderPreview(b, name){
+  const bar = el("div","fh");
+  bar.style.cssText="border-bottom:1px solid var(--rule);padding-bottom:7px;margin-bottom:9px;gap:9px";
+  const back = el("button",null,"← 文件树");
+  back.style.cssText="color:var(--accent-soft);font-family:'Geist',sans-serif;font-size:10.5px";
+  back.onclick=()=>{ S.preview=null; renderRight(); };
+  const nm = el("span",null,name); nm.style.flex="1";
+  const ext = el("button",null,"在外部编辑器打开");
+  ext.style.cssText="color:var(--subtle);font-family:'Geist',sans-serif;font-size:10px";
+  ext.onclick=()=>toast("open_in_external_editor · service.rs:1285");
+  bar.append(back,nm,ext); b.appendChild(bar);
+
+  const c = el("div","code");
+  (PREVIEW[name]||PREVIEW._default).forEach(([n,tx])=>
+    c.appendChild(el("div",null,`<span class="ln">${n}</span>${tx}`)));
+  b.appendChild(c);
+
+  const note = el("div");
+  note.style.cssText="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:10.5px;color:var(--subtle);line-height:1.6";
+  note.innerHTML="只读预览，带语法高亮。要改就交给 agent，或在外部编辑器打开。";
+  b.appendChild(note);
+}
+function emptyBox(ic,t,d){
+  const e=el("div","empty"); e.style.minHeight="200px";
+  e.innerHTML=`<div class="eic" style="color:var(--subtle)">${ic}</div>
+    <div class="ett">${t}</div><div class="edc">${d}</div>`;
+  return e;
+}
+
+/* ═══════════ 注意力（统一在左栏） ═══════════ */
+function setAttn(sid, txt, time){
+  const x = S.sessions.find(v=>v.id===sid);
+  if(x) x.attn = txt ? { txt, time: time||"刚刚" } : null;
+  renderSide();
+}
+function clearAttn(sid){ setAttn(sid, null); }
+
+/* ═══════════ 设置 ═══════════ */
+const NAV=[
+  ["工作区",[["general","▤","通用","ch"],["sessions","▤","会话","ch"],["panels","▤","面板",""],
+             ["appearance","▤","外观",""],["keyboard","▤","快捷键","ch"]]],
+  ["Agent",[["models","◈","模型与登录","nw"],["perms","◈","权限","nw"],["ext","◈","扩展","nw"],
+            ["notify","◈","通知","ch"],["usage","◈","用量",""],
+            ["_a","·","Agent 管理","rm"],["_i","·","集成","rm"]]],
+  ["工具",[["terminal","▤","终端",""],["_l","▤","语言","rm"]]],
+  ["系统",[["data","▤","数据","ch"],["about","▤","关于",""]]]
+];
+function openSettings(){
+  const scrim=el("div","scrim"); scrim.id="scrim";
+  const box=el("div","settings");
+  const hd=el("div","sthead"); hd.innerHTML=`<h2>设置</h2>`;
+  const sp=el("span"); sp.style.flex="1"; const x=el("button","tbtn","✕");
+  x.onclick=()=>scrim.remove(); hd.append(sp,x); box.appendChild(hd);
+  const main=el("div","stmain");
+  const nav=el("div","stnav");
+  NAV.forEach(([g,items])=>{
+    nav.appendChild(el("div","ng",g));
+    items.forEach(([id,ic,label,bd])=>{
+      const gone = bd==="rm";
+      const b=el("button","ni"+(S.settingsPane===id?" on":"")+(gone?" gone":""));
+      b.innerHTML=`<span class="ic">${ic}</span>${label}`+
+        (bd?`<span class="bdg ${bd}">${bd==="nw"?"新":bd==="rm"?"删":"改"}</span>`:"");
+      if(gone) b.onclick=()=>toast("这一页在 pi 形态里不存在了");
+      else b.onclick=()=>{ S.settingsPane=id; scrim.remove(); openSettings(); };
+      nav.appendChild(b);
+    });
+  });
+  const pane=el("div","stpane"); pane.innerHTML = PANES[S.settingsPane] || PANES._todo;
+  main.append(nav,pane); box.appendChild(main); scrim.appendChild(box);
+  scrim.onclick=(e)=>{ if(e.target===scrim) scrim.remove(); };
+  document.body.appendChild(scrim);
+  pane.querySelectorAll(".sw").forEach(s=>s.onclick=()=>s.classList.toggle("on"));
+  pane.querySelectorAll("[data-toast]").forEach(b=>b.onclick=()=>toast(b.dataset.toast));
+}
+const PANES={
+  models:`<div class="ph1">模型与登录</div>
+    <div class="ph2">取代原来的「Agent 管理」。不再配置命令行参数，改为选模型。</div>
+    <div class="grp">已连接</div>
+    <div class="row"><div class="rm_"><div class="rt">Anthropic</div>
+      <div class="rd">API key · sk-ant-··········7f2a</div></div>
+      <span class="conn ok">● 已连接</span><button class="sb" data-toast="更换 API key">更换</button></div>
+    <div class="row"><div class="rm_"><div class="rt">OpenAI</div>
+      <div class="rd">尚未配置</div></div>
+      <span class="conn no">未连接</span><button class="sb pri" data-toast="粘贴 key 即可，不需要重启">添加 API key</button></div>
+    <div class="row"><div class="rm_"><div class="rt">用订阅登录</div>
+      <div class="rd">Claude Pro/Max · ChatGPT Plus/Pro · GitHub Copilot。凭证存 <code>~/.pi/agent/auth.json</code>，自动续期。RPC 模式没有登录命令，需在终端跑一次 pi 再 /login</div></div>
+      <button class="sb" data-toast="原生 OAuth 界面尚未确定要不要做，先给终端入口">打开终端</button></div>
+    <div class="row"><div class="rm_"><div class="rt">订阅可能走付费额度时警告</div>
+      <div class="rd">pi 自带这个警告：用订阅认证的第三方 harness，用量可能按 token 计费而不占订阅额度</div></div>
+      <span class="src pi">warnings.anthropicExtraUsage</span><div class="sw on"><i></i></div></div>
+    <div class="grp">默认值</div>
+    <div class="row"><div class="rm_"><div class="rt">新会话使用的模型</div></div>
+      <span class="src pi">defaultModel</span>
+      <button class="sel" data-toast="从 pi 的 get_available_models 拉取">Opus 5 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">思考等级</div>
+      <div class="rd">off · minimal · low · medium · high · xhigh · max</div></div>
+      <span class="src pi">defaultThinkingLevel</span>
+      <button class="sel" data-toast="对应 set_thinking_level 七档">High ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">按模型记住思考等级</div>
+      <div class="rd">键为 "provider/modelId"</div></div>
+      <span class="src pi">modelThinkingLevels</span>
+      <button class="sb" data-toast="已记 2 条">查看</button></div>
+    <div class="grp">运行时</div>
+    <div class="row"><div class="rm_"><div class="rt">pi</div>
+      <div class="rd">0.85.1 · /opt/homebrew/bin/pi</div></div><span class="conn ok">● 就绪</span></div>`,
+
+  perms:`<div class="ph1">权限与信任</div>
+    <div class="ph2">三块东西容易混：pi 的项目信任、pi 的工具开关、ycode 自建的逐次确认。</div>
+    <div class="legend"><span><span class="src pi">pi</span> pi 原生能力</span>
+      <span><span class="src yc">ycode</span> ycode 自建，pi 没有</span></div>
+
+    <div class="warnbox"><b>pi 没有沙箱。</b>内置工具能读写文件、跑 shell，权限等同于启动它的用户账号。
+      下面的确认层能拦住误操作，但<b>不是安全边界</b> —— 真隔离要靠容器或虚拟机。</div>
+
+    <div class="grp">项目信任 · pi 的加载守卫</div>
+    <div class="row"><div class="rm_"><div class="rt">未保存决定时的默认行为</div>
+      <div class="rd">决定是否加载项目里的 <code>.pi/settings.json</code>、扩展、技能、主题。<b style="color:var(--text-soft)">这是加载守卫，不限制模型能让工具做什么。</b></div></div>
+      <span class="src pi">defaultProjectTrust</span>
+      <button class="sel" data-toast="ask（默认）/ always / never · 仅全局设置">询问 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">RPC 模式不会弹信任提示</div>
+      <div class="rd">ycode 跑的是 <code>--mode rpc</code>，pi 在这个模式下不问。ycode 必须自己接管：在扩展里处理 <code>project_trust</code> 事件，弹自己的提示。</div></div>
+      <span class="src yc">自建</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">已保存的项目信任</div>
+      <div class="rd">按目录记，最近的父目录决定生效</div></div>
+      <span class="src pi">trust.json</span>
+      <button class="sb" data-toast="~/.pi/agent/trust.json · 2 个已信任目录">查看 2 条</button></div>
+
+    <div class="grp">可用工具 · pi 的启动开关</div>
+    <div class="row"><div class="rm_"><div class="rt">启用的内置工具</div>
+      <div class="rd">read · bash · edit · write · grep · find · ls（Windows 另有 powershell）。<b style="color:var(--text-soft)">关掉 bash 就是关掉，比逐次确认更硬。</b></div></div>
+      <span class="src pi">defaultTools</span>
+      <button class="sel" data-toast="空数组 = 不启用任何内置工具，扩展工具不受影响">7 项全开 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">禁止发送图片给模型</div></div>
+      <span class="src pi">images.blockImages</span><div class="sw"><i></i></div></div>
+
+    <div class="grp">逐次确认 · ycode 自建</div>
+    <div class="row"><div class="rm_"><div class="rt">新会话的默认模式</div>
+      <div class="rd">pi 官网 "What we didn't build" 明确不做权限。这一层建在扩展的 <code>tool_call</code> 事件上，返回 <code>{ block, reason, terminate }</code>。</div></div>
+      <span class="src yc">自建</span>
+      <button class="sel" data-toast="需确认 / 跳过确认">需确认 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">无人响应时</div>
+      <div class="rd">v1 默认<b>一直等</b>。超时是唯一会主动终止你工作的自动行为，默认必须保守</div></div>
+      <span class="src yc">自建</span>
+      <button class="sel" data-toast="不给 ctx.ui.select 传 timeout（pi 侧兜底带不出 reason/terminate）。要开超时就传 opts.signal 自己计时">一直等 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">始终询问的路径</div>
+      <div class="rd"><span class="rule_">**/.env*</span> · <span class="rule_">**/node_modules/**</span></div></div>
+      <span class="src yc">自建</span>
+      <button class="sb" data-toast="ycode 自己的规则表，不是 pi 的">编辑</button></div>
+    <div class="row"><div class="rm_"><div class="rt">已记住的选择</div>
+      <div class="rd"><span class="rule_">crates/ycode-ipc/**</span> <span class="scope" style="display:inline">编辑 · 本会话</span></div></div>
+      <span class="src yc">自建</span>
+      <button class="sb dgr" data-toast="已撤销，下次还会问">撤销 2 条</button></div>`,
+
+  ext:`<div class="ph1">扩展与技能</div>
+    <div class="ph2">pi 的资源都由 settings.json 的数组声明。这一页是那些数组的界面，不是另一套机制。</div>
+    <div class="legend"><span><span class="src pi">pi</span> pi 原生能力</span>
+      <span><span class="src yc">ycode</span> ycode 自建，pi 没有</span></div>
+
+    <div class="grp">ycode 装进 pi 的</div>
+    <div class="row"><div class="rm_"><div class="rt">ycode-permissions</div>
+      <div class="rd">拦 <code>tool_call</code>，把确认请求经 <code>extension_ui_request</code> 交给 ycode 渲染；同时接管 <code>project_trust</code></div></div>
+      <span class="src yc">自建</span><span class="tag">必需</span></div>
+    <div class="row"><div class="rm_"><div class="rt">ycode-todos</div>
+      <div class="rd">用 <code>registerTool()</code> 注册两个工具，读写右栏待办</div></div>
+      <span class="src yc">自建</span><div class="sw on"><i></i></div></div>
+
+    <div class="grp">已安装的包</div>
+    <div class="row"><div class="rm_"><div class="rt">pi-skills</div>
+      <div class="rd">npm · 提供 3 个技能</div></div>
+      <span class="src pi">packages</span><button class="sb" data-toast="pi remove npm:pi-skills">移除</button></div>
+    <div class="row"><div class="rm_"><div class="rt">pi-doom</div>
+      <div class="rd">git:github.com/badlogic/pi-doom</div></div>
+      <span class="src pi">packages</span><button class="sb" data-toast="pi remove git:…">移除</button></div>
+    <div class="row"><div class="rm_"><div class="rd">安装走命令行：<code>pi install npm:@foo/bar</code> · <code>pi install git:…</code>。v1 只做列表。</div></div>
+      <button class="sb" data-toast="pi list">在终端安装</button></div>
+
+    <div class="grp">启停 · 全局 / 本项目</div>
+    <div class="row"><div class="rm_"><div class="rt">brave-search</div>
+      <div class="rd">技能 · 来自 pi-skills</div></div>
+      <span class="src pi">skills</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">transcribe</div>
+      <div class="rd">技能 · 来自 pi-skills</div></div>
+      <span class="src pi">skills</span><div class="sw"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">把技能注册成 /skill:name 命令</div>
+      <div class="rd">开启后能在输入框用 <code>/</code> 直接调用</div></div>
+      <span class="src pi">enableSkillCommands</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rd">开关实际是改 <code>~/.pi/agent/settings.json</code> 里的
+      <code>packages</code> / <code>extensions</code> / <code>skills</code> 数组，对应命令行的 <code>pi config</code>。
+      项目级资源要项目被信任才加载。</div></div></div>
+
+    <div class="row" style="border-top:1px solid var(--rule);margin-top:8px;padding-top:12px">
+      <div class="rm_"><div class="rd">扩展是 TypeScript 模块，以你的完整系统权限运行，能执行代码并改变 agent 行为。装第三方的先看源码。</div></div>
+      <button class="sb" data-toast="~/.pi/agent/extensions/">打开目录</button></div>`,
+
+  data:`<div class="ph1">数据</div>
+    <div class="ph2">ycode 只管自己的会话记录。</div>
+    <div class="grp">存储</div>
+    <div class="row"><div class="rm_"><div class="rt">数据目录</div></div>
+      <span class="field">~/Library/Application Support/ycode</span>
+      <button class="sb" data-toast="在访达中显示">显示</button></div>
+    <div class="row"><div class="rm_"><div class="rt">会话记录</div>
+      <div class="rd">128 个会话 · 6 个项目 · 41 MB</div></div>
+      <button class="sb" data-toast="按保留期清理">清理</button></div>
+    <div class="row"><div class="rm_"><div class="rt">保留期</div>
+      <div class="rd">超过期限的会话记录自动清除</div></div>
+      <button class="sel" data-toast="30 / 90 / 365 天 / 永久">90 天 ▾</button></div>
+    <div class="grp">搜索</div>
+    <div class="row"><div class="rm_"><div class="rt">重建搜索索引</div>
+      <div class="rd">全文索引是 v1.1 的功能，当前搜索直接扫会话记录</div></div>
+      <button class="sb off">暂不可用</button></div>
+    <div class="grp">改进 ycode</div>
+    <div class="row"><div class="rm_"><div class="rt">发送匿名使用统计</div>
+      <div class="rd">开几个会话、用哪些面板。不含代码、路径、对话内容。</div></div>
+      <span class="src yc">自建</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">pi 的安装遥测</div>
+      <div class="rd">pi 自己的安装/更新上报，默认开启。关掉不影响版本检查</div></div>
+      <span class="src pi">enableInstallTelemetry</span><div class="sw on"><i></i></div></div>
+    <div class="grp">会话文件</div>
+    <div class="row"><div class="rm_"><div class="rt">pi 会话目录</div>
+      <div class="rd">与 pi CLI 共用，按工作目录分组</div></div>
+      <span class="src pi">sessionDir</span>
+      <span class="field">~/.pi/agent/sessions</span></div>`,
+
+  sessions:`<div class="ph1">会话</div>
+    <div class="ph2">worktree、关闭行为、自动归档。</div>
+    <div class="grp">生命周期</div>
+    <div class="row"><div class="rm_"><div class="rt">关闭面板后继续运行</div>
+      <div class="rd">原来叫「保留 PTY」。现在没有 PTY 了，语义改为 pi 进程是否留着跑</div></div>
+      <div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">闲置回收</div>
+      <div class="rd">超过时长没动静就结束进程，释放内存</div></div>
+      <button class="sel" data-toast="一个 pi 进程约 100-200MB">2 小时 ▾</button></div>
+    <div class="row"><div class="rm_"><div class="rt">完成后自动归档</div></div>
+      <div class="sw"><i></i></div></div>
+    <div class="grp">Worktree</div>
+    <div class="row"><div class="rm_"><div class="rt">新会话默认隔离</div>
+      <div class="rd">每个会话一个 worktree，改动合并前不碰主仓</div></div>
+      <div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">分支前缀</div></div>
+      <span class="field">wt/</span></div>
+    <div class="row"><div class="rm_"><div class="rt">创建后执行</div>
+      <div class="rd">新 worktree 建好后跑一次，比如装依赖</div></div>
+      <span class="field">pnpm install</span></div>`,
+
+  notify:`<div class="ph1">通知</div>
+    <div class="ph2">不再需要给 Claude / Codex 打 hook —— 全部来自 pi 的事件流。</div>
+    <div class="legend"><span><span class="src pi">pi</span> pi 原生能力</span>
+      <span><span class="src yc">ycode</span> ycode 自建，pi 没有</span></div>
+    <div class="grp">什么时候提醒我</div>
+    <div class="row"><div class="rm_"><div class="rt">会话彻底停下</div>
+      <div class="rd">用 <code>agent_settled</code> 而不是 <code>agent_end</code> —— 后者只是一次运行结束，后面可能还有重试、压缩、队列续跑</div></div>
+      <span class="src pi">agent_settled</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">需要你确认</div>
+      <div class="rd">确认请求发出时提醒，对应左栏「等你处理」</div></div>
+      <span class="src pi">extension_ui_request</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">出错或重试</div>
+      <div class="rd">限流、5xx 等瞬时错误的自动重试</div></div>
+      <span class="src pi">auto_retry_start</span><div class="sw"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">上下文被压缩</div>
+      <div class="rd">压缩会丢信息，默认提醒一次</div></div>
+      <span class="src pi">compaction_end</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">扩展报错</div></div>
+      <span class="src pi">extension_error</span><div class="sw"><i></i></div></div>
+    <div class="grp">自动重试</div>
+    <div class="row"><div class="rm_"><div class="rt">遇到瞬时错误自动重试</div>
+      <div class="rd">最多 3 次，退避 2s / 4s / 8s</div></div>
+      <span class="src pi">retry.enabled</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">重试次数</div></div>
+      <span class="src pi">retry.maxRetries</span>
+      <button class="sel" data-toast="provider 层重试保持 0，否则限流错误会在 pi 看到之前被吞掉">3 次 ▾</button></div>
+    <div class="grp">怎么提醒</div>
+    <div class="row"><div class="rm_"><div class="rt">系统通知</div>
+      <div class="rd">窗口不在前台时才发</div></div>
+      <span class="src yc">自建</span><div class="sw on"><i></i></div></div>
+    <div class="row"><div class="rm_"><div class="rt">提示音</div></div>
+      <span class="src yc">自建</span><div class="sw"><i></i></div></div>`,
+
+  _todo:`<div class="ph1">这一页没变</div>
+    <div class="ph2">迁移不影响它，沿用现有实现。</div>
+    <div class="row"><div class="rm_"><div class="rd">左边带角标的几页才是这次要动的：<b style="color:var(--text)">新</b> 是新增，<b style="color:var(--text)">改</b> 是语义变了，<b style="color:var(--text)">删</b> 是整页消失。</div></div></div>`
+};
+
+/* ═══════════ 命令面板 ═══════════ */
+const CMDS=[
+  ["新建会话","⌘N",()=>{ $("#newBtn").click(); }],
+  ["打开设置","⌘,",()=>openSettings()],
+  ["切到变更面板","⌘3",()=>{ S.rtab="changes"; renderRight(); }],
+  ["切到待办","⌘4",()=>{ S.rtab="todos"; renderRight(); }],
+  ["中断当前会话","esc",()=>abort()],
+  ["压缩上下文","",()=>{ const s=cur(); s.ctx=Math.round(s.ctx*0.4);
+     s.msgs[s.msgs.length-1]?.blocks.push({t:"note",v:"<b>已压缩上下文。</b>较早的消息被摘要，用量 "+s.ctx+"%。"});
+     renderAll(); toast("已压缩"); }],
+  ["切到「权限扩展骨架」","",()=>{ S.active="s2"; renderAll(); }],
+  ["切到崩溃的会话","",()=>{ S.active="s4"; renderAll(); }],
+  ["只看等你处理的","",()=>{ S.filter="attn"; renderSide(); toast("侧栏已过滤"); }]
+];
+function openPalette(){
+  const scrim=el("div","scrim"); scrim.style.alignItems="flex-start";
+  const box=el("div","palette");
+  const inp=el("input","pin"); inp.placeholder="输入命令或会话名…";
+  const res=el("div","pres");
+  let sel=0, list=CMDS;
+  function draw(){
+    res.innerHTML="";
+    list.forEach((c,i)=>{
+      const b=el("button","pr_"+(i===sel?" on":""),`${c[0]}<span class="k">${c[1]||""}</span>`);
+      b.onclick=()=>{ scrim.remove(); c[2](); };
+      res.appendChild(b);
+    });
+  }
+  inp.oninput=()=>{ const q=inp.value.toLowerCase();
+    list=CMDS.filter(c=>c[0].toLowerCase().includes(q)); sel=0; draw(); };
+  inp.onkeydown=(e)=>{
+    if(e.key==="ArrowDown"){ sel=Math.min(sel+1,list.length-1); draw(); e.preventDefault(); }
+    if(e.key==="ArrowUp"){ sel=Math.max(sel-1,0); draw(); e.preventDefault(); }
+    if(e.key==="Enter" && list[sel]){ scrim.remove(); list[sel][2](); }
+    if(e.key==="Escape") scrim.remove();
+  };
+  box.append(inp,res); scrim.appendChild(box);
+  scrim.onclick=(e)=>{ if(e.target===scrim) scrim.remove(); };
+  document.body.appendChild(scrim); draw(); inp.focus();
+}
+
+/* ═══════════ 杂项 ═══════════ */
+let toastT=null;
+function toast(msg){
+  document.querySelector(".toast")?.remove();
+  const t=el("div","toast",msg); document.body.appendChild(t);
+  clearTimeout(toastT); toastT=setTimeout(()=>t.remove(), 2600);
+}
+function renderHead(){
+  const s=cur();
+  $("#headDot").className="dot "+s.status;
+  $("#headTitle").textContent=s.name;
+  $("#headCtx").innerHTML=`<span>上下文 ${s.ctx}%</span>
+    <span class="meter${s.ctx>80?" warn":""}"><i style="width:${s.ctx}%"></i></span>`;
+}
+function renderAll(){ renderSide(); renderHead(); renderConv(); renderCompose(); renderRight(); }
+
+$("#sideSearch").oninput=renderSide;
+$("#newBtn").onclick=()=>{
+  const id="n"+Date.now();
+  S.sessions.push({id, proj:"ycode", name:"新会话", model:"Opus 5", think:"High",
+    status:"idle", ctx:0, perm:"ask", msgs:[], attn:null});
+  S.active=id; renderAll(); $("#ta")?.focus();
+};
+$("#setBtn").onclick=openSettings;
+$("#paletteBtn").onclick=openPalette;
+document.addEventListener("keydown",(e)=>{
+  const s=cur();
+  if((e.metaKey||e.ctrlKey) && e.key==="k"){ e.preventDefault(); openPalette(); return; }
+  if((e.metaKey||e.ctrlKey) && e.key===","){ e.preventDefault(); openSettings(); return; }
+  if(s.pending && !e.metaKey && !e.ctrlKey){
+    // 已经在输入框里打字：数字键不再是选项，Enter 发送理由即拒绝
+    if(askTyping){
+      if(e.key==="Escape"){ e.preventDefault(); askTyping=false; askReason=""; renderCompose(); }
+      else if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); resolveAsk(2); }
+      return;   // 其余按键交给 textarea
+    }
+    if(["1","2","3"].includes(e.key)){ e.preventDefault(); resolveAsk(+e.key-1); }
+    else if(e.key==="Escape"){ e.preventDefault(); resolveAsk(2); }
+    else if(e.key==="ArrowDown"){ e.preventDefault(); askSel=Math.min(askSel+1,2); renderCompose(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); askSel=Math.max(askSel-1,0); renderCompose(); }
+    else if(e.key==="Enter"){ e.preventDefault(); resolveAsk(askSel); }
+    // 实现方案 §4.4：一旦开始打可见字符，焦点交给输入框、数字键绑定解除
+    else if(e.key.length===1 && !e.altKey){
+      e.preventDefault(); askTyping=true; askSel=2; askReason=e.key; renderCompose();
+    }
+  }
+});
+
+renderAll();
+</script>
+</body>
+</html>

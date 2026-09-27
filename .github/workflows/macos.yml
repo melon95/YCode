@@ -1,0 +1,44 @@
+name: macOS CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+      - name: Test native code
+        working-directory: macos
+        run: swift test --force-resolved-versions
+      - name: Test release metadata validation
+        run: python3 -m unittest discover -s macos/scripts/tests -v
+      - name: Check generated icons
+        run: |
+          python3 macos/scripts/generate_agent_icons.py
+          python3 macos/scripts/generate_file_icons.py
+          git diff --exit-code -- macos/YCodeApp/Sources/YCodeApp/YCodeAgentIcons.swift macos/YCodeApp/Sources/YCodeApp/YCodeFileIcons.swift
+      - name: Build and verify universal candidate
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: bash macos/scripts/package_release.sh prepare
+      - name: Test signed update feed with disposable key
+        run: bash macos/scripts/test_update_feed.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YCode-macOS-universal-candidate
+          path: macos/dist/release/YCode-*.zip
+          if-no-files-found: error

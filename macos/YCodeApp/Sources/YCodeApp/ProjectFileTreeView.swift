@@ -41,41 +41,102 @@ private enum ProjectFileURLResult: Sendable {
 
 @MainActor
 private final class ProjectFileTreeModel: ObservableObject {
-    @Published private(set) var entries: [YCodeFileEntry] = []
-    @Published private(set) var isLoading = false
+    /// 按父目录存的一层层孩子，key 是父目录的相对路径，根是空字符串。
+    /// 只有展开过的目录在里面 —— 没展开的目录一次也没读过。
+    @Published private(set) var children: [String: [YCodeFileEntry]] = [:]
+    @Published private(set) var loadingPaths: Set<String> = []
     @Published var errorMessage: String?
     var locale: YCodeLocale = .zh
 
+    /// 卡头上那个转圈只认根目录那一次 —— 展开一个子目录是毫秒级的，转一下反而闪。
+    var isLoading: Bool { loadingPaths.contains("") }
+
     let root: URL
     private let service = YCodeProjectFileService()
-    private var refreshGeneration = 0
+    private var loadedPaths: Set<String> = []
+    private var watcher: YCodeDirectoryWatcher?
 
     init(root: URL) {
         self.root = root
     }
 
-    func refresh(showSpinner: Bool = true) async {
-        refreshGeneration += 1
-        let generation = refreshGeneration
-        if showSpinner { isLoading = true }
+    deinit { watcher?.stop() }
+
+    /// 读根目录那一层，然后把磁盘交给 FSEvents 盯着。
+    func start() async {
+        await load("", force: true)
+        guard watcher == nil else { return }
+        let watcher = YCodeDirectoryWatcher(root: root) { [weak self] paths in
+            Task { @MainActor [weak self] in self?.handleChanges(paths) }
+        }
+        watcher.start()
+        self.watcher = watcher
+    }
+
+    func stop() {
+        watcher?.stop()
+        watcher = nil
+    }
+
+    /// 读一层。已经读过的不再读，除非 `force`（改过文件、或者 FSEvents 说它脏了）。
+    func load(_ path: String, force: Bool = false) async {
+        if !force, loadedPaths.contains(path) { return }
+        guard !loadingPaths.contains(path) else { return }
+        loadingPaths.insert(path)
         let root = root
         let service = service
         let result = await Task.detached(priority: .userInitiated) { () -> ProjectFileListResult in
             do {
-                return .success(try service.listFiles(root: root))
+                return .success(try service.listChildren(root: root, relativePath: path))
             } catch {
                 return .failure(error.localizedDescription)
             }
         }.value
-        guard generation == refreshGeneration else { return }
-        isLoading = false
+        loadingPaths.remove(path)
         switch result {
         case let .success(entries):
-            self.entries = entries
-            if showSpinner { errorMessage = nil }
+            children[path] = entries
+            loadedPaths.insert(path)
+            errorMessage = nil
         case let .failure(message):
-            errorMessage = message
+            // 根读不动是真出事了；子目录多半是刚被删掉或改了名，把它从缓存里摘掉就行。
+            if path.isEmpty {
+                errorMessage = message
+            } else {
+                discardCache(under: path)
+            }
         }
+    }
+
+    /// FSEvents 报上来的是「谁动了」。它所在的那一层肯定变了；它自己要是个目录，
+    /// 里面那一层也可能变了。两边都标脏，再跟「读过的目录」求交集 —— 没展开的不读。
+    private func handleChanges(_ relativePaths: [String]) {
+        var dirty: Set<String> = []
+        for path in relativePaths {
+            dirty.insert(Self.parentPath(of: path))
+            dirty.insert(path)
+        }
+        let targets = dirty.intersection(loadedPaths)
+        guard !targets.isEmpty else { return }
+        Task {
+            for target in targets { await load(target, force: true) }
+        }
+    }
+
+    /// 某个条目在不在树里（只看已经读过的那几层）。
+    func entry(for path: String) -> YCodeFileEntry? {
+        children[Self.parentPath(of: path)]?.first { $0.path == path }
+    }
+
+    /// 改过名或删掉的目录：连它下面所有缓存一起扔，不然键还是旧路径。
+    private func discardCache(under path: String) {
+        children = children.filter { $0.key != path && !$0.key.hasPrefix(path + "/") }
+        loadedPaths = loadedPaths.filter { $0 != path && !$0.hasPrefix(path + "/") }
+    }
+
+    /// 自己动过磁盘之后立刻重读受影响的那一层，不等 FSEvents 那 0.4 秒。
+    private func reload(parentOf path: String) async {
+        await load(Self.parentPath(of: path), force: true)
     }
 
     func create(name rawName: String, parent: String, isDirectory: Bool) async -> URL? {
@@ -96,7 +157,7 @@ private final class ProjectFileTreeModel: ObservableObject {
             return nil
         }
         errorMessage = nil
-        await refresh(showSpinner: false)
+        await load(parent, force: true)
         return root.appendingPathComponent(relativePath, isDirectory: isDirectory)
     }
 
@@ -120,7 +181,9 @@ private final class ProjectFileTreeModel: ObservableObject {
             return nil
         }
         errorMessage = nil
-        await refresh(showSpinner: false)
+        // 改名的如果是个目录，它下面那些缓存的键全是旧路径，只能整片扔掉重读。
+        if entry.isDirectory { discardCache(under: entry.path) }
+        await load(parent, force: true)
         return (
             root.appendingPathComponent(entry.path, isDirectory: entry.isDirectory),
             root.appendingPathComponent(destination, isDirectory: entry.isDirectory)
@@ -143,7 +206,8 @@ private final class ProjectFileTreeModel: ObservableObject {
             return nil
         }
         errorMessage = nil
-        await refresh(showSpinner: false)
+        if entry.isDirectory { discardCache(under: entry.path) }
+        await reload(parentOf: entry.path)
         return root.appendingPathComponent(entry.path, isDirectory: entry.isDirectory)
     }
 
@@ -189,6 +253,7 @@ private final class ProjectFileTreeModel: ObservableObject {
 
 /// 文件卡：一条卡头 + 「树 ｜ detail」。detail 就是编辑器，由外面传进来 ——
 /// 树的数据与展开状态归这里，所以收起树再放出来不用重读目录，也就没有中间那段转圈。
+/// 目录是展开一层读一层的，没展开的目录（`node_modules` 之类）一次也不碰。
 struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     let project: ProjectRecord
     let header: YCodePanelHeaderSpec
@@ -260,6 +325,15 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                         detail()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+                    // 树收起来了又一篇文档都没开 —— 这张卡本来会是一片空白。
+                    if !treeIsVisible && !showsDetail {
+                        YCodeInspectorEmptyState(
+                            title: l10n.text("emptyFilesTitle"),
+                            message: l10n.text("emptyFilesBody"),
+                            symbol: "folder"
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 // 树滑进滑出的那一份会探出这张卡的左缘。不裁的话它会整片压在画布上面滑过去。
@@ -284,20 +358,19 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         }
         .task(id: project.id) {
             model.locale = l10n.locale
-            await model.refresh()
+            await model.start()
             applyExternalSelection(selectedFileURL)
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { break }
-                await model.refresh(showSpinner: false)
-            }
+            loadExpanded()
         }
+        .onDisappear { model.stop() }
         .onChange(of: l10n.locale) { _, locale in model.locale = locale }
         .onChange(of: selectedFileURL) { _, url in applyExternalSelection(url) }
-        .onChange(of: model.entries) { _, entries in
+        .onChange(of: model.children) { _, children in
+            // 选中的那个文件被别人删了／改了名：它那一层已经重读过，里面找不到它了。
             guard let selectedFileURL,
                   let path = relativePathIfContained(for: selectedFileURL),
-                  !entries.contains(where: { $0.path == path }) else { return }
+                  let siblings = children[ProjectFileTreeModel.parentPath(of: path)],
+                  !siblings.contains(where: { $0.path == path }) else { return }
             if selectedPath == path { selectedPath = nil }
             onSelectFile(nil)
         }
@@ -319,7 +392,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
 
     @ViewBuilder
     private var treeColumn: some View {
-        if model.entries.isEmpty, !model.isLoading, model.errorMessage == nil {
+        if model.children[""]?.isEmpty == true, !model.isLoading, model.errorMessage == nil {
             ContentUnavailableView(
                 l10n.text("emptyProject"),
                 systemImage: "folder",
@@ -348,7 +421,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     }
 
     /// 卡头上只留「新建文件 / 新建文件夹」，都是树的动作，所以树收起来时跟着一起走。
-    /// 没有「刷新」：目录每秒自己重读一遍，那个按钮点不点都一样。
+    /// 没有「刷新」：磁盘一动 FSEvents 就把那一层重读了，那个按钮点不点都一样。
     /// 也没有「在访达中显示」：它是针对某一个条目的，右键菜单里才有上下文。
     private var fileHeader: some View {
         YCodePanelHeader(spec: header, leading: headerLeading) {
@@ -431,10 +504,9 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     }
 
     private var visibleNodes: [ProjectFileTreeNode] {
-        let children = Dictionary(grouping: model.entries, by: { ProjectFileTreeModel.parentPath(of: $0.path) })
         var result: [ProjectFileTreeNode] = []
         func appendChildren(of parent: String, depth: Int) {
-            let siblings = (children[parent] ?? []).sorted {
+            let siblings = (model.children[parent] ?? []).sorted {
                 if $0.isDirectory != $1.isDirectory { return $0.isDirectory && !$1.isDirectory }
                 return displayName($0).localizedStandardCompare(displayName($1)) == .orderedAscending
             }
@@ -479,8 +551,9 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         .padding(.leading, CGFloat(node.depth) * 14 + 8)
         .padding(.trailing, 6)
         .frame(height: 24)
-        .background(selectedPath == node.entry.path ? Color.accentColor.opacity(0.16) : Color.clear)
-        .contentShape(Rectangle())
+        // 树行铺满整列，所以不收边、不圆角；hover 与按下由 ycodeRow 统一提供 ——
+        // 改之前只有「选中」一态，指针在几百行文件里移动时完全没有落点感。
+        .ycodeRow(isSelected: selectedPath == node.entry.path, cornerRadius: 0)
         // 正在改名的那一行不接管点击：不然点进输入框想挪光标，会被这条手势吃掉。
         .onTapGesture { if !renaming { select(node.entry) } }
         // 双击 = 固定这个标签，之后再单击别的文件就不会把它顶掉（和标签条上双击同一个意思）。
@@ -515,7 +588,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
             if expandedPaths.contains(entry.path) {
                 expandedPaths.remove(entry.path)
             } else {
-                expandedPaths.insert(entry.path)
+                expand(entry.path)
             }
         } else {
             onSelectFile(project.repositoryURL.appendingPathComponent(entry.path))
@@ -523,7 +596,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     }
 
     private func startCreate(isDirectory: Bool, relativeTo entry: YCodeFileEntry? = nil) {
-        let target = entry ?? selectedPath.flatMap { path in model.entries.first { $0.path == path } }
+        let target = entry ?? selectedPath.flatMap { model.entry(for: $0) }
         let parent: String
         if let target {
             parent = target.isDirectory ? target.path : ProjectFileTreeModel.parentPath(of: target.path)
@@ -531,7 +604,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
             parent = ""
         }
         promptInput = ""
-        if !parent.isEmpty { expandAncestors(of: parent); expandedPaths.insert(parent) }
+        if !parent.isEmpty { expandAncestors(of: parent); expand(parent) }
         prompt = .create(parent: parent, isDirectory: isDirectory)
     }
 
@@ -552,7 +625,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                 selectedPath = path
                 expandAncestors(of: path)
                 if isDirectory {
-                    expandedPaths.insert(path)
+                    expand(path)
                 } else {
                     onSelectFile(url)
                 }
@@ -566,6 +639,8 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                     if path.hasPrefix(oldPath + "/") { return newPath + path.dropFirst(oldPath.count) }
                     return path
                 })
+                // 改完名这些路径在缓存里都是新键，一层都还没读过。
+                loadExpanded()
                 onMovePath(oldURL, newURL)
             }
         }
@@ -601,8 +676,22 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     private func expandAncestors(of path: String) {
         var parent = ProjectFileTreeModel.parentPath(of: path)
         while !parent.isEmpty {
-            expandedPaths.insert(parent)
+            expand(parent)
             parent = ProjectFileTreeModel.parentPath(of: parent)
+        }
+    }
+
+    /// 展开一个目录就是去读它那一层 —— 树上所有「展开」都得走这里，
+    /// 不然那个目录在缓存里没有孩子，点开是空的。
+    private func expand(_ path: String) {
+        expandedPaths.insert(path)
+        Task { await model.load(path) }
+    }
+
+    /// 恢复出来的展开状态（比如刚切回这个项目）要把对应的层补读回来。
+    private func loadExpanded() {
+        for path in expandedPaths {
+            Task { await model.load(path) }
         }
     }
 

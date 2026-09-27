@@ -38,23 +38,45 @@ public enum YCodeProjectFileError: LocalizedError, Equatable {
 }
 
 public struct YCodeProjectFileService: Sendable {
-    public static let skippedDirectoryNames: Set<String> = [".git", "node_modules", "target"]
+    /// 只剪 `.git`。别的目录再大也照列 —— 树是按展开一层一层读的，
+    /// 没展开的目录一次也不会被碰，`node_modules` 摆在那里不花钱。
+    public static let skippedDirectoryNames: Set<String> = [".git"]
 
     public init() {}
 
-    public func listFiles(root: URL) throws -> [YCodeFileEntry] {
+    /// 列一层，不递归。`relativePath` 空字符串就是项目根。
+    /// 整棵树一次读完在这个量级的仓库上是七百毫秒起步，而展开的通常就那么几层。
+    public func listChildren(root: URL, relativePath: String = "") throws -> [YCodeFileEntry] {
         let root = try resolvedRoot(root)
-        var entries: [YCodeFileEntry] = []
+        let directory = relativePath.isEmpty ? root : try directoryURL(root: root, relativePath: relativePath)
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .nameKey]
+        let children: [URL]
         do {
-            try walk(directory: root, relativeDirectory: "", entries: &entries, isRoot: true)
-        } catch let error as YCodeProjectFileError {
-            throw error
+            children = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: Array(keys),
+                options: []
+            )
         } catch {
             throw YCodeProjectFileError.operationFailed(
                 action: "读取",
-                path: root.path,
+                path: relativePath.isEmpty ? root.path : relativePath,
                 message: error.localizedDescription
             )
+        }
+
+        var entries: [YCodeFileEntry] = []
+        for child in children {
+            guard let values = try? child.resourceValues(forKeys: keys) else { continue }
+            let name = values.name ?? child.lastPathComponent
+            let symbolicLink = values.isSymbolicLink == true
+            let isDirectory = values.isDirectory == true && !symbolicLink
+            if isDirectory, Self.skippedDirectoryNames.contains(name) { continue }
+            entries.append(YCodeFileEntry(
+                path: relativePath.isEmpty ? name : "\(relativePath)/\(name)",
+                isDirectory: isDirectory,
+                isSymbolicLink: symbolicLink
+            ))
         }
         return entries.sorted { $0.path < $1.path }
     }
@@ -152,46 +174,22 @@ public struct YCodeProjectFileService: Sendable {
         return candidate
     }
 
-    private func walk(
-        directory: URL,
-        relativeDirectory: String,
-        entries: inout [YCodeFileEntry],
-        isRoot: Bool
-    ) throws {
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .nameKey]
-        let children: [URL]
-        do {
-            children = try FileManager.default.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: Array(keys),
-                options: []
-            )
-        } catch {
-            if isRoot { throw error }
-            return
+    /// 列目录用的解析：必须落在根以内，而且确实是个目录。
+    private func directoryURL(root: URL, relativePath: String) throws -> URL {
+        let components = try validatedComponents(relativePath)
+        let candidate = components.reduce(root) { partial, component in
+            partial.appendingPathComponent(component, isDirectory: true)
+        }.standardizedFileURL
+        let resolved = candidate.resolvingSymlinksInPath().standardizedFileURL
+        guard contains(resolved, root: root) else {
+            throw YCodeProjectFileError.pathEscapesRoot(relativePath)
         }
-
-        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard let values = try? child.resourceValues(forKeys: keys) else { continue }
-            let name = values.name ?? child.lastPathComponent
-            let symbolicLink = values.isSymbolicLink == true
-            let directory = values.isDirectory == true && !symbolicLink
-            if directory, Self.skippedDirectoryNames.contains(name) { continue }
-            let relativePath = relativeDirectory.isEmpty ? name : "\(relativeDirectory)/\(name)"
-            entries.append(YCodeFileEntry(
-                path: relativePath,
-                isDirectory: directory,
-                isSymbolicLink: symbolicLink
-            ))
-            if directory {
-                try walk(
-                    directory: child,
-                    relativeDirectory: relativePath,
-                    entries: &entries,
-                    isRoot: false
-                )
-            }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: resolved.path, isDirectory: &isDirectory) else {
+            throw YCodeProjectFileError.notFound(relativePath)
         }
+        guard isDirectory.boolValue else { throw YCodeProjectFileError.notFound(relativePath) }
+        return resolved
     }
 
     private func resolvedRoot(_ root: URL) throws -> URL {

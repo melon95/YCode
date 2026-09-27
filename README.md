@@ -1,204 +1,46 @@
-# ycode
+# YCode
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/melon95/YCode)](https://github.com/melon95/YCode/releases)
-[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db.svg)](https://tauri.app)
+macOS 原生多 Agent 工作台，使用 Swift、SwiftUI 和 AppKit。通过独立 PTY 运行 Claude Code、Codex、Gemini 或自定义 CLI，提供项目与会话管理、历史搜索、文件编辑、Git 变更和通知集成。
 
-A desktop workbench for running multiple CLI coding agents — Claude Code,
-Codex, Gemini CLI, Cursor, anything you can spawn — side by side, each in its
-own PTY, with a built-in code editor and shell next to them.
+## 构建与运行
 
-Tauri 2 shell, React 19 frontend, xterm.js terminals, SQLite for session
-state. Single static binary.
+需要 macOS 14 及以上、带 Swift 6 工具链的 Xcode，以及可用的 `git`。使用 Agent 时需另外安装对应 CLI。
 
-> **Codex is a first-class agent in ycode.** It ships as an out-of-the-box
-> default, with a dedicated transcript parser so you can scan, full-text
-> search, and resume past Codex sessions from the sidebar — and desktop
-> notifications when a Codex run finishes or needs attention. See
-> [Codex support](#codex-support).
-
-**[⬇️ Download the latest release](https://github.com/melon95/YCode/releases)**
-
-## Screenshots
-
-![ycode three-column workspace with agent launcher and terminal](docs/assets/overview.png)
-
-|  |  |
-| --- | --- |
-| ![Files panel with repository tree](docs/assets/files.png) | ![Changes panel with working tree diff](docs/assets/changes.png) |
-| Repository file tree + editor entry point | Working tree review with side-by-side diffs |
-
-## Features
-
-- **Multi-agent workspace** — run Claude Code, Codex, Gemini CLI, Cursor, or
-  any custom CLI agent side by side in real PTY sessions.
-- **Flexible session management** — create, resume, restart, archive, rename,
-  and arrange sessions in single, stacked, column, grid, or main+side layouts.
-- **Persistent agent history** — scan and search past Claude and Codex
-  transcripts, then reopen historical conversations from the sidebar.
-- **Built-in project tools** — manage projects, browse files, edit code, use
-  the right-side shell terminal, and review Git changes without leaving the
-  app.
-- **Editor and language support** — CodeMirror editing, syntax highlighting,
-  preview tabs, LSP installation, semantic tokens, and goto-definition.
-- **Configurable agents** — manage agent commands, args, environment
-  variables, icons, and transcript parsers through Settings and the built-in
-  agent catalog.
-- **Desktop notifications** — optional Claude and Codex hook integrations can
-  notify YCode when an agent finishes or needs attention.
-- **Personalized desktop app** — themes, font-size controls, persisted window
-  state, deep links, and Tauri updater support.
-
-## Layout
-
-Three columns:
-
-- **Sidebar** — projects, sessions, history (jsonl scanner for Claude / Codex
-  transcripts), full-text search across past runs.
-- **Middle pane** — your CLI agent sessions. Multiple xterm.js terminals
-  arranged in `single` / `stack` / `columns` / `2×2` / `main+side` grids.
-  Each session is one PTY, restartable, archivable, with title + status
-  badges. Close a pane and the agent keeps running in the background.
-- **Right pane** — three tabs:
-  - **Terminal** — a raw `$SHELL` in the project root. Right-click any pane
-    to **Split Right / Left / Up / Down**, drag the divider to resize,
-    close panes without killing the others. Layout persists across project
-    switches, resets on reload.
-  - **Files / Editor** — file tree (react-arborist) + CodeMirror 6 editor
-    with syntax highlighting for JS/TS/Python/Rust/HTML/CSS/Markdown/JSON,
-    preview-tab semantics borrowed from VS Code. Language servers (LSP) add
-    semantic highlighting and goto-definition; install and manage them from
-    the **Languages** settings panel.
-  - **Changes** — `git status` view with side-by-side diffs.
-
-A command palette (`Cmd-K`) jumps to any project or session.
-
-## Codex support
-
-Codex is treated as a first-class agent throughout ycode:
-
-- **Out of the box** — Codex ships as a shipped default profile (alongside
-  Claude Code), written to your config on first launch. No setup beyond having
-  the `codex` CLI on PATH.
-- **Real PTY sessions** — launch one or many Codex sessions and arrange them in
-  any grid; each is restartable, archivable, and keeps running in the
-  background when its pane is closed.
-- **Transcript history** — a dedicated Codex jsonl parser
-  (`crates/ycode-introspect`) powers the history viewer: scan, full-text
-  search, and reopen past Codex conversations from the sidebar.
-- **Completion notifications** — optional Codex hook integration notifies ycode
-  when a run finishes or needs your attention.
-- **Open and reusable** — the parser, agent catalog, and PTY session manager
-  are MIT-licensed, so they double as a public reference for integrating Codex
-  into other tools.
-
-## Build & run
-
-Requirements: Rust 1.80+, Node 20+, `git` on PATH. For end-to-end agent use,
-install whichever CLIs you want to run (`claude`, `codex`, `gemini`, …).
-
-```bash
-npm install                       # one-time frontend deps
-npm run tauri dev                 # dev with HMR + Tauri webview
-npm run dev                       # frontend-only Vite server
-npm run build && cargo run -p ycode-tauri   # production-ish standalone
-cargo test --workspace            # Rust unit tests
-npm run typecheck                 # tsc --noEmit
+```sh
+cd macos
+swift test
+scripts/build_and_run.sh run
 ```
 
-## Agent configuration
+- 只构建：`macos/scripts/build_and_run.sh build`。
+- 产物：`macos/dist/YCode.app`，显示名称为 **YCode**。
+- 开发构建版本：`macos/VERSION`；构建编号由当前 Git 提交生成。
+- 默认使用本机唯一的 Apple Development 证书；可通过 `DEV_SIGNING_IDENTITY` 指定身份，`-` 表示 ad-hoc。
+- 构建与运行不依赖旧 React、Tauri 或 Rust 工程，也不需要安装 Node 前端依赖。外部 Agent 可能仍需要各自的运行环境。
 
-User config lives at the platform default
-(`~/Library/Application Support/dev.ycode.app/config.json` on macOS).
-Missing → the shipped defaults (Claude Code and Codex) are
-written on first launch.
+编辑器提供文件查看、基础语法高亮、手动编辑与保存，以及 Markdown/图片预览。不集成语言服务器、语义诊断或定义跳转。
 
-```json
-{
-  "agents": [
-    {
-      "id": "claude-code",
-      "display_name": "Claude Code",
-      "command": "claude",
-      "args": [],
-      "env": {},
-      "icon": "ClaudeCode",
-      "introspect": "claude"
-    },
-    {
-      "id": "codex",
-      "display_name": "Codex",
-      "command": "codex",
-      "icon": "Codex",
-      "introspect": "codex"
-    }
-  ]
-}
-```
+## 工程结构
 
-- `command` is invoked through the user's login shell so `~/.zshrc` (and
-  version managers like `fnm` / `nvm` / `asdf`) get a chance to set up PATH
-  before the CLI runs.
-- `$VAR` references inside `env` are expanded against the host environment
-  at load time. Unresolved vars stay as the literal `$VAR` so the spawn
-  fails loudly instead of silently launching unauthenticated.
-- `introspect` (optional) selects a jsonl parser for the history viewer.
-  Currently `claude` and `codex` are recognised; agents without one still
-  run, they just don't get the rich transcript view.
+| 路径 | 用途 |
+|---|---|
+| `macos/YCodeApp/` | SwiftUI/AppKit 界面 |
+| `macos/Core/` | 项目、会话、PTY、SQLite、历史、Git 与协议服务 |
+| `macos/EditorSupport/` | 原生编辑与语法高亮 |
+| `macos/Helpers/` | Swift CLI、MCP 和通知辅助程序 |
+| `macos/Resources/` | 应用资源、图标源数据和许可证 |
+| `macos/Tests/` | 单元测试与验证工具 |
+| `macos/scripts/` | 构建、打包、迁移与回归脚本 |
+| `docs/` | 功能说明、设计资料和迁移记录 |
 
-The Settings modal in-app edits the same file. New profiles are added from
-the built-in agent catalog, then saved as ordinary config entries.
+Swift Package 管理 SwiftTerm、swift-markdown 和 Sparkle 依赖。图标已经嵌入 Swift 源码；需要更新时，用 Python 3 运行 `macos/scripts/generate_agent_icons.py` 和 `generate_file_icons.py`，无需前端包管理器。
 
-## Workspace layout
+## 发布与历史
 
-```
-ycode/
-├── Cargo.toml                    # Rust workspace
-├── package.json                  # Frontend (React, Vite, Tauri JS API)
-├── vite.config.ts                # @bindings/* → crates/ycode-ipc/bindings/
-├── src/                          # React + TypeScript
-│   ├── App.tsx                   # Three-column layout host
-│   ├── lib/
-│   │   ├── ipc.ts                # Tauri command wrappers
-│   │   ├── store.ts              # Zustand store
-│   │   ├── hotkeys.tsx           # Cmd-K, layout cycle, pane focus
-│   │   └── types.ts
-│   └── components/
-│       ├── TopBar.tsx            # Project picker + agent launcher
-│       ├── Sidebar.tsx           # Sessions / history tabs
-│       ├── TerminalPane.tsx      # Middle: agent xterm grid
-│       ├── ManualTerminal.tsx    # Right: a single $SHELL xterm
-│       ├── RightTerminalSplit.tsx# Right: binary-split host
-│       ├── RightPane.tsx         # Right-tab container
-│       ├── EditorPanel.tsx       # CodeMirror editor
-│       ├── FileTreePanel.tsx     # react-arborist tree
-│       ├── ChangesPanel.tsx      # git status + diffs
-│       ├── HistoryTab.tsx        # jsonl transcript viewer
-│       ├── CommandPalette.tsx    # Cmd-K palette
-│       └── SettingsModal.tsx     # Agent profile editor
-├── src-tauri/                    # Tauri shell
-│   └── src/
-│       ├── lib.rs                # tauri::Builder setup
-│       ├── state.rs              # Wires Service into AppState
-│       └── commands.rs           # #[tauri::command] glue
-└── crates/
-    ├── ycode-terminal/           # portable-pty wrapper, TerminalSession
-    ├── ycode-persist/            # sqlx + SQLite (projects, sessions, WAL)
-    ├── ycode-config/             # config.json schema + $VAR expansion
-    ├── ycode-introspect/         # claude/codex jsonl scanners + parsers
-    ├── ycode-lsp/                # language-server install + LSP client
-    ├── ycode-notify/             # desktop notifications
-    └── ycode-ipc/                # Service facade, DTOs, ts-rs bindings
-```
+原生发布入口为 `macos/scripts/package_release.sh`，支持 prepare、release 和 notarize。开发者签名不等于 Developer ID 分发签名或公证；正式发布条件见 [签名发布记录](docs/macos-native/M5.3-release-update-signing.md)。分支/PR 的 CI 测试并生成通用候选包；稳定版本标签触发签名、公证和 GitHub Releases 发布，配置见 [GitHub 发布指南](docs/macos-native/github-release.md)。
 
-The frontend imports DTOs from `@bindings/*` — ts-rs writes them into
-`crates/ycode-ipc/bindings/` whenever the Rust struct changes (run
-`cargo test` on the ipc crate to regenerate).
-
-## Thanks
-
-Thanks to [Linux Do](https://linux.do) for the promotion and support.
+旧的 Tauri/React/Rust 应用和多平台构建入口已从当前工作树移除。历史代码仍可通过 Git 定位，清理前的本地修改另有备份；详见 [旧实现清理记录](docs/macos-native/M5.5-legacy-removal.md)。历史验收文档中的旧路径保留为追溯依据。
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE)。图标上游许可位于 `macos/Resources/IconSources/`，随应用一并打包。

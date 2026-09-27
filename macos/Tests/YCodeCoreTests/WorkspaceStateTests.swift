@@ -103,16 +103,15 @@ final class WorkspaceStateTests: XCTestCase {
         let store = YCodeConfigurationStore(configurationURL: configurationURL)
 
         let loaded = try store.loadBasicSettings()
-        XCTAssertEqual(loaded.startupMode, .resume)
         XCTAssertEqual(loaded.notifications, YCodeNotificationSettings(enabled: false, onlyWhenUnfocused: false))
         XCTAssertEqual(try Data(contentsOf: configurationURL), original, "loading or cancelling must not write")
         try store.saveBasicSettings(YCodeBasicSettings(
-            startupMode: .overview,
             notifications: YCodeNotificationSettings(enabled: true, onlyWhenUnfocused: true),
             appearance: loaded.appearance
         ))
         let saved = try PreservingJSONDocument(data: Data(contentsOf: configurationURL))
-        XCTAssertEqual(saved["startup"], .string("overview"))
+        // 「启动时显示」删掉之后这个键不再写，但别人写进去的值也不该被抹掉。
+        XCTAssertEqual(saved["startup"], .string("future-mode"))
         XCTAssertEqual(saved["theme"], .string("snow"))
         XCTAssertEqual(saved["future"], .object(["nested": .number(42)]))
         XCTAssertEqual(saved["notifications"], .object([
@@ -159,16 +158,16 @@ final class WorkspaceStateTests: XCTestCase {
         ]))
     }
 
-    func testStartupModesResolveOverviewResumeAndBlank() {
+    func testLaunchProjectFallsBackToTheFirstProjectWhenTheRecentOneIsGone() {
         let projects = [
             ProjectRecord(id: "quiet", name: "quiet", repositoryURL: URL(fileURLWithPath: "/tmp/quiet"), createdAtMilliseconds: 1, isolateSessions: false, liveSessionCount: 0, totalSessionCount: 3),
             ProjectRecord(id: "live", name: "live", repositoryURL: URL(fileURLWithPath: "/tmp/live"), createdAtMilliseconds: 2, isolateSessions: false, liveSessionCount: 2, totalSessionCount: 4)
         ]
-        XCTAssertNil(initialProjectID(mode: .overview, recentProjectID: "live", projects: projects))
-        XCTAssertNil(initialProjectID(mode: .resume, recentProjectID: "quiet", projects: projects))
-        XCTAssertEqual(initialProjectID(mode: .resume, recentProjectID: "live", projects: projects), "live")
-        XCTAssertEqual(initialProjectID(mode: .blank, recentProjectID: "quiet", projects: projects), "quiet")
-        XCTAssertEqual(initialProjectID(mode: .blank, recentProjectID: "missing", projects: projects), "quiet")
+        // 最近项目一个会话都没有也照样进去 —— 会话数不该决定进不进项目。
+        XCTAssertEqual(initialProjectID(recentProjectID: "quiet", projects: projects), "quiet")
+        XCTAssertEqual(initialProjectID(recentProjectID: "live", projects: projects), "live")
+        XCTAssertEqual(initialProjectID(recentProjectID: "missing", projects: projects), "quiet")
+        XCTAssertNil(initialProjectID(recentProjectID: nil, projects: []))
     }
 
     func testLegacySourceLocatorFindsNestedWebKitDatabase() throws {

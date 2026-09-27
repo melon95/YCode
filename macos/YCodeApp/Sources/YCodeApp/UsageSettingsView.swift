@@ -112,7 +112,7 @@ struct UsageSettingsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 9))
+        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
     }
 
     private var tokenBreakdown: some View {
@@ -182,7 +182,7 @@ struct UsageSettingsView: View {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             VStack(spacing: 0) { content() }
                 .padding(.horizontal, 10)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
         }
     }
 

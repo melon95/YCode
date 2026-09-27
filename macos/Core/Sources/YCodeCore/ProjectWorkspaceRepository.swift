@@ -68,6 +68,10 @@ public final class ProjectWorkspaceRepository {
         database = try SQLiteConnection(path: databaseURL.path)
         try database.execute("PRAGMA foreign_keys=ON")
         try database.execute(Self.nativeMetadataSchema)
+        // 早期版本的这张表没有 jsonl_path；补一列，别为了加个字段去重建表。
+        if try !database.columns(in: "native_discovered_sessions").contains("jsonl_path") {
+            try database.execute("ALTER TABLE native_discovered_sessions ADD COLUMN jsonl_path TEXT")
+        }
         try reconcileProjectOrder()
     }
 
@@ -140,14 +144,147 @@ public final class ProjectWorkspaceRepository {
         return try session(id: id)
     }
 
+    /// 扫描结果与库的一次对账：库里没有的插进来，已经有的跟着 jsonl 刷新。
+    ///
+    /// 待同步的本地改名优先于扫描结果；写回确认之后，后续 CLI 改名继续双向同步。
+    /// 原生会话按项目、Agent 配置和 CLI ID 关联，首次发现就记录文件路径。
+    ///
+    /// jsonl 有了新动静（mtime 前进）就同步 updated_at；如果这条正躺在归档里，
+    /// 顺手捞回来——归档的含义是「14 天没动静」，它现在有动静了。
+    /// 反向的归档不在这里做，那是定时清扫那一条路的职责，省得两边抢。
+    @discardableResult
+    public func syncDiscoveredSessions(_ drafts: [DiscoveredSessionDraft]) throws -> [SessionMetadata] {
+        guard !drafts.isEmpty else { return [] }
+        var touched: [String] = []
+        try transaction {
+            for draft in drafts {
+                let existing = try database.query("""
+                    SELECT id, title, agent_profile, agent_session_id, agent_thread_name,
+                           last_exit_code, updated_at, archived_at, worktree_path, branch, base_branch, project_id
+                    FROM sessions WHERE project_id=? AND agent_session_id=? AND agent_profile=?;
+                    """, bindings: [.text(draft.projectID), .text(draft.agentSessionID), .text(draft.agentProfile)], map: Self.sessionMetadata)
+                guard let row = existing.first else {
+                    let id = UUID().uuidString.lowercased()
+                    try database.execute("""
+                        INSERT INTO sessions (
+                            id,title,agent_profile,project_id,last_exit_code,created_at,updated_at,archived_at,
+                            agent_session_id,agent_thread_name,worktree_path,branch,base_branch
+                        ) VALUES (?,?,?,?,NULL,?,?,?,?,NULL,NULL,NULL,NULL)
+                        """, bindings: [
+                            .text(id), .text(draft.title), .text(draft.agentProfile), .text(draft.projectID),
+                            .integer(draft.updatedAtMilliseconds), .integer(draft.updatedAtMilliseconds),
+                            draft.archivedAtMilliseconds.map(SQLiteBinding.integer) ?? .null,
+                            .text(draft.agentSessionID)
+                        ])
+                    try recordDiscovered(sessionID: id, title: draft.title, jsonlPath: draft.jsonlPath)
+                    touched.append(id)
+                    continue
+                }
+                let recorded = try discoveredTitle(sessionID: row.id)
+                let pending = try pendingSessionTitle(id: row.id)
+                var changed = false
+                // Pending local edits survive stale scans and failed writes. Only the writer's
+                // read-back acknowledgement clears pending state.
+                if pending == nil, row.title.isEmpty || row.title == recorded || (recorded != nil && recorded != draft.title) {
+                    if row.title != draft.title {
+                        try database.execute("UPDATE sessions SET title=? WHERE id=?",
+                                             bindings: [.text(draft.title), .text(row.id)])
+                        changed = true
+                    }
+                }
+                // Bind even a freshly created, unnamed session. The old equality gate left
+                // these sessions without a file path forever.
+                try recordDiscovered(sessionID: row.id, title: draft.title, jsonlPath: draft.jsonlPath)
+                if draft.updatedAtMilliseconds > row.updatedAtMilliseconds {
+                    try database.execute(
+                        "UPDATE sessions SET updated_at=? WHERE id=?",
+                        bindings: [.integer(draft.updatedAtMilliseconds), .text(row.id)]
+                    )
+                    changed = true
+                    if draft.archivedAtMilliseconds == nil, row.archivedAtMilliseconds != nil {
+                        try database.execute(
+                            "UPDATE sessions SET archived_at=NULL WHERE id=?",
+                            bindings: [.text(row.id)]
+                        )
+                    }
+                }
+                if changed { touched.append(row.id) }
+            }
+        }
+        return try touched.compactMap { try? session(id: $0) }
+    }
+
+    private func discoveredTitle(sessionID: String) throws -> String? {
+        try database.query(
+            "SELECT discovered_title FROM native_discovered_sessions WHERE session_id=?",
+            bindings: [.text(sessionID)]
+        ) { sqliteString($0, column: 0) }.first ?? nil
+    }
+
+    private func recordDiscovered(sessionID: String, title: String, jsonlPath: String) throws {
+        try database.execute("""
+            INSERT INTO native_discovered_sessions (session_id,discovered_title,jsonl_path) VALUES (?,?,?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                discovered_title=excluded.discovered_title,
+                jsonl_path=excluded.jsonl_path
+            """, bindings: [.text(sessionID), .text(title), .text(jsonlPath)])
+    }
+
+    /// 这条会话对应的 jsonl 在哪。只有扫进来的行有记录。
+    public func discoveredJsonlPath(sessionID: String) throws -> String? {
+        try database.query(
+            "SELECT jsonl_path FROM native_discovered_sessions WHERE session_id=?",
+            bindings: [.text(sessionID)]
+        ) { sqliteString($0, column: 0) }.first ?? nil
+    }
+
+    /// 删掉一条会话记录。磁盘上的 jsonl 不归它管——那一步在
+    /// `YCodeAgentSessionService.deleteSession` 里做，那里才知道进程是否还活着。
+    public func deleteSession(id: String) throws {
+        guard try database.execute("DELETE FROM sessions WHERE id=?", bindings: [.text(id)]) == 1 else {
+            throw ProjectWorkspaceError.sessionNotFound(id)
+        }
+    }
+
     @discardableResult
     public func renameSession(id: String, title: String) throws -> SessionMetadata {
         let now = Int64(Date().timeIntervalSince1970 * 1_000)
-        guard try database.execute(
-            "UPDATE sessions SET title=?,updated_at=? WHERE id=?",
-            bindings: [.text(title), .integer(now), .text(id)]
-        ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
+        try transaction {
+            guard try database.execute(
+                "UPDATE sessions SET title=?,updated_at=? WHERE id=?",
+                bindings: [.text(title), .integer(now), .text(id)]
+            ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
+            try database.execute("""
+                INSERT INTO native_session_title_sync (session_id,pending_title,last_error) VALUES (?,?,NULL)
+                ON CONFLICT(session_id) DO UPDATE SET pending_title=excluded.pending_title,last_error=NULL
+                """, bindings: [.text(id), .text(title)])
+        }
         return try session(id: id)
+    }
+
+    public func sessionTitleSyncError(id: String) throws -> String? {
+        try database.query("SELECT last_error FROM native_session_title_sync WHERE session_id=?",
+                           bindings: [.text(id)]) { sqliteString($0, column: 0) }.first ?? nil
+    }
+
+    public func pendingSessionTitle(id: String) throws -> String? {
+        try database.query("SELECT pending_title FROM native_session_title_sync WHERE session_id=?",
+                           bindings: [.text(id)]) { sqliteString($0, column: 0) }.first ?? nil
+    }
+
+    public func finishSessionTitleSync(id: String, requested: String, confirmed: String?, error: String?) throws {
+        try transaction {
+            // A response for an older rename must never acknowledge a newer one.
+            guard try pendingSessionTitle(id: id) == requested else { return }
+            if let confirmed {
+                try database.execute("UPDATE sessions SET title=? WHERE id=?", bindings: [.text(confirmed), .text(id)])
+                try recordDiscovered(sessionID: id, title: confirmed, jsonlPath: try discoveredJsonlPath(sessionID: id) ?? "")
+                try database.execute("DELETE FROM native_session_title_sync WHERE session_id=?", bindings: [.text(id)])
+            } else {
+                try database.execute("UPDATE native_session_title_sync SET last_error=? WHERE session_id=?",
+                                     bindings: [error.map(SQLiteBinding.text) ?? .null, .text(id)])
+            }
+        }
     }
 
     public func setSessionExitCode(id: String, exitCode: Int32?) throws {
@@ -172,6 +309,44 @@ public final class ProjectWorkspaceRepository {
         guard try database.execute(
             "UPDATE sessions SET archived_at=?,updated_at=? WHERE id=? AND archived_at IS NULL",
             bindings: [.integer(now), .integer(now), .text(id)]
+        ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
+    }
+
+    /// 超过 `cutoffMilliseconds` 没动静的会话批量归档（`keptIDs` 里的除外——那是还在跑的进程，
+    /// 进程活着就不算闲置，哪怕它的 updated_at 很久没变）。
+    ///
+    /// 跟手动归档不同，这里刻意不动 `updated_at`：它是「最后一次有动静」的时间，
+    /// 自动归档只是系统替用户收拾桌面，不该把这条会话伪装成刚刚用过，
+    /// 否则按「最近使用」排序时归档区会整个乱掉。
+    @discardableResult
+    public func archiveSessionsIdle(before cutoffMilliseconds: Int64, keeping keptIDs: Set<String> = []) throws -> [SessionMetadata] {
+        let stale = try database.query("""
+            SELECT id, title, agent_profile, agent_session_id, agent_thread_name,
+                   last_exit_code, updated_at, archived_at, worktree_path, branch, base_branch, project_id
+            FROM sessions WHERE archived_at IS NULL AND updated_at < ?
+            ORDER BY updated_at, id;
+            """, bindings: [.integer(cutoffMilliseconds)], map: Self.sessionMetadata)
+            .filter { !keptIDs.contains($0.id) }
+        guard !stale.isEmpty else { return [] }
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        try transaction {
+            for row in stale {
+                try database.execute(
+                    "UPDATE sessions SET archived_at=? WHERE id=? AND archived_at IS NULL",
+                    bindings: [.integer(now), .text(row.id)]
+                )
+            }
+        }
+        return stale
+    }
+
+    public func unarchiveSession(id: String) throws {
+        let row = try session(id: id)
+        if row.archivedAtMilliseconds == nil { return }
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        guard try database.execute(
+            "UPDATE sessions SET archived_at=NULL,updated_at=? WHERE id=? AND archived_at IS NOT NULL",
+            bindings: [.integer(now), .text(id)]
         ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
     }
 
@@ -320,6 +495,16 @@ public final class ProjectWorkspaceRepository {
         CREATE TABLE IF NOT EXISTS native_workspace_state (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS native_session_title_sync (
+            session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+            pending_title TEXT,
+            last_error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS native_discovered_sessions (
+            session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+            discovered_title TEXT NOT NULL,
+            jsonl_path TEXT
         );
         """
 }

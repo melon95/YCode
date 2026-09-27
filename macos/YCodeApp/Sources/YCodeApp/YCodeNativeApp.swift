@@ -188,8 +188,8 @@ private struct NativeRootView: View {
     @State private var showingBuildInfo = false
     @State private var pendingDelete: ProjectRecord?
     @State private var pendingArchive: SessionMetadata?
-    @State private var showingRename = false
-    @State private var renameDraft = ""
+    @State private var pendingSessionDelete: SessionMetadata?
+
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingCommandPalette = false
     @State private var renameTarget: SessionMetadata?
@@ -221,11 +221,10 @@ private struct NativeRootView: View {
                 onNewSession: presentNewSession,
                 onAddProject: openProjectPanel,
                 onRenameSession: { session in
-                    renameDraft = session.title
                     renameTarget = session
-                    showingRename = true
                 },
                 onArchiveSession: { session in pendingArchive = session },
+                onDeleteSession: { session in pendingSessionDelete = session },
                 onRemoveProject: { project in pendingDelete = project }
             )
             .ignoresSafeArea(.container, edges: .top)
@@ -390,15 +389,7 @@ private struct NativeRootView: View {
                 onNewSession: presentNewSession
             )
         }
-        .alert(YCodeLocalization(locale: model.locale).text("renameSession"), isPresented: $showingRename) {
-            TextField(YCodeLocalization(locale: model.locale).text("name"), text: $renameDraft)
-            Button(YCodeLocalization(locale: model.locale).text("cancel"), role: .cancel) { renameTarget = nil }
-            Button(YCodeLocalization(locale: model.locale).text("save")) {
-                if let target = renameTarget { model.selectSession(target.id) }
-                model.renameSelectedSession(renameDraft)
-                renameTarget = nil
-            }
-        }
+        .ycodeSessionRenameDialog(model: model, target: $renameTarget)
         .alert(YCodeLocalization(locale: model.locale).text("buildInfo"), isPresented: $showingBuildInfo) {
             Button(YCodeLocalization(locale: model.locale).text("ok")) {}
         } message: {
@@ -435,6 +426,28 @@ private struct NativeRootView: View {
         } message: {
             Text(YCodeLocalization(locale: model.locale).text("archiveMessage"))
         }
+        .confirmationDialog(
+            YCodeLocalization(locale: model.locale).text("deleteSessionTitleFormat", pendingSessionDelete.map { model.displayName(for: $0) } ?? ""),
+            isPresented: sessionDeleteConfirmationIsPresented,
+            titleVisibility: .visible
+        ) {
+            Button(YCodeLocalization(locale: model.locale).text("deleteSession"), role: .destructive) {
+                if let id = pendingSessionDelete?.id { model.deleteSession(id: id) }
+                pendingSessionDelete = nil
+            }
+            Button(YCodeLocalization(locale: model.locale).text("cancel"), role: .cancel) { pendingSessionDelete = nil }
+        } message: {
+            Text(YCodeLocalization(locale: model.locale).text("deleteSessionMessage"))
+        }
+    }
+
+    private var sessionDeleteConfirmationIsPresented: Binding<Bool> {
+        Binding(
+            get: { pendingSessionDelete != nil },
+            set: { newValue in
+                if !newValue { pendingSessionDelete = nil }
+            }
+        )
     }
 
     private var errorIsPresented: Binding<Bool> {
@@ -450,7 +463,7 @@ private struct NativeRootView: View {
         YCodeLocalization(locale: model.locale).text("removeProjectTitleFormat", pendingDelete?.name ?? "")
     }
     private var archiveDialogTitle: String {
-        YCodeLocalization(locale: model.locale).text("archiveTitleFormat", pendingArchive?.title ?? "")
+        YCodeLocalization(locale: model.locale).text("archiveTitleFormat", pendingArchive.map { model.displayName(for: $0) } ?? "")
     }
 
     private var deleteConfirmationIsPresented: Binding<Bool> {
@@ -478,7 +491,7 @@ private struct NativeRootView: View {
             TerminalWorkspaceView(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .navigationTitle(model.selectedProject?.displayTitle ?? "YCode")
-                .navigationSubtitle(breadcrumb)
+                .navigationSubtitle(focusedSessionTitle)
         } else {
             noProjectState
         }
@@ -519,11 +532,11 @@ private struct NativeRootView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 64)
             .background(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
                     .fill(isDropTargeted ? Color.accentColor.opacity(0.10) : .clear)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
                     .strokeBorder(
                         isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.35),
                         style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4, 3])
@@ -544,8 +557,8 @@ private struct NativeRootView: View {
         }
         .padding(24)
         .frame(width: 452)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
-        .overlay { RoundedRectangle(cornerRadius: 14).stroke(Color.secondary.opacity(0.18)) }
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusSheet))
+        .overlay { RoundedRectangle(cornerRadius: YCodeMetrics.radiusSheet).stroke(Color.secondary.opacity(0.18)) }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
@@ -562,7 +575,7 @@ private struct NativeRootView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 9))
+                .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
         } else {
             Image(systemName: "terminal.fill").font(.system(size: 30)).foregroundStyle(.tint)
         }
@@ -631,11 +644,11 @@ private struct NativeRootView: View {
         }
     }
 
-    /// 工具栏面包屑 —— 窗口标题就该说明在看什么（设计稿 §09）。
-    private var breadcrumb: String {
+    /// 只喂给窗口标题（「窗口」菜单、调度中心那些地方按它认窗口）。
+    /// 画布顶栏不再画它——那条名字在下面的窗格头里已经有了。
+    private var focusedSessionTitle: String {
         guard let session = model.focusedCanvasSessionID.flatMap({ id in model.sessions.first { $0.id == id } }) else { return "" }
-        let title = session.title.isEmpty ? YCodeLocalization(locale: model.locale).text("newSessionFallback") : session.title
-        return title
+        return model.displayName(for: session)
     }
 
     /// 两列的 `NavigationSplitView` 里 `.doubleColumn` 就是「两列都显示」，跟 `.all` 同义 ——
@@ -660,15 +673,13 @@ private struct NativeRootView: View {
             .buttonStyle(YCodeIconButtonStyle())
             .help(l10n.text("showHideProjectSidebar") + " ⌘B")
 
+            // 顶栏只说项目。聚焦会话的名字紧挨着就在下面那条窗格头里，
+            // 同一个标题连写两行，上面那行除了把顶栏撑成两层高之外不提供任何信息。
             if let project = model.selectedProject {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(project.displayTitle).font(.system(size: 13, weight: .semibold))
-                    if !breadcrumb.isEmpty {
-                        Text(breadcrumb).font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-                .lineLimit(1)
-                .padding(.leading, 2)
+                Text(project.displayTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .padding(.leading, 2)
             }
             Spacer(minLength: 8)
 
@@ -678,24 +689,29 @@ private struct NativeRootView: View {
             .buttonStyle(YCodeIconButtonStyle())
             .help(l10n.text("commandPalette") + " ⌘K")
 
-            Picker("", selection: Binding(
-                get: { model.terminalLayout },
-                set: { model.setTerminalLayout($0) }
-            )) {
-                ForEach(YCodeTerminalLayout.allCases) { layout in
-                    Image(systemName: layoutSymbol(layout))
-                        .help(layout.displayName)
-                        .tag(layout)
+            // 至少两个 Agent 才需要切换布局；空白选择器不算 Agent。
+            if model.visibleSessionIDs.count > 1 {
+                let layouts = model.validTerminalLayouts
+                Picker("", selection: Binding(
+                    get: { YCodeTerminalLayout.reflow(model.terminalLayout, for: model.visibleSessionIDs.count) },
+                    set: { model.setTerminalLayout($0) }
+                )) {
+                    ForEach(layouts) { layout in
+                        Image(systemName: layoutSymbol(layout))
+                            .help(layout.displayName)
+                            .tag(layout)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            // 不收成 .small：它会矮过旁边 24 的图标按钮，一排控件里就它塌下去一截。
-            .fixedSize()
-            .disabled(model.visibleSessionIDs.isEmpty)
-            .padding(.horizontal, 2)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                // 数量变化时重建原生分段控件，避免保留上一组布局选项。
+                .id(model.visibleSessionIDs.count)
+                .fixedSize()
+                .disabled(layouts.count <= 1)
+                .padding(.horizontal, 2)
 
-            Divider().frame(height: 16)
+                Divider().frame(height: 16)
+            }
 
             // 四个开关是一组，彼此挨着站（2），跟左边的布局控件之间才拉开距离。
             HStack(spacing: 2) {
@@ -823,15 +839,23 @@ private struct YCodeWindowTagBridge: NSViewRepresentable {
     let token: String
     let title: String?
 
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
-        tagWindow(for: view)
+        tagWindow(for: view, coordinator: context.coordinator)
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) { tagWindow(for: view) }
+    func updateNSView(_ view: NSView, context: Context) {
+        tagWindow(for: view, coordinator: context.coordinator)
+    }
 
-    private func tagWindow(for view: NSView) {
+    static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
+        coordinator.disconnect()
+    }
+
+    private func tagWindow(for view: NSView, coordinator: Coordinator) {
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.identifier = NSUserInterfaceItemIdentifier(token)
@@ -841,6 +865,72 @@ private struct YCodeWindowTagBridge: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            coordinator.connect(to: window)
+        }
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private var observers: [NSObjectProtocol] = []
+        private var alignmentScheduled = false
+
+        func connect(to window: NSWindow) {
+            if self.window !== window {
+                disconnect()
+                self.window = window
+                let center = NotificationCenter.default
+                for name in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification,
+                             NSWindow.didExitFullScreenNotification] {
+                    observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.scheduleAlignment() }
+                    })
+                }
+                // AppKit 可能在布局时复位按钮；跟随实际 frame 变化，不依赖固定延时。
+                for button in buttons(in: window) {
+                    button.postsFrameChangedNotifications = true
+                    observers.append(center.addObserver(forName: NSView.frameDidChangeNotification,
+                                                        object: button, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.scheduleAlignment() }
+                    })
+                }
+            }
+            scheduleAlignment()
+        }
+
+        func disconnect() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers.removeAll()
+            window = nil
+        }
+
+        private func buttons(in window: NSWindow) -> [NSButton] {
+            [.closeButton, .miniaturizeButton, .zoomButton].compactMap(window.standardWindowButton)
+        }
+
+        private func scheduleAlignment() {
+            guard !alignmentScheduled else { return }
+            alignmentScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.alignmentScheduled = false
+                self.alignButtons()
+            }
+        }
+
+        private func alignButtons() {
+            guard let window, !window.styleMask.contains(.fullScreen),
+                  let content = window.contentView else { return }
+            // 使用窗口坐标统一中心线，保留系统按钮的横向位置、外观和点击行为。
+            let contentTop = content.convert(content.bounds, to: nil).maxY
+            let center = NSPoint(x: 0, y: contentTop - YCodeMetrics.topBarHeight / 2)
+            for button in buttons(in: window) {
+                guard let parent = button.superview else { continue }
+                let y = parent.convert(center, from: nil).y - button.frame.height / 2
+                if abs(button.frame.minY - y) > 0.01 {
+                    button.setFrameOrigin(NSPoint(x: button.frame.minX, y: y))
+                }
+            }
         }
     }
 }

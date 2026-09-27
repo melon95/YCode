@@ -6,6 +6,7 @@ public struct YCodeAgentHookEvent: Equatable, Sendable {
     public let source: String
     public let eventKind: String
     public let bodyPreview: String?
+    public let agentSessionID: String?
     public let occurredAt: Date
 
     public init(
@@ -13,13 +14,15 @@ public struct YCodeAgentHookEvent: Equatable, Sendable {
         source: String,
         eventKind: String,
         bodyPreview: String?,
-        occurredAt: Date = Date()
+        occurredAt: Date = Date(),
+        agentSessionID: String? = nil
     ) {
         self.terminalID = terminalID
         self.source = source
         self.eventKind = eventKind
         self.bodyPreview = bodyPreview
         self.occurredAt = occurredAt
+        self.agentSessionID = agentSessionID
     }
 
     public var needsApproval: Bool { eventKind == "permission_request" || eventKind == "notification" }
@@ -75,8 +78,19 @@ public enum YCodeAgentHookParser {
             source: source,
             eventKind: eventKind,
             bodyPreview: preview.map { truncate($0, maximumCharacters: 200) },
-            occurredAt: occurredAt
+            occurredAt: occurredAt,
+            agentSessionID: nativeSessionID(root)
         )
+    }
+
+    private static func nativeSessionID(_ root: [String: Any]) -> String? {
+        let input = jsonObject(in: root["stdin"] as? String)
+        let extra = (root["extra"] as? [String])?.first.flatMap { jsonObject(in: $0) }
+        for object in [input, extra] {
+            if let id = object?["session_id"] as? String ?? object?["thread-id"] as? String ?? object?["thread_id"] as? String,
+               UUID(uuidString: id) != nil { return id }
+        }
+        return nil
     }
 
     private static func codexPermissionPreview(_ root: [String: Any]) -> String? {

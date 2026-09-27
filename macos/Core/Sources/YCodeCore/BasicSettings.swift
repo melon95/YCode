@@ -1,22 +1,13 @@
 import Foundation
 
-public enum YCodeStartupMode: String, CaseIterable, Sendable {
-    case resume
-    case overview
-    case blank
-}
-
 public struct YCodeBasicSettings: Equatable, Sendable {
-    public var startupMode: YCodeStartupMode
     public var notifications: YCodeNotificationSettings
     public var appearance: YCodeAppearanceSettings
 
     public init(
-        startupMode: YCodeStartupMode = .resume,
         notifications: YCodeNotificationSettings = YCodeNotificationSettings(),
         appearance: YCodeAppearanceSettings = YCodeAppearanceSettings()
     ) {
-        self.startupMode = startupMode
         self.notifications = notifications
         self.appearance = appearance
     }
@@ -172,12 +163,6 @@ public final class YCodeConfigurationStore {
             return YCodeBasicSettings()
         }
         let document = try PreservingJSONDocument(data: Data(contentsOf: configurationURL))
-        let mode: YCodeStartupMode
-        if case let .string(raw)? = document["startup"] {
-            mode = YCodeStartupMode(rawValue: raw) ?? .resume
-        } else {
-            mode = .resume
-        }
         var notifications = YCodeNotificationSettings()
         if case let .object(fields)? = document["notifications"] {
             if case let .bool(value)? = fields["enabled"] { notifications.enabled = value }
@@ -204,7 +189,6 @@ public final class YCodeConfigurationStore {
             )
         }
         return YCodeBasicSettings(
-            startupMode: mode,
             notifications: notifications,
             appearance: YCodeAppearanceSettings(theme: theme, locale: locale, fontSizes: fontSizes)
         )
@@ -219,7 +203,6 @@ public final class YCodeConfigurationStore {
         } else {
             document = try PreservingJSONDocument(data: Data("{}".utf8))
         }
-        document["startup"] = .string(settings.startupMode.rawValue)
         Self.writeNotificationSettings(settings.notifications, to: &document)
         Self.writeAppearanceSettings(settings.appearance, to: &document)
         try document.encodedData().write(to: configurationURL, options: .atomic)
@@ -277,7 +260,6 @@ public final class YCodeConfigurationStore {
             document = try PreservingJSONDocument(data: Data("{}".utf8))
         }
         if let basic {
-            document["startup"] = .string(basic.startupMode.rawValue)
             Self.writeNotificationSettings(basic.notifications, to: &document)
             Self.writeAppearanceSettings(basic.appearance, to: &document)
         }
@@ -289,6 +271,8 @@ public final class YCodeConfigurationStore {
         proxyFields["no_proxy"] = .string(settings.proxy.noProxy)
         document["proxy"] = .object(proxyFields)
         try document.encodedData().write(to: configurationURL, options: .atomic)
+        // 命令可能刚被改过，probe 的缓存结论立刻作废。
+        YCodeAgentLauncher.invalidateProbeCache()
     }
 
     private static let knownAgentKeys: Set<String> = [
@@ -381,19 +365,10 @@ public final class YCodeConfigurationStore {
     }
 }
 
-public func initialProjectID(
-    mode: YCodeStartupMode,
-    recentProjectID: String?,
-    projects: [ProjectRecord]
-) -> String? {
+/// 启动时进哪个项目。原来这里有三档「启动时显示」可选，但三档的差别只有
+/// 「最近项目一个会话都没有时进不进去」，而「恢复最近工作区」又恢复不了任何东西
+/// —— 画布布局只活在进程内。所以只留一条：有最近项目就进它，没有就给项目总览。
+public func initialProjectID(recentProjectID: String?, projects: [ProjectRecord]) -> String? {
     let recent = recentProjectID.flatMap { id in projects.first(where: { $0.id == id }) }
-    switch mode {
-    case .overview:
-        return nil
-    case .blank:
-        return recent?.id ?? projects.first?.id
-    case .resume:
-        if let recent, recent.liveSessionCount > 0 { return recent.id }
-        return nil
-    }
+    return recent?.id ?? projects.first?.id
 }

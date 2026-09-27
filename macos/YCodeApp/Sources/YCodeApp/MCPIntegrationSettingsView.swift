@@ -181,8 +181,8 @@ struct MCPIntegrationSettingsView: View {
                         }
                     }
                 }
-                LabeledContent(l10n.text("transport"), value: "ycode-mcp · stdio")
-                LabeledContent(l10n.text("dataRouting"), value: l10n.text("terminalIDProjectDirectory"))
+                YCodeFormValueRow(label: l10n.text("transport"), value: "ycode-mcp · stdio", mono: true)
+                YCodeFormValueRow(label: l10n.text("dataRouting"), value: l10n.text("terminalIDProjectDirectory"))
             } header: {
                 Text("Todo MCP")
             } footer: {

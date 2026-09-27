@@ -202,6 +202,7 @@ public final class YCodeUsageAnalyzer: @unchecked Sendable {
         switch session.agent {
         case .claude: claudeRecords(for: session)
         case .codex: codexRecords(for: session)
+        case .pi: piRecords(for: session)
         }
     }
 
@@ -292,6 +293,42 @@ public final class YCodeUsageAnalyzer: @unchecked Sendable {
             costUSD: Self.price(for: model).cost(last.tokens),
             timestampMilliseconds: last.timestamp
         )]
+    }
+
+    /// pi 的用量。和另外两家有个关键差别：**pi 自己把 cost 算好写进了文件**
+    /// （`usage.cost.total`，美元），所以这里不走 `Self.price(for:)` 的内置价目表 ——
+    /// 那张表要跟着各家调价手工维护，而 pi 记的是它当时实际按哪个价算的。
+    ///
+    /// 另一个差别是粒度：claude 每条 assistant 消息记增量、codex 记累计总量，
+    /// pi 是**每次 API 调用记一条**，所以这里逐条累加而不是取最后一条。
+    private func piRecords(for session: YCodeHistorySession) -> [Record] {
+        var records: [Record] = []
+        enumerateJSONLines(at: session.jsonlURL, matchingAny: [Data("\"usage\"".utf8)]) { object in
+            guard string(object["type"]) == "message",
+                  let message = object["message"] as? [String: Any],
+                  string(message["role"]) == "assistant",
+                  let usage = message["usage"] as? [String: Any] else { return }
+            let tokens = YCodeTokenCounts(
+                input: uint(usage["input"]),
+                output: uint(usage["output"]),
+                cacheCreation: uint(usage["cacheWrite"]),
+                cacheRead: uint(usage["cacheRead"])
+            )
+            let cost = (usage["cost"] as? [String: Any]).flatMap { $0["total"] as? Double } ?? 0
+            // 鉴权失败之类的空转也会留一条 usage 全 0 的记录，别让它们污染统计。
+            guard tokens.total > 0 || cost > 0 else { return }
+            records.append(Record(
+                session: session,
+                model: string(message["model"]),
+                tokens: tokens,
+                costUSD: cost,
+                // pi 的 message.timestamp 是毫秒数字，不是 RFC3339 字符串。
+                timestampMilliseconds: (message["timestamp"] as? Int64)
+                    ?? (message["timestamp"] as? Double).map { Int64($0) }
+                    ?? timestampMilliseconds(string(object["timestamp"]))
+            ))
+        }
+        return records
     }
 
     private func aggregate(records: [Record]) -> YCodeWorkspaceUsage {

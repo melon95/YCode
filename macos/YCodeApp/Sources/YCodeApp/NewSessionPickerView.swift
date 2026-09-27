@@ -8,6 +8,8 @@ struct NewSessionPickerView: View {
     @Environment(\.ycodeL10n) private var l10n
     @State private var useWorktree = false
     @State private var branch: String = ""
+    /// 已经点下去的 agent。只用来先把反馈画出来——真正的启动下一个 runloop 才跑。
+    @State private var startingProfileID: String?
 
     var body: some View {
         GeometryReader { proxy in
@@ -60,19 +62,28 @@ struct NewSessionPickerView: View {
     private func agents(compact: Bool) -> some View {
         HStack(spacing: compact ? 5 : 9) {
             ForEach(model.availableAgentProfiles) { profile in
+                let starting = startingProfileID == profile.id
                 Button { start(profile) } label: {
                     VStack(spacing: compact ? 4 : 6) {
-                        YCodeAgentIconView(profile: profile, size: compact ? 18 : 24)
-                            .frame(height: compact ? 20 : 28)
+                        ZStack {
+                            YCodeAgentIconView(profile: profile, size: compact ? 18 : 24)
+                                .opacity(starting ? 0 : 1)
+                            if starting { ProgressView().controlSize(.small) }
+                        }
+                        .frame(height: compact ? 20 : 28)
                         Text(profile.resolvedDisplayName)
                             .font(compact ? .caption2.weight(.semibold) : .subheadline.weight(.semibold))
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, compact ? 8 : 12)
-                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: compact ? 8 : 10))
+                    .background(
+                        Color.secondary.opacity(starting ? 0.16 : 0.08),
+                        in: RoundedRectangle(cornerRadius: compact ? 8 : 10)
+                    )
                 }
                 .buttonStyle(.plain)
+                .disabled(startingProfileID != nil)
             }
             if model.availableAgentProfiles.isEmpty {
                 Text(l10n.text("addAgentFirst"))
@@ -131,13 +142,22 @@ struct NewSessionPickerView: View {
         }
     }
 
+    /// 乐观反馈：先把选中的 agent 置为「启动中」让 SwiftUI 画一帧，下一个 runloop 再做
+    /// 真正的启动。`model.createSession` 是主线程同步的（建行、makePlan、拉起 PTY），
+    /// 直接在点击里跑的话这段时间界面是死的——点下去没反应，然后突然跳终端。
     private func start(_ profile: YCodeAgentProfile) {
-        // title 传空串：名字来自 CLI，侧栏先显示斜体的「新会话」。
-        model.createSession(
-            agentProfileID: profile.id,
-            title: "",
-            branch: branch.isEmpty ? nil : branch,
-            useWorktree: useWorktree
-        )
+        guard startingProfileID == nil else { return }
+        startingProfileID = profile.id
+        DispatchQueue.main.async {
+            // title 传空串：名字来自 CLI，侧栏先显示斜体的「新会话」。
+            model.createSession(
+                agentProfileID: profile.id,
+                title: "",
+                branch: branch.isEmpty ? nil : branch,
+                useWorktree: useWorktree
+            )
+            // 成功的话这个视图已经被终端替掉了；失败时要把按钮放回可点状态。
+            startingProfileID = nil
+        }
     }
 }

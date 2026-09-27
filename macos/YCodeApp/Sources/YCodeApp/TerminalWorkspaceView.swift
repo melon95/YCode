@@ -10,26 +10,11 @@ struct TerminalWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.ycodeL10n) private var l10n
     @State private var renameTarget: SessionMetadata?
-    @State private var renameDraft = ""
 
     var body: some View {
         terminalCanvas
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert(l10n.text("renameSession"), isPresented: renameIsPresented) {
-            TextField(l10n.text("name"), text: $renameDraft)
-            Button(l10n.text("cancel"), role: .cancel) { renameTarget = nil }
-            Button(l10n.text("save")) {
-                if let target = renameTarget {
-                    model.selectSession(target.id)
-                    model.renameSelectedSession(renameDraft)
-                }
-                renameTarget = nil
-            }
-        }
-    }
-
-    private var renameIsPresented: Binding<Bool> {
-        Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })
+        .ycodeSessionRenameDialog(model: model, target: $renameTarget)
     }
 
     // MARK: 画布
@@ -149,7 +134,7 @@ struct TerminalWorkspaceView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             // 焦点有两层标记：窗格头带强调底色，窗格四周一圈 1px 强调描边（设计稿 §04 标注 1）。
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
                 .stroke(focused ? Color.accentColor : Color.clear, lineWidth: 1)
         }
     }
@@ -161,7 +146,7 @@ struct TerminalWorkspaceView: View {
         HStack(spacing: 8) {
             YCodeStatusDot(presence: model.presence(for: session))
             YCodeAgentIconView(profile: model.agentProfiles.first { $0.id == session.agentProfile }, size: 12)
-            Text(session.title.isEmpty ? l10n.text("newSessionFallback") : session.title)
+            Text(model.displayName(for: session))
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 4)
@@ -190,7 +175,6 @@ struct TerminalWorkspaceView: View {
             model.openTerminalSearch(sessionID: session.id)
         }
         Button(l10n.text("renameEllipsis")) {
-            renameDraft = session.title
             renameTarget = session
         }
         Divider()
@@ -237,7 +221,9 @@ struct TerminalWorkspaceView: View {
                 locale: model.locale,
                 focused: slot == model.focusedCanvasSlot,
                 searchRequest: model.terminalSearchRequest,
-                onFilePath: model.recordTerminalPath
+                onFilePath: model.recordTerminalPath,
+                // CLI 报出来的窗口标题直接回给模型，侧栏那条当场改名。
+                onTitle: { model.recordLiveTitle(sessionID: session.id, title: $0) }
             ) { result, generation in
                 model.updateTerminalSearchResult(result, generation: generation)
             }
@@ -326,7 +312,10 @@ struct WorkspaceInspectorView: View {
             moveUp: { model.movePanel(panel, by: -1) },
             moveDown: { model.movePanel(panel, by: 1) },
             canMoveUp: model.openPanels.first != panel,
-            canMoveDown: model.openPanels.last != panel
+            canMoveDown: model.openPanels.last != panel,
+            // 只有点得动的图标才留：文件卡那枚是文件树开关，变更卡那枚是树／平铺开关；
+            // 终端和待办的图标既不点，旁边也已经写着自己是谁。
+            showsIcon: panel != .terminal && panel != .todos
         )
     }
 
@@ -398,8 +387,8 @@ private struct ProjectShellWorkspaceView: View {
 
     private var paneIDs: [String] { model.selectedShellWorkspace?.paneIDs ?? [] }
 
-    /// 标签顶掉了卡头上的「终端」两个字 —— 左边那个图标已经在说这是终端面板，
-    /// 标签自己又写着「终端 1」，再放一个标题就是第三遍。
+    /// 标签顶掉了卡头上的「终端」两个字，左边那枚图标也一起去掉 ——
+    /// 标签自己就写着「终端 1」，标题和图标都是在重复同一句话。
     private var tabStrip: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 3) {
@@ -435,7 +424,7 @@ private struct ProjectShellWorkspaceView: View {
         .frame(height: 22)
         .background(
             selected ? Color.primary.opacity(0.09) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+            in: RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius, style: .continuous)
         )
         .contentShape(Rectangle())
         .onTapGesture { model.selectShellPane(paneID) }
@@ -466,6 +455,7 @@ private struct ProjectShellWorkspaceView: View {
                 focused: false,
                 searchRequest: nil,
                 onFilePath: model.recordTerminalPath,
+                onTitle: { _ in },
                 onSearchResult: { _, _ in }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -489,6 +479,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
     let focused: Bool
     let searchRequest: YCodeTerminalSearchRequest?
     let onFilePath: (URL) -> Void
+    let onTitle: (String) -> Void
     let onSearchResult: (String, Int) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -498,6 +489,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
             workingDirectory: workingDirectory,
             locale: locale,
             onFilePath: onFilePath,
+            onTitle: onTitle,
             onSearchResult: onSearchResult
         )
     }
@@ -526,6 +518,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
         context.coordinator.workingDirectory = workingDirectory
         context.coordinator.locale = locale
         context.coordinator.onFilePath = onFilePath
+        context.coordinator.onTitle = onTitle
         context.coordinator.onSearchResult = onSearchResult
         if abs(view.font.pointSize - fontSize) > 0.01 {
             view.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
@@ -562,8 +555,10 @@ private struct YCodeTerminalView: NSViewRepresentable {
         var workingDirectory: URL?
         var locale: YCodeLocale
         var onFilePath: (URL) -> Void
+        var onTitle: (String) -> Void
         var onSearchResult: (String, Int) -> Void
         weak var view: TerminalView?
+        private var lastTitle: String?
         var lastSearchGeneration = -1
         var wasFocused = false
         var didAttach = false
@@ -574,6 +569,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
             workingDirectory: URL?,
             locale: YCodeLocale,
             onFilePath: @escaping (URL) -> Void,
+            onTitle: @escaping (String) -> Void,
             onSearchResult: @escaping (String, Int) -> Void
         ) {
             self.sessionID = sessionID
@@ -581,6 +577,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
             self.workingDirectory = workingDirectory
             self.locale = locale
             self.onFilePath = onFilePath
+            self.onTitle = onTitle
             self.onSearchResult = onSearchResult
             super.init()
         }
@@ -635,7 +632,16 @@ private struct YCodeTerminalView: NSViewRepresentable {
             runtime.resize(columns: max(2, newCols), rows: max(1, newRows))
         }
 
-        func setTerminalTitle(source: TerminalView, title: String) {}
+        /// OSC 0/1/2：CLI 自己报的会话名字。以前这里是空实现，侧栏得等下一次
+        /// jsonl 扫描（实际上往往是重启）才能从「新会话」改成真名字。
+        /// 终端会反复重发同一个标题，本地先去重，别把每一帧都捣成一次重绘。
+        func setTerminalTitle(source: TerminalView, title: String) {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed != lastTitle else { return }
+            lastTitle = trimmed
+            let callback = onTitle
+            DispatchQueue.main.async { callback(trimmed) }
+        }
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
             guard let directory, !directory.isEmpty else { return }
             workingDirectory = URL(fileURLWithPath: directory)

@@ -110,13 +110,11 @@ struct CommandPaletteView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: YCodeMetrics.rowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius)
-                .fill(active ? Color.accentColor : .clear)
-        )
+        // 原先只认键盘高亮项：用鼠标在面板里移动时一片死寂，必须先按方向键
+        // 才知道自己指着哪一条。现在 hover 与键盘高亮是同一套底。
+        .ycodeRow(isSelected: active, selection: .fill, horizontalInset: 8)
         .foregroundStyle(active ? Color.white : Color.primary)
         .padding(.horizontal, 8)
-        .contentShape(Rectangle())
         .onTapGesture {
             item.run()
             onClose()
@@ -167,7 +165,7 @@ struct CommandPaletteView: View {
                 result.append(Item(
                     id: "session-\(session.id)",
                     group: .sessions,
-                    title: session.title.isEmpty ? l10n.text("newSessionFallback") : session.title,
+                    title: model.displayName(for: session),
                     detail: "\(project.name) · \(model.presence(for: session).title(l10n))",
                     run: { model.activateSession(session) }
                 ))
@@ -196,7 +194,7 @@ struct CommandPaletteView: View {
 
         let actions: [Item] = [
             Item(id: "action-new", group: .actions, title: l10n.text("newSessionEllipsis"), detail: "⌘N", run: onNewSession)
-        ] + YCodeTerminalLayout.allCases.enumerated().map { index, layout in
+        ] + model.validTerminalLayouts.enumerated().map { index, layout in
             Item(
                 id: "action-layout-\(layout.rawValue)",
                 group: .actions,

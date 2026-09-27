@@ -223,7 +223,7 @@ struct ChangesPanelView: View {
             // 左边树里点一个文件，右边这列滚到它那儿去。
             .onChange(of: model.selectedGitPath) { _, path in
                 guard treeMode, let path else { return }
-                withAnimation(.easeInOut(duration: 0.18)) { scroller.scrollTo(path, anchor: .top) }
+                withAnimation(YCodeMotion.scroll) { scroller.scrollTo(path, anchor: .top) }
             }
         }
     }
@@ -341,7 +341,8 @@ struct ChangesPanelView: View {
         .padding(.leading, CGFloat(depth) * 12 + 10)
         .padding(.trailing, 10)
         .frame(height: 24)
-        .contentShape(Rectangle())
+        // 目录行原先连 contentShape 之外什么都没有：它可以点，但看不出可以点。
+        .ycodeRow(isSelected: false, cornerRadius: 0)
         .onTapGesture {
             if collapsed { collapsedDirectories.remove(path) } else { collapsedDirectories.insert(path) }
         }
@@ -369,8 +370,7 @@ struct ChangesPanelView: View {
         .padding(.leading, CGFloat(depth) * 12 + 10)
         .padding(.trailing, 10)
         .frame(height: 24)
-        .background(selected ? Color.accentColor.opacity(0.16) : Color.clear)
-        .contentShape(Rectangle())
+        .ycodeRow(isSelected: selected, cornerRadius: 0)
         .onHover { inside in hoveredPath = inside ? change.path : (hoveredPath == change.path ? nil : hoveredPath) }
         .onTapGesture {
             model.selectGitChange(change.path)
@@ -395,7 +395,7 @@ struct ChangesPanelView: View {
                 .font(.system(size: 9.5, design: .monospaced).weight(.semibold))
                 .foregroundStyle(statusColor(change))
                 .frame(width: 16, height: 16)
-                .background(statusColor(change).opacity(0.16), in: RoundedRectangle(cornerRadius: 4))
+                .background(statusColor(change).opacity(0.16), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip))
             Text(basename(change.path))
                 .font(.system(size: 12.5).weight(.semibold))
                 .lineLimit(1)
@@ -419,7 +419,7 @@ struct ChangesPanelView: View {
         .padding(.leading, depth.map { CGFloat($0) * 12 + 10 } ?? 10)
         .padding(.trailing, 10)
         .frame(height: 30)
-        .contentShape(Rectangle())
+        .ycodeRow(isSelected: false, cornerRadius: 0)
         .onHover { inside in hoveredPath = inside ? change.path : (hoveredPath == change.path ? nil : hoveredPath) }
         .onTapGesture { model.toggleGitPathExpansion(change.path) }
         .help(change.path)
@@ -546,8 +546,8 @@ struct ChangesPanelView: View {
                 .background(Color.secondary.opacity(0.06))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay { RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.18)) }
+        .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius))
+        .overlay { RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius).stroke(Color.secondary.opacity(0.18)) }
         .padding(.horizontal, 10)
         .padding(.bottom, 9)
     }

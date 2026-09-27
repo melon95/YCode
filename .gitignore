@@ -1,12 +1,8 @@
-/target
-**/*.rs.bk
-Cargo.lock.bak
-
-# Tauri
-/src-tauri/target
-/src-tauri/binaries
-/dist
-/node_modules
+# Native build output
+**/.build/
+**/.swiftpm/
+/macos/dist/
+**/__pycache__/
 
 # OS
 .DS_Store
@@ -21,7 +17,3 @@ Thumbs.db
 # Local config
 .env
 .env.local
-
-# Test output
-/e2e/.tmp
-/src-tauri/gen/schemas/linux-schema.json

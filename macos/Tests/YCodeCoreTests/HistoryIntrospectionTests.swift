@@ -11,8 +11,8 @@ struct HistoryIntrospectionTests {
         let beforeCodex = try Data(contentsOf: fixture.codexFile)
 
         let sessions = index.scanWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace)
-        #expect(sessions.count == 2)
-        #expect(Set(sessions.map(\.agent)) == [.codex, .claude])
+        #expect(sessions.count == 3)
+        #expect(Set(sessions.map(\.agent)) == [.codex, .claude, .pi])
         #expect(sessions.first(where: { $0.agent == .claude })?.title == "整理迁移计划")
         #expect(sessions.first(where: { $0.agent == .codex })?.title == "继续原生迁移")
 
@@ -33,6 +33,65 @@ struct HistoryIntrospectionTests {
 
         #expect(try Data(contentsOf: fixture.claudeFile) == beforeClaude)
         #expect(try Data(contentsOf: fixture.codexFile) == beforeCodex)
+    }
+
+    @Test func scansPiSessionsFromEncodedWorkspaceDirectory() throws {
+        let fixture = try HistoryFixture()
+        let index = YCodeHistoryIndex()
+        let before = try Data(contentsOf: fixture.piFile)
+
+        let session = try #require(
+            index.scanWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace).first { $0.agent == .pi }
+        )
+        // 文件名是 `<时间戳>_<会话 id>.jsonl`，只有下划线后面那截才是 pi --resume 认的 id。
+        #expect(session.sessionID == "01a0c6de-636a-7211-ae7f-725cfcc36faf")
+        // 标题取第一条用户消息，而不是那条带着整段 preamble 的 system 消息。
+        #expect(session.title == "读取 pi 历史")
+
+        let events = try index.events(for: session)
+        // 首行 `session` 是文件头，不产出事件（与 codex 的 session_meta 同处理），
+        // 所以 sequence 从 1 起跳；`model_change` 留成 unknown 占住 sequence 1，
+        // 于是 sequence 始终等于行号 —— 增量追加时不会错位。
+        #expect(events.map(\.sequence) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(events.map(\.preview) == [
+            "?? model_change",
+            "<skill name=\"apple-design\" location=\"/x/SKILL.md\">\nRefs\n</skill>",
+            "读取 pi 历史",
+            "先看一眼格式",
+            "[tool: bash]",
+            "[result: bash]",
+            "pi 历史已接入"
+        ])
+        // 状态变更行不参与排序与搜索：时间戳被抹成 0。
+        #expect(events[0].timestampMilliseconds == 0)
+        #expect(events.dropFirst().allSatisfy { $0.timestampMilliseconds > 0 })
+
+        // 图片分片只有 base64，绝不能混进正文 —— 否则一条消息几百 KB 会把预览和搜索撑爆。
+        #expect(events[2].preview == "读取 pi 历史")
+        #expect(!events[2].preview.contains("iVBOR"))
+
+        #expect(try Data(contentsOf: fixture.piFile) == before)
+    }
+
+    @Test func piToolResultCarriesErrorStatusAndToolName() throws {
+        let fixture = try HistoryFixture()
+        let index = YCodeHistoryIndex()
+        let session = try #require(
+            index.scanWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace).first { $0.agent == .pi }
+        )
+        let events = try index.events(for: session)
+        let result = try #require(events.first {
+            if case .toolResult = $0.kind { return true }
+            return false
+        })
+        guard case let .toolResult(tool, excerpt, status) = result.kind else {
+            Issue.record("expected toolResult")
+            return
+        }
+        // pi 直接给了工具名，不用像 Claude 那样拿 tool_use_id 回查。
+        #expect(tool == "bash")
+        #expect(excerpt.contains("ok"))
+        #expect(status == .ok)
     }
 
     @Test func searchIsStableAndSkipsMalformedLines() throws {
@@ -80,6 +139,7 @@ private struct HistoryFixture {
     let workspace: URL
     let claudeFile: URL
     let codexFile: URL
+    let piFile: URL
 
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-history-\(UUID().uuidString)", isDirectory: true)
@@ -111,6 +171,27 @@ private struct HistoryFixture {
             #"{"type":"response_item","timestamp":"2026-09-16T10:00:03.000Z","payload":{"type":"function_call","name":"shell","arguments":{"cmd":"true"}}}"#
         ]
         try Data((codexLines.joined(separator: "\n") + "\n").utf8).write(to: codexFile)
+
+        // pi：~/.pi/agent/sessions/<编码后的 cwd>/<时间戳>_<id>.jsonl
+        // 这几行的形状照抄自真实文件（~/.pi/agent/sessions/），包括 image 分片、
+        // 数字毫秒时间戳、以及 toolResult 上的 toolName / isError。
+        let piDirectory = home.appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+            .appendingPathComponent(YCodeHistoryIndex.encodePiWorkspace(workspace), isDirectory: true)
+        try FileManager.default.createDirectory(at: piDirectory, withIntermediateDirectories: true)
+        piFile = piDirectory.appendingPathComponent("2026-09-22T02-07-38-346Z_01a0c6de-636a-7211-ae7f-725cfcc36faf.jsonl")
+        let piLines = [
+            "{\"type\":\"session\",\"version\":3,\"id\":\"01a0c6de-636a-7211-ae7f-725cfcc36faf\",\"timestamp\":\"2026-09-22T02:07:38.346Z\",\"cwd\":\"\(workspace.path)\"}",
+            #"{"type":"model_change","id":"e839","parentId":null,"timestamp":"2026-09-22T02:07:38.587Z","provider":"anthropic","modelId":"claude-opus-5"}"#,
+            // pi 把 skill 作为一条独立的 user 消息注入 —— 标题必须跳过它，
+            // 否则会变成一整段 skill 正文（真实数据里确实出现过 22KB 的标题）。
+            #"{"type":"message","id":"a0","parentId":null,"timestamp":"2026-09-22T02:07:39.000Z","message":{"role":"user","content":[{"type":"text","text":"<skill name=\"apple-design\" location=\"/x/SKILL.md\">\nRefs\n</skill>"}]}}"#,
+            #"{"type":"message","id":"a1","parentId":null,"timestamp":"2026-09-22T02:07:40.000Z","message":{"role":"user","content":[{"type":"text","text":"读取 pi 历史"},{"type":"image","data":"iVBORw0KGgoAAAANSUhEUg"}]}}"#,
+            #"{"type":"message","id":"a2","parentId":"a1","timestamp":"2026-09-22T02:07:41.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"先看一眼格式","thinkingSignature":"xx"},{"type":"toolCall","id":"toolu_1","name":"bash","arguments":{"command":"ls"}}]}}"#,
+            #"{"type":"message","id":"a3","parentId":"a2","timestamp":"2026-09-22T02:07:42.000Z","message":{"role":"assistant","content":[{"type":"text","text":"跑一下"},{"type":"toolCall","id":"toolu_2","name":"bash","arguments":{"command":"true"}}]}}"#,
+            #"{"type":"message","id":"a4","parentId":"a3","timestamp":"2026-09-22T02:07:43.000Z","message":{"role":"toolResult","toolCallId":"toolu_1","toolName":"bash","content":[{"type":"text","text":"ok"}],"isError":false,"timestamp":1790041763724}}"#,
+            #"{"type":"message","id":"a5","parentId":"a4","timestamp":"2026-09-22T02:07:44.000Z","message":{"role":"assistant","content":[{"type":"text","text":"pi 历史已接入"}]}}"#
+        ]
+        try Data((piLines.joined(separator: "\n") + "\n").utf8).write(to: piFile)
 
         for (name, originator) in [
             ("rollout-old-desktop.jsonl", "Codex Desktop"),

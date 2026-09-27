@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ycode 设置 · 设计稿</title>
+<style>
+/* ============================================================
+   ycode 设置窗口 · 设计稿
+   令牌与 YCodeMetrics / YCodeMotion 对齐，便于 1:1 落地。
+   ============================================================ */
+:root{
+  /* 圆角四档：越大的面越圆（大面的直角在视觉上比小面的更硬）。 */
+  --r-chip:4px; --r:6px; --r-card:10px; --r-sheet:14px;
+
+  /* 一条曲线族，四个速度。press 用 micro——按下的确认必须即时；
+     hover 用 fast；布局用 base。spring 带一点过冲，只给「面到达」用。 */
+  --ease:cubic-bezier(.2,.7,.2,1);
+  --ease-spring:cubic-bezier(.22,1.28,.36,1);
+  --t-micro:80ms; --t-fast:120ms; --t-base:220ms;
+
+  --bg:#ececee;
+  --sidebar:rgba(246,246,248,.72);   /* 半透明材质，内容从下面滚过 */
+  --sidebar-solid:#f4f4f6;
+  --card:#ffffff;
+  --sep:rgba(0,0,0,.09);
+  --sep-strong:rgba(0,0,0,.16);
+  --text:#1d1d1f;
+  --text-2:rgba(60,60,67,.62);
+  --text-3:rgba(60,60,67,.34);
+  --accent:#0a6cff;
+  --ok:#1a8a54; --warn:#b67707; --err:#d2382f;
+  --hit:rgba(0,0,0,.055);      /* hover 底 */
+  --hit-press:rgba(0,0,0,.115); /* 按下底：明显更深，且不带过渡 */
+
+  /* 三级阴影：面越大越厚。 */
+  --elev-1:0 1px 3px rgba(0,0,0,.09);
+  --elev-2:0 8px 24px -6px rgba(0,0,0,.24);
+  --elev-3:0 22px 60px -12px rgba(0,0,0,.36);
+
+  /* 表单网格：标签列右对齐 + 控件列左对齐。 */
+  --label-col:132px;
+  --gap:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#1c1c1e; --sidebar:rgba(40,40,43,.72); --sidebar-solid:#242426; --card:#2c2c2e;
+    --sep:rgba(255,255,255,.1); --sep-strong:rgba(255,255,255,.18);
+    --text:#f5f5f7; --text-2:rgba(235,235,245,.62); --text-3:rgba(235,235,245,.32);
+    --accent:#4c8dff; --ok:#38b87c; --warn:#e0a33a; --err:#f0655a;
+    --hit:rgba(255,255,255,.07); --hit-press:rgba(255,255,255,.15);
+    --elev-1:0 1px 3px rgba(0,0,0,.4);
+    --elev-2:0 8px 24px -6px rgba(0,0,0,.5);
+    --elev-3:0 22px 60px -12px rgba(0,0,0,.65);
+  }
+}
+*{box-sizing:border-box}
+
+/* 字距按字号分级——一个固定值在某一端一定是错的。
+   大字收紧（放大后字母间显得太开），小字略放（提升可辨认度）。 */
+body{
+  margin:0;padding:28px;
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  font-optical-sizing:auto;
+  letter-spacing:0;
+  color:var(--text);background:#d8d8dc;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+@media (prefers-color-scheme:dark){body{background:#0f0f10}}
+h1.page{font-size:15px;line-height:1.25;letter-spacing:-.008em;margin:0 0 6px}
+p.page{margin:0 0 20px;color:var(--text-2);font-size:12.5px;max-width:920px}
+
+/* ── 窗口 ───────────────────────────────────────────── */
+.win,.sheetwrap{
+  width:900px;height:640px;margin:0 0 34px;display:flex;
+  background:var(--bg);border-radius:var(--r-card);overflow:hidden;
+  box-shadow:var(--elev-3),0 0 0 .5px rgba(0,0,0,.2);
+}
+.titlebar{
+  height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;flex:0 0 auto;
+}
+.lights{display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}
+.lights i:nth-child(3){background:#28c840}
+
+/* ── 侧栏：半透明材质 ────────────────────────────────
+   结构区用较重的材质把自己和内容区分开，内容从它下面滚过，
+   而不是用一条 1px 硬线切一刀。 */
+.nav{
+  width:204px;flex:0 0 204px;
+  background:var(--sidebar);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);
+  backdrop-filter:blur(30px) saturate(180%);
+  border-right:.5px solid var(--sep);
+  display:flex;flex-direction:column;
+}
+.nav .title{font-weight:600;font-size:13px;letter-spacing:-.004em;margin-left:4px}
+.navlist{padding:2px 8px 10px;overflow:auto}
+.navitem{
+  display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;
+  border-radius:var(--r);cursor:pointer;font-size:13px;
+  position:relative;
+  transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease);
+}
+/* 命中区外扩 4px：近失也能点中，视觉尺寸不变。 */
+.navitem::after{content:"";position:absolute;inset:-2px -4px}
+.navitem:hover{background:var(--hit)}
+/* 按下即到位，不带过渡——一旦淡入，手感就从「我按到了」退回「它好像在想」。 */
+.navitem:active{background:var(--hit-press);transition:none}
+.navitem.on,.navitem.on:hover{background:var(--accent);color:#fff}
+.navitem.on:active{background:color-mix(in srgb,var(--accent) 84%,black);transition:none}
+.navitem .ic{width:17px;text-align:center;font-size:13px;opacity:.8}
+.navitem.on .ic{opacity:1}
+.navgroup{
+  font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-3);padding:12px 10px 4px;
+}
+
+/* ── 内容区 ─────────────────────────────────────────── */
+.body{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.pane{flex:1;overflow:auto;padding:0 22px 26px}
+/* 滚动边缘效果：内容与浮动 chrome 相接处用一段渐隐，而不是一条硬分隔线。
+   支持滚动驱动动画时它只在真的滚起来后才出现。 */
+.pane::before{
+  content:"";position:sticky;top:0;z-index:2;display:block;
+  height:18px;margin:0 -22px -18px;pointer-events:none;
+  background:linear-gradient(to bottom,var(--bg) 30%,transparent);
+}
+@supports (animation-timeline:scroll()){
+  .pane::before{opacity:0;animation:edge-in linear both;animation-timeline:scroll(nearest);animation-range:0 20px}
+}
+@keyframes edge-in{to{opacity:1}}
+h2.top{padding-top:4px}
+.pane h2{font-size:17px;line-height:1.2;font-weight:600;letter-spacing:-.016em;margin:0 0 2px}
+.pane .sub{color:var(--text-2);font-size:12.5px;letter-spacing:.002em;margin:0 0 18px}
+
+/* 分组卡 */
+.sec{margin-bottom:20px}
+.sec > .hd{font-size:12px;font-weight:600;color:var(--text-2);padding:0 4px 6px}
+.card{background:var(--card);border-radius:var(--r-card);overflow:hidden;
+      box-shadow:0 0 0 .5px var(--sep),var(--elev-1)}
+.sec > .ft{font-size:11.5px;letter-spacing:.004em;color:var(--text-2);padding:7px 5px 0;line-height:1.5}
+
+/* 表单行 */
+.row{display:flex;align-items:flex-start;gap:var(--gap);padding:9px 14px;min-height:38px}
+.row + .row{border-top:.5px solid var(--sep)}
+.row > .lb{flex:0 0 var(--label-col);text-align:right;padding-top:5px;font-size:13px}
+.row > .ct{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.row.plain{display:block;padding:11px 14px}
+.ct .hint{font-size:11.5px;letter-spacing:.004em;color:var(--text-2);line-height:1.45}
+.ct .hint.err{color:var(--err);display:flex;align-items:center;gap:4px}
+.ct .val{padding-top:5px;font-size:13px;color:var(--text-2)}
+.ct .mono,.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+.ct .val.mono{font-size:12px;line-height:1.5}
+
+/* ── 控件 ──────────────────────────────────────────── */
+:focus-visible{outline:none;box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--accent)}
+input[type=text]{
+  width:100%;height:26px;padding:0 8px;font:13px/1 inherit;color:var(--text);
+  background:var(--card);border:.5px solid var(--sep-strong);border-radius:var(--r-chip);
+  outline:none;text-align:left;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease);
+}
+@media (prefers-color-scheme:dark){input[type=text],textarea{background:rgba(0,0,0,.24)}}
+input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+input.bad{border-color:var(--err)}
+input.bad:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--err) 22%,transparent)}
+input.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px}
+textarea{
+  width:100%;min-height:74px;padding:6px 8px;resize:vertical;
+  font:12px/1.55 ui-monospace,"SF Mono",Menlo,monospace;color:var(--text);
+  background:var(--card);border:.5px solid var(--sep-strong);border-radius:var(--r-chip);outline:none;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease);
+}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+textarea::placeholder{color:var(--text-3)}
+
+/* 弹出菜单：设置里所有「选一个值」都用它。
+   分段控件被拉满整行时那块实心强调色会成为页面最重的元素，而它只是个三选一；
+   三个叠在一起（主题/语言/字号）更是把整页重心全抢走。 */
+.popup{
+  display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 6px 0 10px;
+  background:var(--card);border:.5px solid var(--sep-strong);border-radius:var(--r-chip);
+  font-size:13px;cursor:pointer;position:relative;
+  box-shadow:var(--elev-1);
+  transition:background var(--t-fast) var(--ease);
+}
+.popup::after{content:"";position:absolute;inset:-4px}
+.popup:hover{background:var(--hit)}
+.popup:active{background:var(--hit-press);transition:none}
+.popup i{font-style:normal;color:var(--text-2);font-size:9px;line-height:1}
+
+.seg{display:inline-flex;background:var(--hit);border-radius:var(--r);padding:2px;gap:2px}
+.seg b{
+  font-weight:400;font-size:12.5px;padding:3px 13px;border-radius:var(--r-chip);cursor:pointer;
+  transition:background var(--t-fast) var(--ease);
+}
+.seg b:hover:not(.on){background:var(--hit)}
+.seg b:active{background:var(--hit-press);transition:none}
+.seg b.on{background:var(--card);box-shadow:var(--elev-1);font-weight:500}
+
+.btn{
+  height:24px;padding:0 11px;font:12.5px/1 inherit;border-radius:var(--r-chip);cursor:pointer;
+  border:.5px solid var(--sep-strong);background:var(--card);color:var(--text);
+  position:relative;
+  transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease);
+}
+.btn::after{content:"";position:absolute;inset:-4px}  /* 命中区外扩 */
+.btn:hover{background:var(--hit)}
+.btn:active{background:var(--hit-press);transition:none}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:color-mix(in srgb,var(--accent) 92%,white)}
+.btn.pri:active{background:color-mix(in srgb,var(--accent) 82%,black);transition:none}
+.btn[disabled]{opacity:.38;pointer-events:none}
+.btn.danger{color:var(--err)}
+.btn.danger:hover{background:color-mix(in srgb,var(--err) 10%,transparent)}
+
+.icbtn{
+  width:24px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:var(--r-chip);cursor:pointer;color:var(--text-2);position:relative;
+  transition:background var(--t-fast) var(--ease),color var(--t-fast) var(--ease);
+}
+.icbtn::after{content:"";position:absolute;inset:-4px}
+.icbtn:hover{background:var(--hit);color:var(--text)}
+.icbtn:active{background:var(--hit-press);transition:none}
+
+.stepper{display:inline-flex;align-items:center;gap:8px}
+.stepper .pm{display:inline-flex;border:.5px solid var(--sep-strong);border-radius:var(--r-chip);overflow:hidden}
+.stepper .pm b{
+  width:20px;height:22px;display:grid;place-items:center;cursor:pointer;font-weight:400;
+  transition:background var(--t-fast) var(--ease);
+}
+.stepper .pm b:hover{background:var(--hit)}
+.stepper .pm b:active{background:var(--hit-press);transition:none}
+.stepper .pm b+b{border-left:.5px solid var(--sep-strong)}
+
+/* Agent 列表行 */
+.arow{display:flex;align-items:center;gap:11px;padding:9px 14px}
+.arow + .arow{border-top:.5px solid var(--sep)}
+.badge{
+  width:26px;height:26px;border-radius:var(--r);display:grid;place-items:center;
+  font-size:12px;font-weight:600;color:#fff;flex:0 0 auto;
+}
+.arow .nm{flex:1;min-width:0}
+.arow .nm b{display:block;font-weight:400;font-size:13px}
+.arow .nm span{display:block;font:11.5px/1.4 ui-monospace,"SF Mono",Menlo,monospace;color:var(--text-2)}
+.pill{font-size:11px;letter-spacing:.006em;padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:3px}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.pill.no{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:7px 14px;border-top:.5px solid var(--sep)}
+thead th{border-top:none;color:var(--text-2);font-weight:500;font-size:11.5px;letter-spacing:.006em}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;
+              font-family:ui-monospace,"SF Mono",Menlo,monospace}
+td.key{text-align:right;font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--text-2)}
+
+/* 空状态 */
+.empty{padding:30px 20px;text-align:center;color:var(--text-2)}
+.empty .big{font-size:24px;opacity:.38;margin-bottom:8px}
+.empty b{display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.empty span{font-size:12px;line-height:1.55}
+
+/* ── Agent 编辑器（sheet）─────────────────────────────
+   模态任务：配暗场 + 把背景推远。面是「到达」而不是「淡入」——
+   模糊半径与缩放一起动，读起来才是一个真实材质落下来。 */
+.sheetwrap{align-items:flex-start;justify-content:center;position:relative;display:flex}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.26);animation:scrim-in var(--t-fast) var(--ease) both}
+@keyframes scrim-in{from{opacity:0}to{opacity:1}}
+.sheet{
+  position:relative;width:580px;margin-top:26px;max-height:588px;
+  background:var(--bg);border-radius:var(--r-sheet);display:flex;flex-direction:column;
+  box-shadow:var(--elev-3);overflow:hidden;
+  transform-origin:top center;
+  animation:sheet-in var(--t-base) var(--ease-spring) both;
+}
+@keyframes sheet-in{
+  from{opacity:0;transform:scale(.965) translateY(-6px);filter:blur(6px)}
+  to{opacity:1;transform:scale(1) translateY(0);filter:blur(0)}
+}
+.sheet .hd{padding:18px 22px 12px;font-size:17px;font-weight:600;letter-spacing:-.016em}
+.sheet .bd{flex:1;overflow:auto;padding:0 22px 4px}
+.sheet .ft{
+  display:flex;justify-content:flex-end;gap:9px;padding:12px 22px;
+  border-top:.5px solid var(--sep);background:var(--bg);
+}
+.sheet .ft .btn{height:28px;padding:0 18px;font-size:13px;border-radius:var(--r)}
+
+/* 图标网格 */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:4px}
+.cell{
+  height:32px;display:grid;place-items:center;border-radius:var(--r-chip);cursor:pointer;
+  font-size:14px;transition:background var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease);
+}
+.cell:hover{background:var(--hit)}
+.cell:active{background:var(--hit-press);transition:none}
+.cell.on{background:color-mix(in srgb,var(--accent) 16%,transparent);
+         box-shadow:inset 0 0 0 1.5px var(--accent)}
+/* 首字母格：它不是「无」——它渲染的就是默认图标本身，所以直接画出来。
+   字母跟随「强调色」，于是下面那个取色器立刻有了可见的后果。 */
+.cell.letter{font-size:13px;font-weight:600}
+.swatch{width:22px;height:22px;border-radius:var(--r-chip);border:.5px solid var(--sep-strong);cursor:pointer}
+
+/* ── 注释 ──────────────────────────────────────────── */
+.note{
+  margin:0 0 34px;padding:13px 16px;border-left:3px solid var(--accent);
+  background:var(--hit);border-radius:0 var(--r) var(--r) 0;
+  font-size:12.5px;line-height:1.6;max-width:920px;
+}
+.note b{display:block;margin-bottom:5px;font-size:13px}
+.note ol{margin:6px 0 0;padding-left:20px}
+.note li{margin:3px 0}
+.note code{font:11.5px ui-monospace,"SF Mono",Menlo,monospace;
+           background:var(--hit-press);padding:1px 5px;border-radius:3px}
+.tag{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.01em;
+     padding:1px 6px;border-radius:3px;background:var(--accent);color:#fff;margin-right:6px;vertical-align:1px}
+.tag.fix{background:var(--err)}
+hr.div{border:none;border-top:1px dashed var(--sep-strong);margin:36px 0 26px}
+
+/* ── 无障碍三信号 ──────────────────────────────────── */
+
+/* 减弱动态：不是「没有反馈」，是换成非前庭的等价物。
+   位移与缩放去掉，颜色与不透明度保留——那才是传达状态的部分。 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    transition-duration:var(--t-micro) !important;scroll-behavior:auto !important;
+  }
+  .sheet{animation:none;filter:none;transform:none}
+  .scrim{animation:none}
+}
+
+/* 降低透明度：材质转实底，靠一条明确的边而不是模糊来分隔。 */
+@media (prefers-reduced-transparency:reduce){
+  .nav{background:var(--sidebar-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .scrim{background:rgba(0,0,0,.6)}
+  .pane::before{display:none}
+}
+
+/* 提高对比度：近实底 + 明确描边，焦点环加粗。 */
+@media (prefers-contrast:more){
+  :root{--sep:rgba(0,0,0,.28);--sep-strong:rgba(0,0,0,.5);--text-2:rgba(60,60,67,.9);--text-3:rgba(60,60,67,.7)}
+  @media (prefers-color-scheme:dark){
+    :root{--sep:rgba(255,255,255,.3);--sep-strong:rgba(255,255,255,.55);
+          --text-2:rgba(235,235,245,.9);--text-3:rgba(235,235,245,.7)}
+  }
+  .card{box-shadow:0 0 0 1px var(--sep-strong)}
+  .nav{background:var(--sidebar-solid);backdrop-filter:none;-webkit-backdrop-filter:none}
+  :focus-visible{box-shadow:0 0 0 2px var(--card),0 0 0 5px var(--accent)}
+}
+</style>
+</head>
+<body>
+
+<h1 class="page">ycode 设置 · 设计稿</h1>
+<p class="page">10 个分页 + Agent 编辑器。下面每一屏都是独立的静态稿；确认后再落到 SwiftUI。深色模式跟随系统，可切换系统外观查看。</p>
+
+<div class="note">
+  <b>这一稿要解决的问题</b>
+  <ol>
+    <li><span class="tag fix">修</span><b style="display:inline">表单没有对齐线。</b>截图里「标识」的输入内容是<b style="display:inline">右对齐</b>的，标签在左、值在右，中间是空的，一行里两头跑。现在改成<b style="display:inline">标签列右对齐（132px 固定）+ 控件列左对齐</b>，整张表有一条贴得住的竖线。</li>
+    <li><span class="tag fix">修</span><b style="display:inline">说明文字浮在右边。</b>「保存后不可更改…」跟着右对齐的输入框走。现在一律贴着<b style="display:inline">控件的左边缘</b>，在控件正下方。</li>
+    <li><span class="tag fix">修</span><b style="display:inline">多行输入是空洞。</b>参数/环境变量两个框看不出边界。现在有描边、等宽字、占位符示例。</li>
+    <li><span class="tag fix">修</span><b style="display:inline">标题带省略号。</b>「添加自定义 Agent…」——省略号属于<b style="display:inline">打开它的那个菜单项</b>（表示「还要再问你」），对话框自己已经是那个「再问」了，不该再带。</li>
+    <li><span class="tag fix">修</span><b style="display:inline">「无」这个选项名是错的。</b>它并不产生「无」——它产生的正是<b style="display:inline">显示名称的首字母（大写）</b>，也就是默认图标。标签和行为对不上。现在这一格直接把那个字母画出来并正名为「首字母」，而且默认选中；字母跟随「强调色」，于是下面那个取色器立刻有了可见的后果。</li>
+    <li><span class="tag fix">修</span><b style="display:inline">分段控件被滥用。</b>它有特定语义——<b style="display:inline">切换会改变下面显示什么</b>的模式开关；只是「选一个值」的应该是弹出菜单。原来 6 处里只有 2 处满足。加上它在表单里会被拉满整行，那块实心强调色成了页面最重的元素，三个叠在一起（主题/语言/字号）更是把重心全抢走。现在设置窗里全部改为弹出菜单——<b style="display:inline">同一个窗口不该有两套「选一个」的说法</b>。</li>
+    <li><span class="tag">新</span>侧栏分三组，10 项平铺时找不到东西。</li>
+    <li><span class="tag">新</span>每屏有标题与一句副标题，回答「我在哪、这页管什么」。</li>
+  </ol>
+</div>
+
+<!-- ============ 1. Agent ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem on"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">Agent</h2>
+      <p class="sub">ycode 启动哪些命令行 agent，以及它们怎么显示。</p>
+
+      <div class="sec">
+        <div class="hd">已配置</div>
+        <div class="card">
+          <div class="arow">
+            <div class="badge" style="background:#d97757">C</div>
+            <div class="nm"><b>Claude Code</b><span>claude</span></div>
+            <span class="pill ok">● 可用</span>
+            <span class="icbtn">✎</span><span class="icbtn">🗑</span>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#3941ff">X</div>
+            <div class="nm"><b>Codex</b><span>codex</span></div>
+            <span class="pill ok">● 可用</span>
+            <span class="icbtn">✎</span><span class="icbtn">🗑</span>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:transparent;color:#7C3AED;box-shadow:inset 0 0 0 1px var(--sep-strong)">P</div>
+            <div class="nm"><b>pi</b><span>pi</span></div>
+            <span class="pill no">● 未找到</span>
+            <span class="icbtn">✎</span><span class="icbtn">🗑</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">已检测到</div>
+        <div class="card">
+          <div class="arow">
+            <div class="badge" style="background:#3186ff">G</div>
+            <div class="nm"><b>Gemini CLI</b><span>gemini</span></div>
+            <button class="btn">添加</button>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#1d1d1f">G</div>
+            <div class="nm"><b>Grok CLI</b><span>grok</span></div>
+            <button class="btn">添加</button>
+          </div>
+        </div>
+        <div class="ft">只列出这台机器上确实装了的命令。</div>
+      </div>
+
+      <div class="sec">
+        <div class="card"><div class="row plain"><button class="btn">添加自定义 Agent…</button></div></div>
+        <div class="ft">命令允许先保存后安装；启动时找不到程序会显示明确错误。环境变量值可写成 <code>$变量名</code>，只有启动时才解析。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2. Agent 编辑器 ============ -->
+<div class="note">
+  <b>Agent 编辑器</b>
+  三段式：标题钉顶、表单自己滚、按钮钉底且<b style="display:inline">永远在窗内</b>。分「基本 / 启动 / 外观」三组，
+  「标识」在编辑已有 agent 时是只读的（它是持久化外键，改了历史会话就 resume 不了）。
+</div>
+
+<div class="sheetwrap">
+  <div class="scrim"></div>
+  <div class="sheet">
+    <div class="hd">添加自定义 Agent</div>
+    <div class="bd">
+      <div class="sec">
+        <div class="card">
+          <div class="row">
+            <div class="lb">标识</div>
+            <div class="ct">
+              <input type="text" class="mono" value="my-agent" placeholder="my-agent">
+              <div class="hint">用于命令行与配置文件。保存后不可更改。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">显示名称</div>
+            <div class="ct"><input type="text" placeholder="My Agent"></div>
+          </div>
+          <div class="row">
+            <div class="lb">命令</div>
+            <div class="ct">
+              <input type="text" class="mono bad" value="" placeholder="gemini 或 /路径/命令">
+              <div class="hint err">⚠ 必填。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">启动</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">参数</div>
+            <div class="ct">
+              <textarea placeholder="--model opus&#10;--verbose"></textarea>
+              <div class="hint">每行一个，按启动顺序传给命令。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">环境变量</div>
+            <div class="ct">
+              <textarea placeholder="ANTHROPIC_API_KEY=$MY_KEY&#10;HTTP_PROXY=127.0.0.1:7897"></textarea>
+              <div class="hint">每行一条 KEY=VALUE；没有等号的行会被忽略。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">外观</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">图标</div>
+            <div class="ct">
+              <div class="grid">
+                <div class="cell letter on" style="color:#7C3AED">M</div>
+                <div class="cell" style="color:#d97757">◆</div>
+                <div class="cell" style="color:#3941ff">◈</div>
+                <div class="cell" style="color:#3186ff">✦</div>
+                <div class="cell">◐</div><div class="cell">◑</div><div class="cell">◒</div>
+                <div class="cell">◓</div><div class="cell">◔</div><div class="cell">◕</div>
+                <div class="cell">◖</div><div class="cell">◗</div><div class="cell">◘</div>
+              </div>
+              <div class="hint" style="display:flex;gap:8px;align-items:center;margin-top:2px">
+                <input type="text" class="mono" style="flex:1" placeholder="terminal.fill">
+                <span style="width:26px;height:22px;display:grid;place-items:center;
+                             border:.5px dashed var(--sep-strong);border-radius:var(--r-chip)">M</span>
+              </div>
+              <div class="hint">默认是显示名称的首字母（大写），用「强调色」着色。
+                目录里没有你的 agent 也可以填一个 SF Symbol 名字，右边即时预览。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">图标样式</div>
+            <div class="ct"><span class="popup">品牌色 <i>⌄</i></span></div>
+          </div>
+          <div class="row">
+            <div class="lb">强调色</div>
+            <div class="ct">
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="text" class="mono" style="flex:1" value="#7C3AED">
+                <span class="swatch" style="background:#7C3AED"></span>
+                <button class="btn">清除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ft"><button class="btn">取消</button><button class="btn pri" disabled>完成</button></div>
+  </div>
+</div>
+
+<hr class="div">
+
+<!-- ============ 3. 终端 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem on"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">终端</h2>
+      <p class="sub">agent 以什么环境启动，以及它们怎么访问网络。</p>
+
+      <div class="sec">
+        <div class="hd">启动环境</div>
+        <div class="card">
+          <div class="row"><div class="lb">Shell</div><div class="ct"><div class="val mono">/bin/zsh -l -i</div></div></div>
+          <div class="row"><div class="lb">终端能力</div><div class="ct"><div class="val">256 色 / True Color</div></div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">代理</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">模式</div>
+            <div class="ct"><span class="popup">跟随系统 <i>⌄</i></span></div>
+          </div>
+          <div class="row">
+            <div class="lb">当前检测</div>
+            <div class="ct"><div class="val mono">http://127.0.0.1:7897</div></div>
+          </div>
+        </div>
+        <div class="ft">代理只作用于 agent 子进程的环境变量，不改动系统设置。</div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">代理 · 手动（展开态）</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">模式</div>
+            <div class="ct"><span class="popup">手动 <i>⌄</i></span></div>
+          </div>
+          <div class="row">
+            <div class="lb">代理地址</div>
+            <div class="ct"><input type="text" class="mono" placeholder="127.0.0.1:7897"></div>
+          </div>
+          <div class="row">
+            <div class="lb">例外</div>
+            <div class="ct"><input type="text" class="mono" placeholder="localhost,127.0.0.1,*.local"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4. 语言服务 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem on"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">语言服务</h2>
+      <p class="sub">编辑器的补全、跳转与诊断。按需安装，不用的语言不占资源。</p>
+      <div class="sec">
+        <div class="card">
+          <div class="arow">
+            <div class="badge" style="background:#3178c6">TS</div>
+            <div class="nm"><b>TypeScript / JavaScript</b><span>.ts .tsx .js .jsx</span></div>
+            <span class="pill ok">已安装</span><button class="btn danger">卸载</button>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#f05138">SW</div>
+            <div class="nm"><b>Swift</b><span>.swift</span></div>
+            <span class="pill ok">已安装</span><button class="btn danger">卸载</button>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#3776ab">PY</div>
+            <div class="nm"><b>Python</b><span>.py .pyi</span></div>
+            <span style="font-size:11.5px;color:var(--text-2)">安装中…</span>
+            <button class="btn" disabled>安装</button>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#dea584">RS</div>
+            <div class="nm"><b>Rust</b><span>.rs</span></div>
+            <span style="font-size:11.5px;color:var(--text-2)">未安装</span>
+            <button class="btn">安装</button>
+          </div>
+        </div>
+        <div class="ft">语言服务在后台以子进程运行，关闭对应项目后自动退出。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 5. 集成 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem on"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">集成</h2>
+      <p class="sub">ycode 往 agent 和系统里装的东西。每一项都能单独装、单独卸。</p>
+
+      <div class="sec">
+        <div class="hd">Agent 通知钩子</div>
+        <div class="card">
+          <div class="arow">
+            <div class="badge" style="background:#d97757">C</div>
+            <div class="nm"><b>Claude Code</b><span>Stop / permission_prompt</span></div>
+            <span class="pill ok">已安装</span><button class="btn danger">移除</button>
+          </div>
+          <div class="arow">
+            <div class="badge" style="background:#3941ff">X</div>
+            <div class="nm"><b>Codex</b><span>turn_complete / PermissionRequest</span></div>
+            <button class="btn">安装</button>
+          </div>
+        </div>
+        <div class="ft">钩子写进各 agent 自己的配置文件，让它在需要你时能通知 ycode。</div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">待办 MCP</div>
+        <div class="card">
+          <div class="arow">
+            <div class="badge" style="background:#d97757">C</div>
+            <div class="nm"><b>Claude Code</b><span>ycode-mcp · stdio</span></div>
+            <span class="pill ok">已注册</span><button class="btn danger">移除</button>
+          </div>
+          <div class="row"><div class="lb">传输</div><div class="ct"><div class="val mono">ycode-mcp · stdio</div></div></div>
+          <div class="row"><div class="lb">数据路由</div><div class="ct"><div class="val">终端 ID → 项目目录</div></div></div>
+        </div>
+        <div class="ft">让 agent 能读写右侧的待办面板。</div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">系统集成</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">ycode 命令</div>
+            <div class="ct">
+              <div style="display:flex;gap:8px;align-items:center">
+                <span class="pill ok">已安装</span><button class="btn danger">移除</button>
+              </div>
+              <div class="hint">在终端里 <code>ycode .</code> 打开当前目录。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">深层链接</div>
+            <div class="ct">
+              <div style="display:flex;gap:8px;align-items:center">
+                <span class="pill ok">已注册</span>
+              </div>
+              <div class="hint"><code>ycode://</code> 链接由本应用处理。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 6. 通知 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem on"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">通知</h2>
+      <p class="sub">agent 需要你的时候，怎么把你叫回来。</p>
+
+      <div class="sec">
+        <div class="hd">系统通知</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">送达时机</div>
+            <div class="ct"><span class="popup">仅在后台 <i>⌄</i></span></div>
+          </div>
+          <div class="row">
+            <div class="lb">测试通知</div>
+            <div class="ct"><div><button class="btn">发送</button></div></div>
+          </div>
+          <div class="row"><div class="lb">系统权限</div><div class="ct"><div class="val">已授权</div></div></div>
+          <div class="row"><div class="lb">最近测试</div><div class="ct"><div class="val">已接受（11:42）</div></div></div>
+        </div>
+        <div class="ft">「仅在后台」＝ ycode 不在最前面时才打扰你。</div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">已接入的事件</div>
+        <div class="card">
+          <div class="row"><div class="lb">Agent 回合结束</div><div class="ct"><div class="val">已启用</div></div></div>
+          <div class="row"><div class="lb">需要审批或关注</div><div class="ct"><div class="val">已启用</div></div></div>
+        </div>
+        <div class="ft">这两类事件来自「集成」里装的 agent 钩子；没装钩子的 agent 不会发通知。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 7. 用量 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem on"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">用量</h2>
+      <p class="sub">从各 agent 自己的历史文件里读出来的，只读、不上传。</p>
+
+      <div class="sec">
+        <div class="card">
+          <div class="row" style="gap:0;padding:14px">
+            <div style="flex:1"><div style="font-size:11.5px;color:var(--text-2)">总 token</div>
+              <div class="mono" style="font-size:19px;margin-top:2px">74,986,388</div></div>
+            <div style="flex:1"><div style="font-size:11.5px;color:var(--text-2)">总成本</div>
+              <div class="mono" style="font-size:19px;margin-top:2px">$53.41</div></div>
+            <div style="flex:1"><div style="font-size:11.5px;color:var(--text-2)">会话数</div>
+              <div class="mono" style="font-size:19px;margin-top:2px">11</div></div>
+          </div>
+        </div>
+        <div class="ft">成本是估算：pi 用它自己记录的价格，Claude / Codex 走内置价目表，可能与账单有出入。</div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">按模型</div>
+        <div class="card"><table>
+          <thead><tr><th>模型</th><th class="num">Token</th><th class="num">成本</th></tr></thead>
+          <tbody>
+            <tr><td>claude-opus-5</td><td class="num">74,986,388</td><td class="num">$53.41</td></tr>
+            <tr><td>gpt-5.5</td><td class="num">2,495</td><td class="num">$0.01</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">最近（UTC）</div>
+        <div class="card"><table>
+          <thead><tr><th>日期</th><th class="num">Token</th><th class="num">成本</th></tr></thead>
+          <tbody>
+            <tr><td>2026-09-23</td><td class="num">35,893,728</td><td class="num">$24.63</td></tr>
+            <tr><td>2026-09-22</td><td class="num">39,092,660</td><td class="num">$28.77</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">会话</div>
+        <div class="card"><table>
+          <thead><tr><th>标题</th><th>Agent</th><th class="num">Token</th><th class="num">成本</th></tr></thead>
+          <tbody>
+            <tr><td>改整体的UI感觉，优化当前的UI体验…</td><td>pi</td><td class="num">35,893,728</td><td class="num">$24.63</td></tr>
+            <tr><td>修改下左侧会话的过滤形式</td><td>pi</td><td class="num">39,092,660</td><td class="num">$28.77</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 8. 外观 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem on"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">外观</h2>
+      <p class="sub">主题、语言与字号。改动立即生效，不用重启。</p>
+
+      <div class="sec">
+        <div class="card">
+          <div class="row">
+            <div class="lb">主题</div>
+            <div class="ct">
+              <span class="popup">跟随系统 <i>⌄</i></span>
+              <div class="hint">跟随系统时会随「浅色 / 深色」自动切换。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">界面语言</div>
+            <div class="ct">
+              <span class="popup">中文 <i>⌄</i></span>
+              <div class="hint">只影响 ycode 自己的界面，不改 agent 的输出语言。</div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="lb">界面字号</div>
+            <div class="ct">
+              <span class="popup">标准 <i>⌄</i></span>
+              <div class="hint">按系统字阶整体缩放，间距会跟着一起变，不会把布局挤坏。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">字号</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">编辑器</div>
+            <div class="ct"><div class="stepper"><span class="mono" style="min-width:24px">13</span>
+              <span class="pm"><b>−</b><b>+</b></span></div></div>
+          </div>
+          <div class="row">
+            <div class="lb">终端</div>
+            <div class="ct"><div class="stepper"><span class="mono" style="min-width:24px">13</span>
+              <span class="pm"><b>−</b><b>+</b></span></div></div>
+          </div>
+        </div>
+        <div class="ft">单位是 pt，只作用于编辑器与终端的正文，不影响界面其余部分。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 9. 键盘 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem on"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">键盘</h2>
+      <p class="sub">当前快捷键一览。这一版还不支持自定义。</p>
+      <div class="sec">
+        <div class="card"><table><tbody>
+          <tr><td>添加项目</td><td class="key">⌘O</td></tr>
+          <tr><td>新建会话</td><td class="key">⌘N</td></tr>
+          <tr><td>命令面板</td><td class="key">⌘K</td></tr>
+          <tr><td>保存</td><td class="key">⌘S</td></tr>
+          <tr><td>在终端中查找</td><td class="key">⌘F</td></tr>
+          <tr><td>显示/隐藏项目侧栏</td><td class="key">⌘B</td></tr>
+          <tr><td>隐藏检查器</td><td class="key">⌥⌘→</td></tr>
+          <tr><td>检查器标签 1–4</td><td class="key">⌘1–⌘4</td></tr>
+          <tr><td>聚焦画布 1–4</td><td class="key">⇧⌘1–⇧⌘4</td></tr>
+          <tr><td>刷新历史</td><td class="key">⇧⌘R</td></tr>
+        </tbody></table></div>
+        <div class="ft">快捷键暂不可自定义。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 10. 数据 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem on"><span class="ic">▣</span>数据</div>
+      <div class="navitem"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">数据</h2>
+      <p class="sub">ycode 自己的数据放在哪里。agent 的历史文件不在这里，ycode 只读不写。</p>
+      <div class="sec">
+        <div class="hd">原生数据</div>
+        <div class="card">
+          <div class="row">
+            <div class="lb">数据目录</div>
+            <div class="ct">
+              <div class="val mono" style="word-break:break-all">~/Library/Application Support/dev.ycode.ycode</div>
+              <div style="margin-top:6px;display:flex;gap:8px">
+                <button class="btn">在访达中显示</button><button class="btn">拷贝路径</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ft">旧版（Tauri）的数据原样保留，未做迁移也未删除。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 11. 关于 ============ -->
+<div class="win">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+      <div class="navgroup">连接</div>
+      <div class="navitem"><span class="ic">⊞</span>集成</div>
+      <div class="navitem"><span class="ic">◔</span>通知</div>
+      <div class="navitem"><span class="ic">▦</span>用量</div>
+      <div class="navgroup">应用</div>
+      <div class="navitem"><span class="ic">◐</span>外观</div>
+      <div class="navitem"><span class="ic">⌘</span>键盘</div>
+      <div class="navitem"><span class="ic">▣</span>数据</div>
+      <div class="navitem on"><span class="ic">ⓘ</span>关于</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">关于</h2>
+      <p class="sub">版本信息。</p>
+
+      <div class="sec">
+        <div class="card">
+          <div style="padding:26px 20px;text-align:center">
+            <div style="width:60px;height:60px;border-radius:14px;margin:0 auto 11px;
+                        background:linear-gradient(145deg,#2c2922,#0f0e0b);display:grid;place-items:center;
+                        color:#f0c68a;font-size:26px">◈</div>
+            <div style="font-size:16px;font-weight:600">YCode Native</div>
+            <div style="font-size:12.5px;color:var(--text-2);margin-top:2px">版本 0.2.3</div>
+            <div class="mono" style="font-size:11.5px;color:var(--text-3);margin-top:3px">dev.ycode.native.dev</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="hd">更新</div>
+        <div class="card">
+          <div class="row plain"><button class="btn">检查更新…</button></div>
+        </div>
+        <div class="ft">更新仅在配置了签名更新源的发布版中启用。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 12. 空状态 ============ -->
+<div class="note">
+  <b>空状态（Agent 页首次打开）</b>
+  原来是一行灰字「未配置 Agent」。空状态是新用户看到的第一屏，应该告诉他下一步做什么。
+</div>
+
+<div class="win" style="height:420px">
+  <div class="nav">
+    <div class="titlebar"><div class="lights"><i></i><i></i><i></i></div><span class="title">设置</span></div>
+    <div class="navlist">
+      <div class="navgroup">工作区</div>
+      <div class="navitem on"><span class="ic">◉</span>Agent</div>
+      <div class="navitem"><span class="ic">▤</span>终端</div>
+      <div class="navitem"><span class="ic">◇</span>语言服务</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="titlebar"></div>
+    <div class="pane">
+      <h2 class="top">Agent</h2>
+      <p class="sub">ycode 启动哪些命令行 agent，以及它们怎么显示。</p>
+      <div class="sec"><div class="card"><div class="empty">
+        <div class="big">◉</div>
+        <b>还没有配置 Agent</b>
+        <span>装好 claude、codex、gemini、grok 或 pi 之后，<br>它们会出现在下面的「已检测到」里，点一下就能加。</span>
+        <div style="margin-top:14px"><button class="btn pri">添加自定义 Agent…</button></div>
+      </div></div></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,2364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ycode 原生版 · 界面设计稿 v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   文档外壳 —— 编辑式排版，与内嵌的 app 稿刻意区分开
+   ═══════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+:root{
+  --doc-bg:#12100e;
+  --doc-panel:#1a1714;
+  --doc-ink:#f2ece4;
+  --doc-ink-2:#b9afa2;
+  --doc-ink-3:#7e7566;
+  --doc-rule:#2b2622;
+  --doc-accent:#d9a441;
+  --doc-red:#d2593f;
+  --doc-green:#77a65c;
+  --serif:"Instrument Serif","Songti SC",Georgia,serif;
+  --sans:"IBM Plex Sans","PingFang SC","Hiragino Sans GB",sans-serif;
+  --code:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--doc-bg);color:var(--doc-ink);font-family:var(--sans);
+  font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 500px at 12% -5%,rgba(217,164,65,.09),transparent 60%),
+    radial-gradient(700px 420px at 92% 8%,rgba(93,124,168,.08),transparent 62%);
+  background-attachment:fixed;
+}
+/* 1240(窗口) + 80(stage padding) + 80(wrap padding) = 1400，正好不裁窗口 */
+.wrap{max-width:1400px;margin:0 auto;padding:0 40px 160px}
+
+/* ── 页眉 ── */
+.masthead{padding:88px 0 40px;border-bottom:1px solid var(--doc-rule)}
+.eyebrow{font-family:var(--code);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--doc-accent);margin-bottom:22px}
+h1{font-family:var(--serif);font-weight:400;font-size:76px;line-height:.98;letter-spacing:-.02em}
+h1 em{font-style:italic;color:var(--doc-accent)}
+.dek{max-width:60ch;margin-top:22px;color:var(--doc-ink-2);font-size:17px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:32px;font-family:var(--code);font-size:11.5px;color:var(--doc-ink-3)}
+.meta b{color:var(--doc-ink-2);font-weight:500}
+
+/* ── 目录 ── */
+.toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:44px 0 0}
+.toc a{background:var(--doc-panel);padding:16px 18px;text-decoration:none;color:var(--doc-ink-2);display:block;transition:.15s}
+.toc a:hover{background:#221d19;color:var(--doc-ink)}
+.toc .n{font-family:var(--code);font-size:10.5px;color:var(--doc-accent);display:block;margin-bottom:5px}
+.toc .t{font-size:14px}
+
+/* ── 章节 ── */
+section{padding:96px 0 0;scroll-margin-top:24px}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:12px}
+.sec-num{font-family:var(--code);font-size:12px;color:var(--doc-accent);letter-spacing:.1em}
+h2{font-family:var(--serif);font-weight:400;font-size:44px;line-height:1.1;letter-spacing:-.015em}
+.sec-dek{max-width:68ch;color:var(--doc-ink-2);margin-bottom:40px;font-size:15.5px}
+h3{font-family:var(--sans);font-weight:600;font-size:16px;margin:48px 0 14px;letter-spacing:-.005em}
+h3:first-of-type{margin-top:0}
+p{max-width:72ch;color:var(--doc-ink-2)}
+code{font-family:var(--code);font-size:.87em;background:rgba(255,255,255,.055);padding:1px 5px;border-radius:3px;color:#e4cfa4}
+a{color:var(--doc-accent)}
+
+/* ── 诊断卡 ── */
+.diag{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
+.dcard{background:var(--doc-panel);padding:22px 24px 24px}
+.dcard .no{font-family:var(--code);font-size:10.5px;color:var(--doc-red);letter-spacing:.1em;margin-bottom:10px}
+.dcard h4{font-size:15px;font-weight:600;margin-bottom:8px;line-height:1.4}
+.dcard p{font-size:13.5px;line-height:1.65;color:var(--doc-ink-2)}
+.dcard .src{font-family:var(--code);font-size:11px;color:var(--doc-ink-3);margin-top:12px;padding-top:11px;border-top:1px dashed var(--doc-rule);display:block}
+.dcard .fix{margin-top:14px;padding:11px 13px;background:rgba(119,166,92,.09);border-left:2px solid var(--doc-green);font-size:13px;color:#c7d9b9}
+.dcard .fix b{color:var(--doc-green);font-weight:600}
+
+/* ── 舞台（放 app 稿） ── */
+.stage{margin:34px 0 0;padding:44px 40px 48px;background:
+  linear-gradient(180deg,#efe9e0,#e4ddd2);
+  border-radius:4px;overflow-x:auto;position:relative}
+.stage.dim{background:linear-gradient(180deg,#232024,#1a181b)}
+.stage-label{position:absolute;top:14px;left:18px;font-family:var(--code);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:rgba(0,0,0,.36)}
+.stage.dim .stage-label{color:rgba(255,255,255,.3)}
+.stage-tools{position:absolute;top:10px;right:16px;display:flex;gap:6px;z-index:5}
+.stool{font-family:var(--code);font-size:10.5px;letter-spacing:.05em;padding:5px 11px;border-radius:99px;
+  border:1px solid rgba(0,0,0,.16);background:rgba(255,255,255,.6);color:rgba(0,0,0,.6);cursor:pointer;transition:.14s}
+.stool:hover{background:#fff}
+.stool.on{background:#1d1b19;border-color:#1d1b19;color:#f5efe6}
+.stage.dim .stool{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:rgba(255,255,255,.72)}
+.stage.dim .stool.on{background:#f2ece4;border-color:#f2ece4;color:#1d1b19}
+
+/* ── 标注 ── */
+.pin{position:absolute;z-index:90;width:20px;height:20px;border-radius:50%;
+  background:var(--doc-red);color:#fff;font-family:var(--code);font-size:11px;font-weight:500;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 0 3px rgba(210,89,63,.26),0 2px 6px rgba(0,0,0,.3)}
+.notes{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:2px 30px}
+.note{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--doc-rule);align-items:flex-start}
+.note .b{flex:none;width:19px;height:19px;border-radius:50%;background:var(--doc-red);color:#fff;
+  font-family:var(--code);font-size:10.5px;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.note .x{font-size:13.5px;line-height:1.6;color:var(--doc-ink-2)}
+.note .x b{color:var(--doc-ink);font-weight:600}
+
+/* ── 表 ── */
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13.5px}
+th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--doc-ink-3);padding:0 16px 10px 0;border-bottom:1px solid var(--doc-rule)}
+td{padding:13px 16px 13px 0;border-bottom:1px solid var(--doc-rule);color:var(--doc-ink-2);vertical-align:top}
+td:first-child{color:var(--doc-ink);width:30%}
+td code{font-size:12px}
+
+/* ── token 展示 ── */
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
+.sw{background:var(--doc-panel);padding:0}
+.sw .chip{height:64px;border-bottom:1px solid var(--doc-rule)}
+.sw .lbl{padding:11px 13px 13px;font-family:var(--code);font-size:10.5px;line-height:1.65;color:var(--doc-ink-3)}
+.sw .lbl b{display:block;color:var(--doc-ink);font-size:11.5px;font-weight:500;margin-bottom:2px;letter-spacing:.02em}
+.scale-row{display:flex;align-items:baseline;gap:20px;padding:11px 0;border-bottom:1px solid var(--doc-rule)}
+.scale-row .k{font-family:var(--code);font-size:10.5px;color:var(--doc-ink-3);width:170px;flex:none}
+.scale-row .v{color:var(--doc-ink);font-family:-apple-system,"SF Pro Text","PingFang SC",sans-serif}
+
+.statebar{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
+.stt{background:var(--doc-panel);padding:18px 20px}
+.stt .hd{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.stt .nm{font-size:14px;font-weight:600}
+.stt .d{font-size:12.5px;color:var(--doc-ink-2);line-height:1.6}
+.stt .m{font-family:var(--code);font-size:10.5px;color:var(--doc-ink-3);margin-top:9px;display:block}
+
+.callout{border-left:2px solid var(--doc-accent);padding:14px 20px;background:rgba(217,164,65,.06);margin:26px 0;max-width:80ch}
+.callout p{color:#e3d6bd;font-size:14px}
+
+/* ═══════════════════════════════════════════════════════════════
+   以下全部是 app 稿本体 —— 严格按 macOS 规格，字体/尺寸/材质都是真值
+   ═══════════════════════════════════════════════════════════════ */
+.win{
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono","JetBrains Mono",Menlo,monospace;
+
+  /* 浅色（默认） */
+  --chrome:rgba(246,246,246,.86);      /* 工具栏 / 状态栏 */
+  --sidebar:rgba(242,242,244,.92);     /* 侧栏材质 */
+  --content:#ffffff;                   /* 内容底 */
+  --inspector:#fbfbfc;
+  --hairline:rgba(0,0,0,.09);
+  --hairline-soft:rgba(0,0,0,.055);
+  --label:#1d1d1f;                     /* 一级文字 */
+  --label-2:rgba(60,60,67,.62);        /* 二级 */
+  --label-3:rgba(60,60,67,.38);        /* 三级 */
+  --fill:rgba(0,0,0,.05);              /* 控件底 */
+  --fill-hover:rgba(0,0,0,.075);
+  --sel:#0b63e5;                       /* 强调 */
+  --sel-soft:rgba(11,99,229,.12);
+  --on-sel:#fff;
+  --ok:#1a8a54;
+  --warn:#b67707;
+  --err:#d2382f;
+  --shadow-win:0 22px 62px rgba(0,0,0,.30),0 3px 12px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.18);
+  --shadow-pop:0 12px 34px rgba(0,0,0,.24),0 0 0 .5px rgba(0,0,0,.14);
+
+  /* 终端画布：跟随系统外观，与 chrome 同一套明暗 */
+  --canvas:#ffffff;
+  --canvas-2:#f4f4f6;
+  --canvas-rule:rgba(0,0,0,.09);
+  --canvas-ink:#1d1d1f;
+  --canvas-ink-2:rgba(60,60,67,.62);
+  --canvas-ink-3:rgba(60,60,67,.38);
+  --canvas-raise:rgba(0,0,0,.022);
+  --canvas-fill:rgba(0,0,0,.055);
+  --canvas-card:#ffffff;
+  --canvas-card-rule:rgba(0,0,0,.1);
+  --canvas-row:rgba(0,0,0,.035);
+  /* 终端 ANSI 语义色：两套主题各一组，都在自己底色上过 4.5:1 */
+  --t-blue:#0a58ca; --t-green:#137a4d; --t-yellow:#8a6100;
+  --t-red:#cf222e; --t-purple:#8250df;
+
+  width:1240px;height:780px;flex:none;
+  border-radius:10px;overflow:hidden;position:relative;
+  background:var(--content);color:var(--label);
+  font-family:var(--ui);font-size:13px;line-height:1.45;
+  letter-spacing:-.003em;
+  box-shadow:var(--shadow-win);
+  display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+.win.dark{
+  --chrome:rgba(42,42,44,.84);
+  --sidebar:rgba(36,36,38,.9);
+  --content:#1e1e20;
+  --inspector:#242426;
+  --hairline:rgba(255,255,255,.11);
+  --hairline-soft:rgba(255,255,255,.06);
+  --label:#f2f2f5;
+  --label-2:rgba(235,235,245,.6);
+  --label-3:rgba(235,235,245,.32);
+  --fill:rgba(255,255,255,.07);
+  --fill-hover:rgba(255,255,255,.1);
+  --sel:#4c8dff;
+  --sel-soft:rgba(76,141,255,.2);
+  --on-sel:#fff;
+  --ok:#3ecf8e;
+  --warn:#e5a00d;
+  --err:#ff6b60;
+  --canvas:#16181d;
+  --canvas-2:#1b1e24;
+  --canvas-rule:rgba(255,255,255,.08);
+  --canvas-ink:#d7dbe2;
+  --canvas-ink-2:rgba(215,219,226,.52);
+  --canvas-ink-3:rgba(215,219,226,.3);
+  --canvas-raise:rgba(255,255,255,.028);
+  --canvas-fill:rgba(255,255,255,.08);
+  --canvas-card:rgba(255,255,255,.045);
+  --canvas-card-rule:rgba(255,255,255,.1);
+  --canvas-row:rgba(255,255,255,.05);
+  --t-blue:#8fb8ff; --t-green:#6fcf97; --t-yellow:#e9c46a;
+  --t-red:#f08c82; --t-purple:#c79cf0;
+  --shadow-win:0 22px 62px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);
+  --shadow-pop:0 12px 34px rgba(0,0,0,.5),0 0 0 .5px rgba(255,255,255,.12);
+}
+
+/* ── 工具栏 ── */
+.tb{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 13px;
+  background:var(--chrome);border-bottom:1px solid var(--hairline);backdrop-filter:saturate(1.8) blur(20px)}
+.lights{display:flex;gap:8px;margin-right:8px}
+.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}
+.lights i:nth-child(3){background:#28c840}
+.win.dark .lights i{box-shadow:inset 0 0 0 .5px rgba(0,0,0,.16)}
+
+.tbtn{height:28px;min-width:28px;padding:0 7px;border-radius:6px;border:0;background:none;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  color:var(--label-2);font-family:var(--ui);font-size:13px;transition:.12s}
+.tbtn:hover{background:var(--fill)}
+.tbtn.on{background:var(--fill-hover);color:var(--label)}
+.tbtn svg{width:15px;height:15px;display:block}
+
+.crumb{display:flex;align-items:center;gap:7px;min-width:0;padding:0 2px}
+.crumb .proj{font-size:13px;font-weight:600;color:var(--label);white-space:nowrap}
+.crumb .caret{color:var(--label-3);font-size:9px;margin-left:1px}
+.grow{flex:1}
+
+/* 分段控件（macOS segmented） */
+.seg{display:inline-flex;background:var(--fill);border-radius:7px;padding:2px;gap:2px}
+.seg button{width:30px;height:24px;border:0;border-radius:5px;background:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:var(--label-2);transition:.12s}
+.seg button svg{width:15px;height:15px}
+.seg button:hover{color:var(--label)}
+.seg button.on{background:var(--content);color:var(--label);
+  box-shadow:0 1px 2.5px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.05)}
+.win.dark .seg button.on{background:rgba(255,255,255,.17);box-shadow:none}
+.tb .divider{width:1px;height:20px;background:var(--hairline);flex:none;margin:0 3px}
+
+.badge-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;
+  background:var(--warn);box-shadow:0 0 0 2px var(--chrome)}
+
+/* ── 主体三分 ── */
+.body{flex:1;display:flex;min-height:0}
+
+/* ── 侧栏：项目 = 可折叠组，会话 = 行。两列合一 ── */
+.side{width:238px;flex:none;background:var(--sidebar);border-right:1px solid var(--hairline);
+  display:flex;flex-direction:column;min-height:0;backdrop-filter:saturate(1.8) blur(20px)}
+.side-search{margin:9px 10px 8px;height:24px;border-radius:6px;background:var(--fill);
+  display:flex;align-items:center;gap:6px;padding:0 7px;color:var(--label-3);font-size:12.5px}
+.side-search svg{width:12px;height:12px;flex:none}
+.side-filter{display:flex;gap:5px;padding:0 10px 9px}
+.fchip{height:21px;padding:0 9px;border-radius:99px;border:0;cursor:pointer;background:var(--fill);
+  color:var(--label-2);font-family:var(--ui);font-size:11.5px;display:inline-flex;align-items:center;gap:5px;transition:.12s}
+.fchip.on{background:var(--label);color:var(--content)}
+.fchip .c{font-variant-numeric:tabular-nums;opacity:.65;font-size:11px}
+.fchip.alert{background:rgba(182,119,7,.14);color:var(--warn)}
+.win.dark .fchip.alert{background:rgba(229,160,13,.16)}
+.fchip.alert .c{opacity:1;font-weight:600}
+
+.side-scroll{flex:1;overflow:hidden;padding:0 0 6px}
+.grp{display:flex;align-items:center;gap:5px;height:24px;padding:0 10px 0 9px;margin-top:5px;
+  color:var(--label-2);font-size:11.5px;font-weight:600;letter-spacing:.01em;cursor:default}
+.grp .tri{width:9px;height:9px;color:var(--label-3);flex:none}
+.grp .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp .n{font-family:var(--mono);font-size:10px;color:var(--label-3);font-variant-numeric:tabular-nums;font-weight:400}
+
+/* 会话行：单行。状态点 + agent 品牌图标 + 名称；上了画布再追加一个格位徽标 ⌘⇧N。
+   agent 用图标而不是「claude · opus-5」这行字 —— 图标一眼可辨，还省掉一整行高度。 */
+.srow{display:flex;align-items:center;gap:7px;margin:0 8px;padding:0 8px;height:28px;border-radius:6px;
+  cursor:default;position:relative}
+.srow:hover{background:var(--fill)}
+.srow.on{background:var(--sel);color:var(--on-sel)}
+.srow.on .st{color:rgba(255,255,255,.72)}
+.srow .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.srow .ai{width:15px;height:15px;flex:none;display:block;border-radius:3px}
+.srow .s1{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .st{font-size:10.5px;color:var(--label-3);font-variant-numeric:tabular-nums;flex:none}
+
+/* 状态点语言：只有两个。一处定义，三处复用（侧栏 / 窗格头 / 收件箱）
+   会话都可恢复，所以没有「已退出」「可恢复」这类状态 —— 点进去就接着跑。 */
+.d-run{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 18%,transparent)}
+.d-attn{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 20%,transparent)}
+.srow.on .dot{box-shadow:0 0 0 3px rgba(255,255,255,.22)}
+
+/* 历史会话：归在所属项目组里，不进检查器 */
+.hrow2{display:flex;align-items:center;gap:8px;margin:0 8px;padding:0 8px;height:24px;border-radius:6px;
+  color:var(--label-2);font-size:12px;cursor:default}
+.hrow2:hover{background:var(--fill)}
+.hrow2 .tri{width:9px;height:9px;color:var(--label-3);flex:none}
+.hrow2 .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hrow2 .n{font-family:var(--mono);font-size:10px;color:var(--label-3);font-variant-numeric:tabular-nums}
+.hsess{display:flex;align-items:center;gap:8px;margin:0 8px;padding:0 8px 0 21px;height:24px;border-radius:6px;
+  color:var(--label-2);font-size:12.5px;cursor:default}
+.hsess:hover{background:var(--fill)}
+.hsess .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px var(--label-3)}
+.hsess .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 项目组标题行的 hover ＋：新建会话到这个项目 */
+.grp .add{width:17px;height:17px;border-radius:4px;border:0;background:var(--fill);cursor:pointer;
+  color:var(--label-2);display:flex;align-items:center;justify-content:center;flex:none}
+.grp .add svg{width:10px;height:10px}
+
+.side-foot{flex:none;border-top:1px solid var(--hairline-soft);padding:7px 9px;display:flex;gap:6px}
+.sfbtn{flex:1;height:25px;border-radius:6px;border:0;background:var(--fill);cursor:pointer;
+  color:var(--label);font-family:var(--ui);font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:5px}
+.sfbtn:hover{background:var(--fill-hover)}
+.sfbtn svg{width:12px;height:12px}
+
+/* ── 中栏：终端画布（主角，占满） ── */
+.center{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--canvas)}
+.canvas{flex:1;min-height:0;display:flex;overflow:hidden}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--canvas)}
+.pane + .pane{border-left:1px solid var(--canvas-rule)}
+.canvas.rows{flex-direction:column}
+.canvas.rows .pane + .pane{border-left:0;border-top:1px solid var(--canvas-rule)}
+.pane.focus::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
+  box-shadow:inset 0 0 0 1px rgba(11,99,229,.5);}
+.win.dark .pane.focus::before{box-shadow:inset 0 0 0 1px rgba(76,141,255,.55)}
+/* 窗格头 —— 会话的唯一标识条。布局是「单个」时它就是画布顶部那一条，
+   四宫格时每格一条。没有第二套标签页机制 —— 画布只有布局，没有 tab。 */
+.pane-hd{height:28px;flex:none;display:flex;align-items:center;gap:7px;padding:0 4px 0 10px;
+  background:var(--canvas-raise);border-bottom:1px solid var(--canvas-rule);
+  color:var(--canvas-ink-2);font-size:12px}
+.pane.focus .pane-hd{background:var(--sel-soft);color:var(--canvas-ink)}
+.pane-hd .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.pane-hd .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pane-hd .sub{font-size:11px;color:var(--canvas-ink-3);flex:none;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+.pane-hd .k{font-family:var(--mono);font-size:10px;color:var(--canvas-ink-3);
+  border:1px solid var(--canvas-rule);border-radius:3px;padding:0 4px;line-height:14px;flex:none}
+.pane-hd .tools{display:flex;align-items:center;gap:1px;flex:none}
+.ctool{width:21px;height:21px;border-radius:4px;border:0;background:none;cursor:pointer;
+  color:var(--canvas-ink-3);display:flex;align-items:center;justify-content:center}
+.ctool:hover{background:var(--canvas-fill);color:var(--canvas-ink)}
+.ctool svg{width:13px;height:13px}
+
+.term{flex:1;min-height:0;padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.62;
+  color:var(--canvas-ink);overflow:hidden;white-space:pre-wrap;word-break:break-word}
+.term .u{color:var(--t-blue)}
+.term .g{color:var(--t-green)}
+.term .y{color:var(--t-yellow)}
+.term .r{color:var(--t-red)}
+.term .m{color:var(--t-purple)}
+.term .dim{color:var(--canvas-ink-2)}
+.term .dim2{color:var(--canvas-ink-3)}
+.term .b{color:var(--canvas-ink);font-weight:600}
+.term .cur{display:inline-block;width:7px;height:14px;background:var(--canvas-ink);vertical-align:-2px;
+  animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.term.small{font-size:11px;line-height:1.55;padding:9px 11px}
+
+/* ── 右栏：检查器，固定位置，4 tab 互斥 ── */
+.insp{width:302px;flex:none;background:var(--inspector);border-left:1px solid var(--hairline);
+  display:flex;flex-direction:column;min-height:0}
+.insp-tabs{height:38px;flex:none;display:flex;align-items:center;padding:0 10px;
+  border-bottom:1px solid var(--hairline-soft);gap:2px}
+.itab{flex:1;height:24px;border:0;border-radius:6px;background:none;cursor:pointer;
+  color:var(--label-2);font-family:var(--ui);font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:5px;transition:.12s}
+.itab:hover{background:var(--fill)}
+.itab.on{background:var(--fill-hover);color:var(--label);font-weight:500}
+.itab .n{font-family:var(--mono);font-size:9.5px;background:var(--sel);color:#fff;border-radius:99px;
+  padding:0 4px;line-height:13px;font-variant-numeric:tabular-nums}
+.insp-body{flex:1;min-height:0;overflow:hidden}
+.ipane{display:none;height:100%;flex-direction:column}
+.ipane.on{display:flex}
+.isec{height:26px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;
+  color:var(--label-3);font-size:11px;font-weight:600;letter-spacing:.02em;margin-top:6px}
+.isec .sp{flex:1}
+.ilink{border:0;background:none;cursor:pointer;color:var(--sel);font-family:var(--ui);font-size:11.5px;padding:0}
+.iscroll{flex:1;min-height:0;overflow:hidden;padding-bottom:8px}
+
+/* 文件树 */
+.tnode{display:flex;align-items:center;gap:6px;height:24px;margin:0 8px;padding:0 6px;border-radius:6px;
+  color:var(--label);font-size:12.5px;cursor:default}
+.tnode:hover{background:var(--fill)}
+.tnode.on{background:var(--sel-soft)}
+.tnode .tri{width:9px;height:9px;color:var(--label-3);flex:none}
+.tnode .ic{width:13px;height:13px;flex:none;color:var(--label-2)}
+.tnode .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tnode .tg{margin-left:auto;font-family:var(--mono);font-size:9.5px;font-weight:600;padding:0 4px;
+  border-radius:3px;line-height:14px}
+.tg.m{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn)}
+.tg.a{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+
+/* 变更 */
+.fhd{display:flex;align-items:center;gap:8px;padding:0 12px;height:30px;
+  border-top:1px solid var(--hairline-soft);background:var(--inspector)}
+.fhd:first-child{border-top:0}
+.fhd .st{font-family:var(--mono);font-size:9.5px;font-weight:600;width:16px;height:16px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.fhd .nm{flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fhd .ct{font-family:var(--mono);font-size:10.5px;color:var(--label-3)}
+.hunk{margin:0 10px 9px;border:1px solid var(--hairline);border-radius:6px;overflow:hidden;background:var(--content)}
+.hbar{height:24px;display:flex;align-items:center;gap:8px;padding:0 5px 0 9px;background:var(--fill);
+  border-bottom:1px solid var(--hairline-soft);font-family:var(--mono);font-size:10px;color:var(--label-2)}
+.hbar .sp{flex:1}
+.hbtn{height:18px;padding:0 8px;border-radius:4px;border:0;background:var(--content);cursor:pointer;
+  color:var(--label);font-family:var(--ui);font-size:11px;box-shadow:0 0 0 .5px rgba(0,0,0,.12)}
+.hbtn:hover{background:var(--fill-hover)}
+.win.dark .hbtn{background:rgba(255,255,255,.14);box-shadow:none}
+.win.dark .hbtn:hover{background:rgba(255,255,255,.2)}
+.dl{display:flex;font-family:var(--mono);font-size:11px;line-height:1.7;white-space:pre}
+.dl .ln{width:34px;flex:none;text-align:right;padding-right:9px;color:var(--label-3);
+  font-size:10px;user-select:none;font-variant-numeric:tabular-nums}
+.dl .tx{flex:1;padding-right:8px;overflow:hidden;text-overflow:ellipsis}
+.dl.add{background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.dl.add .tx{color:var(--ok)}
+.dl.del{background:color-mix(in srgb,var(--err) 9%,transparent)}
+.dl.del .tx{color:var(--err)}
+.dl.ctx .tx{color:var(--label-2)}
+
+/* 待办 */
+.todo{display:flex;align-items:flex-start;gap:9px;margin:0 8px;padding:6px 8px;border-radius:6px;cursor:default}
+.todo:hover{background:var(--fill)}
+.todo .box{width:14px;height:14px;border-radius:4px;flex:none;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
+.box.todo_{box-shadow:inset 0 0 0 1.5px var(--label-3)}
+.box.doing{background:var(--warn)}
+.box.done{background:var(--ok)}
+.todo > span:last-child{display:flex;flex-direction:column;min-width:0}
+.todo .tt{display:block;font-size:12.5px;line-height:1.5}
+.todo.is-done .tt{color:var(--label-3);text-decoration:line-through}
+.todo .by{display:block;font-size:11px;color:var(--label-3);margin-top:1px}
+
+
+/* ── 状态栏：所有"以前铺在主区的元数据"都收到这里 ── */
+.sb{height:26px;flex:none;display:flex;align-items:center;gap:0;padding:0 11px;
+  background:var(--chrome);border-top:1px solid var(--hairline);
+  font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.sb .it{display:flex;align-items:center;gap:5px;padding:0 9px;height:18px;border-radius:4px}
+.sb .it:first-child{padding-left:0}
+.sb .it:hover{background:var(--fill)}
+.sb svg{width:11px;height:11px;flex:none;opacity:.7}
+.sb .sp{flex:1}
+.sb .vd{width:1px;height:11px;background:var(--hairline);margin:0 2px}
+.sb .mono{font-family:var(--mono);font-size:10px}
+
+/* ── 浮层：popover / sheet / 命令面板 ── */
+.scrim{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,.22)}
+.win.dark .scrim{background:rgba(0,0,0,.42)}
+.pop{position:absolute;z-index:60;background:var(--content);border-radius:10px;box-shadow:var(--shadow-pop);
+  overflow:hidden}
+.win.dark .pop{background:#2c2c2e}
+.pop-hd{height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--hairline-soft)}
+.pop-hd .t{font-size:12.5px;font-weight:600;flex:1}
+.pop-hd .a{font-size:11.5px;color:var(--sel);cursor:pointer}
+.pop .k2{width:76px;color:var(--label-2);flex:none}
+
+.arow{display:flex;gap:10px;padding:9px 12px;border-top:1px solid var(--hairline-soft);cursor:default}
+.arow:first-of-type{border-top:0}
+.arow:hover{background:var(--fill)}
+.arow .dot{width:7px;height:7px;border-radius:50%;flex:none;margin-top:5px}
+.arow .mid{flex:1;min-width:0;display:flex;flex-direction:column}
+.arow .a1{display:block;font-size:12.5px;line-height:1.4}
+.arow .a2{display:block;font-size:11.5px;color:var(--label-2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arow .a3{font-size:10.5px;color:var(--label-3);flex:none;margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* 菜单 */
+.menu{position:absolute;z-index:60;min-width:214px;padding:5px;border-radius:8px;
+  background:rgba(250,250,250,.86);backdrop-filter:blur(28px) saturate(1.8);
+  box-shadow:var(--shadow-pop)}
+.win.dark .menu{background:rgba(52,52,54,.84)}
+.mi{display:flex;align-items:center;gap:9px;height:24px;padding:0 9px;border-radius:6px;
+  font-size:13px;color:var(--label);cursor:default}
+.mi .sp{flex:1}
+.mi .kb{font-size:11.5px;color:var(--label-3)}
+.mi.on{background:var(--sel);color:#fff}
+.mi.on .kb{color:rgba(255,255,255,.7)}
+.mi.danger{color:var(--err)}
+.mi svg{width:13px;height:13px;opacity:.75}
+.msep{height:1px;background:var(--hairline);margin:5px 9px}
+
+/* 命令面板 */
+.palette{position:absolute;z-index:60;left:50%;top:92px;transform:translateX(-50%);width:600px;
+  background:rgba(250,250,250,.9);backdrop-filter:blur(34px) saturate(1.8);
+  border-radius:12px;box-shadow:0 26px 64px rgba(0,0,0,.34),0 0 0 .5px rgba(0,0,0,.16);overflow:hidden}
+.win.dark .palette{background:rgba(44,44,46,.9);box-shadow:0 26px 64px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.14)}
+.pq{height:48px;display:flex;align-items:center;gap:10px;padding:0 15px;border-bottom:1px solid var(--hairline)}
+.pq svg{width:16px;height:16px;color:var(--label-3)}
+.pq .txt{flex:1;font-size:16px;color:var(--label)}
+.pq .cur{display:inline-block;width:1.5px;height:17px;background:var(--sel);vertical-align:-3px;animation:blink 1.1s steps(1) infinite}
+.pg{font-size:10.5px;font-weight:600;letter-spacing:.05em;color:var(--label-3);padding:9px 15px 4px}
+.pi_{display:flex;align-items:center;gap:10px;height:32px;margin:0 6px;padding:0 9px;border-radius:6px;font-size:13px}
+.pi_ .ic{width:15px;height:15px;color:var(--label-2);flex:none}
+.pi_ .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pi_ .hint{font-size:11.5px;color:var(--label-3)}
+.pi_.on{background:var(--sel);color:#fff}
+.pi_.on .ic,.pi_.on .hint{color:rgba(255,255,255,.8)}
+.pfoot{height:30px;display:flex;align-items:center;gap:14px;padding:0 15px;border-top:1px solid var(--hairline);
+  font-size:11px;color:var(--label-3)}
+kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:3px;padding:1px 4px;color:var(--label-2)}
+
+.pop-sel{height:24px;border-radius:6px;background:var(--content);box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 1px 1.5px rgba(0,0,0,.06);
+  display:inline-flex;align-items:center;gap:8px;padding:0 6px 0 9px;font-size:13px}
+.win.dark .pop-sel{background:rgba(255,255,255,.1);box-shadow:none}
+.pop-sel .ch{width:15px;height:15px;border-radius:4px;background:var(--sel);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:8px;margin-left:4px}
+.btn{height:24px;padding:0 15px;border-radius:6px;border:0;cursor:pointer;font-family:var(--ui);font-size:13px;
+  background:var(--content);color:var(--label);box-shadow:0 0 0 .5px rgba(0,0,0,.2),0 1px 1.5px rgba(0,0,0,.06)}
+.win.dark .btn{background:rgba(255,255,255,.12);box-shadow:none}
+.btn:hover{background:var(--fill)}
+.win.dark .btn:hover{background:rgba(255,255,255,.18)}
+.btn.pri{background:var(--sel);color:#fff;box-shadow:none}
+.btn.pri:hover{background:color-mix(in srgb,var(--sel) 88%,#000)}
+
+/* Agent 选择器 —— 沿用非原生版 NewSessionPicker 的形式，按原生质感重制。
+   它既是「项目无会话」的空状态，也是 ⌘N 的内容：唯一的新建入口。 */
+.picker-host{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 12px;min-height:0}
+.pane{container-type:inline-size}
+.picker{width:100%;max-width:520px;padding:30px 28px 24px;border-radius:12px;
+  background:var(--canvas-card);border:1px solid var(--canvas-card-rule);
+  display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.win.dark .picker{box-shadow:none}
+.picker .logo{width:52px;height:52px;align-self:center;margin-bottom:15px;display:block}
+.picker .logo svg{width:100%;height:100%;display:block;border-radius:12px}
+.pagent .av svg{width:26px;height:26px;display:block}
+.picker h3{text-align:center;font-size:20px;font-weight:600;color:var(--canvas-ink);letter-spacing:-.01em}
+.picker .sub{text-align:center;color:var(--canvas-ink-2);font-size:12px;margin:5px 0 20px}
+/* agent 并排一行 —— 「选一个」是一次横向扫视，不是一列待读的清单 */
+.picker .agents{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pagent{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 8px 11px;
+  border-radius:10px;cursor:pointer;background:var(--canvas-row);border:1px solid var(--canvas-card-rule);
+  color:var(--canvas-ink);transition:border-color 80ms,background 80ms}
+.pagent:hover{border-color:var(--sel);background:var(--sel-soft)}
+.pagent .av{width:32px;height:32px;flex:none;display:flex;align-items:center;justify-content:center}
+.pagent .nm{font-weight:600;font-size:13px;color:var(--canvas-ink);text-align:center;line-height:1.3}
+.pagent .cmd{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;color:var(--canvas-ink-3)}
+.pagent .pd{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ok)}
+.picker .foot{display:flex;align-items:center;gap:9px;margin-top:17px;padding-top:15px;
+  border-top:1px solid var(--canvas-rule);font-size:12px;color:var(--canvas-ink-2)}
+.picker .foot .wt{display:inline-flex;align-items:center;gap:9px;flex:none}
+.picker .foot i{width:14px;height:14px;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:9px;color:#fff;box-shadow:inset 0 0 0 1.5px var(--canvas-ink-3)}
+.picker .foot i.on{background:var(--sel);box-shadow:none}
+/* 分支选择：不勾 worktree 就是「切到这个分支再起」，勾了就是「基于它建 worktree」 */
+.branch{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:24px;
+  padding:0 7px 0 8px;border-radius:6px;background:var(--canvas-row);
+  border:1px solid var(--canvas-card-rule);font-size:12px;color:var(--canvas-ink);cursor:pointer}
+.branch:hover{border-color:var(--sel)}
+.branch .gi{width:12px;height:12px;flex:none;opacity:.55}
+.branch .bn{font-family:var(--mono);font-size:11px}
+.branch .ch{font-size:9px;opacity:.5}
+
+/* 同一个组件，不是第二套小号版：窗格窄到并排格子的尺寸时按容器收缩。
+   必须放在全部 .picker 规则之后，否则会被基础规则覆盖。 */
+@container (max-width:470px){
+  .pane-hd .sub{display:none}
+  .picker-host{padding:10px 8px}
+  .picker{padding:13px 11px 11px;border-radius:10px}
+  .picker .logo{width:28px;height:28px;margin-bottom:7px}
+  .picker .logo svg{border-radius:7px}
+  .picker h3{font-size:13.5px}
+  .picker .sub{font-size:11px;margin:2px 0 10px}
+  .picker .agents{gap:5px}
+  .pagent{padding:8px 4px 7px;gap:4px;border-radius:8px}
+  .pagent .av{width:22px;height:22px}
+  .pagent .av svg{width:19px;height:19px}
+  .pagent .nm{font-size:10.5px}
+  .pagent .cmd{display:none}
+  /* 窄容器下仍是一行：worktree 与分支是同一个决策带，拆成两行会读成两条设置 */
+  .picker .foot{margin-top:9px;padding-top:8px;font-size:11px;gap:7px}
+  .picker .foot .wt{gap:6px}
+  .branch{height:22px;min-width:0;padding:0 5px 0 6px}
+  .branch .bn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* 空状态 */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:30px;text-align:center}
+.empty .ic{width:36px;height:36px;color:var(--label-3);margin-bottom:11px}
+.empty.on-canvas .ic{color:var(--canvas-ink-3)}
+.empty .t{font-size:15px;font-weight:600}
+.empty .d{font-size:12.5px;color:var(--label-2);max-width:37ch;line-height:1.55;margin-top:3px}
+.empty.on-canvas .t{color:var(--canvas-ink)}
+.empty.on-canvas .d{color:var(--canvas-ink-2)}
+.empty .acts{display:flex;gap:8px;margin-top:16px}
+
+/* 设置窗 */
+.set{width:760px;height:540px}
+.set .body{flex:1}
+.setnav{width:206px;flex:none;background:var(--sidebar);border-right:1px solid var(--hairline);padding:6px 0}
+.ng{font-size:11px;font-weight:600;color:var(--label-3);padding:11px 16px 4px}
+.ni{display:flex;align-items:center;gap:9px;height:26px;margin:0 8px;padding:0 8px;border-radius:6px;font-size:13px}
+.ni .ic{width:15px;height:15px;color:var(--label-2)}
+.ni.on{background:var(--sel);color:#fff}
+.ni.on .ic{color:#fff}
+.setpane{flex:1;padding:22px 26px;overflow:hidden}
+.ph{font-size:16px;font-weight:600;margin-bottom:3px}
+.ph2{font-size:12.5px;color:var(--label-2);margin-bottom:20px;line-height:1.55}
+.srow2{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--hairline-soft)}
+.srow2 .lb{flex:1}
+.srow2 .t{font-size:13px}
+.srow2 .d{font-size:11.5px;color:var(--label-3);margin-top:2px;line-height:1.5}
+.sw2{width:38px;height:22px;border-radius:99px;background:var(--fill);position:relative;flex:none}
+.sw2 i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.24)}
+.sw2.on{background:var(--ok)}
+.sw2.on i{left:18px}
+.segbig{display:inline-flex;background:var(--fill);border-radius:7px;padding:2px}
+.segbig button{border:0;background:none;padding:0 12px;height:22px;border-radius:5px;cursor:pointer;
+  font-family:var(--ui);font-size:12.5px;color:var(--label-2)}
+.segbig button.on{background:var(--content);color:var(--label);box-shadow:0 1px 2.5px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.05)}
+.win.dark .segbig button.on{background:rgba(255,255,255,.18);box-shadow:none}
+
+
+/* ── 变更面板（§03b）：单列内联 diff + 常驻提交条 ── */
+.insp-solo{width:302px;height:520px;flex:none;display:flex;flex-direction:column;
+  background:var(--inspector);border:1px solid var(--hairline);border-radius:10px;overflow:hidden;
+  box-shadow:0 18px 44px rgba(0,0,0,.18)}
+.insp-solo.short{height:300px}
+.imore{border:0;background:none;cursor:pointer;color:var(--label-3);font-size:13px;line-height:1;padding:0 2px}
+.imore:hover{color:var(--label)}
+.fhd .fact{display:none;gap:4px}
+.fhd:hover .fact{display:flex}
+.fhd:hover .ct{display:none}
+.fact button{height:17px;padding:0 6px;border-radius:4px;border:0;cursor:pointer;
+  background:var(--fill-hover);color:var(--label-2);font-family:var(--ui);font-size:10.5px}
+.fact button:hover{background:var(--sel);color:#fff}
+.fact button.danger:hover{background:var(--err)}
+.cbar{flex:none;border-top:1px solid var(--hairline);background:var(--chrome);padding:8px 10px;
+  display:flex;flex-direction:column;gap:7px}
+.cbar input{height:24px;border-radius:6px;border:1px solid var(--hairline);background:var(--content);
+  padding:0 8px;font-family:var(--ui);font-size:12px;color:var(--label);outline:none}
+.win.dark .cbar input,.insp-solo.dark .cbar input{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14);color:#f2ece4}
+.cbar .row{display:flex;align-items:center;gap:8px}
+.cbar .hint{flex:1;font-size:11px;color:var(--label-3)}
+.cbtn{height:24px;padding:0 12px;border-radius:6px;border:0;background:var(--sel);color:#fff;
+  font-family:var(--ui);font-size:12px;font-weight:500;cursor:pointer}
+.cbtn[disabled]{background:var(--fill-hover);color:var(--label-3);cursor:default}
+.cpt{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;
+  border-top:1px solid var(--hairline-soft);font-size:12.5px;color:var(--label);cursor:default}
+.cpt:hover{background:var(--fill)}
+.cpt.on{background:var(--sel-soft)}
+.cpt .sq{font-family:var(--mono);font-size:10px;color:var(--label-3);width:22px;flex:none}
+.cpt .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpt .tm{font-family:var(--mono);font-size:10px;color:var(--label-3)}
+.iempty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;padding:24px;text-align:center}
+.iempty .t{font-size:13px;font-weight:600;color:var(--label)}
+.iempty .d{font-size:11.5px;line-height:1.55;color:var(--label-2)}
+
+/* ── 待办面板（§03c）── */
+.tadd{display:flex;align-items:center;gap:7px;margin:7px 10px 3px;padding:0 9px;height:28px;
+  border-radius:7px;border:1px solid var(--hairline);background:var(--content);color:var(--label-3);font-size:12.5px}
+.tadd.focus{border-color:var(--sel);color:var(--label);box-shadow:0 0 0 3px color-mix(in srgb,var(--sel) 14%,transparent)}
+.tadd .pl{flex:1}
+.tadd .kbd{font-family:var(--mono);font-size:9.5px;color:var(--label-3)}
+.tgrp{display:flex;align-items:center;gap:6px;height:22px;padding:0 12px;margin-top:6px;
+  font-size:11px;font-weight:600;color:var(--label-3)}
+.tgrp .sp{flex:1}
+.tgrp .n{font-family:var(--mono);font-size:10px;font-weight:400}
+.tgrp .tri{width:9px;height:9px;color:var(--label-3)}
+.todo .tact{margin-left:auto;display:none;align-items:center;gap:2px;color:var(--label-3)}
+.todo:hover .tact{display:flex}
+.todo .tact button{border:0;background:none;cursor:pointer;color:var(--label-3);font-size:12px;
+  line-height:1;padding:2px 4px;border-radius:4px}
+.todo .tact button:hover{background:var(--fill-hover);color:var(--label)}
+.tfoot{padding:12px 14px;font-size:11.5px;line-height:1.55;color:var(--label-3);border-top:1px solid var(--hairline-soft)}
+.tmenu{position:absolute;width:186px;padding:5px;border-radius:9px;background:var(--content);
+  box-shadow:0 12px 30px rgba(0,0,0,.2),0 0 0 .5px rgba(0,0,0,.12);z-index:30}
+.win.dark .tmenu,.insp-solo.dark .tmenu{background:#2c2c2e;box-shadow:0 12px 30px rgba(0,0,0,.5),0 0 0 .5px rgba(255,255,255,.12)}
+.tmenu .mi{display:flex;align-items:center;gap:8px;height:24px;padding:0 9px;border-radius:5px;
+  font-size:12.5px;color:var(--label)}
+.tmenu .mi.on{background:var(--sel);color:#fff}
+.tmenu .mi .k{margin-left:auto;font-family:var(--mono);font-size:10px;opacity:.6}
+.tmenu .sep{height:1px;margin:4px 7px;background:var(--hairline)}
+</style>
+</head>
+<body>
+
+<!-- 图标雪碧图：agent 品牌标来自 @lobehub/icons，ycode 标来自 src/assets/ycode-logo.svg。
+     一处定义，侧栏行 / 选择器 / 任何地方都用 <use> 引，渐变 id 不会互相打架。 -->
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="ic-ycode" viewBox="0 0 1024 1024">
+    <linearGradient id="yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient>
+    <linearGradient id="yc-top" x1="300" y1="275" x2="742" y2="516" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0c68a"/><stop offset=".48" stop-color="#a97947"/><stop offset="1" stop-color="#423225"/></linearGradient>
+    <linearGradient id="yc-left" x1="278" y1="432" x2="534" y2="732" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#5c3126"/></linearGradient>
+    <linearGradient id="yc-right" x1="538" y1="445" x2="767" y2="742" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f08f6c"/><stop offset="1" stop-color="#7b3f2d"/></linearGradient>
+    <rect x="72" y="72" width="880" height="880" rx="214" fill="url(#yc-tile)"/>
+    <rect x="104" y="104" width="816" height="816" rx="188" fill="none" stroke="#51483a" stroke-opacity=".42" stroke-width="8"/>
+    <path d="M512 206 752 344 512 482 272 344Z" fill="url(#yc-top)"/>
+    <path d="M272 344 512 482v276L272 620Z" fill="url(#yc-left)"/>
+    <path d="M752 344 512 482v276l240-138Z" fill="url(#yc-right)"/>
+    <path d="M512 206 752 344 512 482 272 344Z" fill="none" stroke="#f0eee6" stroke-opacity=".34" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M272 344v276l240 138 240-138V344" fill="none" stroke="#1a130f" stroke-opacity=".5" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M416 404 512 458 608 404" fill="none" stroke="#fff2d8" stroke-opacity=".72" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M512 458v116" fill="none" stroke="#fff2d8" stroke-opacity=".76" stroke-width="18" stroke-linecap="round"/>
+    <path d="M446 620 512 658 578 620" fill="none" stroke="#f0eee6" stroke-opacity=".9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M238 787c58 42 145 68 274 68s216-26 274-68" fill="none" stroke="#d97757" stroke-opacity=".22" stroke-width="18" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="ic-claude" viewBox="0 0 24 24">
+    <path fill="#D97757" d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"/>
+  </symbol>
+  <symbol id="ic-codex" viewBox="0 0 24 24">
+    <linearGradient id="cx-g" x1="12" y1="3" x2="12" y2="21" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B1A7FF"/><stop offset=".5" stop-color="#7A9DFF"/><stop offset="1" stop-color="#3941FF"/></linearGradient>
+    <path fill="url(#cx-g)" d="M19.503 0H4.496A4.496 4.496 0 000 4.496v15.007A4.496 4.496 0 004.496 24h15.007A4.496 4.496 0 0024 19.503V4.496A4.496 4.496 0 0019.503 0z"/>
+    <path fill="#fff" d="M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388zm3.482 10.565a.637.637 0 000 1.272h3.636a.637.637 0 100-1.272h-3.636zM8.462 9.23a.637.637 0 00-1.106.631l1.272 2.224-1.266 2.136a.636.636 0 101.095.649l1.454-2.455a.636.636 0 00.005-.64L8.462 9.23z"/>
+  </symbol>
+  <symbol id="ic-gemini" viewBox="0 0 24 24">
+    <linearGradient id="gm-g" x1="24" y1="6.587" x2="0" y2="16.494" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#EE4D5D"/><stop offset=".328" stop-color="#B381DD"/><stop offset=".476" stop-color="#207CFE"/></linearGradient>
+    <path fill="url(#gm-g)" d="M0 4.391A4.391 4.391 0 014.391 0h15.217A4.391 4.391 0 0124 4.391v15.217A4.391 4.391 0 0119.608 24H4.391A4.391 4.391 0 010 19.608V4.391z"/>
+    <path fill="#1E1E2E" fill-rule="evenodd" d="M19.74 1.444a2.816 2.816 0 012.816 2.816v15.48a2.816 2.816 0 01-2.816 2.816H4.26a2.816 2.816 0 01-2.816-2.816V4.26A2.816 2.816 0 014.26 1.444h15.48zM7.236 8.564l7.752 3.728-7.752 3.727v2.802l9.557-4.596v-3.866L7.236 5.763v2.801z"/>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+<!-- ══════════════ 页眉 ══════════════ -->
+<header class="masthead">
+  <div class="eyebrow">ycode · macOS 原生版 · 界面设计稿 v1</div>
+  <h1>把终端<br>还给<em>主位</em>。</h1>
+  <p class="dek">
+    原生版 0.2.3 的功能是齐的，界面不是。这份稿子不新增任何功能 ——
+    它只回答一个问题：同样这些东西，怎么摆才像一个做完的产品，而不是一次能跑通的演示。
+  </p>
+  <div class="meta">
+    <span><b>日期</b> 2026-09-20</span>
+    <span><b>基线</b> 原生 0.2.3 (203) · <code>macos/YCodeApp</code></span>
+    <span><b>形态</b> 终端画布（PTY）</span>
+    <span><b>参考</b> docs/ui-prototype.html · docs/ycode-feature-spec.md</span>
+    <span><b>窗口</b> 1240 × 780</span>
+  </div>
+
+  <nav class="toc">
+    <a href="#diagnosis"><span class="n">01</span><span class="t">现状诊断</span></a>
+    <a href="#foundations"><span class="n">02</span><span class="t">设计基础</span></a>
+    <a href="#main"><span class="n">03</span><span class="t">主窗口</span></a>
+    <a href="#changes"><span class="n">03b</span><span class="t">变更面板</span></a>
+    <a href="#todos"><span class="n">03c</span><span class="t">待办面板</span></a>
+    <a href="#parallel"><span class="n">04</span><span class="t">多会话并排</span></a>
+    <a href="#overlays"><span class="n">05</span><span class="t">浮层与菜单</span></a>
+    <a href="#palette"><span class="n">06</span><span class="t">命令面板与新建</span></a>
+    <a href="#states"><span class="n">07</span><span class="t">空状态与故障</span></a>
+    <a href="#settings"><span class="n">08</span><span class="t">设置</span></a>
+    <a href="#mapping"><span class="n">09</span><span class="t">控件去向对照</span></a>
+  </nav>
+</header>
+
+<!-- ══════════════ 01 诊断 ══════════════ -->
+<section id="diagnosis">
+  <div class="sec-head"><span class="sec-num">01</span><h2>现状诊断</h2></div>
+  <p class="sec-dek">
+    「像 demo」不是一句观感，它有七个可以指到代码行的成因。每一条都不是没做完，
+    而是<b>做完了但摆错了位置</b> —— 所以修它不需要动功能。
+  </p>
+
+  <div class="diag">
+    <div class="dcard">
+      <div class="no">问题 01</div>
+      <h4>主角不在主位</h4>
+      <p>终端是 <code>projectDetail</code> 里 <code>VStack</code> 的最后一项。它上面压着会话标题、
+        <code>agentProfile</code>、<code>PID</code>、Agent 会话 ID，和「停止 / 恢复重启 / 重命名 / 归档」四个按钮。
+        终端只拿到剩下的空间。</p>
+      <span class="src">YCodeNativeApp.swift:511-544</span>
+      <div class="fix"><b>对策</b> 终端占满整个内容区。上面那些全部移出主区：进程信息→状态栏，
+        会话动作→窗格头右键菜单，会话 ID→「会话信息」浮层。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 02</div>
+      <h4>两列侧栏，一棵两层树</h4>
+      <p><code>NavigationSplitView</code> 三列：项目一列（min 210）、会话一列、详情一列。
+        近 460 px 的横向空间只承载了「项目 → 会话」这一层父子关系，而项目通常只有个位数。</p>
+      <span class="src">YCodeNativeApp.swift:219-225, 422-486</span>
+      <div class="fix"><b>对策</b> 合成一列 238 px：项目是可折叠的组标题，会话是组里的行。
+        省出的 220 px 给终端。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 03</div>
+      <h4>工具栏是功能抽屉</h4>
+      <p>七个按钮：加项目、新会话、独立窗口、删项目、上移、下移、注意力。
+        「上移项目 / 下移项目 / 删除项目」是侧栏的右键菜单内容，把它们放进窗口工具栏，
+        是最典型的 demo 症状 —— 有个功能就给个按钮。</p>
+      <span class="src">YCodeNativeApp.swift:591-633</span>
+      <div class="fix"><b>对策</b> 工具栏只留<b>跨会话</b>的东西：布局、检查器、注意力、⌘K。
+        项目管理整体进侧栏右键菜单。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 04</div>
+      <h4>状态语言不成体系</h4>
+      <p>七种运行态（running / starting / exited / signaled / recoverable / pendingApproval / waitingInput）
+        散落在三处渲染：侧栏 badge、画布 pane 头的 <code>Circle()</code>、详情页标题行。
+        三处写法都不同，颜色是裸的 <code>.green / .orange / .red</code>。</p>
+      <span class="src">sessionStatusBadge() :679 与 terminalPane() :137</span>
+      <div class="fix"><b>对策</b> 收敛成<b>两个</b>：运行中 / 等你。
+        会话都能 resume，「已退出」「可恢复」不是用户要判断的事。
+        一处定义，侧栏、窗格头、收件箱三处复用同一个点。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 05</div>
+      <h4>内部状态外泄到界面</h4>
+      <p>项目页上直接铺着「File Tree Width 180 px (active since M4.1)」「隔离开关记录：保留未启用」
+        和数据目录绝对路径；菜单栏还挂着一个 <code>Migration</code> 菜单。
+        M4.1 是迁移计划的步骤编号，用户没有上下文。</p>
+      <span class="src">YCodeNativeApp.swift:562, 569 · 已记为 L-04</span>
+      <div class="fix"><b>对策</b> 这些是诊断信息，不是产品信息。
+        统一收进「设置 › 关于 › 诊断」，一键复制给 issue。<code>Migration</code> 菜单不进正式包。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 06</div>
+      <h4>面板没有固定位置</h4>
+      <p>五个面板由 <code>openPanels: Set</code> 驱动，开几个就在画布右边竖着堆几个，
+        共用一个 <code>fileTreeWidth</code>。今天开两个、明天开三个，布局每次都不一样，
+        用户无法形成肌肉记忆。而且这五个不是一类东西：<b>终端</b>是画布本身，
+        <b>历史</b>是过去的会话 —— 只有文件 / 变更 / 待办是「当前工作区的切面」。</p>
+      <span class="src">TerminalWorkspaceView.swift:14-25 · WorkspaceModel.swift:6-8</span>
+      <div class="fix"><b>对策</b> 右侧固定一个 302 px 检查器，<b>三个</b>互斥 tab（文件 / 变更 / 待办），
+        ⌘1–3 切换、⌥⌘→ 收起。终端就是画布，历史回到侧栏各自的项目组下。</div>
+    </div>
+
+    <div class="dcard">
+      <div class="no">问题 07</div>
+      <h4>字号设置拍平了系统字阶</h4>
+      <p><code>.font(.system(size: model.uiFontSize))</code> 挂在根视图上，
+        把整棵视图树的字号统一覆盖。<code>.title2</code> / <code>.caption</code> 这些语义字阶失去相对关系，
+        界面因此没有层次 —— 这是「看起来平」的直接原因。</p>
+      <span class="src">YCodeNativeApp.swift:212</span>
+      <div class="fix"><b>对策</b> 改用 <code>.dynamicTypeSize</code> 三档（紧凑 / 标准 / 宽松），
+        让系统按比例缩放整个字阶。终端字号独立，不走这条。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 02 基础 ══════════════ -->
+<section id="foundations">
+  <div class="sec-head"><span class="sec-num">02</span><h2>设计基础</h2></div>
+  <p class="sec-dek">
+    没有 token 体系就没有一致性，这是问题 04 和 07 的根。下面这些值是这份稿子里每一屏的唯一来源。
+  </p>
+
+  <div class="callout">
+    <p><b>一条贯穿全稿的决定：整个窗口——包括终端画布——跟随系统外观。</b>
+    没有「浅色壳 + 深色终端」的混搭。浅色下画布是 <code>#FFFFFF</code>，深色下是 <code>#16181D</code>，
+    与 chrome 同一套明暗切换。代价是终端的 ANSI 语义色要备两组
+    （见下方 <code>--t-*</code> token），两组都在各自底色上过 4.5:1。
+    换来的是：<b>窗口里不存在一块不听系统话的区域</b> ——
+    用户在系统里切外观，整个 app 一起变，这是原生应用最基本的承诺。</p>
+  </div>
+
+  <h3>颜色</h3>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#fff"></div><div class="lbl"><b>content</b>#FFFFFF<br>深色 #1E1E20</div></div>
+    <div class="sw"><div class="chip" style="background:#f2f2f4"></div><div class="lbl"><b>sidebar</b>rgba(242,242,244,.92)<br>深色 rgba(36,36,38,.90)</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%)"></div><div class="lbl"><b>canvas</b>#FFFFFF<br>深色 #16181D</div></div>
+    <div class="sw"><div class="chip" style="background:#0b63e5"></div><div class="lbl"><b>accent</b>#0B63E5<br>深色 #4C8DFF</div></div>
+    <div class="sw"><div class="chip" style="background:#1a8a54"></div><div class="lbl"><b>ok</b>#1A8A54<br>会话状态 · 运行中</div></div>
+    <div class="sw"><div class="chip" style="background:#b67707"></div><div class="lbl"><b>warn</b>#B67707<br>会话状态 · 等你</div></div>
+    <div class="sw"><div class="chip" style="background:#d2382f"></div><div class="lbl"><b>err</b>#D2382F<br>删除行 / 破坏性动作</div></div>
+    <div class="sw"><div class="chip" style="background:rgba(60,60,67,.38)"></div><div class="lbl"><b>label-3</b>rgba(60,60,67,.38)<br>三级文字</div></div>
+  </div>
+
+  <h3>字阶 —— 沿用 macOS 语义，不自造</h3>
+  <div style="max-width:760px">
+    <div class="scale-row"><span class="k">.title3 / 16 semibold</span><span class="v" style="font-size:16px;font-weight:600">设置页标题、空状态标题</span></div>
+    <div class="scale-row"><span class="k">.body / 13 regular</span><span class="v" style="font-size:13px">侧栏会话名、菜单项、正文 —— 界面的默认尺寸</span></div>
+    <div class="scale-row"><span class="k">.subheadline / 12.5</span><span class="v" style="font-size:12.5px">检查器内容、tab 标签</span></div>
+    <div class="scale-row"><span class="k">.caption / 11.5</span><span class="v" style="font-size:11.5px;color:var(--doc-ink-2)">会话副标题、说明文字</span></div>
+    <div class="scale-row"><span class="k">.caption2 / 11</span><span class="v" style="font-size:11px;color:var(--doc-ink-2)">状态栏、计数</span></div>
+    <div class="scale-row"><span class="k">mono / 12.5</span><span class="v" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">终端内容 · 用户可调 8–32，与界面字号解耦</span></div>
+  </div>
+
+  <h3>终端 ANSI 语义色 —— 两组，各自过对比度</h3>
+  <div class="swatches" style="grid-template-columns:repeat(5,1fr)">
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%);display:flex;align-items:center;justify-content:center;font-family:var(--code);font-size:13px"><span style="color:#0a58ca">Aa</span><span style="color:#8fb8ff">Aa</span></div><div class="lbl"><b>t-blue</b>#0A58CA<br>深色 #8FB8FF<br>提示符 / 引用</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%);display:flex;align-items:center;justify-content:center;font-family:var(--code);font-size:13px"><span style="color:#137a4d">Aa</span><span style="color:#6fcf97">Aa</span></div><div class="lbl"><b>t-green</b>#137A4D<br>深色 #6FCF97<br>成功 / 新增行</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%);display:flex;align-items:center;justify-content:center;font-family:var(--code);font-size:13px"><span style="color:#8a6100">Aa</span><span style="color:#e9c46a">Aa</span></div><div class="lbl"><b>t-yellow</b>#8A6100<br>深色 #E9C46A<br>标识符 / 待确认</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%);display:flex;align-items:center;justify-content:center;font-family:var(--code);font-size:13px"><span style="color:#cf222e">Aa</span><span style="color:#f08c82">Aa</span></div><div class="lbl"><b>t-red</b>#CF222E<br>深色 #F08C82<br>失败 / 删除行</div></div>
+    <div class="sw"><div class="chip" style="background:linear-gradient(135deg,#fff 0 50%,#16181d 50% 100%);display:flex;align-items:center;justify-content:center;font-family:var(--code);font-size:13px"><span style="color:#8250df">Aa</span><span style="color:#c79cf0">Aa</span></div><div class="lbl"><b>t-purple</b>#8250DF<br>深色 #C79CF0<br>次要强调</div></div>
+  </div>
+
+  <h3>状态语言 —— 只有两个</h3>
+  <p style="margin-bottom:18px">
+    现在的实现要渲染七种运行态。但对用户来说，看一眼会话只需要回答一个问题：<b>它要不要我？</b>
+    所有 agent CLI 都支持 resume，<b>会话永远是可恢复的</b> ——
+    所以「已退出」「可恢复」「收到信号」这些都不是用户要判断的东西，点进去就接着跑。
+    退出码属于排错信息，归诊断，不归列表。
+  </p>
+  <div class="statebar" style="grid-template-columns:repeat(2,1fr)">
+    <div class="stt">
+      <div class="hd"><span style="width:8px;height:8px;border-radius:50%;background:#1a8a54;box-shadow:0 0 0 3px rgba(26,138,84,.18)"></span><span class="nm">运行中</span></div>
+      <div class="d">agent 在干活，不需要你。</div>
+      <span class="m">running / starting</span>
+    </div>
+    <div class="stt">
+      <div class="hd"><span style="width:8px;height:8px;border-radius:50%;background:#b67707;box-shadow:0 0 0 3px rgba(182,119,7,.2)"></span><span class="nm">等你</span></div>
+      <div class="d">在等输入、等审批，或刚建好还没选 agent。<b>唯一会进收件箱、会亮侧栏计数的状态。</b>
+        「在等什么」写在收件箱里，不写在侧栏 —— 侧栏回答「有哪些会话」，收件箱回答「哪些要我、为什么」。</div>
+      <span class="m">pendingApproval / waitingInput / 未开始</span>
+    </div>
+  </div>
+  <p style="margin-top:16px">
+    两个状态复用在三处：侧栏会话行、画布窗格头、收件箱条目。
+    <code>err</code> 与 <code>warn</code> 两个颜色 token 仍然保留 —— 它们用在变更面板的删除行、
+    「删除会话…」这类破坏性菜单项上，只是不再用来表示会话状态。
+  </p>
+
+  <h3>控件规格</h3>
+  <table>
+    <tr><th>元素</th><th>规格</th><th>说明</th></tr>
+    <tr><td>工具栏</td><td>高 52 · 内边距 13/14 · hairline 底边</td><td>macOS 统一工具栏高度，红绿灯垂直居中</td></tr>
+    <tr><td>侧栏</td><td>宽 238（可拖 200–320）· 行高 28 · 圆角 6 · 左右留白 8</td><td>选中行是圆角填充，不是整行贯通</td></tr>
+    <tr><td>检查器</td><td>宽 302（可拖 260–460）· tab 条 38</td><td>三个 tab 互斥，宽度只有一个，不再共用 fileTreeWidth</td></tr>
+    <tr><td>窗格头</td><td>高 28 · 聚焦时底色 + 四周 1px 强调描边 · 只放 5 个元素</td><td>会话的唯一标识条。布局为「单个」时它就是画布顶部那条</td></tr>
+    <tr><td>状态栏</td><td>高 26 · 字号 11 · 数字等宽</td><td>元数据的唯一归宿</td></tr>
+    <tr><td>按钮</td><td>高 24 · 圆角 6 · 工具栏按钮 28×28</td><td>与系统 <code>.regular</code> 控件尺寸一致</td></tr>
+    <tr><td>间距节奏</td><td>区块 8 / 12 / 16 / 22；控件内部 4–10 自由</td><td>区块级留白走 4 的倍数；控件内部（图标与文字的间隙、行内 padding）按视觉对齐微调，不强行凑整 —— macOS 自身的控件度量也不是纯 4 的倍数</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════ 03 主窗口 ══════════════ -->
+<section id="main">
+  <div class="sec-head"><span class="sec-num">03</span><h2>主窗口</h2></div>
+  <p class="sec-dek">
+    单会话，检查器停在「变更」。右上角可以切深浅，也可以切检查器的三个 tab ——
+    它们是同一个窗口的不同状态，不是四张图。
+  </p>
+
+  <div class="stage" id="stage-main">
+    <span class="stage-label">屏 01 · 主窗口</span>
+    <div class="stage-tools">
+      <button class="stool on" data-theme="light" data-for="w1">浅色</button>
+      <button class="stool" data-theme="dark" data-for="w1">深色</button>
+    </div>
+
+    <div class="win" id="w1">
+      <!-- 工具栏 -->
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="tbtn" title="显示/隐藏侧栏 ⌘B">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg>
+        </button>
+        <div class="crumb">
+          <span class="proj">ycode</span>
+          <span class="caret">▾</span>
+        </div>
+        <span class="grow"></span>
+
+        <div class="seg" title="画布布局">
+          <button class="on" title="单个"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/></svg></button>
+          <button title="上下"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M2 8h12"/></svg></button>
+          <button title="左右"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10"/></svg></button>
+          <button title="四宫格"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10M2 8h12"/></svg></button>
+          <button title="主 + 侧"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M10 3v10M10 8h4"/></svg></button>
+        </div>
+
+        <span class="divider"></span>
+
+        <button class="tbtn" style="position:relative" title="注意力收件箱 ⇧⌘A">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.8 9.5h3.4l1 1.8h3.6l1-1.8h3.4"/><path d="M2.6 3.2h10.8l1.3 6.3v2.5a1.4 1.4 0 0 1-1.4 1.4H2.7a1.4 1.4 0 0 1-1.4-1.4V9.5z"/></svg>
+          <span class="badge-dot"></span>
+        </button>
+        <button class="tbtn" title="命令面板 ⌘K">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg>
+        </button>
+        <button class="tbtn on" title="显示/隐藏检查器 ⌥⌘→">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M9.8 2.8v10.4"/></svg>
+        </button>
+      </div>
+
+      <div class="body">
+        <!-- 侧栏 -->
+        <div class="side">
+          <div class="side-search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg>
+            <span>搜索会话</span>
+          </div>
+          <div class="side-filter">
+            <button class="fchip on">全部 <span class="c">6</span></button>
+            <button class="fchip alert">等你 <span class="c">2</span></button>
+          </div>
+
+          <div class="side-scroll">
+            <div class="grp">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg>
+              <span class="nm">ycode</span><span class="n">4</span>
+              <button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button>
+            </div>
+            <div class="srow on">
+              <span class="dot d-run"></span>
+              <svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span>
+            </div>
+            <div class="srow">
+              <span class="dot d-attn"></span>
+              <svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span>
+            </div>
+            <div class="srow">
+              <span class="dot d-attn"></span>
+              <svg class="ai"><use href="#ic-codex"/></svg><span class="s1">FTS5 迁移脚本</span>
+            </div>
+            <div class="srow">
+              <span class="dot d-run"></span>
+              <svg class="ai"><use href="#ic-claude"/></svg><span class="s1">RPC 分帧单测</span>
+            </div>
+            <div class="hrow2">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg>
+              <span class="nm">历史会话</span><span class="n">192</span>
+            </div>
+            <div class="hsess"><span class="dot"></span><span class="nm">修 checkpoint 回滚后的分支残留</span></div>
+            <div class="hsess"><span class="dot"></span><span class="nm">给设置页加使用量统计</span></div>
+            <div class="hsess"><span class="dot"></span><span class="nm">SQLite 数据兼容性核对</span></div>
+
+            <div class="grp">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg>
+              <span class="nm">allineate</span><span class="n">1</span>
+              <button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button>
+            </div>
+            <div class="srow">
+              <span class="dot d-run"></span>
+              <svg class="ai"><use href="#ic-codex"/></svg><span class="s1">重构 auth 模块</span>
+            </div>
+            <div class="hrow2">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg>
+              <span class="nm">历史会话</span><span class="n">31</span>
+            </div>
+
+            <div class="grp">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg>
+              <span class="nm">internal-frontend</span><span class="n">1</span>
+              <button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button>
+            </div>
+          </div>
+
+          <div class="side-foot">
+            <button class="sfbtn">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>
+              新建会话 · ycode
+            </button>
+          </div>
+        </div>
+
+        <!-- 画布 -->
+        <div class="center">
+          <div class="canvas">
+            <div class="pane focus">
+              <div class="pane-hd">
+                <span class="dot d-run"></span>
+                <span class="nm">ToolUse 加 call_id</span>
+                <span class="sub">claude · opus-5</span>
+                <span class="k">⌘⇧1</span>
+                <span class="tools">
+                  <button class="ctool" title="从画布移出（不停止 agent）"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button>
+                </span>
+              </div>
+              <div class="term">
+<span class="dim2">claude 0.9.4 · opus-5 · ~/learning/ycode · 输入 /help 查看命令</span>
+
+<span class="u">&gt;</span> 给 <span class="y">UnifiedEvent::ToolUse</span> 加 call id。<span class="y">claude.rs:265</span> 已经读到
+  <span class="y">tool_use_id</span> 了，是我们自己扔的。
+
+<span class="g">●</span> 两侧都缺。<span class="y">ToolUse</span> 只有 tool / input_json / status，
+  同一回合调用两次同名工具就配不上对。先看一眼定义。
+
+<span class="g">●</span> <span class="b">Read</span>(crates/ycode-introspect/src/unified.rs)
+  <span class="dim">⎿  读了 54 行</span>
+
+<span class="g">●</span> <span class="b">Edit</span>(crates/ycode-introspect/src/unified.rs)
+  <span class="dim">⎿  改了 1 处 · +1 −0</span>
+
+<span class="g">●</span> 加好了。<span class="y">ToolResult</span> 那侧也要同一个字段，否则配对还是
+  断的 —— 我接着改，改完跑一遍 <span class="y">cargo test -p ycode-introspect</span>。
+
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+  <span class="dim">⎿  running 12 tests</span>
+  <span class="dim">   test unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
+  <span class="dim">   test unified::pairs_two_same_named_calls ... </span><span class="g">ok</span>
+  <span class="dim">   </span><span class="g">test result: ok. 12 passed; 0 failed</span>
+
+<span class="u">&gt;</span> <span class="cur"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 检查器 -->
+        <div class="insp">
+          <div class="insp-tabs">
+            <button class="itab" data-tab="files" data-win="w1">文件</button>
+            <button class="itab on" data-tab="changes" data-win="w1">变更 <span class="n">2</span></button>
+            <button class="itab" data-tab="todos" data-win="w1">待办</button>
+          </div>
+
+          <div class="insp-body">
+            <!-- 变更 -->
+            <div class="ipane on" data-pane="changes" data-win="w1">
+              <div class="isec">
+                <span>未暂存 · 2 个文件</span><span class="sp"></span>
+                <button class="ilink">全部暂存</button>
+              </div>
+              <div class="iscroll">
+                <div class="fhd">
+                  <span class="st tg m">M</span>
+                  <span class="nm">unified.rs</span>
+                  <span class="ct">+2 −0</span>
+                </div>
+                <div class="hunk">
+                  <div class="hbar"><span>@@ 54,4 +54,6 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+                  <div class="dl ctx"><span class="ln">54</span><span class="tx">    ToolUse {</span></div>
+                  <div class="dl add"><span class="ln">55</span><span class="tx">+       call_id: String,</span></div>
+                  <div class="dl ctx"><span class="ln">56</span><span class="tx">        tool: String,</span></div>
+                  <div class="dl ctx"><span class="ln">57</span><span class="tx">        input_json: String,</span></div>
+                </div>
+                <div class="hunk">
+                  <div class="hbar"><span>@@ 71,3 +73,4 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+                  <div class="dl ctx"><span class="ln">71</span><span class="tx">    ToolResult {</span></div>
+                  <div class="dl add"><span class="ln">72</span><span class="tx">+       call_id: String,</span></div>
+                  <div class="dl ctx"><span class="ln">73</span><span class="tx">        status: ToolStatus,</span></div>
+                </div>
+                <div class="fhd">
+                  <span class="st tg m">M</span>
+                  <span class="nm">claude.rs</span>
+                  <span class="ct">+3 −1</span>
+                </div>
+                <div class="hunk">
+                  <div class="hbar"><span>@@ 263,4 +263,6 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+                  <div class="dl ctx"><span class="ln">263</span><span class="tx">  let tool_use_id = v["id"]</span></div>
+                  <div class="dl del"><span class="ln">265</span><span class="tx">-     .map(drop);</span></div>
+                  <div class="dl add"><span class="ln">265</span><span class="tx">+     .and_then(|s| s.as_str())</span></div>
+                  <div class="dl add"><span class="ln">266</span><span class="tx">+     .unwrap_or_default();</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 文件 -->
+            <div class="ipane" data-pane="files" data-win="w1">
+              <div class="isec"><span>ycode</span><span class="sp"></span><button class="ilink">在 Finder 中显示</button></div>
+              <div class="iscroll">
+                <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">crates</span></div>
+                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">ycode-introspect</span></div>
+                <div class="tnode on" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">unified.rs</span><span class="tg m">M</span></div>
+                <div class="tnode" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">claude.rs</span><span class="tg m">M</span></div>
+                <div class="tnode" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">codex.rs</span></div>
+                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">ycode-ipc</span></div>
+                <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">macos</span></div>
+                <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">docs</span></div>
+                <div class="tnode"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">Cargo.toml</span></div>
+                <div class="tnode"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">README.md</span></div>
+                <div style="padding:14px 14px 0;font-size:11.5px;color:var(--label-3);line-height:1.55">
+                  单击预览（只读 · 语法高亮），双击用外部编辑器打开。
+                </div>
+              </div>
+            </div>
+
+            <!-- 待办 -->
+            <div class="ipane" data-pane="todos" data-win="w1">
+              <div class="isec"><span>本项目 · 4 项</span><span class="sp"></span><button class="ilink">＋ 添加</button></div>
+              <div class="iscroll">
+                <div class="todo"><span class="box doing">◐</span><span><span class="tt">UnifiedEvent 加 call_id</span><span class="by">agent 标为进行中 · 2 分钟前</span></span></div>
+                <div class="todo"><span class="box todo_"></span><span><span class="tt">ToolResult 同步加字段</span><span class="by">agent 添加 · 2 分钟前</span></span></div>
+                <div class="todo"><span class="box todo_"></span><span><span class="tt">权限扩展骨架</span><span class="by">你添加 · 昨天</span></span></div>
+                <div class="todo is-done"><span class="box done">✓</span><span><span class="tt">事件表 migration</span><span class="by">已完成 · 昨天</span></span></div>
+                <div style="padding:14px 14px 0;font-size:11.5px;color:var(--label-3);line-height:1.55">
+                  agent 通过 <span style="font-family:ui-monospace,Menlo,monospace">ycode-todos</span> 读写同一份清单，改动实时回到这里。
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- 状态栏 -->
+      <div class="sb">
+        <span class="it">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>
+          main
+        </span>
+        <span class="it" style="color:var(--warn)">＋2 ～1</span>
+        <span class="vd"></span>
+        <span class="it">6 个会话 · 2 个等你</span>
+        <span class="it">1 个 worktree</span>
+        <span class="sp"></span>
+        <span class="it mono">PID 48213</span>
+        <span class="vd"></span>
+        <span class="it">终端 13 pt</span>
+        <span class="it">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 8a6 6 0 0 1 12 0M4.4 8a3.6 3.6 0 0 1 7.2 0"/><circle cx="8" cy="11.6" r="1.1" fill="currentColor" stroke="none"/></svg>
+          claude 0.9.4
+        </span>
+      </div>
+    </div>
+
+    <!-- 标注一律落在窗口外侧，不遮挡界面本身（窗口左上角在 stage 的 40,44） -->
+    <span class="pin" style="left:12px;top:164px">1</span>
+    <span class="pin" style="left:12px;top:238px">2</span>
+    <span class="pin" style="left:1040px;top:16px">3</span>
+    <span class="pin" style="left:700px;top:16px">4</span>
+    <span class="pin" style="left:1288px;top:104px">5</span>
+    <span class="pin" style="left:12px;top:772px">6</span>
+    <span class="pin" style="left:660px;top:832px">7</span>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="b">1</span><span class="x"><b>项目与会话合成一列。</b>项目是可折叠的组标题（带活跃会话数），会话是组里的行。
+      原来的「项目列 + 会话列」两列合并后省出约 220 px，全部给了画布。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>「等你」是侧栏的第一等公民。</b>过滤 chip 上的计数与收件箱同源。
+      会话行默认只有三样东西：<b>状态点、agent 图标、名称</b>；只有上了画布的行才在右侧追加格位徽标 <code>⌘⇧N</code>。不挂时长 ——
+      「跑了 4 分 12 秒」既不影响你做什么，又让每一行都多一列噪音；要看时长去会话信息（⌘I）。<br>
+      <b>历史会话也在这里</b> —— 每个项目组的活会话列完之后，跟一行可折叠的「历史会话 · 192」。
+      历史本来就按 cwd 分组，跟侧栏的组织方式天然一致；点一条是恢复它，这是侧栏的动作，不是检查器的。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>工具栏只放跨会话的动作。</b>布局分段控件、收件箱、⌘K、检查器开关。
+      加项目 / 删项目 / 上移下移全部移进侧栏右键菜单（见屏 03）。</span></div>
+    <div class="note"><span class="b">4</span><span class="x"><b>画布没有标签页，只有窗格。</b>「单个」布局就是一个窗格占满，
+      窗格头（28 px）就是这个会话的标识条，<b>只有五样东西</b>：状态点、名称、agent·模型、⌘⇧N、移出画布。
+      查找（⌘F）、会话信息（⌘I）都有快捷键和右键菜单，不必在这条上各占一个按钮 ——
+      窗格头每天看几百次，放按钮的成本是永久的。
+      四宫格时每格一条，完全同一个组件 —— <b>会话的容器只有一种</b>。<br>
+      原来的画布工具条（布局菜单 + 5 个面板开关 + 字号加减）随之拆开：布局上了工具栏，
+      面板成了检查器 tab，字号去了状态栏。</span></div>
+    <div class="note"><span class="b">5</span><span class="x"><b>检查器只有三个 tab，且互斥。</b>文件 / 变更 / 待办 —— 都是「当前工作区的切面」。
+      ⌘1–3 切换，⌥⌘→ 整体收起，宽度只有一个值。
+      <b>历史不在这里</b>：它是过去的会话，点一条是恢复它，属于侧栏（见标注 2 下方）。</span></div>
+    <div class="note"><span class="b">6</span><span class="x"><b>新建会话在侧栏底部，不在工具栏。</b>它属于「当前项目」这个上下文，
+      放在侧栏底部与 Finder / Xcode 的惯例一致，⌘N 仍然可用。</span></div>
+    <div class="note"><span class="b">7</span><span class="x"><b>状态栏是元数据的唯一归宿。</b>分支与变更数、会话计数、worktree 数、PID、终端字号、agent 版本 ——
+      这些以前铺在主区（问题 01、05）的东西，在这里各占一格，随时可看，从不挡路。</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ 04 多会话 ══════════════ -->
+<!-- ══════════════ 03b 变更面板 ══════════════ -->
+<section id="changes">
+  <div class="sec-head"><span class="sec-num">03b</span><h2>变更面板</h2></div>
+  <p class="sec-dek">
+    检查器只有 302 px，而变更面板要同时装下「哪些文件改了」「改成什么样」「暂存什么」「提交」四件事。
+    原来的实现把它们摆成「上面分段控件 → 中间文件列表 → 下面 diff → 底部四个按钮」，
+    在这个宽度下每一段都不够用。这一屏把它重排成一列。
+  </p>
+
+  <div class="stage">
+    <span class="stage-label">屏 01b · 变更 / 空 / 检查点</span>
+    <div style="display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
+
+      <!-- 有变更 -->
+      <div class="insp-solo">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab on">变更 <span class="n">5</span></button>
+          <button class="itab">待办</button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec">
+          <span>未暂存 · 5 个文件</span><span class="sp"></span>
+          <button class="ilink">全部暂存</button>
+          <button class="imore">⋯</button>
+        </div>
+        <div class="iscroll" style="overflow-y:auto">
+          <div class="fhd">
+            <span class="st tg m">M</span>
+            <span class="nm">unified.rs</span>
+            <span class="ct">+2 −0</span>
+            <span class="fact"><button>暂存</button><button class="danger">丢弃</button></span>
+          </div>
+          <div class="hunk">
+            <div class="hbar"><span>@@ 54,4 +54,6 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+            <div class="dl ctx"><span class="ln">54</span><span class="tx">    ToolUse {</span></div>
+            <div class="dl add"><span class="ln">55</span><span class="tx">+       call_id: String,</span></div>
+            <div class="dl ctx"><span class="ln">56</span><span class="tx">        tool: String,</span></div>
+          </div>
+          <div class="fhd">
+            <span class="st tg m">M</span>
+            <span class="nm">claude.rs</span>
+            <span class="ct">+3 −1</span>
+            <span class="fact"><button>暂存</button><button class="danger">丢弃</button></span>
+          </div>
+          <div class="hunk">
+            <div class="hbar"><span>@@ 263,4 +263,6 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+            <div class="dl ctx"><span class="ln">263</span><span class="tx">  let tool_use_id = v["id"]</span></div>
+            <div class="dl del"><span class="ln">265</span><span class="tx">-     .map(drop);</span></div>
+            <div class="dl add"><span class="ln">265</span><span class="tx">+     .and_then(|s| s.as_str())</span></div>
+          </div>
+          <div class="fhd">
+            <span class="st tg a">A</span>
+            <span class="nm">migrations/003_events.sql</span>
+            <span class="ct">+28 −0</span>
+            <span class="fact"><button>暂存</button><button class="danger">丢弃</button></span>
+          </div>
+        </div>
+        <div class="cbar">
+          <input placeholder="提交信息" value="feat(introspect): 给 ToolUse 加 call_id">
+          <div class="row">
+            <span class="hint">2 个文件已暂存</span>
+            <button class="cbtn">提交 2 个文件</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 干净 -->
+      <div class="insp-solo short">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab on">变更</button>
+          <button class="itab">待办</button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec"><span>工作区是干净的</span><span class="sp"></span><button class="imore">⋯</button></div>
+        <div class="iempty">
+          <div class="t">工作区是干净的</div>
+          <div class="d">agent 改了文件之后，这里会出现逐块可暂存的 diff。</div>
+        </div>
+      </div>
+
+      <!-- 检查点 -->
+      <div class="insp-solo short">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab on">变更</button>
+          <button class="itab">待办</button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec"><span>检查点 · ToolUse 加 call_id</span><span class="sp"></span><button class="imore">⋯</button></div>
+        <div class="iscroll">
+          <div class="cpt on"><span class="sq">#4</span><span class="nm">写入 003_events.sql</span><span class="tm">2 分钟前</span></div>
+          <div class="cpt"><span class="sq">#3</span><span class="nm">改 unified.rs 的 ToolUse</span><span class="tm">9 分钟前</span></div>
+          <div class="cpt"><span class="sq">#2</span><span class="nm">读 claude.rs</span><span class="tm">14 分钟前</span></div>
+          <div class="cpt"><span class="sq">#1</span><span class="nm">会话起点</span><span class="tm">21 分钟前</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:22px">
+    <div class="note"><span class="b">1</span><span class="x"><b>一列到底，不做「列表 ＋ diff 区」。</b>
+      302 px 里左右分栏（列表 210 ＋ diff 260）会互相压住，文字直接被盖掉；
+      改成上下分栏又把 diff 压成一条缝。文件头本身就是分隔符，hunk 直接跟在它下面，
+      一次滚动读完「谁改了、改成什么样」。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>动作跟着对象走，整个面板只有一个主按钮。</b>
+      暂存 / 丢弃挂在文件行 hover 上（针对这个文件），暂存也出现在每个 hunk 头上（针对这一块），
+      底部只留「提交 N 个文件」。原来的「暂存 / 取消暂存 / 丢弃 / 提交已暂存变更」四个按钮并排摆在底部，
+      既不知道它们作用在谁身上，又占掉 diff 的高度。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>提交条常驻，但只有两行。</b>
+      一行输入框、一行「已暂存几个 ＋ 提交」。没有已暂存变更时按钮是禁用态，
+      左边那句话直接说明原因，不用弹提示。</span></div>
+    <div class="note"><span class="b">4</span><span class="x"><b>检查点不是第二个 tab。</b>
+      检查器已经有一层 tab 了，下面再来一层分段控件就是两套并行的导航。
+      检查点走头部的 ⋯ 菜单（分支切换、Fetch / Pull / Push 也在那里），
+      切过去之后仍是同一列形态：一行一个检查点，选中即在下面读 diff。</span></div>
+    <div class="note"><span class="b">5</span><span class="x"><b>分支不在这里。</b>
+      分支名、ahead/behind、变更计数都在状态栏上常驻（§03 标注 7），
+      面板头部只说「这一刻有几个文件、暂存了几个」。</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ 03c 待办面板 ══════════════ -->
+<section id="todos">
+  <div class="sec-head"><span class="sec-num">03c</span><h2>待办面板</h2></div>
+  <p class="sec-dek">
+    这份清单的特别之处只有一件事：<b>agent 和你在写同一份</b>。
+    所以它要回答的不是「有几项待办」——那一眼就数得过来——而是
+    「刚才那条是谁动的、动成了什么样」。现在的实现把三个巨大的计数摆在最上面，
+    把「添加于 17 秒前」摆在每一行下面，恰好两头都答错了。
+  </p>
+
+  <div class="stage">
+    <span class="stage-label">屏 01c · 待办 / 菜单 / 空</span>
+    <div style="display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
+
+      <!-- 有待办 -->
+      <div class="insp-solo" style="height:430px">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab">变更</button>
+          <button class="itab on">待办 <span class="n">3</span></button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec"><span>3 项未完成</span><span class="sp"></span><button class="imore">⋯</button></div>
+        <div class="tadd focus"><span style="color:var(--label-3)">＋</span><span class="pl">添加待办</span><span class="kbd">↵</span></div>
+        <div class="iscroll">
+          <div class="tgrp"><span>进行中</span><span class="sp"></span><span class="n">1</span></div>
+          <div class="todo"><span class="box doing">◐</span><span><span class="tt">UnifiedEvent 加 call_id</span><span class="by">agent 标为进行中 · 2 分钟前</span></span></div>
+
+          <div class="tgrp"><span>队列</span><span class="sp"></span><span class="n">2</span></div>
+          <div class="todo"><span class="box todo_"></span><span><span class="tt">ToolResult 同步加字段</span><span class="by">agent 添加 · 2 分钟前</span></span></div>
+          <div class="todo"><span class="box todo_"></span><span><span class="tt">权限扩展骨架</span></span><span class="tact"><button>⋯</button></span></div>
+
+          <div class="tgrp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M3.2 1v8L7.8 5z"/></svg><span>已完成</span><span class="sp"></span><span class="n">1</span></div>
+        </div>
+      </div>
+
+      <!-- 行菜单 -->
+      <div class="insp-solo" style="height:430px;position:relative">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab">变更</button>
+          <button class="itab on">待办 <span class="n">3</span></button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec"><span>3 项未完成</span><span class="sp"></span><button class="imore">⋯</button></div>
+        <div class="tadd"><span style="color:var(--label-3)">＋</span><span class="pl">添加待办</span><span class="kbd">↵</span></div>
+        <div class="iscroll">
+          <div class="tgrp"><span>进行中</span><span class="sp"></span><span class="n">1</span></div>
+          <div class="todo"><span class="box doing">◐</span><span><span class="tt">UnifiedEvent 加 call_id</span><span class="by">agent 标为进行中 · 2 分钟前</span></span></div>
+          <div class="tgrp"><span>队列</span><span class="sp"></span><span class="n">2</span></div>
+          <div class="todo"><span class="box todo_"></span><span><span class="tt">ToolResult 同步加字段</span></span><span class="tact"><button>⋯</button></span></div>
+        </div>
+        <div class="tmenu" style="top:186px;right:14px">
+          <div class="mi">标为进行中</div>
+          <div class="mi on">放回队列</div>
+          <div class="mi">标为已完成</div>
+          <div class="sep"></div>
+          <div class="mi">上移<span class="k">⌥↑</span></div>
+          <div class="mi">下移<span class="k">⌥↓</span></div>
+          <div class="sep"></div>
+          <div class="mi">重命名…<span class="k">↵</span></div>
+          <div class="mi" style="color:var(--err)">删除…<span class="k">⌘⌫</span></div>
+        </div>
+      </div>
+
+      <!-- 空 -->
+      <div class="insp-solo short">
+        <div class="insp-tabs">
+          <button class="itab">文件</button>
+          <button class="itab">变更</button>
+          <button class="itab on">待办</button>
+          <button class="itab">终端</button>
+        </div>
+        <div class="isec"><span>还没有待办</span><span class="sp"></span><button class="imore">⋯</button></div>
+        <div class="tadd"><span style="color:var(--label-3)">＋</span><span class="pl">添加待办</span><span class="kbd">↵</span></div>
+        <div class="iempty">
+          <div class="t">还没有待办</div>
+          <div class="d">你可以在这里加，agent 也能通过 <span style="font-family:ui-monospace,Menlo,monospace">ycode-todos</span> 自己加。两边是同一份清单。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:22px">
+    <div class="note"><span class="b">1</span><span class="x"><b>三个巨型计数删掉。</b>
+      「0 进行中 / 1 队列 / 0 已完成」用了整整 60 px 的高度和最大的字号，
+      去说一件扫一眼列表就知道的事，而且它们长得像统计、点上去却是过滤器。
+      分组标题自己带计数，头部只留一句「3 项未完成」。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>副行写「谁动的」，不写「添加于 17 秒前」。</b>
+      这份清单的全部意义在于 agent 和你在写同一份 ——
+      所以值得占一行的是 <b>agent 标为进行中 · 2 分钟前</b>、<b>你添加 · 昨天</b>。
+      自己刚敲进去的那条不需要副行，它自然就是空的。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>行右边只有一个 ⋯，而且只在 hover 时出现。</b>
+      现在是状态胶囊、上下箭头、⋯ 三组控件同时挤在右侧并互相压住。
+      状态本来就由所在分组表达，不必再挂个胶囊；排序改成拖拽，
+      键盘用户走菜单里的 ⌥↑ / ⌥↓。</span></div>
+    <div class="note"><span class="b">4</span><span class="x"><b>输入框收成 28 px 的一行。</b>
+      ＋ 与 ↵ 是提示不是按钮，回车即存；聚焦时描边点亮。
+      它常驻在分组之上，因为「随手记一条」是这个面板最高频的动作。</span></div>
+    <div class="note"><span class="b">5</span><span class="x"><b>已完成默认折叠。</b>
+      做完的事只在需要回看时展开，不占据清单顶部的注意力。</span></div>
+  </div>
+</section>
+
+<section id="parallel">
+  <div class="sec-head"><span class="sec-num">04</span><h2>多会话并排</h2></div>
+  <p class="sec-dek">
+    四宫格，深色。并排是 ycode 的核心差异 —— 所以这一屏要回答的是：
+    四块终端同时在跑，眼睛怎么知道该看哪一块。
+  </p>
+
+  <div class="stage dim" id="stage-par">
+    <span class="stage-label">屏 02 · 四宫格 · 深色</span>
+    <div class="stage-tools">
+      <button class="stool" data-theme="light" data-for="w2">浅色</button>
+      <button class="stool on" data-theme="dark" data-for="w2">深色</button>
+    </div>
+
+    <div class="win dark" id="w2">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
+        <div class="crumb">
+          <span class="proj">ycode</span><span class="caret">▾</span>
+        </div>
+        <span class="grow"></span>
+        <div class="seg">
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M2 8h12"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10"/></svg></button>
+          <button class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10M2 8h12"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M10 3v10M10 8h4"/></svg></button>
+        </div>
+        <span class="divider"></span>
+        <button class="tbtn" style="position:relative">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.8 9.5h3.4l1 1.8h3.6l1-1.8h3.4"/><path d="M2.6 3.2h10.8l1.3 6.3v2.5a1.4 1.4 0 0 1-1.4 1.4H2.7a1.4 1.4 0 0 1-1.4-1.4V9.5z"/></svg>
+          <span class="badge-dot"></span>
+        </button>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M9.8 2.8v10.4"/></svg></button>
+      </div>
+
+      <div class="body">
+        <div class="side">
+          <div class="side-search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg>
+            <span>搜索会话</span>
+          </div>
+          <div class="side-filter">
+            <button class="fchip on">全部 <span class="c">6</span></button>
+            <button class="fchip alert">等你 <span class="c">2</span></button>
+          </div>
+          <div class="side-scroll">
+            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">4</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
+            <div class="srow on"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span><span class="st">⌘⇧1</span></div>
+            <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span><span class="st">⌘⇧2</span></div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-codex"/></svg><span class="s1">FTS5 迁移脚本</span><span class="st">⌘⇧3</span></div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">RPC 分帧单测</span></div>
+            <div class="hrow2"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">历史会话</span><span class="n">192</span></div>
+            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">allineate</span><span class="n">1</span></div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-codex"/></svg><span class="s1">重构 auth 模块</span></div>
+            <div class="hrow2"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">历史会话</span><span class="n">31</span></div>
+          </div>
+          <div class="side-foot">
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="canvas rows">
+            <div class="canvas" style="flex:1">
+              <div class="pane focus">
+                <div class="pane-hd">
+                  <span class="dot d-run"></span><span class="nm">ToolUse 加 call_id</span>
+                  <span class="sub">claude · opus-5</span><span class="k">⌘⇧1</span>
+                  <span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span>
+                </div>
+                <div class="term small">
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+  <span class="dim">⎿  running 12 tests</span>
+  <span class="dim">   unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
+  <span class="dim">   unified::pairs_two_same_named ...     </span><span class="g">ok</span>
+  <span class="g">   test result: ok. 12 passed</span>
+
+<span class="u">&gt;</span> <span class="cur"></span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-hd"><span class="dot d-attn"></span><span class="nm">权限扩展骨架</span><span class="sub">claude · opus-5</span><span class="k">⌘⇧2</span><span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span></div>
+                <div class="term small">
+<span class="g">●</span> 我要把 <span class="y">spawn_pty</span> 换成 RPC 那条路径。
+
+  <span class="y">Edit</span> crates/ycode-ipc/src/service.rs
+  <span class="r">-  .spawn_pty(&amp;id, &amp;profile, &amp;row, cwd, mode)</span>
+  <span class="g">+  .spawn_pi_rpc(&amp;id, &amp;profile, cwd, mode)</span>
+
+<span class="y">❯ 要做这个修改吗？</span>
+  <span class="b">1. 是</span>   2. 是，本会话不再问   3. 否，我来说明
+  <span class="dim">等你 2 分钟</span> <span class="cur"></span></div>
+              </div>
+            </div>
+            <div class="canvas" style="flex:1">
+              <div class="pane">
+                <div class="pane-hd"><span class="dot d-run"></span><span class="nm">FTS5 迁移脚本</span><span class="sub">codex · gpt-5</span><span class="k">⌘⇧3</span><span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span></div>
+                <div class="term small">
+<span class="g">●</span> <span class="b">Write</span>(migrations/003_events.sql)
+  <span class="dim">⎿  写入 28 行</span>
+
+<span class="g">●</span> 建好了。<span class="y">events</span> 表加 <span class="y">format_version</span> 列，
+  FTS5 虚表跟着建，查询路径先不启用。
+
+<span class="g">●</span> <span class="b">Bash</span>(sqlite3 …/ycode.db '.schema events')<span class="cur"></span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-hd"><span class="dot" style="box-shadow:inset 0 0 0 1.5px var(--canvas-ink-3)"></span><span class="nm" style="opacity:.7">第 4 格空着</span><span class="k">⌘⇧4</span><span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span></div>
+                <div class="picker-host">
+                  <div class="picker">
+                    <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-ycode"/></svg></span>
+                    <h3>新会话</h3>
+                    <div class="sub">选一个 agent 填进这一格。</div>
+                    <div class="agents">
+                      <button class="pagent">
+                        <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-claude"/></svg></span>
+                        <span class="nm">Claude Code</span>
+                      </button>
+                      <button class="pagent">
+                        <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-codex"/></svg></span>
+                        <span class="nm">Codex</span>
+                      </button>
+                      <button class="pagent">
+                        <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-gemini"/></svg></span>
+                        <span class="nm">Gemini CLI</span>
+                      </button>
+                    </div>
+                    <div class="foot">
+                      <label class="wt"><i></i>worktree</label>
+                      <span class="branch">
+                        <svg class="gi" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>
+                        <span class="bn">main</span><span class="ch">▾</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="insp">
+          <div class="insp-tabs">
+            <button class="itab" data-tab="files" data-win="w2">文件</button>
+            <button class="itab" data-tab="changes" data-win="w2">变更 <span class="n">2</span></button>
+            <button class="itab on" data-tab="todos" data-win="w2">待办</button>
+          </div>
+          <div class="insp-body">
+            <div class="ipane on" data-pane="todos" data-win="w2">
+              <div class="isec"><span>本项目 · 4 项</span><span class="sp"></span><button class="ilink">＋ 添加</button></div>
+              <div class="iscroll">
+                <div class="todo"><span class="box doing">◐</span><span><span class="tt">UnifiedEvent 加 call_id</span><span class="by">agent 标为进行中 · 2 分钟前</span></span></div>
+                <div class="todo"><span class="box todo_"></span><span><span class="tt">ToolResult 同步加字段</span><span class="by">agent 添加 · 2 分钟前</span></span></div>
+                <div class="todo"><span class="box todo_"></span><span><span class="tt">权限扩展骨架</span><span class="by">你添加 · 昨天</span></span></div>
+                <div class="todo is-done"><span class="box done">✓</span><span><span class="tt">事件表 migration</span><span class="by">已完成 · 昨天</span></span></div>
+              </div>
+            </div>
+            <div class="ipane" data-pane="files" data-win="w2"><div class="empty"><div class="t">文件树</div><div class="d">与屏 01 相同。</div></div></div>
+            <div class="ipane" data-pane="changes" data-win="w2"><div class="empty"><div class="t">变更</div><div class="d">与屏 01 相同。</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb">
+        <span class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>main</span>
+        <span class="it" style="color:var(--warn)">＋2 ～1</span>
+        <span class="vd"></span>
+        <span class="it">6 个会话 · 2 个等你</span>
+        <span class="it">1 个 worktree</span>
+        <span class="sp"></span>
+        <span class="it mono">画布 1 · PID 48213</span>
+        <span class="vd"></span>
+        <span class="it">终端 11 pt</span>
+        <span class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 8a6 6 0 0 1 12 0M4.4 8a3.6 3.6 0 0 1 7.2 0"/><circle cx="8" cy="11.6" r="1.1" fill="currentColor" stroke="none"/></svg>claude 0.9.4</span>
+      </div>
+    </div>
+
+    <span class="pin" style="left:586px;top:154px">1</span>
+    <span class="pin" style="left:936px;top:154px">2</span>
+    <span class="pin" style="left:936px;top:530px">3</span>
+    <span class="pin" style="left:12px;top:282px">4</span>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="b">1</span><span class="x"><b>焦点有两层标记。</b>窗格头带强调底色，窗格四周一圈 1 px 强调描边。
+      现在的实现只有一个 <code>.opacity(0.12)</code> 底色，四宫格下第一眼找不到焦点在哪。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>等你处理的窗格用琥珀点。</b>它和侧栏那一行、收件箱里那一条、工具栏铃铛上的小点是<b>同一个 token</b>。
+      四块终端里哪块在等你，扫一眼就够。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>空着的窗格就是 agent 选择器。</b>和 ⌘N、和「项目无会话」看到的<b>是同一个组件</b>，
+      按容器宽度自动收缩（<code>@container</code>，不是第二套小号版）。点一下这个窗格就有 agent 在跑，
+      不用先回侧栏。<br>另外：审批问题本来就印在终端里，ycode 只负责把这个状态<b>抬出来</b> ——
+      窗格头亮琥珀点、侧栏那行写清在等什么、收件箱收一条，面板看不见时才不会静默挂死。</span></div>
+    <div class="note"><span class="b">4</span><span class="x"><b>侧栏行右侧只在上了画布时显示格位快捷键。</b><code>⌘⇧1–4</code>，
+      没上画布的行右侧就是空的 —— 「哪个会话在第几格」不用去数，也不用为了对齐硬塞个时间进去。</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ 05 浮层 ══════════════ -->
+<section id="overlays">
+  <div class="sec-head"><span class="sec-num">05</span><h2>浮层与菜单</h2></div>
+  <p class="sec-dek">
+    三个浮层同时画在一张图上，只为看清它们各自的出处和尺度 —— 实际不会同时出现。
+    它们共同接收了从工具栏和主区赶出来的东西。
+  </p>
+
+  <div class="stage" id="stage-ovl">
+    <span class="stage-label">屏 03 · 收件箱 / 项目菜单 / 会话菜单 / 会话信息</span>
+    <div class="stage-tools">
+      <button class="stool on" data-theme="light" data-for="w3">浅色</button>
+      <button class="stool" data-theme="dark" data-for="w3">深色</button>
+    </div>
+
+    <div class="win" id="w3">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
+        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <span class="grow"></span>
+        <div class="seg">
+          <button class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M2 8h12"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10M2 8h12"/></svg></button>
+          <button><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M10 3v10M10 8h4"/></svg></button>
+        </div>
+        <span class="divider"></span>
+        <button class="tbtn on" style="position:relative">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.8 9.5h3.4l1 1.8h3.6l1-1.8h3.4"/><path d="M2.6 3.2h10.8l1.3 6.3v2.5a1.4 1.4 0 0 1-1.4 1.4H2.7a1.4 1.4 0 0 1-1.4-1.4V9.5z"/></svg>
+          <span class="badge-dot"></span>
+        </button>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
+        <button class="tbtn on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M9.8 2.8v10.4"/></svg></button>
+      </div>
+
+      <div class="body">
+        <div class="side">
+          <div class="side-search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg><span>搜索会话</span>
+          </div>
+          <div class="side-filter">
+            <button class="fchip on">全部 <span class="c">6</span></button>
+            <button class="fchip alert">等你 <span class="c">2</span></button>
+          </div>
+          <div class="side-scroll">
+            <div class="grp" style="background:var(--sel-soft);border-radius:6px;margin:5px 8px 0;height:24px;padding:0 6px">
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">4</span>
+            </div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span></div>
+            <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span></div>
+            <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-codex"/></svg><span class="s1">FTS5 迁移脚本</span></div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">RPC 分帧单测</span></div>
+            <div class="hrow2"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">历史会话</span><span class="n">192</span></div>
+          </div>
+          <div class="side-foot">
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="canvas">
+            <div class="pane focus">
+              <div class="pane-hd">
+                <span class="dot d-run"></span><span class="nm">ToolUse 加 call_id</span>
+                <span class="sub">claude · opus-5</span><span class="k">⌘⇧1</span>
+                <span class="tools">
+                  <button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button>
+                </span>
+              </div>
+              <div class="term">
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+  <span class="dim">⎿  running 12 tests</span>
+  <span class="dim">   test unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
+  <span class="dim">   </span><span class="g">test result: ok. 12 passed; 0 failed</span>
+
+<span class="u">&gt;</span> <span class="cur"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="insp">
+          <div class="insp-tabs">
+            <button class="itab" data-tab="files" data-win="w3">文件</button>
+            <button class="itab on" data-tab="changes" data-win="w3">变更 <span class="n">2</span></button>
+            <button class="itab" data-tab="todos" data-win="w3">待办</button>
+          </div>
+          <div class="insp-body">
+            <div class="ipane on" data-pane="changes" data-win="w3">
+              <div class="isec"><span>未暂存 · 2 个文件</span><span class="sp"></span><button class="ilink">全部暂存</button></div>
+              <div class="iscroll">
+                <div class="fhd"><span class="st tg m">M</span><span class="nm">unified.rs</span><span class="ct">+2 −0</span></div>
+                <div class="hunk">
+                  <div class="hbar"><span>@@ 54,4 +54,6 @@</span><span class="sp"></span><button class="hbtn">暂存</button></div>
+                  <div class="dl ctx"><span class="ln">54</span><span class="tx">    ToolUse {</span></div>
+                  <div class="dl add"><span class="ln">55</span><span class="tx">+       call_id: String,</span></div>
+                  <div class="dl ctx"><span class="ln">56</span><span class="tx">        tool: String,</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="ipane" data-pane="files" data-win="w3"><div class="empty"><div class="d">见屏 01</div></div></div>
+            <div class="ipane" data-pane="todos" data-win="w3"><div class="empty"><div class="d">见屏 01</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb">
+        <span class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>main</span>
+        <span class="it" style="color:var(--warn)">＋2 ～1</span>
+        <span class="vd"></span><span class="it">6 个会话 · 2 个等你</span><span class="it">1 个 worktree</span>
+        <span class="sp"></span>
+        <span class="it mono">PID 48213</span><span class="vd"></span><span class="it">终端 13 pt</span>
+      </div>
+
+      <!-- 浮层 A：注意力收件箱（工具栏铃铛） -->
+      <div class="pop" style="width:360px;right:112px;top:58px" id="pop-inbox">
+        <div class="pop-hd"><span class="t">等你</span><span class="a">全部标为已读</span></div>
+        <div class="arow">
+          <span class="dot d-attn"></span>
+          <span class="mid">
+            <span class="a1">权限扩展骨架</span>
+            <span class="a2">要修改 crates/ycode-ipc/src/service.rs — 等确认</span>
+          </span>
+          <span class="a3">2 分钟</span>
+        </div>
+        <div class="arow">
+          <span class="dot d-attn"></span>
+          <span class="mid">
+            <span class="a1">FTS5 迁移脚本</span>
+            <span class="a2">「要不要把 FTS5 查询路径一起启用？」</span>
+          </span>
+          <span class="a3">9 分钟</span>
+        </div>
+        <div class="arow">
+          <span class="dot d-attn"></span>
+          <span class="mid">
+            <span class="a1">RPC 分帧单测</span>
+            <span class="a2">要跑 cargo test -p ycode-pi codec — 等确认</span>
+          </span>
+          <span class="a3">4 分钟</span>
+        </div>
+        <div class="arow" style="background:var(--fill)">
+          <span class="mid"><span class="a2" style="color:var(--label-3)">跨全部项目 · 只收「等你」这一种状态</span></span>
+        </div>
+      </div>
+      <span class="pin" style="left:752px;top:62px">1</span>
+
+      <!-- 浮层 B：侧栏项目右键菜单 -->
+      <div class="menu" style="left:58px;top:150px;min-width:222px">
+        <div class="mi">在新窗口中打开<span class="sp"></span><span class="kb">⇧⌘O</span></div>
+        <div class="mi">在 Finder 中显示</div>
+        <div class="mi">在终端中打开</div>
+        <div class="msep"></div>
+        <div class="mi">新建会话<span class="sp"></span><span class="kb">⌘N</span></div>
+        <div class="mi">全部折叠</div>
+        <div class="msep"></div>
+        <div class="mi">上移<span class="sp"></span><span class="kb">⌥↑</span></div>
+        <div class="mi">下移<span class="sp"></span><span class="kb">⌥↓</span></div>
+        <div class="msep"></div>
+        <div class="mi">重命名…</div>
+      </div>
+      <span class="pin" style="left:44px;top:144px">2</span>
+
+      <!-- 浮层 C：侧栏会话右键菜单 -->
+      <div class="menu" style="left:330px;top:128px;min-width:234px">
+        <div class="mi on">放到画布<span class="sp"></span><span class="kb">⌘⇧1</span></div>
+        <div class="mi">在新窗口中打开</div>
+        <div class="mi">会话信息<span class="sp"></span><span class="kb">⌘I</span></div>
+        <div class="msep"></div>
+        <div class="mi">重命名…<span class="sp"></span><span class="kb">↵</span></div>
+        <div class="mi">归档</div>
+        <div class="msep"></div>
+        <div class="mi danger">删除…<span class="sp"></span><span class="kb">⌘⌫</span></div>
+      </div>
+      <span class="pin" style="left:316px;top:122px">3</span>
+
+      <!-- 浮层 D：会话信息（纯信息，动作都在右键菜单里） -->
+      <div class="pop" style="width:318px;left:330px;top:392px">
+        <div class="pop-hd"><span class="t">会话信息</span><span class="a">复制</span></div>
+        <div style="padding:12px 14px 14px;font-size:12px;line-height:1.85">
+          <div style="display:flex;gap:10px"><span class="k2">状态</span>
+            <span style="display:flex;align-items:center;gap:6px"><span class="dot d-run" style="width:7px;height:7px"></span>运行中 · 4 分 12 秒</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">Agent</span><span>claude · opus-5</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">进程</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">PID 48213</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">会话 ID</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">0193f2c1-8a4e-7b3d</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">分支</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">main</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">工作目录</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">~/learning/ycode</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">worktree</span><span style="color:var(--label-3)">未隔离 · 直接在主仓</span></div>
+        </div>
+      </div>
+      <span class="pin" style="left:316px;top:386px">4</span>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="b">1</span><span class="x"><b>收件箱只收「等你」。</b>跨全部项目。
+      每条写清<b>在等什么</b>，而不是只报一个会话名 —— 现在的 <code>AttentionInboxView</code> 只有 98 行，
+      内容量是够的，缺的是「为什么」这一句。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>项目菜单接住工具栏瘦身的部分。</b>上移 / 下移 / 独立窗口原本是工具栏按钮，
+      外加 Finder、终端、重命名。<b>没有「从 ycode 移除」</b> —— 移除项目是低频且不可逆的，
+      放在随手就能点到的右键菜单里不合适，它归设置页。工具栏因此从 7 个按钮降到 4 个。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>会话的全部动作在会话右键菜单里。</b>放到画布、独立窗口、重命名、归档、删除。
+      归档的会话不消失，收进项目组下的历史区，菜单变成<b>重新打开 / 重命名… / 删除…</b> ——
+      所有会话都能 resume，「重新打开」不是恢复灾难，就是接着跑。</span></div>
+    <div class="note"><span class="b">4</span><span class="x"><b>会话信息只回答「它是什么」。</b>原来占据主区顶部的 PID、Agent 会话 ID、分支、工作目录都在这里，
+      ⌘I 或右键菜单「会话信息」打开，右上角一个「复制」供贴 issue。
+      右上角那个「复制」是对信息本身的操作，不是对会话的操作 —— 会话动作一律只在右键菜单里，不在两处重复。</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ 06 命令面板与新建 ══════════════ -->
+<section id="palette">
+  <div class="sec-head"><span class="sec-num">06</span><h2>命令面板与新建会话</h2></div>
+  <p class="sec-dek">
+    ⌘K 是「所有东西的第二入口」—— 有了它，工具栏才敢只留四个按钮。
+    而新建会话恰恰相反：它<b>不该有任何入口式的中间态</b>，⌘N 就是一个已经在等你打字的终端。
+  </p>
+
+  <div class="stage dim">
+    <span class="stage-label">屏 04 · ⌘K 命令面板</span>
+    <div class="stage-tools">
+      <button class="stool" data-theme="light" data-for="w4">浅色</button>
+      <button class="stool on" data-theme="dark" data-for="w4">深色</button>
+    </div>
+
+    <div class="win dark" id="w4" style="height:560px">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
+        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <span class="grow"></span>
+        <button class="tbtn on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
+      </div>
+      <div class="body">
+        <div class="side" style="opacity:.55"></div>
+        <div class="center"><div class="canvas"><div class="pane"><div class="term" style="opacity:.5">
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+  <span class="dim">⎿  running 12 tests</span></div></div></div></div>
+        <div class="insp" style="opacity:.55"></div>
+      </div>
+      <div class="sb"></div>
+      <div class="scrim"></div>
+
+      <div class="palette">
+        <div class="pq">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7.2" cy="7.2" r="4.8"/><path d="M10.8 10.8 14 14"/></svg>
+          <span class="txt">call_id<span class="cur"></span></span>
+          <span style="font-size:11.5px;color:var(--label-3)">在 6 个会话 · 196 条历史中</span>
+        </div>
+
+        <div class="pg">会话</div>
+        <div class="pi_ on">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4 6.8 8.2 4.6 10"/><path d="M8.4 10.4h3"/></svg>
+          <span class="nm"><b>ToolUse 加 call_id</b></span>
+          <span class="hint">ycode · 运行中</span>
+        </div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4 6.8 8.2 4.6 10"/><path d="M8.4 10.4h3"/></svg>
+          <span class="nm"><b>RPC 分帧单测</b></span>
+          <span class="hint">ycode · 等你</span>
+        </div>
+
+        <div class="pg">待办</div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6"/><path d="M5.4 8.2 7.2 10l3.4-3.6"/></svg>
+          <span class="nm">ToolResult 同步加字段（<b>call_id</b>）</span>
+          <span class="hint">ycode · 未完成</span>
+        </div>
+
+        <div class="pg">历史全文</div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 4.2v4L10.6 9.6"/><circle cx="8" cy="8" r="6.2"/></svg>
+          <span class="nm">「…<b>call_id</b> 在 claude.rs:265 已经读到了…」</span>
+          <span class="hint">09-18</span>
+        </div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 4.2v4L10.6 9.6"/><circle cx="8" cy="8" r="6.2"/></svg>
+          <span class="nm">「…同名工具两次调用配对需要 <b>call_id</b>…」</span>
+          <span class="hint">09-17</span>
+        </div>
+
+        <div class="pg">动作</div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg>
+          <span class="nm">新建会话…</span><span class="hint">⌘N</span>
+        </div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3" width="12" height="10" rx="1.6"/><path d="M8 3v10M2 8h12"/></svg>
+          <span class="nm">切换画布布局 › 四宫格</span><span class="hint">⌃⌘4</span>
+        </div>
+        <div class="pi_">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg>
+          <span class="nm">打开文件 › crates/ycode-introspect/src/unified.rs</span><span class="hint">⌘P</span>
+        </div>
+
+        <div class="pfoot">
+          <span><kbd>↑↓</kbd> 选择</span><span><kbd>↵</kbd> 打开</span>
+          <span><kbd>⌘↵</kbd> 在新窗口打开</span><span style="margin-left:auto"><kbd>esc</kbd> 关闭</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes" style="grid-template-columns:1fr">
+    <div class="note"><span class="b">·</span><span class="x"><b>一个入口，四类结果。</b>会话、待办、历史全文、动作 —— 分组标题写死这四类，顺序固定。
+      现有实现里历史搜索在「历史」菜单（⌘K）、面板切换在画布工具条、新建会话在工具栏 ——
+      三处入口在这里合成一处。菜单栏里那个单独的 <code>Migration</code> 菜单随之删除。</span></div>
+  </div>
+
+  <div class="stage">
+    <span class="stage-label">屏 05 · 新建会话 · 没有弹窗</span>
+    <div class="stage-tools">
+      <button class="stool on" data-theme="light" data-for="w5">浅色</button>
+      <button class="stool" data-theme="dark" data-for="w5">深色</button>
+    </div>
+
+    <div class="win" id="w5" style="height:560px">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
+        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <span class="grow"></span>
+        <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
+        <button class="tbtn on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M9.8 2.8v10.4"/></svg></button>
+      </div>
+      <div class="body">
+        <div class="side">
+          <div class="side-search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg><span>搜索会话</span>
+          </div>
+          <div class="side-filter">
+            <button class="fchip on">全部 <span class="c">7</span></button>
+            <button class="fchip alert">等你 <span class="c">3</span></button>
+          </div>
+          <div class="side-scroll">
+            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">5</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
+            <div class="srow on"><span class="dot d-attn"></span><span class="ai"></span><span class="s1" style="font-style:italic;opacity:.85">新会话</span></div>
+            <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span></div>
+            <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span></div>
+          </div>
+          <div class="side-foot">
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+          </div>
+        </div>
+
+        <div class="center">
+          <div class="canvas">
+            <div class="pane focus">
+              <div class="pane-hd">
+                <span class="dot d-attn"></span>
+                <span class="nm" style="font-style:italic;opacity:.85">新会话</span>
+                <span class="k">⌘⇧1</span>
+                <span class="tools">
+                  <button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button>
+                </span>
+              </div>
+              <div class="picker-host">
+                <div class="picker">
+                  <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-ycode"/></svg></span>
+                  <h3>新会话</h3>
+                  <div class="sub">选一个 agent，在 <b style="color:var(--canvas-ink)">ycode</b> 里开始。</div>
+                  <div class="agents">
+                    <button class="pagent">
+                      <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-claude"/></svg></span>
+                      <span class="nm">Claude Code</span><span class="cmd"><span class="pd"></span>claude</span>
+                    </button>
+                    <button class="pagent">
+                      <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-codex"/></svg></span>
+                      <span class="nm">Codex</span><span class="cmd"><span class="pd"></span>codex</span>
+                    </button>
+                    <button class="pagent">
+                      <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-gemini"/></svg></span>
+                      <span class="nm">Gemini CLI</span><span class="cmd"><span class="pd"></span>gemini</span>
+                    </button>
+                  </div>
+                  <div class="foot">
+                    <label class="wt"><i></i>worktree</label>
+                    <span class="branch">
+                      <svg class="gi" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>
+                      <span class="bn">main</span><span class="ch">▾</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="insp">
+          <div class="insp-tabs">
+            <button class="itab" data-tab="files" data-win="w5">文件</button>
+            <button class="itab on" data-tab="changes" data-win="w5">变更</button>
+            <button class="itab" data-tab="todos" data-win="w5">待办</button>
+          </div>
+          <div class="insp-body">
+            <div class="ipane on" data-pane="changes" data-win="w5">
+              <div class="empty">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M4 12h16M12 4v16"/><circle cx="12" cy="12" r="9.2"/></svg>
+                <div class="t">工作区是干净的</div>
+                <div class="d">agent 改了文件之后，这里会出现逐块可暂存的 diff。</div>
+              </div>
+            </div>
+            <div class="ipane" data-pane="files" data-win="w5"><div class="empty"><div class="d">见屏 01</div></div></div>
+            <div class="ipane" data-pane="todos" data-win="w5"><div class="empty"><div class="d">见屏 01</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb">
+        <span class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>main</span>
+        <span class="vd"></span><span class="it">7 个会话 · 3 个等你</span>
+        <span class="sp"></span>
+        <span class="it mono">PID 51902</span><span class="vd"></span><span class="it">终端 13 pt</span>
+      </div>
+    </div>
+
+    <span class="pin" style="left:460px;top:16px">1</span>
+    <span class="pin" style="left:1288px;top:527px">2</span>
+    <span class="pin" style="left:12px;top:190px">3</span>
+  </div>
+
+  <div class="callout">
+    <p><b>这一屏直接沿用非原生版 <code>NewSessionPicker.tsx</code> 的形式，那个设计是对的。</b>
+    它的注释写得很清楚：「Clicking an agent immediately creates a session — no extra dialog or title prompt」，
+    并且只列 PATH 上找得到的 agent（<code>unavailable agents are noise in the picker</code>）。
+    原生版反而退回到了 <code>sheet</code> + 表单。这里把它接回来，按原生质感重制。
+    改的两处：agent <b>横排一行</b>（选一个是一次横向扫视，不是一列待读的清单），
+    以及底部一行 <b>worktree + 分支</b> —— 只有这两件事必须在起会话前决定，起来之后就改不了了。</p>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="b">1</span><span class="x"><b>⌘N 就地把选择器摆进画布。</b>选完 agent 立刻变成终端，没有中间对话框。
+      现在原生版的 <code>sheet(isPresented:)</code> + <code>NewAgentSessionView</code>
+      是一个「起名字 + 选 profile」的表单，而起名字这件事此刻你根本答不上来。</span></div>
+    <div class="note"><span class="b">2</span><span class="x"><b>底部是两个决策，不是两行说明。</b>worktree 是否隔离、基于哪个分支 ——
+      只有这两件事必须在起会话前定（起来之后改不了）。原先那两行提示
+      （「分支名按会话标题生成」「另外 2 个 agent 不在 PATH 上」）都删了：
+      前者是实现细节，后者是让用户每次新建都重读一遍自己没装什么。<b>没装的 agent 根本不出现</b>，
+      这是非原生版就定下的规矩（<code>unavailable agents are noise in the picker</code>）。</span></div>
+    <div class="note"><span class="b">3</span><span class="x"><b>名字来自 CLI。</b>选完 agent 后 <code>title</code> 传空串，
+      侧栏先显示斜体的「新会话」，CLI 报出自己的 live title 后自动改名。要手动改，窗格头右键「重命名」。</span></div>
+    <div class="note"><span class="b">·</span><span class="x"><b>建到哪个项目，说清楚。</b>侧栏是多项目平铺的，所以按钮写成「新建会话 · ycode」，
+      项目组标题行 hover 也出 <code>＋</code>。⌘N 跟随当前项目，⇧⌘N 则是「在别的项目里新建…」走 ⌘K 选项目。</span></div>
+  </div>
+</section>
+
+<!-- ══════════════ 07 空状态 ══════════════ -->
+<section id="states">
+  <div class="sec-head"><span class="sec-num">07</span><h2>空状态与故障</h2></div>
+  <p class="sec-dek">
+    <code>ContentUnavailableView</code> 的默认样式在四个地方各出现一次，文案都是「选择或创建会话」这类
+    重复动作名的句子。空状态是产品说话最多的地方，值得一句一句写。
+  </p>
+
+  <div class="stage" style="display:flex;gap:30px;padding-bottom:40px">
+    <span class="stage-label">屏 06 · 空状态 · 无项目</span>
+
+    <div class="win" id="w6" style="width:760px;height:490px">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="crumb"><span class="proj">ycode</span></div>
+        <span class="grow"></span>
+      </div>
+      <div class="body">
+        <div class="side" style="width:200px">
+          <div class="side-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg><span>搜索会话</span></div>
+          <div class="side-scroll">
+            <div style="padding:26px 16px 0;text-align:center;color:var(--label-3);font-size:11.5px;line-height:1.6">
+              还没有项目
+            </div>
+          </div>
+          <div class="side-foot">
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>添加项目</button>
+          </div>
+        </div>
+        <div class="center">
+          <div class="empty on-canvas">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
+              <rect x="2.5" y="4.5" width="19" height="15" rx="2.4"/><path d="M6.6 9.6 9.4 12l-2.8 2.4M11.6 14.6h5.4"/>
+            </svg>
+            <div class="t">先加一个项目</div>
+            <div class="d">项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。</div>
+            <div class="acts">
+              <button class="btn pri">选择文件夹…</button>
+              <button class="btn" style="background:var(--canvas-fill);color:var(--canvas-ink);box-shadow:none">或在终端里 <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">ycode .</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sb"><span class="it">未选择项目</span><span class="sp"></span><span class="it">0 个会话</span></div>
+    </div>
+
+  </div>
+
+  <div class="callout">
+    <p><b>整份稿子只有这一个真正的空状态。</b>
+    「项目没有会话」「画布窗格空着」都不另做 —— 它们展示的就是屏 05 那个 agent 选择器，
+    同一个组件、同一个尺寸、同一份文案。有会话时按 ⌘N 看到它，没会话时它就在那儿等着。
+    做三套「无会话页 / 空窗格页 / 新建页」，是同一件事被说了三遍。</p>
+  </div>
+
+  <h3>空状态的文案基准</h3>
+  <p style="margin-bottom:16px">规则：<b>一句说清这是什么，一句给出下一步</b>。不重复按钮上已有的动作名，不用「暂无数据」。<br>
+  七处 <code>ContentUnavailableView</code> 里有两处根本不该是文案 —— 「项目无会话」和「画布无会话」都换成 agent 选择器，
+  真正需要写文案的只剩五处。</p>
+  <table>
+    <tr><th>位置</th><th>标题</th><th>说明 + 动作</th></tr>
+    <tr><td>无项目</td><td>先加一个项目</td><td>项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。<br>［选择文件夹…］［或在终端里 <code>ycode .</code>］</td></tr>
+    <tr><td>项目无会话</td><td colspan="2"><b>不做空状态 —— 直接就是屏 05 的 agent 选择器</b>，与 ⌘N 看到的完全同一个。</td></tr>
+    <tr><td>画布无会话</td><td colspan="2"><b>同上，还是那个 agent 选择器。</b>空着的窗格里就摆它，点一下就有 agent 在跑，
+      不必先回侧栏再决定。<b>一个组件覆盖三种「这里还没有东西」</b>，用户只学一次。</td></tr>
+    <tr><td>无变更</td><td>工作区是干净的</td><td>agent 改了文件之后，这里会出现逐块可暂存的 diff。</td></tr>
+    <tr><td>无待办</td><td>还没有待办</td><td>你可以在这里加，agent 也能通过 <code>ycode-todos</code> 自己加。两边是同一份清单。</td></tr>
+    <tr><td>历史为空<br><span style="font-size:11.5px;color:var(--doc-ink-3)">（侧栏折叠区内）</span></td><td>这个项目还没有历史记录</td><td>ycode 会读 <code>~/.claude</code> 和 <code>~/.codex</code> 里属于这个目录的会话。第一次扫描要几秒。<br>［重新扫描］</td></tr>
+    <tr><td>搜索无结果</td><td>没有匹配「call_id」的结果</td><td>搜索覆盖会话名和历史全文。换个词，或者 ⌘⇧R 重新扫描历史。</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════ 08 设置 ══════════════ -->
+<section id="settings">
+  <div class="sec-head"><span class="sec-num">08</span><h2>设置</h2></div>
+  <p class="sec-dek">
+    现在的 <code>SettingsView</code> 有 746 行，里面混着外观、语言服务器、MCP、通知、用量。
+    这一屏只做两件事：分组按<b>用户心智</b>而不是按模块，以及给「诊断」一个正式的家 —— 问题 05 的那些内部信息全在那里。
+  </p>
+
+  <div class="stage">
+    <span class="stage-label">屏 07 · 设置 · 外观</span>
+    <div class="stage-tools">
+      <button class="stool on" data-theme="light" data-for="w8">浅色</button>
+      <button class="stool" data-theme="dark" data-for="w8">深色</button>
+    </div>
+
+    <div class="win set" id="w8">
+      <div class="tb">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <span class="grow"></span>
+        <span style="font-size:13px;font-weight:600">外观</span>
+        <span class="grow"></span>
+        <span style="width:60px"></span>
+      </div>
+      <div class="body">
+        <div class="setnav">
+          <div class="ng">通用</div>
+          <div class="ni on"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="5.6"/><path d="M8 2.4v11.2"/></svg>外观</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="3.2" width="12" height="9.6" rx="1.8"/><path d="M4.6 6.6h6.8M4.6 9.4h4.2"/></svg>会话</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="4" width="12.4" height="8" rx="1.6"/><path d="M4.4 7h.1M6.8 7h.1M9.2 7h.1M4.4 9.6h7.2"/></svg>快捷键</div>
+          <div class="ng">Agent</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="5.4" r="2.6"/><path d="M3 13.2a5 5 0 0 1 10 0"/></svg>Agent 与模型</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1.8 13.4 4v4.2c0 3-2.3 5.2-5.4 6-3.1-.8-5.4-3-5.4-6V4z"/></svg>权限与信任</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.2" y="2.2" width="4.8" height="4.8" rx="1.2"/><rect x="9" y="2.2" width="4.8" height="4.8" rx="1.2"/><rect x="2.2" y="9" width="4.8" height="4.8" rx="1.2"/></svg>扩展与 MCP</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.4 12.6V7M8 12.6V3.4M12.6 12.6V9.4"/></svg>用量</div>
+          <div class="ng">系统</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 2.4a4 4 0 0 0-4 4v3l-1.4 2.2h10.8L12 9.4v-3a4 4 0 0 0-4-4z"/><path d="M6.6 13.4a1.6 1.6 0 0 0 2.8 0"/></svg>通知</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><ellipse cx="8" cy="4" rx="5.2" ry="2.2"/><path d="M2.8 4v8c0 1.2 2.3 2.2 5.2 2.2s5.2-1 5.2-2.2V4"/></svg>数据</div>
+          <div class="ni"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="6.2"/><path d="M8 7.2v4M8 4.9v.1"/></svg>关于与诊断</div>
+        </div>
+
+        <div class="setpane">
+          <div class="ph">外观</div>
+          <div class="ph2">这里改的是整个窗口，终端画布也跟着变 —— app 里没有不听系统话的区域。</div>
+
+          <div class="srow2">
+            <div class="lb"><div class="t">界面外观</div></div>
+            <div class="segbig"><button>浅色</button><button>深色</button><button class="on">跟随系统</button></div>
+          </div>
+          <div class="srow2">
+            <div class="lb"><div class="t">界面字号</div><div class="d">按系统字阶整体缩放，标题与正文的相对关系保持不变</div></div>
+            <div class="segbig"><button>紧凑</button><button class="on">标准</button><button>宽松</button></div>
+          </div>
+          <div class="srow2">
+            <div class="lb"><div class="t">终端字号</div><div class="d">与界面字号相互独立</div></div>
+            <div class="segbig" style="padding:2px 6px"><button>−</button><button class="on" style="font-family:ui-monospace,Menlo,monospace">13 pt</button><button>＋</button></div>
+          </div>
+          <div class="srow2">
+            <div class="lb"><div class="t">语言</div></div>
+            <span class="pop-sel">简体中文 <span class="ch">▾</span></span>
+          </div>
+          <div class="srow2">
+            <div class="lb"><div class="t">侧栏显示所属 agent</div><div class="d">关掉后每行只有状态点与名称，更紧凑</div></div>
+            <div class="sw2 on"><i></i></div>
+          </div>
+          <div class="srow2" style="border-bottom:0">
+            <div class="lb"><div class="t">窗口启动时恢复上次的布局</div><div class="d">包括画布分格、检查器 tab 与侧栏宽度</div></div>
+            <div class="sw2 on"><i></i></div>
+          </div>
+
+          <div style="margin-top:26px;padding:13px 15px;background:var(--fill);border-radius:8px;font-size:12px;color:var(--label-2);line-height:1.6">
+            <b style="color:var(--label)">「关于与诊断」页收走了这些：</b>
+            应用版本与 bundle id、数据目录路径、文件树宽度等持久化状态、最近一次错误、日志路径，以及一个
+            <b>［复制诊断信息］</b>按钮。它们不再出现在项目页上。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 09 对照 ══════════════ -->
+<section id="mapping">
+  <div class="sec-head"><span class="sec-num">09</span><h2>控件去向对照</h2></div>
+  <p class="sec-dek">
+    这份稿子不删任何功能。现有界面上的每一个控件在新布局里都有确定的位置 ——
+    下表逐个交代，实施时按它核对就不会漏。
+  </p>
+
+  <table>
+    <tr><th>现在在哪</th><th>搬到哪</th><th>为什么</th></tr>
+    <tr><td>工具栏「添加项目」</td><td>侧栏底部 + ⌘O + 空状态按钮</td><td>属于侧栏上下文</td></tr>
+    <tr><td>工具栏「新建会话」</td><td>侧栏底部（带项目名）+ 项目组 hover ＋ + ⌘N</td><td>必须说清建到哪个项目</td></tr>
+    <tr><td><code>NewAgentSessionView</code> sheet</td><td>删除。⌘N 把 agent 选择器摆进画布（照搬非原生版 <code>NewSessionPicker</code>）</td><td>起名字挡在前面，而此刻还不知道叫什么</td></tr>
+    <tr><td>工具栏「独立窗口 / 上移 / 下移」</td><td>侧栏项目行右键菜单</td><td>低频 + 与项目强绑定，不占工具栏</td></tr>
+    <tr><td>工具栏「注意力」popover</td><td>保留在工具栏，加红点角标</td><td>唯一需要跨项目可见的入口</td></tr>
+    <tr><td>画布工具条「布局菜单」</td><td>工具栏分段控件（5 档图标）</td><td>菜单要两次点击，分段控件一次</td></tr>
+    <tr><td>画布工具条「5 个面板开关」</td><td>检查器 3 个互斥 tab（⌘1–3）</td><td>「终端」不再是面板，它就是画布</td></tr>
+    <tr><td><code>.history</code> 面板 / <code>HistoryPanelView</code></td><td>侧栏各项目组下的「历史会话」折叠区 + ⌘K 全文搜</td><td>历史是过去的会话，不是工作区切面；数据本来就按 cwd 分组</td></tr>
+    <tr><td>画布工具条「字号加减」</td><td>状态栏 + 设置 › 外观</td><td>低频，不值得常驻</td></tr>
+    <tr><td>详情页标题 / agentProfile</td><td>工具栏面包屑</td><td>窗口标题就该说明在看什么</td></tr>
+    <tr><td>详情页「PID」</td><td>状态栏右侧</td><td>元数据的固定位置</td></tr>
+    <tr><td>详情页「Agent 会话 ID」</td><td>会话信息浮层（ⓘ）</td><td>排错才用，日常是噪音</td></tr>
+    <tr><td>详情页「停止 / 重启 / 重命名 / 归档」</td><td>会话右键菜单：放到画布 / 独立窗口 / 重命名 / 归档 / 删除</td><td>不占主区四行高度；「重启」随可恢复语义一起消失</td></tr>
+    <tr><td>工具栏「删除项目」</td><td>设置 › 项目（不进右键菜单）</td><td>低频且不可逆，不该随手点到</td></tr>
+    <tr><td>已归档 / 历史会话的操作</td><td>同一个右键菜单，首项变「重新打开」</td><td>会话都能 resume，重开就是接着跑</td></tr>
+    <tr><td>项目页「File Tree Width (M4.1)」等</td><td>设置 › 关于与诊断</td><td>内部状态不进产品界面（L-04）</td></tr>
+    <tr><td>项目页「数据目录路径」</td><td>设置 › 数据</td><td>同上</td></tr>
+    <tr><td>菜单栏 <code>Migration</code> 菜单</td><td>移除；⇧⌘I 改到「关于与诊断」</td><td>迁移是我们的事，不是用户的事</td></tr>
+    <tr><td>会话列「隔离未支持的 worktree」分组</td><td>删除，不分组也不加角标</td><td>会话都能 resume，<code>recoveryAvailability</code> 不必出现在界面上</td></tr>
+    <tr><td><code>sessionStatusBadge</code> 的 7 个分支</td><td>2 个状态点（运行中 / 等你）</td><td>exited / signaled / recoverable 都不是用户要判断的事</td></tr>
+    <tr><td>⌘K「搜索项目历史」</td><td>⌘K 统一入口的「历史全文」分组</td><td>一个搜索框搜所有东西</td></tr>
+    <tr><td>⌘F「在终端中查找」</td><td>只留快捷键 + 右键菜单，窗格头不放按钮</td><td>查找是低频动作，不值得在每个窗格头常驻一个图标</td></tr>
+    <tr><td>详情页「Agent 会话 ID」入口</td><td>⌘I 或会话右键菜单「会话信息」</td><td>同上</td></tr>
+  </table>
+
+  <h3>实施顺序建议</h3>
+  <p>按「改动小、收益大」排，前三步做完界面就不像 demo 了，都不需要动 Core：</p>
+  <table>
+    <tr><th>步骤</th><th>动什么</th><th>规模</th></tr>
+    <tr><td>1 · 侧栏合一</td><td><code>NavigationSplitView</code> 三列改两列，项目变 <code>Section</code> + <code>DisclosureGroup</code></td><td><code>YCodeNativeApp.swift</code> :219-486</td></tr>
+    <tr><td>2 · 清空详情页</td><td>删掉 :511-541 的元数据块与按钮行，<code>TerminalWorkspaceView</code> 直接占满 detail</td><td>净删代码</td></tr>
+    <tr><td>3 · 工具栏瘦身</td><td>:591-633 七按钮减到四个，其余进右键菜单</td><td>移动为主</td></tr>
+    <tr><td>4 · 状态 token</td><td>把 <code>sessionStatusBadge</code> 与 <code>terminalPane</code> 的圆点抽成一个 <code>SessionStatusDot</code></td><td>新增约 60 行，三处复用</td></tr>
+    <tr><td>5 · 检查器</td><td><code>openPanels: Set</code> 改成 <code>focusedPanel</code> 单值 + <code>isInspectorVisible</code>；<code>YCodeWorkspacePanel</code> 从 5 个枚举减到 3 个，<code>.terminal</code> 与 <code>.history</code> 移出</td><td>模型简化，UI 跟着简化</td></tr>
+    <tr><td>5b · 历史归位</td><td><code>HistoryPanelView</code> 的列表改成侧栏项目组下的 <code>DisclosureGroup</code>，复用 <code>historySessions</code></td><td>数据不动，只换挂载点</td></tr>
+    <tr><td>5c · 新建会话</td><td>删 <code>showingNewSession</code> sheet 与 <code>NewAgentSessionView</code>；照 <code>src/components/NewSessionPicker.tsx</code> 重建一个 SwiftUI 版，同时用作空状态</td><td>形式已有验证，只是重制</td></tr>
+    <tr><td>6 · 状态栏</td><td>新增一条 26 px 的 <code>StatusBar</code>，接 <code>GitService</code> 与 runtime</td><td>新文件约 120 行</td></tr>
+    <tr><td>7 · 字阶复原</td><td>:212 的 <code>.font(.system(size:))</code> 换成 <code>.dynamicTypeSize</code></td><td>一行，但要全局回归一次</td></tr>
+    <tr><td>8 · 空状态</td><td>七处 <code>ContentUnavailableView</code>：两处换成 agent 选择器，五处按 §07 的表改文案</td><td>文案为主</td></tr>
+  </table>
+
+  <div class="callout" style="margin-top:40px">
+    <p><b>这份稿子有意没做的事。</b>没有引入任何新功能，没有改数据模型，没有碰 pi 形态的对话面板 ——
+    那是另一份稿子的事（见 <code>docs/ycode-feature-spec.md</code>）。
+    这里的每一处改动都可以在不动 <code>YCodeCore</code> 的前提下完成，
+    因此它和后面的 pi 迁移不冲突：外壳先立住，中栏将来换成对话面板时，
+    侧栏、检查器、状态栏、收件箱这四件套原样保留。</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+"use strict";
+/* 主题切换 */
+document.querySelectorAll(".stool[data-theme]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    var win = document.getElementById(btn.dataset.for);
+    if(!win) return;
+    win.classList.toggle("dark", btn.dataset.theme === "dark");
+    var stage = btn.closest(".stage");
+    stage.classList.toggle("dim", btn.dataset.theme === "dark");
+    stage.querySelectorAll(".stool[data-theme]").forEach(function(b){
+      b.classList.toggle("on", b === btn);
+    });
+  });
+});
+/* 检查器 tab */
+document.querySelectorAll(".itab").forEach(function(tab){
+  tab.addEventListener("click", function(){
+    var w = tab.dataset.win, t = tab.dataset.tab;
+    document.querySelectorAll('.itab[data-win="'+w+'"]').forEach(function(b){
+      b.classList.toggle("on", b === tab);
+    });
+    document.querySelectorAll('.ipane[data-win="'+w+'"]').forEach(function(p){
+      p.classList.toggle("on", p.dataset.pane === t);
+    });
+  });
+});
+/* 画布布局分段控件（仅视觉反馈） */
+document.querySelectorAll(".seg").forEach(function(seg){
+  seg.querySelectorAll("button").forEach(function(b){
+    b.addEventListener("click", function(){
+      seg.querySelectorAll("button").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+    });
+  });
+});
+</script>
+</body>
+</html>

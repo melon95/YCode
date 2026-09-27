@@ -1,0 +1,2198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ycode 原生版 · 界面与交互规范（交付稿）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   A · 文档外壳 —— 与内嵌的 app 稿刻意区分开
+   ═══════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --doc-bg:#12100e; --doc-panel:#1a1714; --doc-panel-2:#221d19;
+  --doc-ink:#f2ece4; --doc-ink-2:#b9afa2; --doc-ink-3:#7e7566;
+  --doc-rule:#2b2622; --doc-accent:#d9a441; --doc-red:#d2593f; --doc-green:#77a65c; --doc-blue:#6f90c4;
+  --serif:"Instrument Serif","Songti SC",Georgia,serif;
+  --sans:"IBM Plex Sans","PingFang SC","Hiragino Sans GB",sans-serif;
+  --code:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--doc-bg);color:var(--doc-ink);font-family:var(--sans);
+  font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 500px at 12% -5%,rgba(217,164,65,.09),transparent 60%),
+    radial-gradient(700px 420px at 92% 8%,rgba(93,124,168,.08),transparent 62%);
+  background-attachment:fixed;
+}
+.wrap{max-width:1400px;margin:0 auto;padding:0 40px 160px}
+.masthead{padding:88px 0 40px;border-bottom:1px solid var(--doc-rule)}
+.eyebrow{font-family:var(--code);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--doc-accent);margin-bottom:22px}
+h1{font-family:var(--serif);font-weight:400;font-size:76px;line-height:.98;letter-spacing:-.02em}
+h1 em{font-style:italic;color:var(--doc-accent)}
+.dek{max-width:62ch;margin-top:22px;color:var(--doc-ink-2);font-size:17px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:32px;font-family:var(--code);font-size:11.5px;color:var(--doc-ink-3)}
+.meta b{color:var(--doc-ink-2);font-weight:500}
+.toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:44px 0 0}
+.toc a{background:var(--doc-panel);padding:15px 17px;text-decoration:none;color:var(--doc-ink-2);display:block;transition:.15s}
+.toc a:hover{background:var(--doc-panel-2);color:var(--doc-ink)}
+.toc .n{font-family:var(--code);font-size:10.5px;color:var(--doc-accent);display:block;margin-bottom:5px}
+.toc .t{font-size:14px}
+section{padding:96px 0 0;scroll-margin-top:24px}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:12px}
+.sec-num{font-family:var(--code);font-size:12px;color:var(--doc-accent);letter-spacing:.1em}
+h2{font-family:var(--serif);font-weight:400;font-size:44px;line-height:1.1;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:600;margin:48px 0 12px;letter-spacing:.01em}
+h3:first-of-type{margin-top:34px}
+h4{font-size:13.5px;font-weight:600;color:var(--doc-ink-2);margin:26px 0 10px}
+p{max-width:78ch;color:var(--doc-ink-2)}
+p+p{margin-top:12px}
+.lede{max-width:78ch;color:var(--doc-ink-2);font-size:16px;border-left:2px solid var(--doc-accent);padding-left:18px;margin:18px 0 6px}
+code,.mono{font-family:var(--code);font-size:.88em}
+p code,li code,td code{background:rgba(217,164,65,.11);color:#e6c681;padding:1px 5px;border-radius:3px}
+ul,ol{max-width:78ch;color:var(--doc-ink-2);padding-left:20px;margin:12px 0}
+li{margin:5px 0}
+li::marker{color:var(--doc-ink-3)}
+a{color:var(--doc-accent)}
+hr.rule{border:0;border-top:1px solid var(--doc-rule);margin:52px 0}
+
+/* 表格 */
+table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13.5px}
+th{text-align:left;font-weight:500;font-family:var(--code);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--doc-ink-3);padding:0 14px 9px;border-bottom:1px solid var(--doc-rule);vertical-align:bottom}
+td{padding:11px 14px;border-bottom:1px solid var(--doc-rule);color:var(--doc-ink-2);vertical-align:top}
+td:first-child,th:first-child{padding-left:0}
+td b{color:var(--doc-ink);font-weight:500}
+tr:hover td{background:rgba(255,255,255,.017)}
+.tnum{font-family:var(--code);font-size:12px;color:var(--doc-ink)}
+
+/* 标注气泡 / 决策条 */
+.notes{counter-reset:note;margin:20px 0 0;padding:0;list-style:none;max-width:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
+.notes li{counter-increment:note;background:var(--doc-panel);padding:15px 17px 16px;margin:0;font-size:13.5px;color:var(--doc-ink-2);line-height:1.62}
+.notes li::before{content:counter(note);display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--doc-accent);color:#171310;font-family:var(--code);font-size:10px;font-weight:600;margin-right:9px;vertical-align:1px}
+.notes li b{color:var(--doc-ink);font-weight:600}
+.notes.plain{counter-reset:none}
+.notes.plain li::before{display:none}
+
+.callout{border:1px solid var(--doc-rule);border-left:2px solid var(--doc-accent);background:var(--doc-panel);padding:16px 20px;margin:22px 0;font-size:13.5px;color:var(--doc-ink-2);max-width:none}
+.callout b{color:var(--doc-ink)}
+.callout.warn{border-left-color:var(--doc-red)}
+.callout.ok{border-left-color:var(--doc-green)}
+
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}
+.tag{font-family:var(--code);font-size:10.5px;letter-spacing:.06em;padding:3px 9px;border:1px solid var(--doc-rule);border-radius:999px;color:var(--doc-ink-3)}
+.tag.on{border-color:rgba(119,166,92,.5);color:var(--doc-green)}
+.tag.off{border-color:rgba(210,89,63,.45);color:var(--doc-red)}
+
+/* 舞台 —— 承载 app 稿 */
+.stage{background:#0b0a09;border:1px solid var(--doc-rule);padding:40px;margin:26px 0 0;display:flex;flex-direction:column;align-items:center;gap:14px;overflow:auto}
+.stage.tight{padding:26px}
+.cap{font-family:var(--code);font-size:11px;color:var(--doc-ink-3);text-align:center}
+.cap b{color:var(--doc-ink-2);font-weight:500}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:26px 0 0}
+.duo>div{background:#0b0a09;padding:26px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:26px 0 0}
+.trio>div{background:#0b0a09;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:12px}
+@media(max-width:1100px){.duo,.trio{grid-template-columns:1fr}}
+
+/* 主题切换条 */
+.themebar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;background:rgba(18,16,14,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--doc-rule);padding:9px 40px;font-family:var(--code);font-size:11px;color:var(--doc-ink-3)}
+.themebar button{font-family:var(--code);font-size:11px;padding:4px 12px;border:1px solid var(--doc-rule);background:var(--doc-panel);color:var(--doc-ink-2);border-radius:999px;cursor:pointer}
+.themebar button.on{border-color:var(--doc-accent);color:var(--doc-accent)}
+.themebar .sp{flex:1}
+.themebar a{text-decoration:none;color:var(--doc-ink-3)}
+
+/* 色板 */
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:18px 0 0}
+.sw{background:var(--doc-panel);padding:13px 15px}
+.sw .chipc{height:34px;border-radius:4px;border:1px solid rgba(255,255,255,.08);margin-bottom:9px}
+.sw .nm{font-size:12.5px;color:var(--doc-ink)}
+.sw .hx{font-family:var(--code);font-size:10.5px;color:var(--doc-ink-3);margin-top:2px}
+
+/* ═══════════════════════════════════════════════════════════════
+   B · app 组件系统 —— 所有屏幕共用这一套，改一处全稿一致
+   ═══════════════════════════════════════════════════════════════ */
+.app{font-variant-emoji:text;
+  /* 浅色（YCodeThemeCatalog.light + YCodeDesignSystem） */
+  --bg:#ffffff; --chrome:#f4f4f6; --panel:#fbfbfc; --field:#ffffff;
+  --text:#1d1d1f; --soft:#5a5a5e; --faint:#8e8e93; --line:rgba(0,0,0,.10);
+  --accent:#0b63e5; --accent-soft:rgba(11,99,229,.16);
+  --ok:#1A8A54; --warn:#B67707; --err:#D2382F;
+  --term-bg:#ffffff; --term-fg:#1d1d1f;
+  --add-bg:rgba(26,138,84,.10); --del-bg:rgba(210,56,47,.10);
+  /* 尺寸（YCodeMetrics） */
+  --sidebar:238px; --inspector:302px; --row:28px; --panehead:28px;
+  --tabbar:38px; --head:30px; --ctrl:24px; --r:6px;
+  font-family:-apple-system,"SF Pro Text","PingFang SC","IBM Plex Sans",sans-serif;
+  background:var(--bg);color:var(--text);
+  border-radius:10px;overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.55);
+  border:1px solid rgba(255,255,255,.07);
+  font-size:13px;line-height:1.4;user-select:none;
+}
+.app.dark{
+  --bg:#1e1e20; --chrome:#242426; --panel:#2a2a2d; --field:#242426;
+  --text:#f2f2f4; --soft:#b4b4b8; --faint:#86868b; --line:rgba(255,255,255,.12);
+  --accent:#4c8dff; --accent-soft:rgba(76,141,255,.20);
+  --ok:#38B87C; --warn:#E0A33A; --err:#F0655A;
+  --term-bg:#16181d; --term-fg:#e8e8ea;
+  --add-bg:rgba(56,184,124,.13); --del-bg:rgba(240,101,90,.13);
+}
+/* 标题栏 + 统一工具栏 */
+.tbar{height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--chrome);border-bottom:1px solid var(--line);position:relative}
+.traffic{display:flex;gap:8px;padding-right:6px}
+.traffic i{width:12px;height:12px;border-radius:50%;display:block}
+.traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+.ttl{display:flex;flex-direction:column;justify-content:center;line-height:1.25;min-width:0}
+.ttl .t1{font-size:13px;font-weight:600}
+.ttl .t2{font-size:11px;color:var(--faint)}
+.tbar .sp{flex:1}
+.seg{display:flex;background:color-mix(in srgb,var(--text) 8%,transparent);border-radius:6px;padding:2px;gap:2px}
+.seg b{width:26px;height:20px;display:grid;place-items:center;border-radius:4px;color:var(--soft);font-weight:400}
+.seg b.on{background:var(--bg);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.tbtn{width:26px;height:22px;display:grid;place-items:center;border-radius:5px;color:var(--soft)}
+.tbtn.on{background:var(--accent-soft);color:var(--accent)}
+/* 画布顶栏上的面板开关：图标按钮，右上角 4px 徽标点 */
+.itab{position:relative;width:28px;height:24px;display:grid;place-items:center;border-radius:var(--r);color:var(--soft);flex:none}
+.itab.on{background:var(--accent-soft);color:var(--accent)}
+.itab svg{width:15px;height:15px;display:block}
+.itab i{position:absolute;top:1px;right:1px;width:4px;height:4px;border-radius:50%;background:var(--accent);display:block}
+.tdiv{width:1px;height:16px;background:var(--line);flex:none;margin:0 4px}
+/* 三区骨架 */
+.body{display:flex;height:var(--h,560px)}
+.side{width:var(--sidebar);flex:none;background:var(--chrome);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.canvas{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column}
+.insp{width:var(--inspector);flex:none;background:var(--chrome);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+/* 通用行 */
+.row{height:var(--row);display:flex;align-items:center;gap:8px;padding:0 8px;margin:0 8px;border-radius:var(--r);min-width:0;font-size:13px}
+.row.sel{background:var(--accent);color:#fff}
+.row.sel .dim,.row.sel .kb{color:rgba(255,255,255,.78)}
+.row.hov{background:color-mix(in srgb,var(--text) 6%,transparent)}
+.row .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.row .nm.ph{font-style:italic;color:var(--faint)}
+.row.sel .nm.ph{color:rgba(255,255,255,.8)}
+.row .sp{flex:1;min-width:4px}
+.dim{color:var(--faint);font-size:11px}
+.kb{font-family:var(--code);font-size:10px;color:var(--faint)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;display:block}
+.dot.run{background:var(--ok)}.dot.need{background:var(--warn)}.dot.idle{background:var(--faint);opacity:.55}
+/* 分组标题 */
+.grp{height:22px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11.5px;font-weight:600;color:var(--soft)}
+.grp .cnt{font-family:var(--code);font-size:10.5px;color:var(--faint);font-weight:400}
+.grp .sp{flex:1}
+.chev{width:10px;text-align:center;font-size:8px;color:var(--faint)}
+/* 面板头 —— 变更/待办/文件/shell 共用 30px */
+.phead{height:var(--head);display:flex;align-items:center;gap:8px;padding:0 10px;font-size:11.5px;font-weight:500;flex:none}
+.phead .sp{flex:1}
+.lnk{color:var(--accent);font-size:11.5px}
+.lnk.danger{color:var(--err)}
+.ell{color:var(--soft);font-size:13px;letter-spacing:.5px}
+/* 输入 */
+.field{display:flex;align-items:center;gap:7px;height:28px;padding:0 9px;background:var(--field);border:1px solid var(--line);border-radius:7px;color:var(--faint);font-size:12.5px}
+.searchrow{height:30px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--faint);font-size:12.5px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--text) 9%,transparent);font-size:11px;color:var(--text)}
+.chip.on{background:var(--accent-soft);color:var(--accent)}
+.chip .n{font-family:var(--code);font-size:10.5px;color:var(--faint)}
+.chip.on .n{color:var(--accent)}
+.chip i{width:5px;height:5px;border-radius:50%;background:var(--warn);display:block}
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:22px;padding:0 10px;border-radius:5px;background:color-mix(in srgb,var(--text) 8%,transparent);font-size:12px;color:var(--text)}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.off{opacity:.42}
+/* 画布窗格 */
+.pane{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg);border:1px solid transparent;border-radius:4px;overflow:hidden}
+.pane.focus{border-color:var(--accent)}
+.pane-h{height:var(--panehead);display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line);font-size:11.5px;font-weight:500;flex:none}
+.pane.focus .pane-h{background:var(--accent-soft)}
+.pane-h .sp{flex:1}
+.term{flex:1;min-height:0;background:var(--term-bg);color:var(--term-fg);font-family:var(--code);font-size:11px;line-height:1.55;padding:8px 10px;overflow:hidden;white-space:pre-wrap}
+.term .c{color:var(--accent)}
+.term .g{color:var(--ok)}
+.term .y{color:var(--warn)}
+.term .m{color:var(--faint)}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px}
+.mid .t{font-size:13px;font-weight:600}
+.mid .b{font-size:11.5px;color:var(--soft);max-width:30ch;line-height:1.55}
+.split{display:flex;flex:1;min-height:0;gap:0}
+.split>.pane+.pane{border-left:1px solid var(--line)}
+.split.v{flex-direction:column}
+.split.v>.pane+.pane{border-left:0;border-top:1px solid var(--line)}
+/* 图标占位 */
+/* agent 图标：内嵌 @lobehub/icons 的彩色裸 glyph，与 YCodeAgentIcons.swift 同源 */
+.ic{width:13px;height:13px;flex:none;display:block}
+/* 选中行上 agent 图标 tint 成白色 90%，彩色 glyph 不与蓝底打架 */
+.row.sel .ic{filter:brightness(0) invert(1);opacity:.9}
+.fic{width:13px;height:13px;flex:none;display:grid;place-items:center;font-size:9px;font-family:var(--code);font-weight:600}
+.fic.ts{color:#3178c6}.fic.html{color:#e44d26}.fic.rs{color:#dea584}.fic.swift{color:#f05138}.fic.md{color:#7aa2f7}.fic.dir{color:#8b93a8}
+.fic.dir::before{content:"";display:block;width:10px;height:8px;border-radius:2px;background:currentColor;opacity:.8}.fic.json{color:#f0c674}
+/* 变更面板 */
+.fhd{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12.5px;border-bottom:1px solid var(--line)}
+.st{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;font-family:var(--code);font-size:9px;font-weight:700;flex:none}
+.st.m{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.st.a{color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}
+.st.d{color:var(--err);background:color-mix(in srgb,var(--err) 16%,transparent)}
+.st.u{color:var(--ok);background:color-mix(in srgb,var(--ok) 16%,transparent)}
+.fhd .dirp{color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ct{font-family:var(--code);font-size:10.5px;display:flex;gap:5px;flex:none}
+.ct .p{color:var(--ok)}.ct .mi{color:var(--err)}
+.hunk{margin:0 10px 9px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.hunk-h{height:24px;display:flex;align-items:center;gap:8px;padding:0 9px;background:color-mix(in srgb,var(--text) 7%,transparent);font-family:var(--code);font-size:10px;color:var(--soft)}
+.hunk-h .sp{flex:1}
+.dl{display:flex;font-family:var(--code);font-size:11px;line-height:1.5}
+.dl .ln{width:34px;text-align:right;padding-right:8px;color:var(--faint);font-size:10px;flex:none}
+.dl .tx{white-space:pre;overflow:hidden}
+.dl.add{background:var(--add-bg)}.dl.add .tx{color:var(--ok)}
+.dl.del{background:var(--del-bg)}.dl.del .tx{color:var(--err)}
+.morebtn{height:22px;display:grid;place-items:center;background:color-mix(in srgb,var(--text) 5%,transparent);font-size:11.5px;color:var(--accent)}
+/* 待办 */
+.box{width:14px;height:14px;border-radius:4px;flex:none;display:grid;place-items:center;margin-top:1px}
+.box.todo{border:1.5px solid color-mix(in srgb,var(--text) 40%,transparent)}
+.box.doing{background:var(--warn)}
+.box.doing i{width:5px;height:5px;border-radius:50%;background:#fff;display:block}
+.box.done{background:var(--ok);color:#fff;font-size:8px;font-weight:800}
+.trow{display:flex;gap:8px;padding:5px 12px;align-items:flex-start;min-height:var(--row)}
+.trow .tt{font-size:12.5px}
+.trow .tt.done{color:var(--soft);text-decoration:line-through}
+.trow .by{font-size:11px;color:var(--faint);margin-top:1px}
+.trow .sp{flex:1}
+/* 文件树 / 编辑器 */
+.ftbar{height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--line);color:var(--soft);font-size:12px;flex:none}
+.ftbar .sp{flex:1}
+.frow{height:24px;display:flex;align-items:center;gap:6px;font-size:12.5px;border-radius:4px;margin:0 6px;padding:0 6px}
+.frow.sel{background:var(--accent-soft);color:var(--accent)}
+.etabs{height:var(--tabbar);display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--line);background:var(--chrome);flex:none;overflow:hidden}
+.etab{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12px;color:var(--soft);border-right:1px solid var(--line);white-space:nowrap}
+.etab.on{background:var(--bg);color:var(--text)}
+.etab.prev{font-style:italic}
+.etab .dt{width:6px;height:6px;border-radius:50%;background:var(--warn);display:block}
+.code{flex:1;min-height:0;background:var(--bg);font-family:var(--code);font-size:11px;line-height:1.6;padding:8px 0;overflow:hidden}
+.code .cl{display:flex}
+.code .n{width:32px;text-align:right;padding-right:10px;color:var(--faint);flex:none}
+.kw{color:#a626a4}.str{color:#50a14f}.cm{color:#a0a1a7}.fn{color:#4078f2}.ty{color:#c18401}
+.app.dark .kw{color:#c678dd}.app.dark .str{color:#98c379}.app.dark .cm{color:#7f848e}.app.dark .fn{color:#61afef}.app.dark .ty{color:#e5c07b}
+/* 浮层 */
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 60px rgba(0,0,0,.4);overflow:hidden}
+.menu{background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 14px 40px rgba(0,0,0,.34);padding:4px;min-width:186px;font-size:12.5px}
+.menu .mi{height:22px;display:flex;align-items:center;gap:8px;padding:0 9px;border-radius:4px;color:var(--text)}
+.menu .mi.on{background:var(--accent);color:#fff}
+.menu .mi.danger{color:var(--err)}
+.menu .mi.off{color:var(--faint)}
+.menu .mi .sp{flex:1}
+.menu .sep{height:1px;background:var(--line);margin:4px 6px}
+.menu .mi .kb{font-family:var(--code);font-size:10.5px;color:var(--faint)}
+.menu .mi.on .kb{color:rgba(255,255,255,.75)}
+.dlg{background:var(--panel);border-radius:12px;box-shadow:0 22px 60px rgba(0,0,0,.42);padding:18px 20px 14px;width:340px;text-align:center;border:1px solid var(--line)}
+.dlg .t{font-size:13px;font-weight:600}
+.dlg .b{font-size:11.5px;color:var(--soft);margin-top:6px;line-height:1.55}
+.dlg .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.kbd{font-family:var(--code);font-size:10.5px;border:1px solid var(--line,var(--doc-rule));border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--soft,var(--doc-ink-2));background:var(--bg,var(--doc-panel));white-space:nowrap}
+/* 标注定位 */
+.anno{position:relative}
+.pin{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--doc-accent);color:#171310;font-family:var(--code);font-size:10px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 3px rgba(217,164,65,.22);z-index:5}
+.ruler{position:absolute;border:1px dashed rgba(217,164,65,.55);pointer-events:none;z-index:4}
+.ruler span{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#12100e;color:var(--doc-accent);font-family:var(--code);font-size:10px;padding:1px 6px;white-space:nowrap}
+</style>
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><symbol id="ic-files" viewBox="0 0 16 16"><path d="M3.2 2.2h5.4l4.2 4.2v7.4H3.2z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><path d="M8.5 2.3v4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></symbol><symbol id="ic-changes" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M5.6 6.1h4.8M8 3.7v4.8M5.6 11.3h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></symbol><symbol id="ic-todos" viewBox="0 0 16 16"><path d="M2.4 4.6l1.4 1.4 2.4-2.6M2.4 11.3l1.4 1.4 2.4-2.6M8.8 4.4h4.8M8.8 11.9h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="ic-terminal" viewBox="0 0 16 16"><path d="M3.2 4.2l3.4 3.6-3.4 3.6M8.6 12h4.4" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="i-claude" viewBox="0 0 24 24"><path fill="#D97757" fill-rule="nonzero" clip-rule="nonzero" d="M 4.709 15.955 l 4.72 -2.647 l .08 -.23 l -.08 -.128 H 9.2 l -.79 -.048 l -2.698 -.073 l -2.339 -.097 l -2.266 -.122 l -.571 -.121 L 0 11.784 l .055 -.352 l .48 -.321 l .686 .06 l 1.52 .103 l 2.278 .158 l 1.652 .097 l 2.449 .255 h .389 l .055 -.157 l -.134 -.098 l -.103 -.097 l -2.358 -1.596 l -2.552 -1.688 l -1.336 -.972 l -.724 -.491 l -.364 -.462 l -.158 -1.008 l .656 -.722 l .881 .06 l .225 .061 l .893 .686 l 1.908 1.476 l 2.491 1.833 l .365 .304 l .145 -.103 l .019 -.073 l -.164 -.274 l -1.355 -2.446 l -1.446 -2.49 l -.644 -1.032 l -.17 -.619 a 2.97 2.97 0 0 1 -.104 -.729 L 6.283 .134 L 6.696 0 l .996 .134 l .42 .364 l .62 1.414 l 1.002 2.229 l 1.555 3.03 l .456 .898 l .243 .832 l .091 .255 h .158 V 9.01 l .128 -1.706 l .237 -2.095 l .23 -2.695 l .08 -.76 l .376 -.91 l .747 -.492 l .584 .28 l .48 .685 l -.067 .444 l -.286 1.851 l -.559 2.903 l -.364 1.942 h .212 l .243 -.242 l .985 -1.306 l 1.652 -2.064 l .73 -.82 l .85 -.904 l .547 -.431 h 1.033 l .76 1.129 l -.34 1.166 l -1.064 1.347 l -.881 1.142 l -1.264 1.7 l -.79 1.36 l .073 .11 l .188 -.02 l 2.856 -.606 l 1.543 -.28 l 1.841 -.315 l .833 .388 l .091 .395 l -.328 .807 l -1.969 .486 l -2.309 .462 l -3.439 .813 l -.042 .03 l .049 .061 l 1.549 .146 l .662 .036 h 1.622 l 3.02 .225 l .79 .522 l .474 .638 l -.079 .485 l -1.215 .62 l -1.64 -.389 l -3.829 -.91 l -1.312 -.329 h -.182 v .11 l 1.093 1.068 l 2.006 1.81 l 2.509 2.33 l .127 .578 l -.322 .455 l -.34 -.049 l -2.205 -1.657 l -.851 -.747 l -1.926 -1.62 h -.128 v .17 l .444 .649 l 2.345 3.521 l .122 1.08 l -.17 .353 l -.608 .213 l -.668 -.122 l -1.374 -1.925 l -1.415 -2.167 l -1.143 -1.943 l -.14 .08 l -.674 7.254 l -.316 .37 l -.729 .28 l -.607 -.461 l -.322 -.747 l .322 -1.476 l .389 -1.924 l .315 -1.53 l .286 -1.9 l .17 -.632 l -.012 -.042 l -.14 .018 l -1.434 1.967 l -2.18 2.945 l -1.726 1.845 l -.414 .164 l -.717 -.37 l .067 -.662 l .401 -.589 l 2.388 -3.036 l 1.44 -1.882 l .93 -1.086 l -.006 -.158 h -.055 L 4.132 18.56 l -1.13 .146 l -.487 -.456 l .061 -.746 l .231 -.243 l 1.908 -1.312 l -.006 .006 z"/></symbol><symbol id="i-codex" viewBox="0 0 24 24"><defs><linearGradient id="Codex-g" gradient-units="userSpaceOnUse" x1="12" x2="12" y1="0" y2="24"><stop stop-color="#B1A7FF"/><stop offset=".5" stop-color="#7A9DFF"/><stop offset="1" stop-color="#3941FF"/></linearGradient></defs><path fill="url(#Codex-g)" fill-rule="evenodd" clip-rule="evenodd" d="M 8.086 .457 a 6.105 6.105 0 0 1 3.046 -.415 c 1.333 .153 2.521 .72 3.564 1.7 a .117 .117 0 0 0 .107 .029 c 1.408 -.346 2.762 -.224 4.061 .366 l .063 .03 l .154 .076 c 1.357 .703 2.33 1.77 2.918 3.198 c .278 .679 .418 1.388 .421 2.126 a 5.655 5.655 0 0 1 -.18 1.631 a .167 .167 0 0 0 .04 .155 a 5.982 5.982 0 0 1 1.578 2.891 c .385 1.901 -.01 3.615 -1.183 5.14 l -.182 .22 a 6.063 6.063 0 0 1 -2.934 1.851 a .162 .162 0 0 0 -.108 .102 c -.255 .736 -.511 1.364 -.987 1.992 c -1.199 1.582 -2.962 2.462 -4.948 2.451 c -1.583 -.008 -2.986 -.587 -4.21 -1.736 a .145 .145 0 0 0 -.14 -.032 c -.518 .167 -1.04 .191 -1.604 .185 a 5.924 5.924 0 0 1 -2.595 -.622 a 6.058 6.058 0 0 1 -2.146 -1.781 c -.203 -.269 -.404 -.522 -.551 -.821 a 7.74 7.74 0 0 1 -.495 -1.283 a 6.11 6.11 0 0 1 -.017 -3.064 a .166 .166 0 0 0 .008 -.074 a .115 .115 0 0 0 -.037 -.064 a 5.958 5.958 0 0 1 -1.38 -2.202 a 5.196 5.196 0 0 1 -.333 -1.589 a 6.915 6.915 0 0 1 .188 -2.132 c .45 -1.484 1.309 -2.648 2.577 -3.493 c .282 -.188 .55 -.334 .802 -.438 c .286 -.12 .573 -.22 .861 -.304 a .129 .129 0 0 0 .087 -.087 A 6.016 6.016 0 0 1 5.635 2.31 C 6.315 1.464 7.132 .846 8.086 .457 z m -.804 7.85 a .848 .848 0 0 0 -1.473 .842 l 1.694 2.965 l -1.688 2.848 a .849 .849 0 0 0 1.46 .864 l 1.94 -3.272 a .849 .849 0 0 0 .007 -.854 l -1.94 -3.393 z m 5.446 6.24 a .849 .849 0 0 0 0 1.695 h 4.848 a .849 .849 0 0 0 0 -1.696 h -4.848 z"/></symbol><symbol id="i-gemini" viewBox="0 0 24 24"><defs><linearGradient id="Gemini-a" gradient-units="userSpaceOnUse" x1="7" x2="11" y1="15.5" y2="12"><stop stop-color="#08B962"/><stop offset="1" stop-color="#08B962" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-b" gradient-units="userSpaceOnUse" x1="8" x2="11.5" y1="5.5" y2="11"><stop stop-color="#F94543"/><stop offset="1" stop-color="#F94543" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-c" gradient-units="userSpaceOnUse" x1="3.5" x2="17.5" y1="13.5" y2="12"><stop stop-color="#FABC12"/><stop offset=".46" stop-color="#FABC12" stop-opacity="0"/></linearGradient></defs><path fill="#3186FF" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-a)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-b)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-c)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/></symbol><symbol id="i-ycode" viewBox="0 0 1024 1024"><linearGradient id="ycode-yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient> <linearGradient id="ycode-yc-top" x1="300" y1="275" x2="742" y2="516" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0c68a"/><stop offset=".48" stop-color="#a97947"/><stop offset="1" stop-color="#423225"/></linearGradient> <linearGradient id="ycode-yc-left" x1="278" y1="432" x2="534" y2="732" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#5c3126"/></linearGradient> <linearGradient id="ycode-yc-right" x1="538" y1="445" x2="767" y2="742" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f08f6c"/><stop offset="1" stop-color="#7b3f2d"/></linearGradient> <rect x="72" y="72" width="880" height="880" rx="214" fill="url(#ycode-yc-tile)"/> <rect x="104" y="104" width="816" height="816" rx="188" fill="none" stroke="#51483a" stroke-opacity=".42" stroke-width="8"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="url(#ycode-yc-top)"/> <path d="M 272 344 L 512 482 v 276 L 272 620 Z" fill="url(#ycode-yc-left)"/> <path d="M 752 344 L 512 482 v 276 l 240 -138 Z" fill="url(#ycode-yc-right)"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="none" stroke="#f0eee6" stroke-opacity=".34" stroke-width="10" stroke-linejoin="round"/> <path d="M 272 344 v 276 l 240 138 l 240 -138 V 344" fill="none" stroke="#1a130f" stroke-opacity=".5" stroke-width="10" stroke-linejoin="round"/> <path d="M 416 404 L 512 458 L 608 404" fill="none" stroke="#fff2d8" stroke-opacity=".72" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 512 458 v 116" fill="none" stroke="#fff2d8" stroke-opacity=".76" stroke-width="18" stroke-linecap="round"/> <path d="M 446 620 L 512 658 L 578 620" fill="none" stroke="#f0eee6" stroke-opacity=".9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 238 787 c 58 42 145 68 274 68 s 216 -26 274 -68" fill="none" stroke="#d97757" stroke-opacity=".22" stroke-width="18" stroke-linecap="round"/></symbol></svg>
+
+<div class="themebar">
+  <span>预览外观</span>
+  <button id="btn-light" class="on" onclick="setTheme('light')">浅色</button>
+  <button id="btn-dark" onclick="setTheme('dark')">深色</button>
+  <span class="sp"></span>
+  <a href="#deliver">§14 交付与落点 ↓</a>
+</div>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">ycode · macOS 原生版 · 界面与交互规范</div>
+  <h1>照着<em>已经跑起来的</em>样子<br>把每一处定下来</h1>
+  <p class="dek">
+    这份稿子不是提案，是<b>对现有实现的规范化记录</b>：每一个尺寸、每一句文案、每一条交互规则都从
+    <code>macos/YCodeApp</code> 里当前跑着的代码取值，再统一成一套可复用的组件与约定。
+    v1 设计稿（<code>ui-native-redesign.html</code>）留作决策档案，此后以本稿为准。
+  </p>
+  <div class="meta">
+    <span><b>版本</b> 0.3.1（311）· 原生 SwiftUI</span>
+    <span><b>分支</b> feat/macos-native</span>
+    <span><b>日期</b> 2026-09-21</span>
+    <span><b>系统</b> macOS 14+</span>
+    <span><b>窗口</b> 默认 1240×780 · 最小 980×640</span>
+    <span><b>语言</b> 中文 / English</span>
+  </div>
+
+  <nav class="toc">
+    <a href="#principles"><span class="n">01</span><span class="t">设计原则</span></a>
+    <a href="#tokens"><span class="n">02</span><span class="t">设计基础与 token</span></a>
+    <a href="#consistency"><span class="n">03</span><span class="t">统一性规约</span></a>
+    <a href="#shell"><span class="n">04</span><span class="t">主窗口骨架</span></a>
+    <a href="#sidebar"><span class="n">05</span><span class="t">侧栏</span></a>
+    <a href="#canvas"><span class="n">06</span><span class="t">画布与窗格</span></a>
+    <a href="#inspector"><span class="n">07</span><span class="t">检查器 · 面板栈</span></a>
+    <a href="#files"><span class="n">08</span><span class="t">文件</span></a>
+    <a href="#changes"><span class="n">09</span><span class="t">变更面板</span></a>
+    <a href="#todos"><span class="n">10</span><span class="t">待办面板</span></a>
+    <a href="#overlays"><span class="n">11</span><span class="t">浮层与对话框</span></a>
+    <a href="#empty"><span class="n">12</span><span class="t">空状态与文案基准</span></a>
+    <a href="#settings"><span class="n">13</span><span class="t">设置</span></a>
+    <a href="#deliver"><span class="n">14</span><span class="t">交付与落点</span></a>
+  </nav>
+</header>
+
+<!-- ══════════════ 01 设计原则 ══════════════ -->
+<section id="principles">
+  <div class="sec-head"><span class="sec-num">01</span><h2>设计原则</h2></div>
+  <p class="lede">这六条不是口号，是这一版所有删减的依据。后续任何一次加控件，都要先说清它不违反哪一条。</p>
+
+  <ol class="notes">
+    <li><b>终端是画布，不是面板。</b> 主区里除了 agent 终端什么都不放：标题行、PID、会话 ID、四个按钮全部移走。要操作有右键菜单；PID 与会话 ID 这类只在排障时才看的东西，进设置 › 关于与诊断。</li>
+    <li><b>动作跟着对象走。</b> 没有「先选中再去底部找按钮」这种两步操作。暂存挂在文件行上，排序挂在待办行上，归档挂在会话行上。</li>
+    <li><b>状态只有两个半。</b> 会话永远可以 resume，所以 exited / signaled / recoverable 不进界面，只留 <b>运行中 / 等你 / 未在运行</b>，同一个点在侧栏、窗格头、命令面板三处同源。</li>
+    <li><b>一个入口，第二入口是 ⌘K。</b> 工具栏敢只留三组控件，是因为命令面板兜住了所有东西：会话、待办、历史全文、动作。</li>
+    <li><b>检查器装的是「当前工作区的切面」。</b> 四个面板<b>各自开关、可以并存</b>，开着的堆在右栏里；面板之内不再有第二层分段控件。</li>
+    <li><b>即时生效，不留保存按钮。</b> macOS 的设置改完就写盘，主窗口立刻跟上；破坏性动作才给确认框。</li>
+  </ol>
+
+  <h3>不做什么</h3>
+  <table>
+    <thead><tr><th style="width:24%">被拿掉的东西</th><th style="width:38%">为什么</th><th>它现在在哪</th></tr></thead>
+    <tbody>
+      <tr><td><b>底部状态栏</b></td><td>26 px 一条，六格信息每一格都能在别处找到，等于把同一件事说两遍</td><td>会话数→侧栏组标题与过滤 chip；字号→设置 › 外观；agent→会话行的图标；分支→变更区的范围面包屑；PID→设置 › 关于与诊断</td></tr>
+      <tr><td><b>跨项目收件箱</b></td><td>先简化功能。<b>hook 事件本身保留</b></td><td>「等你」仍然驱动状态点、过滤 chip 与系统通知</td></tr>
+      <tr><td><b>新建会话弹窗</b></td><td>弹窗拦在人和终端之间，选完 agent 还要再点一次「启动」</td><td>选择器就地占画布一格，点 agent 即启动</td></tr>
+      <tr><td><b>10 套配色主题</b></td><td>主题多一套，状态色就多一次校色；没人切到第三套</td><td>浅色 / 深色 / 跟随系统</td></tr>
+      <tr><td><b>「变更／检查点」分段控件</b></td><td>检查器 tab 之下不该再来一层 tab</td><td>检查点收进变更面板的 ⋯ 菜单</td></tr>
+      <tr><td><b>变更面板的提交条</b></td><td>变更区是「看清 agent 改了什么」的地方；提交是 agent 或 shell 的事，放这里会把浏览视图变成半个 Git 客户端</td><td>底部只留一条只读汇总；<code>git commit</code> 走项目 shell</td></tr>
+      <tr><td><b>会话信息浮层（⌘I）</b></td><td>七行里只有 PID 和会话 ID 是别处看不到的，而这两样一年用不到一次；其余（状态、agent、分支、工作目录、worktree）在界面上本来就有</td><td>状态→状态点；agent→图标；分支→变更区面包屑；目录→项目；PID／会话 ID→设置 › 关于与诊断的［复制诊断信息］</td></tr>
+      <tr><td><b>窗格头的 agent 名与活动文本</b></td><td>图标已经说明是哪个 agent；CLI 吐的终端标题各家格式不一，且和终端第一行说的是同一件事</td><td>28 px 只留状态点 + 图标 + 会话名 + ⌘⇧N + ✕</td></tr>
+      <tr><td><b>会话右键的「放到画布」「在独立窗口打开」</b></td><td>点这一行本来就是放上去；独立窗口的单位是项目不是会话</td><td>会话菜单只剩：会话信息 / 重命名… / 归档…</td></tr>
+      <tr><td><b>会话的「正在接着跑…」与「没在跑」两屏</b></td><td>会话总是自己起来，两屏都是让人多等或多点一次</td><td>窗格里永远是终端；只有硬失败才给错误 + 重试</td></tr>
+      <tr><td><b>设置的保存／取消</b></td><td>macOS 设置即时生效</td><td>「恢复默认」移到关于与诊断页底部</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════ 02 设计基础 ══════════════ -->
+<section id="tokens">
+  <div class="sec-head"><span class="sec-num">02</span><h2>设计基础与 token</h2></div>
+  <p class="lede">代码里的对应物是 <code>YCodeDesignSystem.swift</code>（尺寸与状态色）与 <code>YCodeThemeCatalog</code>（主题色）。视图里不写颜色字面量，只取 token。</p>
+
+  <h3>颜色 · 两套，成对定义</h3>
+  <p>每个语义色都有浅／深两个值，用 <code>Color.ycodeDynamic(light:dark:)</code> 绑成一个动态色，随系统外观切换。侧栏与检查器共用 <code>ycodeChrome</code> 而不是系统材质——sidebar 的 vibrancy 偏亮、inspector 偏暗，摆在同一个窗口里能看出色差。</p>
+  <div class="swatches">
+    <div class="sw"><div class="chipc" style="background:#ffffff"></div><div class="nm">background</div><div class="hx">#ffffff · #1e1e20</div></div>
+    <div class="sw"><div class="chipc" style="background:#f4f4f6"></div><div class="nm">chrome（侧栏/检查器）</div><div class="hx">#F4F4F6 · #242426</div></div>
+    <div class="sw"><div class="chipc" style="background:#fbfbfc"></div><div class="nm">panel（窗格头/浮层）</div><div class="hx">#fbfbfc · #242426</div></div>
+    <div class="sw"><div class="chipc" style="background:#1d1d1f"></div><div class="nm">text</div><div class="hx">#1d1d1f · #f2f2f4</div></div>
+    <div class="sw"><div class="chipc" style="background:#5a5a5e"></div><div class="nm">textSoft</div><div class="hx">#5a5a5e · #b4b4b8</div></div>
+    <div class="sw"><div class="chipc" style="background:#0b63e5"></div><div class="nm">accent</div><div class="hx">#0b63e5 · #4c8dff</div></div>
+    <div class="sw"><div class="chipc" style="background:#1A8A54"></div><div class="nm">ycodeOK · 运行中</div><div class="hx">#1A8A54 · #38B87C</div></div>
+    <div class="sw"><div class="chipc" style="background:#B67707"></div><div class="nm">ycodeWarn · 等你</div><div class="hx">#B67707 · #E0A33A</div></div>
+    <div class="sw"><div class="chipc" style="background:#D2382F"></div><div class="nm">ycodeErr · 破坏性</div><div class="hx">#D2382F · #F0655A</div></div>
+    <div class="sw"><div class="chipc" style="background:#16181d"></div><div class="nm">terminal bg</div><div class="hx">#ffffff · #16181d</div></div>
+  </div>
+  <div class="callout">
+    <b>一条踩过的坑写成规则：窗口底色永远用系统的 <code>windowBackgroundColor</code>，不要铺主题的 background。</b>
+    主题的 background 是给终端画布准备的深色；铺在根视图上，浅色外观下会从检查器左缘的缝隙里露出一条黑边。
+  </div>
+
+  <h3>尺寸 · 一处定义，全局引用</h3>
+  <table>
+    <thead><tr><th style="width:26%">token</th><th style="width:16%">值</th><th>用在哪</th></tr></thead>
+    <tbody>
+      <tr><td><code>sidebarWidth</code></td><td class="tnum">238（200–320）</td><td>左侧栏，可拖拽</td></tr>
+      <tr><td><code>inspectorWidth</code></td><td class="tnum">302（260–460）</td><td>右检查器，可拖拽；初始值沿用迁移来的 <code>fileTreeWidth</code></td></tr>
+      <tr><td><code>rowHeight</code></td><td class="tnum">28</td><td>会话行、历史行、⌘K 结果行、待办行（最小高）</td></tr>
+      <tr><td><code>paneHeaderHeight</code></td><td class="tnum">28</td><td>画布窗格头、shell 窗格头</td></tr>
+      <tr><td>面板头（约定值）</td><td class="tnum">30</td><td>变更／待办面板头；文件树工具条 32</td></tr>
+      <tr><td>面板卡头 / 最小高</td><td class="tnum">30 / 120</td><td>面板区里每张卡（§07）</td></tr>
+      <tr><td>面板间距 / 每列张数</td><td class="tnum">8 / 2</td><td>卡与卡、列与列的间距；一列最多两张，第三张另起一列</td></tr>
+      <tr><td>文件／变更区顶栏</td><td class="tnum">44 / 30</td><td>展开态 44（☰ + tab + 动作合一）；紧凑态并进 30 的面板头</td></tr>
+      <tr><td><code>controlHeight</code></td><td class="tnum">24</td><td>检查器 tab、分支菜单、小按钮</td></tr>
+      <tr><td><code>cornerRadius</code></td><td class="tnum">6</td><td>行选中底、chip 以外的一切圆角</td></tr>
+      <tr><td>分组标题 / 过滤 chip</td><td class="tnum">22 / 20</td><td>项目组、历史区、待办分组</td></tr>
+      <tr><td><code>statusBarHeight</code></td><td class="tnum">26 <span class="dim">（保留未用）</span></td><td>状态栏已撤销，token 留着</td></tr>
+    </tbody>
+  </table>
+
+  <h3>字阶 · 交给系统，不写死</h3>
+  <p>根视图用 <code>.dynamicTypeSize</code> 整体缩放，不用 <code>.font(.system(size:))</code> 逐处写死。设置 › 外观提供三档：<b>紧凑 13 / 标准 14 / 宽松 16</b>，标题与正文的相对关系不变。等宽数字一律 <code>monospacedDigit</code>，计数跳动时不抖列。</p>
+  <table>
+    <thead><tr><th style="width:22%">角色</th><th style="width:22%">SwiftUI</th><th>出现处</th></tr></thead>
+    <tbody>
+      <tr><td>主体行文字</td><td><code>.body</code></td><td>会话名、⌘K 结果标题</td></tr>
+      <tr><td>次级行文字</td><td><code>.subheadline</code> / 12.5</td><td>历史行、文件行、待办标题、变更文件名</td></tr>
+      <tr><td>面板头 / 分组</td><td><code>.caption</code> weight(.medium/.semibold)</td><td>所有面板头与分组标题</td></tr>
+      <tr><td>副行 / 计数</td><td><code>.caption2</code> / 10.5–11</td><td>byline、+/− 计数、格位徽标</td></tr>
+      <tr><td>代码 / 路径 / 快捷键</td><td><code>design: .monospaced</code></td><td>diff、PID、分支、⌘⇧1</td></tr>
+    </tbody>
+  </table>
+
+  <h3>状态语言 · 三个值，一个点</h3>
+  <p><code>YCodeSessionPresence</code> 是全稿唯一的会话状态源，<code>YCodeStatusDot</code> 是它唯一的呈现形式（7 px 实心圆）。</p>
+  <table>
+    <thead><tr><th style="width:16%">状态</th><th style="width:10%">点</th><th style="width:30%">判定</th><th>含义与出现处</th></tr></thead>
+    <tbody>
+      <tr><td><b>运行中</b></td><td><span class="dot run" style="display:inline-block"></span> ycodeOK</td><td>runtime = running / starting</td><td>agent 在干活，不需要你。侧栏行、窗格头</td></tr>
+      <tr><td><b>等你</b></td><td><span class="dot need" style="display:inline-block"></span> ycodeWarn</td><td>存在 hook attention 事件</td><td>在等输入或审批。唯一会亮过滤 chip、发系统通知的状态</td></tr>
+      <tr><td><b>未在运行</b></td><td><span class="dot idle" style="display:inline-block"></span> tertiary</td><td>其余全部</td><td>列表里不强调。点一下就接着跑，不是错误态</td></tr>
+    </tbody>
+  </table>
+
+  <h3>图标 · 两套内嵌资源</h3>
+  <table>
+    <thead><tr><th style="width:18%">用途</th><th style="width:26%">来源</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td><b>文件图标</b></td><td>material-icon-theme 子集（182 个，122 KB，内嵌 <code>YCodeFileIcons.swift</code>）</td><td>与非原生版 <code>src/lib/fileIcons.ts</code> 同一套主题，同一个项目两边长得一样；认不出的类型回退默认 file / folder</td></tr>
+      <tr><td><b>Agent 图标</b></td><td><code>@lobehub/icons</code>（与 <code>AgentIcon.tsx</code> 同源，内嵌 <code>YCodeAgentIcons.swift</code>）</td><td>认识的品牌取<b>彩色裸 glyph</b>（Claude=Color、Codex=Inner、Gemini=Color），其余用 Mono 跟随前景色；侧栏 13、窗格头 12、选择器 24</td></tr>
+      <tr><td><b>面板开关</b></td><td>SF Symbols：<code>doc.text</code> · <code>plus.forwardslash.minus</code> · <code>checklist</code> · <code>terminal</code></td><td>画布顶栏那四个（§07）。只用轮廓线版本，不用 <code>.fill</code>——填充版在 24 px 高的工具栏里太重</td></tr>
+      <tr><td><b>系统符号</b></td><td>SF Symbols</td><td>chevron、xmark、ellipsis.circle、magnifyingglass、plus 等一律用系统符号，不自绘</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <b>内嵌 SVG 的两个坑（已在生成脚本里处理，改图标时别踩回去）：</b>
+    SVGO 压缩过的 arc flag（<code>a6.1 6.1 0 013.0-.4</code>）CoreSVG 解析不了，要展开成带空格的形式；<code>fill-rule</code> 写在 <code>&lt;svg&gt;</code> 上不被继承，必须落到每个 <code>&lt;path&gt;</code> 上，否则图标糊成一团。
+  </div>
+</section>
+<!-- ══════════════ 03 统一性规约 ══════════════ -->
+<section id="consistency">
+  <div class="sec-head"><span class="sec-num">03</span><h2>统一性规约</h2></div>
+  <p class="lede">同一件事在四个面板里有四种做法，是这一版之前最大的问题。下面十五条是全稿的横向约束——任何新面板先对照一遍，不符合就是 bug，不是风格差异。</p>
+
+  <table>
+    <thead><tr><th style="width:5%">#</th><th style="width:26%">规约</th><th>具体写法</th></tr></thead>
+    <tbody>
+      <tr><td class="tnum">01</td><td><b>面板头只有一行，30 px</b></td><td>左边一句摘要（「未暂存 · 3 个文件」「5 项未完成」），右边最多一个高频动作 + 一个 <code>ellipsis.circle</code> 菜单。不放标题重复 tab 名</td></tr>
+      <tr><td class="tnum">02</td><td><b>低频动作一律进 ⋯ 菜单</b></td><td>302 px 放不下一排按钮。分支、Fetch/Pull/Push、刷新、检查点、显示已完成，全在 ⋯ 里</td></tr>
+      <tr><td class="tnum">03</td><td><b>行动作只在 hover 时出现</b></td><td>常驻的是信息（+2 −0、副行），hover 时信息让位给动作（暂存／丢弃、⋯）。列表静止时可扫，不是一片按钮</td></tr>
+      <tr><td class="tnum">04</td><td><b>右键菜单是完整菜单</b></td><td>行上能做的每件事都在右键里有一份，即使 hover 已经给了按钮。键盘/触控板用户不靠 hover</td></tr>
+      <tr><td class="tnum">05</td><td><b>破坏性动作红色 + 确认框</b></td><td><code>role: .destructive</code>，文案写清后果（「会停止正在运行的 Agent」「只删除 YCode 中的记录，不删除磁盘目录」）</td></tr>
+      <tr><td class="tnum">06</td><td><b>空状态两行：标题一句 + 说明一句</b></td><td>标题陈述事实（「工作区是干净的」），说明讲下一步或机制。检查器里用 <code>YCodeInspectorEmptyState</code>，不用 <code>ContentUnavailableView</code>（它的大图标会把一句话撑成一屏）</td></tr>
+      <tr><td class="tnum">07</td><td><b>计数在分组标题上，不在面板顶部</b></td><td>「进行中 3」「队列 5」自带计数，顶部不再放三个巨型数字</td></tr>
+      <tr><td class="tnum">08</td><td><b>徽标只回答「有没有」</b></td><td>工具栏的面板开关上是 4 px 圆点，不是数字——具体数字面板头里已经有了，带数字的胶囊会把第四个 tab 挤进 » 溢出菜单</td></tr>
+      <tr><td class="tnum">09</td><td><b>选中态 = 强调色实底 + 白字</b></td><td>侧栏会话行、⌘K 结果行共用；hover 态是 6% 前景色，二者不叠加</td></tr>
+      <tr><td class="tnum">10</td><td><b>焦点有两层标记</b></td><td>画布焦点格：窗格头 16% 强调底 + 窗格四周 1 px 强调描边。只有画布有焦点概念</td></tr>
+      <tr><td class="tnum">11</td><td><b>输入即提交，回车即存</b></td><td>待办输入行的 ＋ 与 ↵ 是提示不是按钮；重命名走系统 alert；搜索边打边过滤</td></tr>
+      <tr><td class="tnum">12</td><td><b>路径显示：粗名字 + 灰目录</b></td><td>文件名在前，目录在后灰色，<code>truncationMode(.head)</code>。完整路径进 tooltip，不进正文</td></tr>
+      <tr><td class="tnum">13</td><td><b>时间用相对格式</b></td><td><code>RelativeDateTimeFormatter(.short)</code>，5 秒内写「刚刚」；只在状态有意义时写（队列里的待办不写副行）</td></tr>
+      <tr><td class="tnum">14</td><td><b>图标说过的事不再写一遍</b></td><td>窗格头有 agent 图标就不写「Claude Code」，终端里已经在滚的动作不在窗格头再写一遍，文件行有类型图标就不写扩展名说明，状态点旁边不写「运行中」。文字留给图标表达不了的：活动、路径、计数</td></tr>
+      <tr><td class="tnum">15</td><td><b>面板顶部对齐</b></td><td>所有检查器面板 <code>frame(maxHeight:.infinity, alignment:.top)</code>；不加的话内容比容器矮时整块会被垂直居中，头部上面空一大片</td></tr>
+    </tbody>
+  </table>
+
+  <h3>三处「同一个组件」清单</h3>
+  <p>下面这些是显式复用的，不是长得像：改一处必须三处都对。</p>
+  <div class="trio" style="grid-template-columns:repeat(3,1fr)">
+    <div>
+      <div class="cap"><b>YCodeStatusDot</b></div>
+      <div class="menu" style="min-width:200px">
+        <div class="mi"><span class="dot run"></span><span>侧栏会话行</span></div>
+        <div class="mi"><span class="dot need"></span><span>画布窗格头</span></div>
+        <div class="mi"><span class="dot idle"></span><span>⌘K 结果副文本</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="cap"><b>NewSessionPickerView</b></div>
+      <div class="menu" style="min-width:200px">
+        <div class="mi"><span>⌘N 在画布上多占一格</span></div>
+        <div class="mi"><span>项目还没有会话时</span></div>
+        <div class="mi"><span>关掉一格后的空窗格</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="cap"><b>YCodeAgentIconView</b></div>
+      <div class="menu" style="min-width:200px">
+        <div class="mi"><svg class="ic"><use href="#i-claude"/></svg><span>侧栏行 13 px</span></div>
+        <div class="mi"><svg class="ic"><use href="#i-codex"/></svg><span>窗格头 12 px</span></div>
+        <div class="mi"><svg class="ic"><use href="#i-gemini"/></svg><span>选择器 24 / 设置列表</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 04 主窗口 ══════════════ -->
+<section id="shell">
+  <div class="sec-head"><span class="sec-num">04</span><h2>主窗口骨架</h2></div>
+  <p class="lede">侧栏走 <code>NavigationSplitView</code>；<b>画布与面板区是 detail 里并排的两块</b>，各有各的顶部。
+    窗口开 <code>fullSizeContentView</code> + 透明标题栏，内容一直铺到窗口最顶：<b>画布顶栏（44）与面板区第一张卡的卡头画在原来标题栏那一行里</b>，全窗只有这一条横向元素。
+    系统工具栏不用——它会横贯整窗把面板区压在下面，那就成了「上下」而不是「并排」；也不留空标题栏——那等于白扔一条 44 的高度。</p>
+
+  <div class="stage">
+    <div class="app anno" style="width:1180px">
+      <div class="pin" style="left:-9px;top:20px">1</div>
+      <div class="pin" style="left:262px;top:-9px">2</div>
+      <div class="pin" style="left:700px;top:-9px">3</div>
+      <div class="pin" style="right:-9px;top:20px">4</div>
+      <div class="pin" style="left:262px;bottom:-9px">5</div>
+
+      <div class="tbar">
+        <div class="traffic"><i></i><i></i><i></i></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span><span class="t2">重构三栏布局</span></div>
+        <div class="sp"></div>
+        <div class="sp"></div>
+        <div class="tbtn">⌕</div>
+        <div class="seg"><b class="on">▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
+        <div class="tdiv"></div>
+        <span class="itab on"><svg><use href="#ic-files"/></svg></span><span class="itab on"><svg><use href="#ic-changes"/></svg><i></i></span><span class="itab"><svg><use href="#ic-todos"/></svg><i></i></span><span class="itab"><svg><use href="#ic-terminal"/></svg></span>
+        <div style="width:302px;flex:none"></div>
+      </div>
+
+      <div class="body" style="--h:600px">
+        <!-- 侧栏 -->
+        <div class="side">
+          <div class="searchrow"><span>⌕</span><span>搜索会话</span></div>
+          <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="flex:1;overflow:hidden;padding:6px 0">
+            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span class="cnt">3</span></div>
+            <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
+            <div class="row"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span></div>
+            <div class="row"><span class="dot idle"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm ph">新会话</span><span class="sp"></span></div>
+            <div class="grp" style="padding-left:16px"><span class="chev">▸</span><span style="font-weight:400">历史会话</span></div>
+            <div class="grp"><span class="chev">▾</span><span>internal-frontend</span><span class="sp"></span><span class="cnt">2</span></div>
+            <div class="row"><span class="dot run"></span><svg class="ic"><use href="#i-gemini"/></svg><span class="nm">登录页无障碍走查</span><span class="sp"></span><span class="kb">⌘⇧3</span></div>
+            <div class="row"><span class="dot idle"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">升级 react-router</span><span class="sp"></span></div>
+            <div class="grp" style="padding-left:16px"><span class="chev">▸</span><span style="font-weight:400">历史会话</span></div>
+            <div class="grp"><span class="chev">▸</span><span>lessen-api</span><span class="sp"></span><span class="cnt">2</span></div>
+          </div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · ycode</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
+        </div>
+
+        <!-- 画布 -->
+        <div class="canvas">
+          <div class="split" style="padding:0">
+            <div class="pane focus">
+              <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-claude"/></svg><span>重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span><span class="dim">✕</span></div>
+              <div class="term"><span class="m">›</span> 把项目与会话合成一列
+<span class="c">⏺</span> Update(WorkspaceSidebarView.swift)
+  <span class="g">+142</span> <span class="m">−38</span>
+<span class="c">⏺</span> 侧栏改成两列骨架，项目是可折叠组标题
+  会话行 28 px，右侧带格位徽标
+
+<span class="m">› </span><span class="c">▊</span></div>
+            </div>
+            <div class="pane">
+              <div class="pane-h"><span class="dot need"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-codex"/></svg><span>补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span><span class="dim">✕</span></div>
+              <div class="term"><span class="c">⏺</span> 读取 YCodeUnifiedDiff.swift
+<span class="y">?</span> 要把 fileHeader + hunk 拼成补丁
+  走 git apply --cached 吗？
+
+<span class="y">▊</span> 等待你的回答…</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 检查器 · 面板栈 -->
+        <div class="insp">
+          <div class="sc" style="flex:1.25">
+            <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="fv-filter" style="margin:6px 8px"><span>⌕</span><span>筛选文件…（? 搜内容）</span></div>
+            <div class="sc-body">
+              <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>macos</div>
+              <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>YCodeApp</div>
+              <div class="fv-row on" style="padding-left:40px"><span class="fic swift">S</span>WorkspaceSidebarView.swift</div>
+              <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>TerminalWorkspaceView.swift</div>
+              <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>ChangesPanelView.swift</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>crates</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>docs</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic json">{}</span>package.json</div>
+            </div>
+          </div>
+          <div class="grip"></div>
+          <div class="sc" style="flex:1">
+            <div class="sc-h"><span class="chev">▾</span><span>变更</span><span class="cnt">3</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="sc-body">
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm" style="font-weight:600">WorkspaceSidebarView.swift</span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div>
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm" style="font-weight:600">GitService.swift</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div>
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic md">M</span><span class="nm" style="font-weight:600">local-selfuse-log.md</span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">主窗口 · 浅色 · 两个会话并排 + 面板区一列里开着文件与变更 <b>（右上角可切深色）</b></div>
+  </div>
+
+  <ol class="notes">
+    <li><b>侧栏 238（200–320）。</b> 项目与会话合成一列：项目是可折叠的组标题，会话是组里的行，历史挂在各自项目组下，底部一条「新建会话 · 项目名」。</li>
+    <li><b>标题 + 面包屑在画布顶栏左侧</b>（不在窗口标题栏里）：项目名（首字母大写，<code>displayTitle</code>）+ 当前焦点会话名。最左是侧栏开关 ⌘B；红绿灯浮在侧栏上方，侧栏顶部为它让出 38。</li>
+    <li><b>工具栏上的控件全部<b>靠画布的右边界</b>站：</b>从左到右是 ⌘K、布局分段控件（5 档，画布为空时禁用）、一条细分隔、四个面板开关；<b>再往右（面板区上方）是空的</b>。开关管的是右边的面板，贴着那条边界，手上的距离最短。项目管理去了侧栏右键菜单。</li>
+    <li><b>面板区由画布顶栏右端的四个图标开关。</b> 开关<b>不长在面板区上</b>——面板区可能有好几列，开关跟着某一列走就说不清它管谁；它属于画布，贴在画布右边界上，「从画布里叫出一个面板」才是一个完整的动作。每列 302（260–460）。</li>
+    <li><b>没有状态栏。</b> 画布直接落到窗口底边。</li>
+  </ol>
+
+  <h3>骨架的交互规则</h3>
+  <table>
+    <thead><tr><th style="width:22%">行为</th><th style="width:16%">触发</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>收起侧栏</td><td><span class="kbd">⌘B</span></td><td><code>columnVisibility</code> 在 <code>.all</code> / <code>.doubleColumn</code> 间切；画布随之变宽，检查器宽度不变</td></tr>
+      <tr><td>收起检查器</td><td><span class="kbd">⌥⌘→</span></td><td>系统 <code>.inspector</code> 的开合动画；再打开时那几张卡按原顺序原高度回来</td></tr>
+      <tr><td>开／关检查器面板</td><td><span class="kbd">⌘1</span>–<span class="kbd">⌘4</span></td><td>toggle：已开着的再按一次就关掉；多个面板并存，见 §07</td></tr>
+      <tr><td>拖宽任意一栏</td><td>分隔条</td><td>AppKit 托管，落在 min/max 之间；宽度写回 <code>WorkspaceState</code>，下次启动恢复</td></tr>
+      <tr><td>独立项目窗口</td><td><span class="kbd">⇧⌘O</span> / 右键</td><td>新窗口锁定一个项目（侧栏只显示它），窗口标题「项目 · 名字」；跨窗口命令按 <code>windowToken</code> 路由，不会互相串</td></tr>
+      <tr><td>启动</td><td>—</td><td>先出窗口 chrome 再构建 <code>WorkspaceModel</code>（50 ms 后），启动瞬间有 spinner 而不是白屏</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════ 05 侧栏 ══════════════ -->
+<section id="sidebar">
+  <div class="sec-head"><span class="sec-num">05</span><h2>侧栏</h2></div>
+  <p class="lede">一列里装四层：搜索 → 过滤 → 项目组（会话行 + 历史区）→ 底部新建。<code>WorkspaceSidebarView.swift</code>。</p>
+
+  <div class="duo">
+    <div>
+      <div class="app" style="width:300px">
+        <div class="side" style="height:470px;border-right:0">
+          <div class="searchrow"><span>⌕</span><span>搜索会话</span></div>
+          <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="flex:1;padding:6px 0;overflow:hidden">
+            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span style="color:var(--soft)">＋</span></div>
+            <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
+            <div class="row hov"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span></div>
+            <div class="row"><span class="dot idle"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm ph">新会话</span><span class="sp"></span></div>
+            <div class="grp" style="padding-left:16px"><span class="chev">▾</span><span style="font-weight:400">历史会话</span><span class="cnt">24</span></div>
+            <div class="row" style="margin-left:16px"><span style="color:var(--faint);font-size:10px">◷</span><span class="nm" style="color:var(--soft);font-size:12.5px">给 todo 面板补空状态</span></div>
+            <div class="row" style="margin-left:16px"><span style="color:var(--faint);font-size:10px">◷</span><span class="nm" style="color:var(--soft);font-size:12.5px">修 lock 文件语法高亮</span></div>
+            <div class="grp"><span class="chev">▸</span><span>lessen-api</span><span class="sp"></span><span class="cnt">2</span></div>
+            <div class="grp"><span class="chev">▾</span><span style="color:var(--warn)">old-prototype</span><span class="sp"></span><span class="cnt">0</span></div>
+          </div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · ycode</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
+        </div>
+      </div>
+      <div class="cap">常态 · 项目组 hover 时计数换成 ＋ · 路径不存在的项目名转 warn 色</div>
+    </div>
+    <div>
+      <div style="display:flex;gap:16px;align-items:flex-start">
+        <div class="app" style="width:230px;border-radius:8px">
+          <div class="menu" style="border:0;box-shadow:none;background:transparent">
+            <div class="mi">重命名…</div>
+            <div class="sep"></div>
+            <div class="mi danger">归档…</div>
+          </div>
+        </div>
+        <div class="app" style="width:230px;border-radius:8px">
+          <div class="menu" style="border:0;box-shadow:none;background:transparent">
+            <div class="mi">在独立窗口打开<span class="sp"></span><span class="kb">⇧⌘O</span></div>
+            <div class="mi">在访达中显示</div>
+            <div class="mi">在终端中打开</div>
+            <div class="sep"></div>
+            <div class="mi">新建会话<span class="sp"></span><span class="kb">⌘N</span></div>
+            <div class="mi">全部折叠</div>
+            <div class="sep"></div>
+            <div class="mi">向上移动</div>
+            <div class="mi">向下移动</div>
+            <div class="sep"></div>
+            <div class="mi danger">移除项目…</div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">右键菜单：会话（左）与项目（右）——工具栏瘦身后，项目管理动作全在这里</div>
+      <ul style="max-width:40ch;font-size:13px">
+        <li><b>会话菜单只剩两件事</b>：改名字、不要了。「放到画布」删掉——点这一行本来就是放上去，菜单里再来一遍是同义反复；「在独立窗口打开」也删掉——独立窗口的单位是项目，不是会话。</li>
+        <li><b>项目菜单末尾是「移除项目…」</b>，红色 + 确认框：「只删除 YCode 中的记录，不删除磁盘目录、worktree 或分支。」这是删项目的唯一入口。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>行的构成与状态</h3>
+  <table>
+    <thead><tr><th style="width:18%">元素</th><th style="width:14%">尺寸</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>状态点</td><td class="tnum">7 px</td><td>选中行上转白色，保持可见</td></tr>
+      <tr><td>agent 图标</td><td class="tnum">13 px</td><td>选中行上传入 <code>tint: white 90%</code>，彩色 glyph 不与蓝底打架</td></tr>
+      <tr><td>会话名</td><td><code>.body</code></td><td>名字来自 CLI：<code>title</code> 为空时显示斜体「新会话」，CLI 报出 live title 后自动改名</td></tr>
+      <tr><td>格位徽标</td><td class="tnum">10 px mono</td><td><b>只有已经在画布上的行才有</b>（⌘⇧1–4）；没上画布的行右侧是空的</td></tr>
+      <tr><td>行高 / 选中</td><td class="tnum">28 / r6</td><td>选中 = accent 实底白字；hover = 6% 前景；两者不叠加</td></tr>
+      <tr><td>项目组标题</td><td class="tnum">22 px</td><td>常态右侧是会话计数，hover 时换成 ＋（在这个项目里新建）</td></tr>
+      <tr><td>历史区</td><td class="tnum">22 / 28</td><td>折叠区挂在每个项目组下；展开时只对当前项目加载，最多列 60 条</td></tr>
+    </tbody>
+  </table>
+
+  <h3>点一行会发生什么</h3>
+  <ol class="notes">
+    <li><b>并排，不是替换。</b> 已经在画布上就聚焦过去；还有空位就并排多开一格；<b>满 4 格才替换当前焦点格</b>。并排是 ycode 的核心差异，点第二个会话不该盖掉第一个。</li>
+    <li><b>点一行就已经在跑了。</b> 进程不在就直接起（<code>restartSession</code>，<code>resumingSessionIDs</code> 防重复），过程发生在终端里——<b>不给过场屏，也不给「接着跑」按钮</b>。会话永远可以 resume，所以「没在跑」不值得占一屏。</li>
+    <li><b>点历史 = 点会话。</b> 历史行走 <code>resumeHistorySession</code>，同样落到画布上；右键只有「重新打开」。</li>
+    <li><b>过滤 chip 是二选一。</b>「全部 N」与「等你 N」，后者有值时带一个 warn 小点；计数与系统通知同源（<code>attentionEvents</code>）。</li>
+    <li><b>搜索是即时过滤。</b> 只过滤会话名；要搜历史全文去 ⌘K。清空按钮在右侧 <code>xmark.circle.fill</code>。</li>
+  </ol>
+</section>
+
+<!-- ══════════════ 06 画布 ══════════════ -->
+<section id="canvas">
+  <div class="sec-head"><span class="sec-num">06</span><h2>画布与窗格</h2></div>
+  <p class="lede">画布是格位模型：一格要么是一个会话，要么是 agent 选择器，最多 4 格。<code>TerminalWorkspaceView.swift</code>。</p>
+
+  <h3>五种布局</h3>
+  <p>工具栏的分段控件切 <code>YCodeTerminalLayout</code>，画布为空时整组禁用。格数变化时 <code>reflow</code> 会自动降级（例如只剩一格时按 single 渲染）。</p>
+  <div class="stage tight">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
+      <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="pane focus" style="border-color:var(--accent)"></div></div></div><div class="cap" style="margin-top:7px">single <span class="kbd">⌃⌘1</span></div></div>
+      <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="split v" style="gap:4px"><div class="pane focus"></div><div class="pane" style="border-color:var(--line)"></div></div></div></div><div class="cap" style="margin-top:7px">stack <span class="kbd">⌃⌘2</span></div></div>
+      <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="split" style="gap:4px"><div class="pane focus"></div><div class="pane" style="border-color:var(--line)"></div></div></div></div><div class="cap" style="margin-top:7px">columns <span class="kbd">⌃⌘3</span></div></div>
+      <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="split v" style="gap:4px"><div class="split" style="gap:4px"><div class="pane focus"></div><div class="pane" style="border-color:var(--line)"></div></div><div class="split" style="gap:4px"><div class="pane" style="border-color:var(--line)"></div><div class="pane" style="border-color:var(--line)"></div></div></div></div></div><div class="cap" style="margin-top:7px">2×2 <span class="kbd">⌃⌘4</span></div></div>
+      <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="split" style="gap:4px"><div class="pane focus" style="flex:1.6"></div><div class="split v" style="gap:4px;flex:1"><div class="pane" style="border-color:var(--line)"></div><div class="pane" style="border-color:var(--line)"></div></div></div></div></div><div class="cap" style="margin-top:7px">main+side <span class="kbd">⌃⌘5</span></div></div>
+    </div>
+    <div class="cap">分隔条是系统 <b>HSplitView / VSplitView</b>，可拖；比例不持久化，切布局即重置</div>
+  </div>
+
+  <h3>窗格头 · 28 px，只放会话本身</h3>
+  <div class="stage">
+    <div class="app anno" style="width:640px">
+      <div class="pin" style="left:-9px;top:6px">1</div>
+      <div class="pin" style="left:150px;top:-9px">2</div>
+      <div class="pin" style="right:96px;top:-9px">3</div>
+      <div class="pin" style="right:-9px;top:6px">4</div>
+      <div class="pane focus" style="border-radius:0">
+        <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-claude"/></svg><span>重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span><span class="dim">✕</span></div>
+        <div class="term" style="height:150px"><span class="c">⏺</span> Update(WorkspaceSidebarView.swift)
+  <span class="g">+142</span> <span class="m">−38</span>  侧栏两列骨架
+<span class="c">⏺</span> Bash(swift build)
+  <span class="m">Compiling YCodeApp…</span>
+  <span class="g">Build complete! (18.4s)</span>
+
+<span class="m">› </span><span class="c">▊</span></div>
+      </div>
+    </div>
+    <div class="cap">焦点格：窗格头 16% 强调底 + 四周 1px 强调描边</div>
+  </div>
+  <ol class="notes">
+    <li><b>状态点 + agent 图标 + 会话名。</b> 名字空时是斜体「新会话」。</li>
+    <li><b>名字后面什么都不跟。</b> 不写 agent 名（图标已经回答了），也不写 CLI 吐出来的终端标题（那串「写 WorkspaceSidebarView」）——它由各家 CLI 的转义序列决定，有的写动作、有的写路径、有的干脆不写，凑不成统一语义；而且终端第一行就在说同一件事。省下的宽度留给会话名，长名字不用挤成两行。</li>
+    <li><b>格位徽标 ⌘⇧N。</b> 与侧栏同一个编号，按一下就跳过来。</li>
+    <li><b>✕ = 移出画布，不停止 agent。</b> tooltip 明写「从画布隐藏；不停止 Agent」。真要停在右键菜单里，红色。</li>
+  </ol>
+  <p>查找（⌘F）有快捷键和右键菜单，不在这条 28 px 上占一个按钮。右键菜单：查找终端 / 重命名… / — / 移出画布 / <span style="color:var(--doc-red)">停止</span>（进程不在时禁用）。</p>
+
+  <h3>窗格体只有一种</h3>
+  <p>会话<b>总是自己起来</b>：点侧栏一行、点历史一条、⌘⇧N 跳过去——进程不在就直接起，画布上不出现「正在接着跑…」这类中间屏，也没有「这个会话没在跑 ＋［接着跑］」这种要你再点一次的状态。窗格里永远是终端。</p>
+  <div class="trio">
+    <div>
+      <div class="app" style="width:280px">
+        <div class="pane" style="border-radius:0">
+          <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-codex"/></svg><span>补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span><span class="dim">✕</span></div>
+          <div class="term" style="height:120px"><span class="c">⏺</span> Read(YCodeUnifiedDiff.swift)
+<span class="g">✓</span> 117 lines
+<span class="c">⏺</span> 拼 fileHeader + hunk 走
+  git apply --cached
+<span class="m">› </span><span class="c">▊</span></div>
+        </div>
+      </div>
+      <div class="cap"><b>在跑</b> · SwiftTerm，scrollback 10 000</div>
+    </div>
+    <div>
+      <div class="app" style="width:280px">
+        <div class="pane" style="border-radius:0">
+          <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-claude"/></svg><span>升级 react-router</span><span class="sp"></span><span class="kb">⌘⇧3</span><span class="dim">✕</span></div>
+          <div class="term" style="height:120px"><span class="m">›</span> 继续上次的升级
+<span class="c">⏺</span> 已恢复上下文（v6 → v7）
+<span class="c">⏺</span> Update(routes.tsx)
+  <span class="g">+18</span> <span class="m">−6</span>
+<span class="m">› </span><span class="c">▊</span></div>
+        </div>
+      </div>
+      <div class="cap"><b>刚被点开的会话</b> · 起进程与接上下文都在这一屏里发生，不另给过场</div>
+    </div>
+    <div>
+      <div class="app" style="width:280px">
+        <div class="pane" style="border-radius:0">
+          <div class="pane-h"><span class="dot need"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-gemini"/></svg><span>登录页无障碍走查</span><span class="sp"></span><span class="kb">⌘⇧4</span><span class="dim">✕</span></div>
+          <div class="term" style="height:120px"><span class="c">⏺</span> 对比度检查：3 处不达标
+<span class="y">?</span> 要我直接改 tokens 吗？
+
+<span class="y">▊</span> 等待你的回答…</div>
+        </div>
+      </div>
+      <div class="cap"><b>等你</b> · 只有状态点与通知在变，终端本身照旧</div>
+    </div>
+  </div>
+  <div class="callout"><b>启动失败才有例外。</b> agent 命令找不到、worktree 路径不存在这类<b>硬失败</b>，在窗格里给一句具体错误 + ［重试］；这是错误态，不是「没在跑」态——它不会因为你多等一会儿就好。</div>
+
+  <h3>格位路由 —— ⌘N 与点击的落点</h3>
+  <table>
+    <thead><tr><th style="width:26%">情形</th><th>结果</th></tr></thead>
+    <tbody>
+      <tr><td>画布为空</td><td>整块画布就是 agent 选择器（不带窗格头）</td></tr>
+      <tr><td><span class="kbd">⌘N</span> 且 &lt; 4 格</td><td>末尾<b>多开一格</b>放选择器，其它会话照常跑，不被盖住</td></tr>
+      <tr><td><span class="kbd">⌘N</span> 且已满 4 格</td><td>占用<b>当前焦点格</b>；被占的会话仍在后台跑，随时能从侧栏点回来</td></tr>
+      <tr><td>侧栏点一个已在画布上的会话</td><td>聚焦过去，不新开</td></tr>
+      <tr><td>侧栏点一个不在画布上的会话</td><td>有空位就并排；满 4 格替换焦点格</td></tr>
+      <tr><td>关掉一格</td><td>该格移出画布（agent 继续跑）；布局 reflow</td></tr>
+      <tr><td>选择器窗格的 ✕</td><td>取消新建，不落库</td></tr>
+    </tbody>
+  </table>
+
+  <h3>终端内的交互</h3>
+  <table>
+    <thead><tr><th style="width:24%">能力</th><th>行为</th></tr></thead>
+    <tbody>
+      <tr><td>查找 <span class="kbd">⌘F</span></td><td>窗格头下方压出 34 px 查找条：输入框 + <code>3/17</code> 计数 + ↑ ↓ ✕。无匹配时计数转 warn 色写「无匹配」</td></tr>
+      <tr><td>点击文件路径</td><td><code>YCodeTerminalLinkResolver</code> 解析：仓库内文件 → 在文件面板打开（支持 <code>:行号</code>）；http(s) → 交给系统浏览器</td></tr>
+      <tr><td>字号</td><td>设置 › 外观统一控制（8–32 pt），终端、编辑器、界面同一个来源；画布上没有加减按钮</td></tr>
+      <tr><td>主题</td><td>终端前景/背景/光标/选区全部取当前主题 token，没有「不听系统话」的区域</td></tr>
+      <tr><td>尺寸</td><td>窗格 resize → <code>sizeChanged</code> → PTY <code>resize(cols, rows)</code>，最小 2×1</td></tr>
+      <tr><td>关窗格</td><td>只 detach 视图，PTY 继续；重新打开时接回同一条流</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<style>
+/* §07 面板栈 */
+.sc{display:flex;flex-direction:column;min-height:0;border-bottom:1px solid var(--line)}
+.sc:last-child{border-bottom:0}
+.sc-h{height:30px;display:flex;align-items:center;gap:7px;padding:0 10px;font-size:11.5px;font-weight:600;flex:none;background:color-mix(in srgb,var(--text) 4%,transparent)}
+.sc-h .sp{flex:1}
+.sc-h .cnt{font-family:var(--code);font-size:10.5px;color:var(--faint);font-weight:400}
+.sc-h .a{color:var(--soft);font-size:11px}
+.sc-body{flex:1;min-height:0;overflow:hidden}
+.grip{height:5px;background:color-mix(in srgb,var(--text) 6%,transparent);flex:none}
+</style>
+
+<!-- ══════════════ 07 检查器外壳 ══════════════ -->
+<section id="inspector">
+  <div class="sec-head"><span class="sec-num">07</span><h2>检查器 · 面板栈</h2></div>
+  <p class="lede">
+    右栏不是「四选一的 tab」，是<b>面板区</b>：文件 · 变更 · 待办 · 终端<b>各自独立开关</b>。
+开着的面板<b>纵向堆在一列里，一列最多两张</b>；<b>开第三个就自动另起一列</b>——面板区整体变宽，画布相应变窄。卡与卡、列与列之间留 8 的间距。全关就等于收起整个面板区。
+    面板区与画布<b>同级</b>：它从窗口顶部开始，上面没有横贯整窗的工具栏。
+  </p>
+
+  <div class="callout">
+    <b>为什么从互斥 tab 改回并存：</b>agent 跑起来的时候，要看的从来不是一样东西——盯着变更看它改了什么、同时瞄一眼待办还剩几条、旁边留个 shell 跑测试。互斥 tab 逼着人来回切，切一次就丢一次滚动位置。
+    数据模型里本来就是一个集合（<code>openPanels: Set&lt;YCodeWorkspacePanel&gt;</code>、<code>showPanel</code> / <code>togglePanel</code>），非原生版也是这么用的；原生版把它收成 <code>selectInspectorTab</code> 的互斥单选，是实现上的简化，不是设计决定。这一版改回来。
+  </div>
+
+  <h3>开关贴在画布右边界，面板在它右边</h3>
+  <div class="stage">
+    <div class="app anno" style="width:700px">
+      <div class="pin" style="left:330px;top:-9px">1</div>
+      <div class="pin" style="left:390px;top:52px">2</div>
+      <div class="pin" style="right:-9px;top:52px">3</div>
+      <div class="pin" style="left:390px;top:272px">4</div>
+      <div class="tbar" style="height:44px">
+        <div class="traffic"><i></i><i></i><i></i></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span></div>
+        <div class="sp"></div>
+        <div class="seg"><b class="on">▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
+        <div class="tdiv"></div>
+        <span class="itab on"><svg><use href="#ic-files"/></svg></span><span class="itab on"><svg><use href="#ic-changes"/></svg><i></i></span><span class="itab"><svg><use href="#ic-todos"/></svg><i></i></span><span class="itab"><svg><use href="#ic-terminal"/></svg></span>
+        <div style="width:302px;flex:none"></div>
+      </div>
+      <div class="body" style="--h:420px">
+      <div class="canvas"><div class="pane focus" style="border-radius:0"><div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-claude"/></svg><span>重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div><div class="term"><span class="m">›</span> 面板开关贴着画布右边界
+<span class="c">⏺</span> 手从面板挪到开关最近
+<span class="m">› </span><span class="c">▊</span></div></div></div>
+      <div class="insp" style="width:302px">
+        <div class="sc" style="flex:1.1">
+          <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+          <div class="sc-body" style="padding-top:4px">
+            <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>macos</div>
+            <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>YCodeApp</div>
+            <div class="fv-row on" style="padding-left:40px"><span class="fic swift">S</span>ChangesPanelView.swift</div>
+            <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>TodoPanelView.swift</div>
+            <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>docs</div>
+          </div>
+        </div>
+        <div class="grip"></div>
+        <div class="sc" style="flex:1">
+          <div class="sc-h"><span class="chev">▾</span><span>变更</span><span class="cnt">3</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+          <div class="sc-body">
+            <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm" style="font-weight:600">ChangesPanelView.swift</span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span></div>
+            <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm" style="font-weight:600">GitService.swift</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div>
+            <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic md">M</span><span class="nm" style="font-weight:600">local-selfuse-log.md</span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <div class="cap">开关贴在画布右边界上 · 面板区里同时开着文件与变更，中间是可拖的分隔条</div>
+  </div>
+
+  <ol class="notes">
+    <li><b>画布顶栏右端的四个图标是开关，不是单选。</b> 亮起 = 这个面板正在右边；再点一次关掉它。四个全灭，面板区自动收起，画布铺满。图标右上角的 4 px 蓝点 = 这个面板有东西（变更有改动 / 待办有未完成）。</li>
+    <li><b>每个面板一张卡，卡头 30 px：</b>折叠箭头 + 名字 + 计数 + 三个动作（⧉ 独立窗口 / ⤢ 展开成整窗 / ✕ 关闭）。名字左边的箭头只折叠这一张，✕ 才是真的关掉。</li>
+    <li><b>⤢ 是通往 §08 / §09 展开态的门。</b> 同一个 model，只是换个容器；关掉展开态回到栏里，滚动位置还在。</li>
+    <li><b>卡之间 5 px 分隔条可拖。</b> 高度按项目记；卡头可以上下拖动来换顺序。</li>
+  </ol>
+
+  <h3>四个图标</h3>
+  <table>
+    <thead><tr><th style="width:14%">图标</th><th style="width:14%">面板</th><th style="width:12%">键</th><th>徽标点什么时候亮</th></tr></thead>
+    <tbody>
+      <tr><td><span class="itab"><svg><use href="#ic-files"/></svg></span></td><td>文件</td><td><span class="kbd">⌘1</span></td><td>不亮——文件树没有「有没有」这回事</td></tr>
+      <tr><td><span class="itab"><svg><use href="#ic-changes"/></svg><i></i></span></td><td>变更</td><td><span class="kbd">⌘2</span></td><td>工作区有改动时</td></tr>
+      <tr><td><span class="itab"><svg><use href="#ic-todos"/></svg><i></i></span></td><td>待办</td><td><span class="kbd">⌘3</span></td><td>有未完成的待办时</td></tr>
+      <tr><td><span class="itab"><svg><use href="#ic-terminal"/></svg></span></td><td>终端</td><td><span class="kbd">⌘4</span></td><td>不亮——shell 一直在跑，亮着等于常亮</td></tr>
+    </tbody>
+  </table>
+  <p>28×24 的图标按钮，亮起时是 16% 强调底 + 强调色（与其它「开着」的控件同一套）。tooltip 写「文件 ⌘1」这种「名字 + 键」，因为图标本身不带文字。</p>
+  <p><b>站位：</b>整组控件的右缘对齐<b>画布的右边界</b>；面板区正上方那段工具栏留空。实现上就是把这些 item 声明在 detail（画布）的 <code>.toolbar</code> 上，而不是 inspector 的——inspector 的工具栏区现在什么都不放。</p>
+
+  <h3>开关与快捷键</h3>
+  <table>
+    <thead><tr><th style="width:20%">键 / 操作</th><th style="width:22%">动作</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td><span class="kbd">⌘1</span>–<span class="kbd">⌘4</span></td><td>开／关 文件·变更·待办·终端</td><td>是 toggle：面板已经开着时再按一次是关掉它，而不是「切过去」</td></tr>
+      <tr><td><span class="kbd">⌥⌘→</span></td><td>收起 / 展开整栏</td><td>收起不改各面板的开关状态；再展开，原来那几张卡按原顺序原高度回来</td></tr>
+      <tr><td>卡头 ✕</td><td>关掉这个面板</td><td>等同于把工具栏上对应的开关灭掉</td></tr>
+      <tr><td>卡头 ⤢</td><td>展开成整窗</td><td>文件 → §08 展开态；变更 → §09 展开态；待办与终端同理</td></tr>
+      <tr><td>卡头 ⧉</td><td>在独立窗口打开</td><td>拆出去之后这张卡从栏里移除，开关转成「在别的窗口开着」的半亮态</td></tr>
+      <tr><td>拖卡头</td><td>重排</td><td>顺序按项目记；默认顺序：文件 → 变更 → 待办 → 终端</td></tr>
+    </tbody>
+  </table>
+
+  <h3>高度怎么分</h3>
+  <table>
+    <thead><tr><th style="width:24%">情形</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>只开一个</td><td>占满整栏——和原来的 tab 形态看起来一样，所以从旧习惯过来不会突兀</td></tr>
+      <tr><td>新开一个</td><td>从<b>最高的那张</b>里匀出空间，不打散其它卡已经调好的高度</td></tr>
+      <tr><td>拖分隔条</td><td>只在相邻两张之间重新分配，其余不动</td></tr>
+      <tr><td>每张最小高</td><td class="tnum">120 px<span class="dim">（折叠态 30）</span></td></tr>
+      <tr><td>一列装几张</td><td class="tnum">2</td></tr>
+      <tr><td>开第三张</td><td><b>自动另起一列</b>，不是挤进同一列</td></tr>
+      <tr><td>装不下了</td><td>窗口变矮、剩余空间撑不住 120 时：<b>把最早打开的那张折叠成 30 px 的标题条</b>（不是关掉），点它的箭头就能换回来</td></tr>
+      <tr><td>关掉一个</td><td>空间按比例还给剩下的几张</td></tr>
+      <tr><td>列宽</td><td class="tnum">302（260–460）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>宽度怎么分 —— 面板区可以挤画布</h3>
+  <p>面板区不是固定 302 的一条。<b>它由若干列组成，每列自己纵向堆面板</b>；列多一条，面板区就宽一截，中间的画布相应变窄。终端能忍受变窄（它会 reflow），所以把宽度让给正在读的 diff 和代码是划算的——但有下限。</p>
+
+  <div class="stage">
+    <div class="app anno" style="width:1320px">
+      <div class="pin" style="right:150px;top:-9px">1</div>
+      <div class="pin" style="right:-9px;top:150px">2</div>
+      <div class="pin" style="left:1013px;top:62px">3</div>
+      <div class="pin" style="left:707px;top:240px">4</div>
+      <div class="tbar">
+        <div class="traffic"><i></i><i></i><i></i></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span><span class="t2">重构三栏布局</span></div>
+        <div class="sp"></div>
+        <div class="sp"></div>
+        <div class="tbtn">⌕</div>
+        <div class="seg"><b class="on">▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
+        <div class="tdiv"></div>
+        <span class="itab on"><svg><use href="#ic-files"/></svg></span><span class="itab on"><svg><use href="#ic-changes"/></svg><i></i></span><span class="itab"><svg><use href="#ic-todos"/></svg><i></i></span><span class="itab on"><svg><use href="#ic-terminal"/></svg></span>
+        <div style="width:604px;flex:none"></div>
+      </div>
+      <div class="body" style="--h:470px">
+        <div class="side" style="width:238px">
+          <div class="searchrow"><span>⌕</span><span>搜索会话</span></div>
+          <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="flex:1;padding:6px 0;overflow:hidden">
+            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span class="cnt">3</span></div>
+            <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
+            <div class="row"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span></div>
+            <div class="grp" style="padding-left:16px"><span class="chev">▸</span><span style="font-weight:400">历史会话</span></div>
+          </div>
+        </div>
+        <div class="canvas">
+          <div class="pane focus" style="border-radius:0">
+            <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-claude"/></svg><span>重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span><span class="dim">✕</span></div>
+            <div class="term"><span class="m">›</span> 把检查器改成面板区
+<span class="c">⏺</span> Update(WorkspaceInspectorView)
+  <span class="g">+96</span> <span class="m">−41</span>
+<span class="c">⏺</span> 列内纵向堆叠，列间可拖
+
+<span class="m">› </span><span class="c">▊</span></div>
+          </div>
+        </div>
+        <div class="insp" style="width:302px">
+          <div class="sc" style="flex:1">
+            <div class="sc-h"><span class="chev">▾</span><span>终端</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="sc-body" style="padding:4px">
+              <div class="pane" style="border:1px solid var(--line)">
+                <div class="pane-h"><span class="mono">&gt;_</span><span>Shell 1</span><span class="sp"></span><span class="dim">⊞</span></div>
+                <div class="term" style="height:110px">~/learning/ycode <span class="c">feat/macos-native</span>
+<span class="m">$</span> swift test
+<span class="g">✓ 81 tests, 18 suites</span>
+<span class="m">$</span> <span class="c">▊</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="grip"></div>
+          <div class="sc" style="flex:1">
+            <div class="sc-h"><span class="chev">▾</span><span>变更</span><span class="cnt">3</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="sc-body">
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">WorkspaceInspectorView.swift</span><span class="cv-stat"><span class="p">+96</span><span class="m">−41</span></span></div>
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic md">M</span><span class="nm">ui-native-spec.html</span><span class="cv-stat"><span class="p">+310</span><span class="m">−88</span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="insp" style="width:302px">
+          <div class="sc" style="flex:1">
+            <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="fv-crumb" style="height:26px;padding:0 10px">YCodeDesignSystem.swift</div>
+            <div class="sc-body">
+              <div class="fv-code" style="font-size:11px;padding-top:2px">
+                <div class="cd cur"><span class="n" style="width:32px;padding-right:9px">18</span><span class="t"><span class="kw">enum</span> <span class="ty">YCodeMetrics</span> {</span></div>
+                <div class="cd"><span class="n" style="width:32px;padding-right:9px">19</span><span class="t">  <span class="kw">static let</span> colWidth = <span class="ty">302</span></span></div>
+                <div class="cd"><span class="n" style="width:32px;padding-right:9px">20</span><span class="t">  <span class="kw">static let</span> colMin = <span class="ty">260</span></span></div>
+                <div class="cd"><span class="n" style="width:32px;padding-right:9px">21</span><span class="t">  <span class="kw">static let</span> canvasMin = <span class="ty">420</span></span></div>
+                <div class="cd"><span class="n" style="width:32px;padding-right:9px">22</span><span class="t">}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">两列面板 + 被挤窄的画布 · 窗口 1320：侧栏 238 + 画布 468 + 列 302 × 2</div>
+  </div>
+
+  <ol class="notes">
+    <li><b>开关照旧管「开不开」，不管「摆哪」。</b> 新开的面板默认<b>并入最右那一列</b>（纵向堆），不会自己拉新列——一开面板画布就被砍掉一半是最烦的事。</li>
+    <li><b>拉新列靠拖：</b>把卡头拖到面板区的<b>左右边缘</b>，松手就成一列；拖到另一列的卡之间就是插进那一列。</li>
+    <li><b>列之间的分隔条与最左那条一样可拖。</b> 往左拖 = 面板区变宽、画布变窄；拖到底就是画布的最小宽。</li>
+    <li><b>画布有下限 420 px。</b> 再往左拖不动；此时想给面板更多空间，只能收侧栏（⌘B）或把窗口拉宽。</li>
+  </ol>
+
+  <table>
+    <thead><tr><th style="width:24%">情形</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>列宽</td><td class="tnum">302（260–460）</td></tr>
+      <tr><td>画布最小宽</td><td class="tnum">420</td></tr>
+      <tr><td>最多几列</td><td>不写死：<code>floor((窗口宽 − 侧栏宽 − 420) / 260)</code>。1240 的默认窗口收着侧栏能放两列，980 的最小窗口只放得下一列</td></tr>
+      <tr><td>放不下新列</td><td>拖到边缘时如果算下来画布会低于 420：<b>不新建列</b>，卡回到原来那列，边缘的落点指示线转成灰色（不是红色报警，这是正常的容量上限）</td></tr>
+      <tr><td>窗口被拉窄</td><td>先按比例压各列到 260，再不够就<b>从最右边开始整列折叠</b>成 30 px 的标题条堆；拉宽时按原顺序还原</td></tr>
+      <tr><td>收侧栏 <span class="kbd">⌘B</span></td><td>多出来的 238 px 全部给画布，不自动分给面板区</td></tr>
+      <tr><td>一列空了</td><td>该列自动消失，宽度还给画布</td></tr>
+      <tr><td>持久化</td><td>列的数量、各列宽度、列内面板顺序与高度，都按项目记在 <code>WorkspaceState</code> 里</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <b>302 px 宽 + 四张卡同时展开是塞不下的，这一点写进设计而不是靠自觉。</b>
+    四张都开时，界面自己会把最早的那张折叠起来——也就是说「同时开四个」在视觉上是「两三张展开 + 一两条标题」。要真的并排看两样以上，把其中一样 ⤢ 出去或 ⧉ 拆到独立窗口。
+  </div>
+
+  <h3>徽标与状态</h3>
+  <ul>
+    <li>工具栏开关上的 <b>4 px 圆点</b>：变更看 <code>gitStatus.changes.count</code>，待办看未完成数。只回答「有没有」，具体数字在卡头上（§03 规约 08）。</li>
+    <li>面板<b>关着也在后台跑</b>：hook 事件、git 状态刷新、待办的 MCP 变更都照常，重新打开不用等加载。唯一例外是项目 shell——它的 PTY 一直活着，关卡片只是不显示。</li>
+    <li>卡头的计数与面板头里的摘要是同一份数据，不写两遍不同口径：卡头写总数（「变更 3」），面板头里那行写状态（「未暂存 · 3 个文件」）。</li>
+  </ul>
+
+  <h3>项目 Shell 面板</h3>
+  <p>项目根目录下的普通 <code>$SHELL</code>，与 agent 会话完全分开：不进 sessions 表，走通用 <code>spawn_pty</code>。可无限分屏。它是四个面板里唯一「关掉也还在跑」的那个。</p>
+  <div class="duo">
+    <div>
+      <div class="app" style="width:302px">
+        <div class="insp" style="height:280px;border-left:0;width:100%">
+          <div class="sc" style="flex:1">
+            <div class="sc-h"><span class="chev">▾</span><span>终端</span><span class="cnt">2</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
+            <div class="sc-body" style="padding:4px;display:flex;flex-direction:column;gap:4px">
+              <div class="pane" style="border:1px solid var(--line)">
+                <div class="pane-h"><span class="mono">&gt;_</span><span>Shell 1</span><span class="sp"></span><span class="dim">⊞</span><span class="dim">✕</span></div>
+                <div class="term" style="height:62px">~/learning/ycode <span class="c">feat/macos-native</span>
+<span class="m">$</span> swift test
+<span class="g">✓ 81 tests, 18 suites</span>
+<span class="m">$</span> <span class="c">▊</span></div>
+              </div>
+              <div class="pane" style="border:1px solid var(--line)">
+                <div class="pane-h"><span class="mono">&gt;_</span><span>Shell 2</span><span class="sp"></span><span class="dim">⊞</span><span class="dim">✕</span></div>
+                <div class="term" style="height:54px"><span class="m">$</span> git log --oneline -2
+<span class="y">432431c</span> feat(macos): native
+<span class="m">$</span> <span class="c">▊</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">终端面板里再上下分屏 · 每格头部 28 px：图标 + Shell N + 分屏菜单 + 关闭</div>
+    </div>
+    <div>
+      <div class="menu" style="width:200px">
+        <div class="mi">向右分屏</div>
+        <div class="mi">向下分屏</div>
+        <div class="mi">向左分屏</div>
+        <div class="mi">向上分屏</div>
+      </div>
+      <div class="cap">分屏菜单</div>
+      <ul style="max-width:36ch;font-size:13px">
+        <li><b>不显示 PID。</b> 这是你自己的 shell，进程号在里面 <code>echo $$</code> 就有；窗格头 28 px 留给名字和两个动作</li>
+        <li>分隔条 6 px，拖拽改比例，比例进 <code>WorkspaceState</code></li>
+        <li>只剩一格时不显示关闭按钮</li>
+        <li>格子的关闭按钮 tooltip 明写「关闭面板并停止这个 Shell」——与画布的「不停止 Agent」相反，必须说清；<b>卡头那个 ✕ 不停 shell</b>，只是把面板收起来</li>
+        <li>Shell 退出后原地给「Shell 已退出 + 重新启动」</li>
+        <li>没选项目时：「Shell 不可用 · 请先选择一个项目」</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>与当前实现的差距</h3>
+  <table>
+    <thead><tr><th style="width:24%">项</th><th style="width:12%">现状</th><th>要做什么</th></tr></thead>
+    <tbody>
+      <tr><td>并存的面板栈</td><td class="mono">互斥 tab</td><td>去掉 <code>selectInspectorTab</code> 的互斥，回到 <code>openPanels</code> 集合；<code>WorkspaceInspectorView</code> 渲染成一列可拖高度的卡</td></tr>
+      <tr><td>工具栏四个开关</td><td class="mono">单选 tab</td><td>同一排控件，语义从「选中哪个」改成「开着哪些」；⌘1–4 改成 toggle</td></tr>
+      <tr><td>卡头三动作</td><td class="mono">无</td><td>⧉ / ⤢ / ✕ 与 §08 §09 的顶栏同一套图标与语义</td></tr>
+      <tr><td>高度与顺序持久化</td><td class="mono">只有栏宽</td><td><code>WorkspaceState</code> 增加每个面板的高度与排序</td></tr>
+      <tr><td>装不下时自动折叠</td><td class="mono">无</td><td>最小高 120 的约束 + 最早打开的降为标题条</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<style>
+/* §08 文件区专用组件（与 §09 变更区同构：顶栏 → 左树 → 右内容） */
+.fv{display:flex;flex-direction:column;height:100%}
+.fv-top{height:44px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--line);flex:none}
+.fv-top .lead{display:flex;align-items:center;padding-right:8px}
+.fv-tabs{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden;flex:1}
+.fv-tab{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:7px;font-size:13px;color:var(--text);white-space:nowrap}
+.fv-tab.on{background:color-mix(in srgb,var(--text) 8%,transparent)}
+.fv-tab.prev{font-style:italic}
+.fv-tab .x{color:var(--faint);font-size:11px}
+.fv-title{display:flex;align-items:center;font-size:13.5px;font-weight:500}
+.fv-acts{display:flex;align-items:center;gap:3px;flex:none}
+.fv-body{flex:1;display:flex;min-height:0}
+.fv-side{width:264px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.fv-filter{margin:10px;height:30px;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;gap:7px;padding:0 10px;color:var(--faint);font-size:12.5px;flex:none}
+.fv-tree{flex:1;overflow:hidden;padding-bottom:8px}
+.fv-row{height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12.5px;border-radius:6px;margin:0 6px;white-space:nowrap;overflow:hidden}
+.fv-row.on{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.fv-row.sel{background:var(--accent-soft);color:var(--accent)}
+.fv-main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.fv-crumb{height:32px;display:flex;align-items:center;gap:8px;padding:0 14px;font-size:12.5px;border-bottom:1px solid var(--line);flex:none}
+.fv-crumb .sp{flex:1}
+.fv-code{flex:1;min-height:0;overflow:hidden;font-family:var(--code);font-size:11.5px;line-height:1.62;padding-top:4px;position:relative}
+.cd{display:flex;position:relative}
+.cd.cur{background:color-mix(in srgb,var(--text) 5%,transparent)}
+.cd .n{width:44px;text-align:right;padding-right:14px;color:var(--faint);flex:none}
+.cd .t{white-space:pre}
+.cd .plus{position:absolute;left:2px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;display:grid;place-items:center;font-family:var(--sans)}
+.jk{color:#0b63e5}.jv{color:#1a8a54}.jn{color:#b1275f}.jp{color:var(--text)}
+.app.dark .jk{color:#7aa2f7}.app.dark .jv{color:#9ece6a}.app.dark .jn{color:#f7768e}
+</style>
+
+<!-- ══════════════ 08 文件 ══════════════ -->
+<section id="files">
+  <div class="sec-head"><span class="sec-num">08</span><h2>文件</h2></div>
+  <p class="lede">
+    与 §09 变更同构：<b>顶栏 → 左树 → 右内容</b>。区别只在左树是<b>整个项目</b>（不是改动清单），右侧是<b>可编辑的文件</b>（不是 diff）。
+    这一节也按 Claude Code 桌面版的 Files 视图重做：tab 条合进顶栏、树上有过滤框、动作收进一个 ⋮ 菜单、<b>自动保存</b>。
+  </p>
+
+  <h3>展开态 · 全景</h3>
+  <div class="stage">
+    <div class="app anno" style="width:1180px">
+      <div class="pin" style="left:-9px;top:13px">1</div>
+      <div class="pin" style="left:150px;top:-9px">2</div>
+      <div class="pin" style="right:60px;top:-9px">3</div>
+      <div class="pin" style="left:-9px;top:66px">4</div>
+      <div class="pin" style="left:-9px;top:336px">5</div>
+      <div class="pin" style="left:252px;top:290px">6</div>
+      <div class="fv" style="height:580px">
+        <div class="fv-top">
+          <div class="lead"><div class="cv-toggle">☰</div></div>
+          <div class="fv-tabs">
+            <div class="fv-tab"><span class="fic html">◍</span>index.html<span class="x">✕</span></div>
+            <div class="fv-tab on prev"><span class="fic json">{}</span>bun.lock<span class="x">✕</span></div>
+          </div>
+          <div class="fv-acts">
+            <div class="cv-ico">⌕</div><div class="cv-ico">⋮</div><div class="cv-ico">⧉</div><div class="cv-ico">⤢</div><div class="cv-ico">✕</div>
+          </div>
+        </div>
+        <div class="fv-body">
+          <div class="fv-side">
+            <div class="fv-filter"><span>⌕</span><span>筛选文件…（? 搜内容）</span></div>
+            <div class="fv-tree">
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>.claude</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>analytics</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>crates</div>
+              <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>docs</div>
+              <div class="fv-row" style="padding-left:28px"><span class="fic md">M</span>ui-native-spec.html</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>macos</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>src</div>
+              <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>src-tauri</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic ts">·</span>.gitignore</div>
+              <div class="fv-row on"><span class="chev"></span><span class="fic json">{}</span>bun.lock</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic json">{}</span>Cargo.lock</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic rs">T</span>Cargo.toml</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic html">◍</span>index.html</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic md">M</span>README.md</div>
+              <div class="fv-row"><span class="chev"></span><span class="fic ts">TS</span>vite.config.ts</div>
+            </div>
+          </div>
+          <div class="fv-main">
+            <div class="fv-crumb"><span>bun.lock</span><span class="sp"></span><span class="dim">JSON · 只读锁文件</span></div>
+            <div class="fv-code">
+              <div class="cd cur"><span class="n">1</span><span class="t"><span class="jp">{</span></span></div>
+              <div class="cd"><span class="n">2</span><span class="t">  <span class="jk">"lockfileVersion"</span>: <span class="jn">1</span>,</span></div>
+              <div class="cd"><span class="n">3</span><span class="t">  <span class="jk">"configVersion"</span>: <span class="jn">0</span>,</span></div>
+              <div class="cd"><span class="n">4</span><span class="t">  <span class="jk">"workspaces"</span>: {</span></div>
+              <div class="cd"><span class="n">5</span><span class="t">    <span class="jk">""</span>: {</span></div>
+              <div class="cd"><span class="n">6</span><span class="t">      <span class="jk">"name"</span>: <span class="jv">"ycode-frontend"</span>,</span></div>
+              <div class="cd"><span class="n">7</span><span class="t">      <span class="jk">"dependencies"</span>: {</span></div>
+              <div class="cd"><span class="n">8</span><span class="t">        <span class="jk">"@codemirror/lang-css"</span>: <span class="jv">"^6.3.1"</span>,</span></div>
+              <div class="cd"><span class="n">9</span><span class="t">        <span class="jk">"@codemirror/lang-json"</span>: <span class="jv">"^6.0.2"</span>,</span></div>
+              <div class="cd"><span class="n">10</span><span class="t">        <span class="jk">"@tauri-apps/api"</span>: <span class="jv">"^2.0.0"</span>,</span></div>
+              <div class="cd"><span class="n">11</span><span class="t">        <span class="jk">"@xterm/xterm"</span>: <span class="jv">"^6.0.0"</span>,</span></div>
+              <div class="cd"><span class="plus">＋</span><span class="n">12</span><span class="t">        <span class="jk">"react"</span>: <span class="jv">"^19.0.0"</span>,</span></div>
+              <div class="cd"><span class="n">13</span><span class="t">        <span class="jk">"zustand"</span>: <span class="jv">"^5.0.0"</span></span></div>
+              <div class="cd"><span class="n">14</span><span class="t">      },</span></div>
+              <div class="cd"><span class="n">15</span><span class="t">      <span class="jk">"devDependencies"</span>: {</span></div>
+              <div class="cd"><span class="n">16</span><span class="t">        <span class="jk">"typescript"</span>: <span class="jv">"^5.6.0"</span>,</span></div>
+              <div class="cd"><span class="n">17</span><span class="t">        <span class="jk">"vite"</span>: <span class="jv">"^6.0.0"</span></span></div>
+              <div class="cd"><span class="n">18</span><span class="t">      }</span></div>
+              <div class="cd"><span class="n">19</span><span class="t">    }</span></div>
+              <div class="cd"><span class="n">20</span><span class="t">  }</span></div>
+              <div class="cd"><span class="n">21</span><span class="t">}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">展开态 · 打开两个文件，第二个是预览 tab（斜体）</div>
+  </div>
+
+  <ol class="notes">
+    <li><b>☰ 显示/隐藏文件树。</b> 与 §09 同一个手势、同一个位置、同一个快捷键语义（这里是 <span class="kbd">⇧⌘Y</span> 管文件树，变更区那边管变更列表；两栏各记各的）。收起后编辑器铺满整窗。</li>
+    <li><b>tab 条就在顶栏里</b>，不另起一条。一个文件一个 tab，斜体 = 预览 tab；没有打开任何文件时这一段显示标题「文件」。</li>
+    <li><b>右上五个图标与变更区完全一致：</b>搜索（在文件内容里搜）、⋮ 显示选项、⧉ 独立窗口、⤢ 全屏、✕ 关闭。</li>
+    <li><b>树顶部是过滤框，不是工具条。</b>「筛选文件…（? 搜内容）」——直接打字按文件名过滤，以 <code>?</code> 开头则改为全文搜索。新建、刷新、在访达中显示这些动作<b>从工具条挪进 ⋮ 与右键菜单</b>（§03 规约 02）。</li>
+    <li><b>当前文件在树上是灰底</b>（<code>on</code>），不是强调色实底——强调色实底留给侧栏的会话选中，两处语义不同：那边是「你正在操作的对象」，这边只是「你在看哪个」。</li>
+    <li><b>行号左边 hover 出一个 ⊕</b>：把 <code>路径:行号</code>（有选区时是 <code>路径:12-20</code>）塞进当前焦点会话的输入行。终端里点路径能打开文件，这是反过来的那半条链路。</li>
+  </ol>
+
+  <h3>显示选项（⋮）</h3>
+  <div class="duo">
+    <div>
+      <div class="app" style="width:330px;border-radius:9px">
+        <div class="menu" style="border:0;box-shadow:none;background:transparent;min-width:0">
+          <div class="mi"><span>显示文件树</span><span class="sp"></span><span style="color:var(--accent)">✓</span><span class="kb">⇧⌘Y</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>预览 tab</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="mi"><span>自动保存</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>自动换行</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="mi"><span>显示空白字符</span></div>
+          <div class="mi"><span>可滚过末尾</span></div>
+          <div class="mi"><span>缩进宽度</span><span class="sp"></span><span class="kb">4</span><span>›</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>新建文件…</span></div>
+          <div class="mi"><span>新建文件夹…</span></div>
+          <div class="mi"><span>刷新</span></div>
+          <div class="mi"><span>在访达中显示</span></div>
+        </div>
+      </div>
+      <div class="cap">前三组是呈现，最后一组是树的动作——与 §09 的 ⋮ 同一个位置、同样的分组节奏</div>
+    </div>
+    <div>
+      <table style="margin-top:0">
+        <thead><tr><th style="width:28%">选项</th><th style="width:12%">默认</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>显示文件树</td><td>开（紧凑态关）</td><td>等同 ☰；<span class="kbd">⇧⌘Y</span></td></tr>
+          <tr><td>预览 tab</td><td>开</td><td>单击树里的文件是斜体预览 tab，会被下一个文件顶掉；双击或一编辑就转常驻。关掉后每次单击都开常驻 tab</td></tr>
+          <tr><td><b>自动保存</b></td><td>开</td><td>停止输入 <b>600 ms</b> 后写盘，切 tab、切窗口、关文件时立即写。开着时 tab 上<b>不显示脏点</b>——没有「未保存」这个状态；<span class="kbd">⌘S</span> 仍然可用（立刻写一次）</td></tr>
+          <tr><td>自动换行</td><td>开</td><td>关掉后横向滚动</td></tr>
+          <tr><td>显示空白字符</td><td>关</td><td>空格与制表符显示为点与箭头</td></tr>
+          <tr><td>可滚过末尾</td><td>关</td><td>最后一行能滚到屏幕中部</td></tr>
+          <tr><td>缩进宽度</td><td>4</td><td>二级菜单：2 / 4 / 8；只影响显示宽度，不改文件内容</td></tr>
+          <tr><td>新建 / 刷新 / 访达</td><td>—</td><td>动作项。作用对象是树上当前选中的目录（没选就是项目根）</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px">选项与 §09 一样写进 <code>WorkspaceState</code>，按项目记。</p>
+    </div>
+  </div>
+
+  <h3>自动保存带来的三条改写</h3>
+  <table>
+    <thead><tr><th style="width:22%">原来</th><th>现在</th></tr></thead>
+    <tbody>
+      <tr><td>tab 上 6 px 脏点 + 工具条「未保存 / 已保存」</td><td><b>都去掉。</b> 自动保存开着时没有「未保存」这个状态；关掉自动保存后脏点才回来（此时 tab 上出现圆点，关闭前问一次）</td></tr>
+      <tr><td>关闭未保存文件 → 「丢弃修改并关闭」确认框</td><td>自动保存开着时<b>不问</b>，直接关；关掉自动保存后仍然问</td></tr>
+      <tr><td>保存冲突三选一</td><td><b>保留，而且更重要了。</b> 自动保存会把外部改动覆盖掉，所以写盘前比对磁盘版本：不一致就停下来弹「重新加载磁盘版本 / 覆盖磁盘版本 / 取消」，并暂停这个文件的自动保存直到你选完</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <b>agent 和你会同时改同一个文件</b>——这是 ycode 独有的情况，不是编辑器的边角料。所以磁盘变化横幅保留：文件在磁盘上变了而你没有草稿时，<b>直接静默重载</b>（正在看的是最新内容）；有草稿时压一条横幅「文件在磁盘上已改变」＋［重新加载］［保留我的］。
+  </div>
+
+  <h3>树 · 行与动作</h3>
+  <table>
+    <thead><tr><th style="width:20%">元素</th><th style="width:14%">尺寸</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>过滤框</td><td class="tnum">30 px</td><td>边打边过滤（匹配路径片段，命中处高亮）；<code>?</code> 开头转全文搜索，结果行下面补一行命中的代码片段</td></tr>
+      <tr><td>行</td><td class="tnum">26 px</td><td>chevron + 文件图标 + 名字。目录在前、文件在后，各自按名字排</td></tr>
+      <tr><td>图标</td><td class="tnum">13 px</td><td>material-icon-theme 子集（§02），与非原生版同一套</td></tr>
+      <tr><td>当前文件</td><td>—</td><td>灰底 <code>on</code>；hover 也是灰底但更浅，二者不叠加</td></tr>
+      <tr><td>右键菜单</td><td>—</td><td>新建文件 / 新建文件夹 / — / 重命名 / <span style="color:var(--doc-red)">删除…</span> / — / 在编辑器中打开（常驻 tab）/ 在外部编辑器中打开 / 在访达中显示 / 复制路径</td></tr>
+      <tr><td>拖拽</td><td>—</td><td>拖行到目录 = 移动，打开着的 tab 跟着改路径</td></tr>
+      <tr><td>删除确认</td><td>—</td><td>文件夹版明写「文件夹及其全部内容会被删除，此操作无法撤销。」</td></tr>
+      <tr><td>终端联动</td><td>—</td><td>终端里点一个路径 → 展开祖先目录 → 选中 → 在<b>预览 tab</b> 里打开（不挤掉你钉住的常驻 tab）</td></tr>
+    </tbody>
+  </table>
+
+  <h3>编辑器 · 行与内容</h3>
+  <table>
+    <thead><tr><th style="width:20%">元素</th><th style="width:14%">尺寸</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>文件名行</td><td class="tnum">32 px</td><td>当前文件的相对路径；右侧放随类型出现的东西：「预览 / 源码」分段控件（Markdown、SVG、图片）、语言标记</td></tr>
+      <tr><td>行号</td><td class="tnum">44 px 槽</td><td>右对齐、tertiary、等宽数字；光标所在行整行铺 5% 底</td></tr>
+      <tr><td>⊕ 引用</td><td class="tnum">15 px</td><td>hover 行号槽时出现在最左；点一下把 <code>路径:行号</code> 送进焦点会话，<b>不抢终端焦点</b></td></tr>
+      <tr><td>语法高亮</td><td>—</td><td>内建正则 registry + LSP 语义 token；<code>bun.lock</code>／<code>Cargo.lock</code> 这类无扩展名文件走 <code>filenames</code> 映射到 json/toml/yaml</td></tr>
+      <tr><td>跳转定义</td><td>—</td><td>LSP 可用时：右键菜单 + <span class="kbd">⌃⌘J</span>，按当前光标位置跳</td></tr>
+      <tr><td>搜索</td><td>—</td><td>顶栏 ⌕ 在<b>当前文件</b>内查找（⌘F 在终端聚焦时是查终端，在编辑器聚焦时是查文件——按焦点分流）</td></tr>
+      <tr><td>二进制 / 图片</td><td>—</td><td>不进编辑器：图片给预览，二进制写「此文件不能作为 UTF-8 文本编辑」</td></tr>
+      <tr><td>大文件</td><td class="tnum">&gt; 2 MB</td><td>只读打开并提示，避免 700 KB+ 的 lock 文件把输入卡住</td></tr>
+    </tbody>
+  </table>
+
+  <h3>两种形态与空状态</h3>
+  <div class="trio">
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:330px;border-left:0;width:100%">
+          <div class="phead"><span class="cv-ico" style="width:20px;height:20px">☰</span><span>文件</span><span class="sp"></span><span class="ell">⋮</span><span class="cv-ico" style="width:20px;height:20px">⤢</span></div>
+          <div class="fv-filter" style="margin:4px 8px 6px"><span>⌕</span><span>筛选文件…</span></div>
+          <div style="flex:1;overflow:hidden">
+            <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>macos</div>
+            <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>Core</div>
+            <div class="fv-row on" style="padding-left:40px"><span class="fic swift">S</span>TodoRepository.swift</div>
+            <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>GitService.swift</div>
+            <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>docs</div>
+            <div class="fv-row"><span class="chev"></span><span class="fic json">{}</span>package.json</div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>紧凑态 · 树</b>（302）· 面板头 30：☰ / 文件 / ⋮ / ⤢</div>
+    </div>
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:330px;border-left:0;width:100%">
+          <div class="phead" style="gap:6px"><span class="cv-ico" style="width:20px;height:20px">☰</span><span class="fv-tab on" style="margin:0;height:22px;font-size:12px"><span class="fic swift">S</span>TodoRepository.swift<span class="x">✕</span></span><span class="sp"></span><span class="ell">⋮</span></div>
+          <div class="fv-crumb" style="height:26px;padding:0 10px">macos/Core/…/TodoRepository.swift</div>
+          <div class="fv-code" style="font-size:11px">
+            <div class="cd cur"><span class="n" style="width:34px;padding-right:10px">41</span><span class="t"><span class="kw">func</span> <span class="fn">upsert</span>(_ t: <span class="ty">YCodeTodo</span>) {</span></div>
+            <div class="cd"><span class="n" style="width:34px;padding-right:10px">42</span><span class="t">  <span class="kw">try</span> db.<span class="fn">execute</span>(sql)</span></div>
+            <div class="cd"><span class="n" style="width:34px;padding-right:10px">43</span><span class="t">  <span class="cm">// MCP 与 UI 同一份</span></span></div>
+            <div class="cd"><span class="n" style="width:34px;padding-right:10px">44</span><span class="t">}</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap"><b>紧凑态 · 编辑</b> · ☰ 把树换成编辑器，302 里一次只看一样</div>
+    </div>
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:330px;border-left:0;width:100%">
+          <div class="phead"><span class="cv-ico" style="width:20px;height:20px">☰</span><span>文件</span><span class="sp"></span><span class="ell">⋮</span><span class="cv-ico" style="width:20px;height:20px">⤢</span></div>
+          <div class="mid" style="flex:1"><div style="width:26px;height:20px;border:1.5px solid var(--faint);border-radius:4px;margin-bottom:4px"></div><div class="t">打开的文件在这儿</div><div class="b">在左边的树里选一个，或者点终端里的文件路径。</div></div>
+        </div>
+      </div>
+      <div class="cap"><b>没打开文件</b> · 展开态同一句文案，居中放大</div>
+    </div>
+  </div>
+  <p><b>紧凑态的取舍：</b>302 px 放不下「树 + 编辑器」上下叠——叠起来两边都只剩十来行。所以紧凑态里 ☰ 是<b>互斥切换</b>（看树 / 看文件），多 tab 时 tab 条横向滚动；真要边看树边改文件，⤢ 展开。</p>
+
+  <h3>与当前实现的差距（要动的代码）</h3>
+  <table>
+    <thead><tr><th style="width:22%">项</th><th style="width:12%">现状</th><th>要做什么</th></tr></thead>
+    <tbody>
+      <tr><td>顶栏 + tab 合一</td><td class="mono">分开</td><td>现在是 32 px 工具条 + 38 px tab 条两层，合成一条 44；紧凑态合成 30</td></tr>
+      <tr><td>树的过滤框</td><td class="mono">无</td><td>新增；<code>?</code> 前缀走全文搜索（可复用 <code>HistoryIntrospection</code> 之外的 ripgrep 调用，或先只做文件名过滤）</td></tr>
+      <tr><td>自动保存</td><td class="mono">无</td><td><code>EditorWorkspaceModel</code> 加 600 ms debounce 写盘 + 写盘前磁盘版本比对；脏点与「丢弃修改并关闭」按开关隐藏</td></tr>
+      <tr><td>显示选项菜单</td><td class="mono">无</td><td>预览 tab、自动换行、显示空白、滚过末尾、缩进宽度都是新的</td></tr>
+      <tr><td>行号槽的 ⊕</td><td class="mono">无</td><td>新增；把 <code>path:line</code> 写进焦点会话的 PTY 输入（复用 <code>TerminalLinkResolver</code> 的反向逻辑）</td></tr>
+      <tr><td>展开态窗口</td><td class="mono">无</td><td>与 §09 共用同一套外壳，只换左树与右内容</td></tr>
+      <tr><td>工具条上的新建/刷新/访达</td><td class="mono">已有</td><td>移进 ⋮ 与右键菜单，工具条整条删除</td></tr>
+      <tr><td>大文件只读阈值</td><td class="mono">无</td><td>新增 2 MB 阈值（M5.2 的回归只测到 1.1 MB，日常有 700 KB 的 lock 文件）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<style>
+/* §09 变更视图专用组件（与 §02 token 同源） */
+.cv{display:flex;flex-direction:column;height:100%}
+.cv-top{height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);flex:none}
+.cv-toggle{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-size:12px}
+.cv-crumb{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:7px;font-size:13.5px}
+.cv-crumb.open{background:color-mix(in srgb,var(--text) 7%,transparent)}
+.cv-crumb .base{color:var(--soft)}
+.cv-crumb .arr{color:var(--faint);font-size:11px}
+.cv-crumb .cur{font-weight:500}
+.cv-crumb .cx{color:var(--faint);font-size:10px}
+.cv-top .sp{flex:1}
+.cv-ico{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--soft);font-size:13px}
+.cv-ico.on{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
+.cv-body{flex:1;display:flex;min-height:0}
+.cv-tree{width:264px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.cv-tree .scroll{flex:1;overflow:hidden;padding:6px 0}
+.cv-trow{height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px;position:relative}
+.cv-trow.hov{background:color-mix(in srgb,var(--text) 6%,transparent)}
+.cv-trow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cv-trow .sp{flex:1;min-width:6px}
+.cv-stat{font-family:var(--code);font-size:11px;display:flex;gap:5px;flex:none}
+.cv-stat .p{color:var(--ok)}.cv-stat .m{color:var(--err)}
+.cv-tip{position:absolute;left:8px;top:24px;background:#1b1b1d;color:#fff;border-radius:7px;padding:7px 10px;font-size:11.5px;z-index:8;box-shadow:0 10px 26px rgba(0,0,0,.4);line-height:1.35}
+.cv-tip b{display:block;font-weight:600}
+.cv-tip span{color:#b4b4b8;font-size:10.5px}
+.cv-allrow{height:34px;display:flex;align-items:center;padding:0 12px;font-size:13px;background:color-mix(in srgb,var(--text) 7%,transparent);border-top:1px solid var(--line)}
+.cv-commit{padding:8px 12px 10px;font-size:12.5px;line-height:1.45}
+.cv-commit .sub{font-family:var(--code);font-size:11px;color:var(--faint);margin-top:2px}
+.cv-stream{flex:1;min-width:0;display:flex;flex-direction:column;background:color-mix(in srgb,var(--text) 3%,transparent)}
+.cv-hint{height:34px;display:flex;align-items:center;padding:0 16px;font-size:12.5px;color:var(--soft);flex:none}
+.cv-list{flex:1;overflow:hidden;padding:0 8px 8px;display:flex;flex-direction:column;gap:4px}
+.cv-file{background:var(--bg);border-radius:8px;border:1px solid var(--line);overflow:hidden}
+.cv-file.col{background:transparent;border-color:transparent}
+.cv-fh{height:32px;display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12.5px;white-space:nowrap;overflow:hidden}
+.cv-fh .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cv-fh .cv-stat{margin-left:auto}
+.cv-fh .pth{color:var(--faint);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cv-fh .sp{flex:1;min-width:6px}
+.cv-diff{font-family:var(--code);font-size:11px;line-height:1.55;border-top:1px solid var(--line)}
+.cv-dl{display:flex}
+.cv-dl .n{width:34px;text-align:right;padding-right:8px;color:var(--faint);flex:none}
+.cv-dl .s{width:12px;flex:none;color:var(--faint)}
+.cv-dl .t{white-space:pre;overflow:hidden}
+.cv-dl.add{background:var(--add-bg)}
+.cv-dl.del{background:var(--del-bg)}
+.cv-dl.add .s{color:var(--ok)}
+.cv-dl.del .s{color:var(--err)}
+.cv-hunkbar{height:22px;display:flex;align-items:center;gap:8px;padding:0 10px;background:color-mix(in srgb,var(--text) 6%,transparent);font-family:var(--code);font-size:10px;color:var(--soft);border-top:1px solid var(--line)}
+.cv-hunkbar .sp{flex:1}
+.sub{position:relative}
+</style>
+
+<!-- ══════════════ 09 变更 ══════════════ -->
+<section id="changes">
+  <div class="sec-head"><span class="sec-num">09</span><h2>变更</h2></div>
+  <p class="lede">
+    这一节按 <b>Claude Code 桌面版的 diff 视图</b>重做：范围选择器（分支面包屑）＋ 左侧变更文件树 ＋ 右侧一列到底的折叠式 diff 流 ＋ 一个显示选项菜单。
+    它比现在检查器里那版多出三件事：<b>能选对比范围</b>（未提交 / vs 某分支 / 某次提交）、<b>能按文件夹分组浏览</b>、<b>大 diff 默认折叠</b>。
+  </p>
+
+  <h3>两种形态，同一套数据</h3>
+  <table>
+    <thead><tr><th style="width:16%">形态</th><th style="width:14%">宽度</th><th style="width:22%">进入方式</th><th>差别</th></tr></thead>
+    <tbody>
+      <tr><td><b>展开态</b></td><td class="tnum">整窗 / 独立窗口</td><td>检查器变更面板右上角 <span class="mono">⤢</span>、或菜单 工作区 › 变更…</td><td>左树 + 右 diff 流；范围选择器、搜索、显示选项齐全</td></tr>
+      <tr><td><b>紧凑态</b></td><td class="tnum">302（检查器）</td><td>检查器里的变更面板（<span class="kbd">⌘2</span> 开关）</td><td>没有左树（树折进 <span class="mono">☰</span>）；其余控件与规则完全一致，只是一列</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>规则：两种形态共用同一个 model。</b> 范围、折叠状态、显示选项、暂存进度都存在同一个 <code>ChangesModel</code> 上，来回切不重置、不重新 <code>git diff</code>。</div>
+
+  <h3>展开态 · 全景</h3>
+  <div class="stage">
+    <div class="app anno" style="width:1180px">
+      <div class="pin" style="left:-9px;top:14px">1</div>
+      <div class="pin" style="left:150px;top:-9px">2</div>
+      <div class="pin" style="right:110px;top:-9px">3</div>
+      <div class="pin" style="left:118px;bottom:74px">4</div>
+      <div class="pin" style="left:290px;top:74px">5</div>
+      <div class="pin" style="right:-9px;top:180px">6</div>
+      <div class="cv" style="height:600px">
+        <div class="cv-top">
+          <div class="cv-toggle">☰</div>
+          <div class="cv-crumb"><span class="base">main</span><span class="arr">→</span><span class="cur">feat/macos-native</span><span class="cx">▾</span></div>
+          <div class="sp"></div>
+          <div class="cv-ico">⌕</div>
+          <div class="cv-ico">⋮</div>
+          <div class="cv-ico">⧉</div>
+          <div class="cv-ico">⤢</div>
+          <div class="cv-ico">✕</div>
+        </div>
+        <div class="cv-body">
+          <div class="cv-tree">
+            <div class="scroll">
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">docs/macos-native</span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic md">M</span><span class="nm">local-selfuse-log.md</span><span class="sp"></span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic md">M</span><span class="nm">ui-redesign-implementation.md</span><span class="sp"></span><span class="cv-stat"><span class="p">+112</span><span class="m">−8</span></span></div>
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/YCodeApp/Sources/YCodeApp</span></div>
+              <div class="cv-trow hov" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span>
+                <div class="cv-tip"><b>ChangesPanelView.swift</b><span>macos/YCodeApp/Sources/YCodeApp</span></div>
+              </div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">WorkspaceSidebarView.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/Core/Sources/YCodeCore</span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">SyntaxHighlighting.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+30</span><span class="m">−1</span></span></div>
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/scripts</span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic ts">py</span><span class="nm">generate_file_icons.py</span><span class="sp"></span><span class="cv-stat"><span class="p">+207</span><span class="m">−0</span></span></div>
+            </div>
+            <div class="cv-allrow">全部变更</div>
+            <div class="cv-commit">
+              <div>feat(macos): add native Swift impl…</div>
+              <div class="sub">432431cf · melon · 18 小时前</div>
+            </div>
+          </div>
+
+          <div class="cv-stream">
+            <div class="cv-hint">大 diff 已折叠。选一个文件展开它。</div>
+            <div class="cv-list">
+              <div class="cv-file">
+                <div class="cv-fh"><span class="chev">▾</span><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span><span class="sp"></span><span class="lnk">暂存</span><span class="lnk danger">丢弃</span><span class="dim">↗︎</span></div>
+                <div class="cv-hunkbar"><span>@@ -18,6 +18,14 @@ enum YCodeMetrics</span><span class="sp"></span><span class="lnk">暂存这一块</span></div>
+                <div class="cv-diff">
+                  <div class="cv-dl"><span class="n">18</span><span class="s"></span><span class="t">    static let rowHeight: CGFloat = 28</span></div>
+                  <div class="cv-dl add"><span class="n">19</span><span class="s">+</span><span class="t">    static let changesTreeWidth: CGFloat = 264</span></div>
+                  <div class="cv-dl add"><span class="n">20</span><span class="s">+</span><span class="t">    static let changesTopBarHeight: CGFloat = 44</span></div>
+                  <div class="cv-dl add"><span class="n">21</span><span class="s">+</span><span class="t">    static let changesRowHeight: CGFloat = 26</span></div>
+                  <div class="cv-dl del"><span class="n">22</span><span class="s">−</span><span class="t">    static let statusBarHeight: CGFloat = 26</span></div>
+                  <div class="cv-dl"><span class="n">23</span><span class="s"></span><span class="t">    static let cornerRadius: CGFloat = 6</span></div>
+                </div>
+              </div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">WorkspaceSidebarView.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="pth">macos/Core/Sources/YCodeCore</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic md">M</span><span class="nm">local-selfuse-log.md</span><span class="pth">docs/macos-native</span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic ts">py</span><span class="nm">generate_file_icons.py</span><span class="pth">macos/scripts</span><span class="cv-stat"><span class="p">+207</span><span class="m">−0</span></span></div></div>
+            </div>
+            <div style="height:26px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--line);font-size:11.5px;color:var(--soft);flex:none">
+              <span>6 个文件</span><span class="cv-stat"><span class="p">+830</span><span class="m">−194</span></span><span style="flex:1"></span><span class="dim">3 个已暂存</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">展开态 · 范围＝未提交的改动（暂存与丢弃可用；这里不提交）</div>
+  </div>
+
+  <ol class="notes">
+    <li><b>☰ 显示/隐藏文件树。</b> 默认显示；收起后 diff 流铺满，紧凑态里它默认是收起的。与显示选项菜单里的「显示文件列表 <span class="kbd">⇧⌘Y</span>」是同一个开关。</li>
+    <li><b>范围面包屑 <span class="mono">基准 → 当前 ▾</span>。</b> 这是整个视图的主控件：它决定 diff 从哪儿来，也决定文件行上的暂存／丢弃是否出现。</li>
+    <li><b>右上五个图标：</b>搜索（在改动内容里搜）、⋮ 显示选项、⧉ 在独立窗口打开、⤢ 全屏、✕ 关闭。紧凑态只留 ⋮ 与 ⤢。</li>
+    <li><b>左树底部是范围的落款：</b>「全部变更」那一行是当前选中的范围，下面一行是对应的 commit（标题 + 短 sha · 作者 · 相对时间）。选到某次提交时，这里换成那一条。</li>
+    <li><b>hover 出 tooltip：</b>黑底两行——文件名（粗）+ 所在目录。树很窄，名字被截断时这是唯一能看全的地方。</li>
+    <li><b>diff 流是一列到底</b>，不分左右栏；「并排对比」是显示选项里的一个开关，宽度够（≥ 900 px）时才可选，紧凑态里禁用。</li>
+  </ol>
+
+  <h3>范围选择器</h3>
+  <p>点面包屑打开。四项，前两项是单选的范围，后两项是二级菜单。</p>
+  <div class="duo">
+    <div>
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div class="app" style="width:268px;border-radius:9px">
+          <div class="menu" style="border:0;box-shadow:none;background:transparent;min-width:0">
+            <div class="mi"><span>全部变更</span><span class="sp"></span><span style="color:var(--accent)">✓</span><span class="dim">vs main</span></div>
+            <div class="mi"><span>未提交的改动</span></div>
+            <div class="sep"></div>
+            <div class="mi on"><span>比较基准</span><span class="sp"></span><span class="kb" style="color:rgba(255,255,255,.8)">main</span><span>›</span></div>
+            <div class="sep"></div>
+            <div class="mi"><span>提交</span><span class="sp"></span><span>›</span></div>
+          </div>
+        </div>
+        <div class="app" style="width:250px;border-radius:9px">
+          <div class="menu" style="border:0;box-shadow:none;background:transparent;min-width:0">
+            <div class="field" style="height:26px;margin:2px 4px 6px">搜索分支</div>
+            <div class="mi"><span>main</span><span class="sp"></span><span style="color:var(--accent)">✓</span><span class="dim">默认</span></div>
+            <div class="mi"><span>backup-before-cleanup</span></div>
+            <div class="mi"><span>feat/project-todos-mcp</span></div>
+            <div class="mi"><span>perf/terminal-throughput</span></div>
+            <div class="mi"><span>spike/gpui-ime-patch</span></div>
+            <div class="mi off"><span>ycode/01KWS64Z</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">范围菜单 + 「比较基准」二级：分支多时顶部给搜索框</div>
+    </div>
+    <div>
+      <table style="margin-top:0">
+        <thead><tr><th style="width:30%">范围</th><th>内容与可用动作</th></tr></thead>
+        <tbody>
+          <tr><td><b>全部变更</b><div class="dim">默认，vs 基准分支</div></td><td><code>git diff &lt;base&gt;...HEAD</code> 加上未提交改动：这条分支到目前为止做了什么。<b>只读</b>——不给暂存/丢弃</td></tr>
+          <tr><td><b>未提交的改动</b></td><td><code>git status</code> + 工作区/暂存区 diff。<b>唯一允许暂存、取消暂存、丢弃、逐块暂存</b>的范围</td></tr>
+          <tr><td><b>比较基准 ›</b></td><td>选一个分支当基准，默认分支标「默认」。选完回到「全部变更」，面包屑左半边跟着变</td></tr>
+          <tr><td><b>提交 ›</b></td><td>提交列表（含 ycode 的<b>检查点</b>：每轮 agent 自动落的那些 commit，标「#12 轮次检查点」）。选一条 = 看那条的 diff，只读；右键可「回到这个检查点」</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn" style="margin-top:14px"><b>一致性规则：写操作只在「未提交的改动」范围里出现。</b> 其它范围下，文件行 hover 不出暂存/丢弃、hunk 头不出「暂存这一块」——而不是显示成禁用态。</div>
+      <div class="callout" style="margin-top:12px"><b>这里不做提交。</b> 没有提交信息输入框，也没有「提交 N 个文件」按钮——变更区的职责是<b>看清 agent 改了什么</b>，以及把不想要的丢掉。提交由 agent 自己做，或者你在项目 shell（检查器的终端面板）里 <code>git commit</code>。底部那条 26 px 只汇总「N 个文件 · +X −Y」，不承载动作。</div>
+    </div>
+  </div>
+
+  <h3>显示选项（⋮）</h3>
+  <div class="duo">
+    <div>
+      <div class="app" style="width:330px;border-radius:9px">
+        <div class="menu" style="border:0;box-shadow:none;background:transparent;min-width:0">
+          <div class="mi"><span>显示文件列表</span><span class="sp"></span><span style="color:var(--accent)">✓</span><span class="kb">⇧⌘Y</span></div>
+          <div class="mi"><span>按文件夹分组</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="mi"><span>分开测试、构建与生成的文件</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>全部折叠</span></div>
+          <div class="mi off"><span>全部展开</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>并排对比</span></div>
+          <div class="mi"><span>自动换行</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="mi"><span>高亮改动的词</span><span class="sp"></span><span style="color:var(--accent)">✓</span></div>
+          <div class="mi"><span>忽略空白改动</span></div>
+          <div class="sep"></div>
+          <div class="mi"><span>刷新</span></div>
+        </div>
+      </div>
+      <div class="cap">四组：列表形态 / 折叠 / diff 呈现 / 刷新</div>
+    </div>
+    <div>
+      <table style="margin-top:0">
+        <thead><tr><th style="width:34%">选项</th><th style="width:12%">默认</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>显示文件列表</td><td>开（紧凑态关）</td><td>等同 ☰；<span class="kbd">⇧⌘Y</span></td></tr>
+          <tr><td>按文件夹分组</td><td>开</td><td>关掉后左树变成平铺清单，行上写完整相对路径</td></tr>
+          <tr><td>分开测试、构建与生成的文件</td><td>关</td><td><code>node_modules/</code>、<code>dist/</code>、<code>*.lock</code>、<code>Tests/</code> 收到列表末尾一个折叠组里——参考图里 <code>analytics/node_modules</code> 淹掉整棵树的那种情况</td></tr>
+          <tr><td>全部折叠 / 全部展开</td><td>—</td><td>动作项，不是开关；<b>&gt; 80 个文件或 &gt; 5000 行时「全部展开」禁用</b>并给 tooltip 说明</td></tr>
+          <tr><td>并排对比</td><td>关</td><td>宽度 &lt; 900 px 时禁用（302 px 的检查器里放不下两列）</td></tr>
+          <tr><td>自动换行</td><td>开</td><td>关掉后每个 hunk 独立横向滚动</td></tr>
+          <tr><td>高亮改动的词</td><td>开</td><td>行内词级 diff，在增/删行里加深底色标出真正变的那几个词</td></tr>
+          <tr><td>忽略空白改动</td><td>关</td><td><code>git diff -w</code></td></tr>
+          <tr><td>刷新</td><td>—</td><td>重跑 status + diff；也接文件系统变化自动刷</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:13px">选项写进 <code>WorkspaceState</code>，按项目记；打开另一个项目时沿用上次的偏好。</p>
+    </div>
+  </div>
+
+  <h3>文件块 · 折叠与展开</h3>
+  <div class="stage tight">
+    <div class="app" style="width:760px">
+      <div style="background:color-mix(in srgb,var(--text) 3%,transparent);padding:8px">
+        <div class="cv-file col" style="margin-bottom:4px"><div class="cv-fh"><span class="chev">▸</span><span class="fic ts">TS</span><span class="nm">index.d.ts</span><span class="pth">analytics/node_modules/@cloudflare/kv-asset-handler/dist</span><span class="cv-stat"><span class="p">+37</span><span class="m">−0</span></span></div></div>
+        <div class="cv-file">
+          <div class="cv-fh"><span class="chev">▾</span><span class="fic ts">TOML</span><span class="nm">environment.toml</span><span class="pth">.codex/environments</span><span class="cv-stat"><span class="p">+11</span><span class="m">−0</span></span><span class="sp"></span><span class="lnk">暂存</span><span class="lnk danger">丢弃</span><span class="dim">↗︎</span></div>
+          <div class="cv-diff">
+            <div class="cv-dl add"><span class="n">1</span><span class="s">+</span><span class="t"><span class="cm"># THIS IS AUTOGENERATED. DO NOT EDIT MANUALLY</span></span></div>
+            <div class="cv-dl add"><span class="n">2</span><span class="s">+</span><span class="t">version = <span class="ty">1</span></span></div>
+            <div class="cv-dl add"><span class="n">3</span><span class="s">+</span><span class="t">name = <span class="str">"ycode-native"</span></span></div>
+            <div class="cv-dl add"><span class="n">4</span><span class="s">+</span><span class="t"></span></div>
+            <div class="cv-dl add"><span class="n">5</span><span class="s">+</span><span class="t">[<span class="fn">setup</span>]</span></div>
+            <div class="cv-dl add"><span class="n">6</span><span class="s">+</span><span class="t">script = <span class="str">""</span></span></div>
+            <div class="cv-dl add"><span class="n">7</span><span class="s">+</span><span class="t"></span></div>
+            <div class="cv-dl add"><span class="n">8</span><span class="s">+</span><span class="t">[[<span class="fn">actions</span>]]</span></div>
+            <div class="cv-dl add"><span class="n">9</span><span class="s">+</span><span class="t">name = <span class="str">"Run"</span></span></div>
+            <div class="cv-dl add"><span class="n">10</span><span class="s">+</span><span class="t">icon = <span class="str">"run"</span></span></div>
+            <div class="cv-dl add"><span class="n">11</span><span class="s">+</span><span class="t">command = <span class="str">"./macos/scripts/build_and_run.sh run"</span></span></div>
+          </div>
+          <div class="morebtn">展开剩下的 26 行</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">折叠行（上）与展开块（下）· 新增整行铺 ok 色 10–13% 底，行号灰，语法高亮照常</div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:22%">元素</th><th style="width:14%">尺寸</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>文件头</td><td class="tnum">32 px</td><td>chevron + 文件图标 + <b>粗体文件名</b> + 灰色目录 + <code>+N −N</code>；整行可点，点即展开／收起</td></tr>
+      <tr><td>hover 动作</td><td>—</td><td>右侧出现「暂存／取消暂存」「<span style="color:var(--doc-red)">丢弃</span>」「↗︎ 在编辑器打开」；未提交范围之外只有 ↗︎</td></tr>
+      <tr><td>hunk 条</td><td class="tnum">22 px</td><td><code>@@ -18,6 +18,14 @@</code> + 右侧「暂存这一块」（拼 <code>fileHeader + hunk</code> 走 <code>git apply --cached</code>）</td></tr>
+      <tr><td>diff 行</td><td class="tnum">11 px mono</td><td>行号 34 px 右对齐 + 12 px 的 +/− 列 + 内容；增行铺 ok 底、删行铺 err 底，<b>语法高亮保留</b></td></tr>
+      <tr><td>长 hunk</td><td class="tnum">24 行</td><td>默认只铺一屏的量，其余给「展开剩下的 N 行」／「收起」</td></tr>
+      <tr><td>折叠默认</td><td>—</td><td>文件数 &gt; 10 或总行数 &gt; 800 时全部折叠，顶部给一句「大 diff 已折叠。选一个文件展开它。」；小改动直接全展开，不给提示条</td></tr>
+      <tr><td>二进制 / 图片</td><td>—</td><td>不铺 diff：写「二进制文件 · 12.4 KB → 13.1 KB」；图片给并排缩略图</td></tr>
+      <tr><td>重命名</td><td>—</td><td>文件头写 <code>旧名 → 新名</code>，计数按内容变化算</td></tr>
+    </tbody>
+  </table>
+
+  <h3>三种状态</h3>
+  <div class="trio">
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:260px;border-left:0;width:100%">
+          <div class="cv-top" style="height:38px;padding:0 10px"><div class="cv-crumb" style="padding:0 6px;font-size:12.5px"><span class="base">main</span><span class="arr">→</span><span class="cur">feat/macos-native</span><span class="cx">▾</span></div><div class="sp"></div><div class="cv-ico">⋮</div><div class="cv-ico">⤢</div></div>
+          <div class="mid" style="flex:1"><div class="t">工作区是干净的</div><div class="b">agent 改了文件之后，这里会出现逐块可暂存的 diff。</div></div>
+        </div>
+      </div>
+      <div class="cap">干净</div>
+    </div>
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:260px;border-left:0;width:100%">
+          <div class="cv-top" style="height:38px;padding:0 10px"><div class="cv-crumb" style="padding:0 6px;font-size:12.5px"><span class="cur">未提交的改动</span><span class="cx">▾</span></div><div class="sp"></div><div class="cv-ico">⋮</div><div class="cv-ico">⤢</div></div>
+          <div style="flex:1;padding:6px 6px 0;display:flex;flex-direction:column;gap:3px">
+            <div class="cv-file col"><div class="cv-fh" style="height:30px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div></div>
+            <div class="cv-file col"><div class="cv-fh" style="height:30px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span></div></div>
+            <div class="cv-file col"><div class="cv-fh" style="height:30px"><span class="chev">▸</span><span class="fic md">M</span><span class="nm">local-selfuse-log.md</span><span class="sp"></span><span class="lnk">暂存</span><span class="lnk danger">丢弃</span></div></div>
+          </div>
+          <div style="height:26px;display:flex;align-items:center;gap:10px;padding:0 10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--soft);flex:none"><span>3 个文件</span><span class="cv-stat"><span class="p">+428</span><span class="m">−143</span></span><span style="flex:1"></span></div>
+        </div>
+      </div>
+      <div class="cap">紧凑态（302）· 第三行 hover：计数让位给动作</div>
+    </div>
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:260px;border-left:0;width:100%">
+          <div class="cv-top" style="height:38px;padding:0 10px"><div class="cv-crumb" style="padding:0 6px;font-size:12.5px"><span class="cur">变更</span></div><div class="sp"></div><div class="cv-ico">⋮</div></div>
+          <div class="mid" style="flex:1"><div class="t">Git 不可用</div><div class="b">这个目录不是 git 仓库，或 git 命令不在 PATH 上。</div></div>
+        </div>
+      </div>
+      <div class="cap">Git 不可用 · 错误正文直接贴 git 的输出</div>
+    </div>
+  </div>
+
+  <h3>与当前实现的差距（要动的代码）</h3>
+  <table>
+    <thead><tr><th style="width:22%">项</th><th style="width:12%">现状</th><th>要做什么</th></tr></thead>
+    <tbody>
+      <tr><td>范围选择器</td><td class="mono">无</td><td>新增 <code>ChangesScope</code>（uncommitted / vsBase / commit）；<code>YCodeGitService</code> 补 <code>diff(range:)</code> 与 <code>mergeBase(base:)</code></td></tr>
+      <tr><td>左侧变更文件树</td><td class="mono">无</td><td>由 <code>changes</code> 列表按目录聚合成树，不复用项目文件树（数据源不同）</td></tr>
+      <tr><td>展开态窗口</td><td class="mono">无</td><td>新 scene 或全窗覆盖层；共用 <code>ChangesModel</code></td></tr>
+      <tr><td>显示选项</td><td class="mono">部分</td><td>分组、分离生成文件、并排、换行、词级高亮、忽略空白都是新的；「刷新」已有</td></tr>
+      <tr><td>折叠优先</td><td class="mono">相反</td><td>现在是点文件才拉 diff、hunk 展开 24 行；改成批量拉 + 默认折叠 + 阈值提示</td></tr>
+      <tr><td>提交列表 / 检查点</td><td class="mono">⋯ 菜单里</td><td>并进范围菜单的「提交 ›」，检查点作为其中一类条目</td></tr>
+      <tr><td>逐块暂存 / 文件级暂存、丢弃</td><td class="mono">已有</td><td>保留，但收敛到「未提交的改动」范围</td></tr>
+      <tr><td>提交条（输入框 + 提交按钮）</td><td class="mono">已有</td><td><b>删掉</b>，换成 26 px 的只读汇总条；<code>gitCommitMessage</code> / <code>commitGitChanges</code> 一并从 model 移除</td></tr>
+      <tr><td>分支切换 / Fetch / Pull / Push</td><td class="mono">⋯ 菜单里</td><td>「比较基准」只改对比，不 checkout；<b>真正的 checkout 与远端动作留在 ⋯ 菜单</b>，两件事不要混在同一个控件里</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════ 10 待办 ══════════════ -->
+<section id="todos">
+  <div class="sec-head"><span class="sec-num">10</span><h2>待办</h2></div>
+  <p class="lede">这份清单的特别之处是 <b>agent 和你在写同一份</b>（<code>ycode-todos</code> MCP 经 UDS 读写同一张 <code>project_todos</code> 表）。面板要回答的是「刚才那条是谁动的、动成了什么样」，不是「有几项待办」。</p>
+
+  <div class="trio">
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:400px;border-left:0;width:100%">
+          <div class="phead"><span>5 项未完成</span><span class="sp"></span><span class="ell">⋯</span></div>
+          <div style="padding:7px 10px 3px"><div class="field"><span>＋</span><span style="flex:1">添加待办</span><span class="kb">↵</span></div></div>
+          <div style="flex:1;overflow:hidden">
+            <div class="grp" style="padding:0 12px;margin-top:6px"><span>进行中</span><span class="sp"></span><span class="cnt">1</span></div>
+            <div class="trow"><span class="box doing"><i></i></span><div><div class="tt">把变更面板改成范围选择器 + 文件树</div><div class="by">进行中 · 2 分钟前</div></div><span class="sp"></span></div>
+            <div class="grp" style="padding:0 12px;margin-top:6px"><span>队列</span><span class="sp"></span><span class="cnt">4</span></div>
+            <div class="trow"><span class="box todo"></span><div><div class="tt">大 diff 折叠阈值接进设置</div></div><span class="sp"></span></div>
+            <div class="trow"><span class="box todo"></span><div><div class="tt">词级 diff 高亮</div></div><span class="sp"></span><span class="ell">⋯</span></div>
+            <div class="trow"><span class="box todo"></span><div><div class="tt">检查点并进「提交 ›」二级菜单</div></div><span class="sp"></span></div>
+            <div class="trow"><span class="box todo"></span><div><div class="tt">修 /usr/local/bin/ycode 断链</div></div><span class="sp"></span></div>
+            <div class="grp" style="padding:0 12px;margin-top:6px"><span class="chev">▸</span><span>已完成</span><span class="sp"></span><span class="cnt">12</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">有待办 · 第三行 hover 出 ⋯</div>
+    </div>
+    <div>
+      <div class="app" style="width:300px">
+        <div class="insp" style="height:400px;border-left:0;width:100%">
+          <div class="phead"><span>还没有待办</span><span class="sp"></span><span class="ell">⋯</span></div>
+          <div style="padding:7px 10px 3px"><div class="field"><span>＋</span><span style="flex:1">添加待办</span><span class="kb">↵</span></div></div>
+          <div class="mid" style="flex:1"><div class="t">还没有待办</div><div class="b">你可以在这里加，agent 也能通过 ycode-todos 自己加。两边是同一份清单。</div></div>
+        </div>
+      </div>
+      <div class="cap">空 · 输入行仍在，空状态不挡住录入</div>
+    </div>
+    <div>
+      <div class="menu" style="width:210px">
+        <div class="mi off">标为进行中</div>
+        <div class="mi">放回队列</div>
+        <div class="mi">标记完成</div>
+        <div class="sep"></div>
+        <div class="mi">向上移动</div>
+        <div class="mi">向下移动</div>
+        <div class="sep"></div>
+        <div class="mi">重命名…</div>
+        <div class="mi danger">删除…</div>
+      </div>
+      <div class="cap">行菜单（⋯ 与右键同一份）</div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:22%">元素</th><th style="width:14%">尺寸</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>面板头</td><td class="tnum">30 px</td><td>「N 项未完成」+ ⋯（刷新 / 显示已完成 / 状态行）。三个巨型计数已删</td></tr>
+      <tr><td>输入行</td><td class="tnum">28 px</td><td>＋ 与 ↵ 是<b>提示不是按钮</b>，回车即存；存完清空，焦点留在输入框</td></tr>
+      <tr><td>状态方块</td><td class="tnum">14 px</td><td>队列 = 空心描边；进行中 = warn 实底 + 白点；完成 = ok 实底 + 勾。点它按「队列 → 进行中 → 完成 → 队列」循环，三种状态都不用开菜单</td></tr>
+      <tr><td>标题</td><td class="tnum">12.5 px</td><td>最多两行；完成的转 secondary + 删除线</td></tr>
+      <tr><td>副行</td><td class="tnum">11 px</td><td>「进行中 · 2 分钟前」「已完成 · 昨天」；<b>队列里的条目不写副行</b>——刚敲进去那条，「添加于 17 秒前」没有信息量</td></tr>
+      <tr><td>行右侧</td><td>—</td><td>只有一个 ⋯，只在 hover 时出现。状态胶囊与上下箭头已删：状态由所在分组表达，排序走菜单</td></tr>
+      <tr><td>分组</td><td class="tnum">22 px</td><td>进行中 / 队列 / 已完成（默认折叠）；计数在分组标题上</td></tr>
+      <tr><td>双击</td><td>—</td><td>重命名（系统 alert，空标题时保存禁用）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <b>MCP 改动会让一条待办在分组之间搬家。</b> 行的 <code>.id</code> 里带上 <code>updatedAt|title|status|sortOrder</code>，SwiftUI 才不会复用搬家前那一行的旧标题。
+    <br><b>已知缺口：</b>设计上副行应该写「谁动的」（agent 标为进行中 / 你添加），但 <code>YCodeTodo</code> 没有 actor 字段，动它要改 Core，所以现在只写状态与时间。
+  </div>
+</section>
+
+<!-- ══════════════ 11 浮层 ══════════════ -->
+<section id="overlays">
+  <div class="sec-head"><span class="sec-num">11</span><h2>浮层与对话框</h2></div>
+  <p class="lede">三类：命令面板（sheet）、新建会话（就地，不是浮层）、系统 alert / confirmationDialog。<b>没有会话信息浮层</b>——见 §01。规则：<b>只有破坏性动作才用确认框</b>。</p>
+
+  <h3>⌘K 命令面板</h3>
+  <div class="stage tight">
+    <div class="app" style="width:560px">
+      <div class="sheet">
+        <div style="height:46px;display:flex;align-items:center;gap:8px;padding:0 14px"><span style="color:var(--soft)">⌕</span><span style="font-size:16px;color:var(--faint);flex:1">搜索会话、待办、历史，或执行动作</span><span class="dim">在 7 个会话 · 24 条历史中</span></div>
+        <div style="height:1px;background:var(--line)"></div>
+        <div style="padding:6px 0 8px">
+          <div class="grp" style="padding:0 14px;height:26px">会话</div>
+          <div class="row sel"><span class="nm">重构三栏布局</span><span class="sp"></span><span class="dim" style="color:rgba(255,255,255,.8)">ycode · 运行中</span></div>
+          <div class="row"><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="dim">ycode · 等你</span></div>
+          <div class="grp" style="padding:0 14px;height:26px">待办</div>
+          <div class="row"><span class="nm">把变更面板改成范围选择器 + 文件树</span><span class="sp"></span><span class="dim">ycode · doing</span></div>
+          <div class="grp" style="padding:0 14px;height:26px">历史全文</div>
+          <div class="row"><span class="nm">…改成一列到底的内联 diff，hunk 头上带暂存…</span><span class="sp"></span><span class="dim">变更面板重做</span></div>
+          <div class="grp" style="padding:0 14px;height:26px">动作</div>
+          <div class="row"><span class="nm">新建会话…</span><span class="sp"></span><span class="dim">⌘N</span></div>
+          <div class="row"><span class="nm">切换画布布局 › 2×2</span><span class="sp"></span><span class="dim">⌃⌘4</span></div>
+        </div>
+        <div style="height:1px;background:var(--line)"></div>
+        <div style="height:26px;display:flex;gap:14px;align-items:center;padding:0 14px;font-size:11px;color:var(--faint)"><span>↑↓ 选择</span><span>↵ 打开</span><span style="flex:1"></span><span>esc 关闭</span></div>
+      </div>
+    </div>
+    <div class="cap">560 宽 · 最高 460 · 分组顺序固定：会话 → 待办 → 历史全文 → 动作</div>
+  </div>
+  <ul>
+    <li>输入 ≥ 2 个字符才触发历史全文搜索（历史命中最多取 8 条）；会话与待办是本地即时过滤。</li>
+    <li>高亮行随 ↑↓ 移动，回车执行；每次改查询都把高亮归零。</li>
+    <li>动作组固定包含：新建会话（⌘N）、五个布局切换（⌃⌘1–5）、刷新历史（⇧⌘R）。</li>
+    <li>无结果：「没有匹配「xxx」的结果 · 搜索覆盖会话名和历史全文。换个词，或者 ⇧⌘R 重新扫描历史。」</li>
+  </ul>
+
+  <h3>新建会话选择器</h3>
+  <div class="duo">
+    <div>
+      <div class="app" style="width:560px">
+        <div class="canvas" style="height:300px;align-items:center;justify-content:center">
+          <div style="width:480px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:22px;text-align:center">
+            <svg style="width:36px;height:36px;margin:0 auto 10px;display:block;border-radius:8px"><use href="#i-ycode"/></svg>
+            <div style="font-size:16px;font-weight:600">新会话</div>
+            <div style="font-size:12.5px;color:var(--soft);margin:2px 0 16px">选一个 agent，在 ycode 里开始。</div>
+            <div style="display:flex;gap:9px">
+              <div style="flex:1;padding:12px 0;border-radius:10px;background:color-mix(in srgb,var(--text) 8%,transparent)"><svg class="ic" style="width:24px;height:24px;margin:0 auto 6px"><use href="#i-claude"/></svg><div style="font-size:12.5px;font-weight:600">Claude Code</div></div>
+              <div style="flex:1;padding:12px 0;border-radius:10px;background:color-mix(in srgb,var(--text) 8%,transparent)"><svg class="ic" style="width:24px;height:24px;margin:0 auto 6px"><use href="#i-codex"/></svg><div style="font-size:12.5px;font-weight:600">Codex</div></div>
+              <div style="flex:1;padding:12px 0;border-radius:10px;background:color-mix(in srgb,var(--text) 8%,transparent)"><svg class="ic" style="width:24px;height:24px;margin:0 auto 6px"><use href="#i-gemini"/></svg><div style="font-size:12.5px;font-weight:600">Gemini</div></div>
+            </div>
+            <div style="height:1px;background:var(--line);margin:17px 0 15px"></div>
+            <div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><span>☐ worktree</span><span style="flex:1"></span><span class="kb" style="font-size:11px">git · feat/macos-native ▾</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cap">就地摆进画布的一格，最宽 520；&lt; 470 px 时自动切紧凑排版</div>
+    </div>
+    <div>
+      <ul style="max-width:40ch">
+        <li><b>没有弹窗，也没有「启动」按钮</b>——点 agent 就是启动。</li>
+        <li>agent <b>横排</b>：选一个是一次横向扫视，不是一列待读的清单。</li>
+        <li>卡片上只写显示名，<b>不写命令名</b>（<code>claude</code>／<code>codex</code>）。</li>
+        <li>底部只有两件必须在起会话前决定的事：要不要隔离（worktree）、基于哪个分支。起来之后就改不了。</li>
+        <li>title 传空串——名字来自 CLI，侧栏先显示斜体「新会话」。</li>
+        <li>没有 agent 时：「请先在设置中添加 Agent」。</li>
+        <li><b>已知缺口：</b>勾了 worktree 会提示「原生版还没接入」，隔离项目在 Core 里直接抛错。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>系统对话框</h3>
+  <div class="duo">
+    <div>
+      <div class="app" style="width:340px">
+        <div class="dlg">
+          <div class="t">归档「重构三栏布局」？</div>
+          <div class="b">会停止正在运行的 Agent 并隐藏该会话；项目文件不会被删除。</div>
+          <div class="acts"><span class="btn">取消</span><span class="btn" style="background:var(--err);color:#fff">停止并归档</span></div>
+        </div>
+      </div>
+      <div class="cap">confirmationDialog · 标题带对象名，正文写后果</div>
+    </div>
+    <div>
+      <div class="app" style="width:340px">
+        <div class="dlg">
+          <div class="t">「TodoRepository.swift」文件在磁盘上已改变</div>
+          <div class="b">普通保存不会覆盖外部修改。重新加载会丢弃当前草稿；覆盖只会在明确选择后执行。</div>
+          <div class="acts" style="flex-wrap:wrap"><span class="btn">取消</span><span class="btn" style="background:var(--err);color:#fff">重新加载磁盘版本</span><span class="btn" style="background:var(--err);color:#fff">覆盖磁盘版本</span></div>
+        </div>
+      </div>
+      <div class="cap">保存冲突 · 两个都是破坏性选项，都标红，不给默认按钮</div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:26%">对话框</th><th style="width:22%">类型</th><th>文案</th></tr></thead>
+    <tbody>
+      <tr><td>重命名会话 / 待办</td><td>alert + TextField</td><td>取消 / 保存；空标题时保存禁用</td></tr>
+      <tr><td>归档会话</td><td>confirmationDialog</td><td>「归档「X」？」+「会停止正在运行的 Agent 并隐藏该会话；项目文件不会被删除。」</td></tr>
+      <tr><td>移除项目</td><td>confirmationDialog</td><td>「从 YCode 移除「X」？」+「只删除 YCode 中的记录，不删除磁盘目录、worktree 或分支。之后仍可重新添加。」</td></tr>
+      <tr><td>删除文件 / 文件夹</td><td>confirmationDialog</td><td>文件夹版明写「文件夹及其全部内容会被删除，此操作无法撤销。」</td></tr>
+      <tr><td>删除待办</td><td>alert</td><td>标题「删除待办？」，正文是待办标题本身</td></tr>
+      <tr><td>错误</td><td>alert</td><td>标题「发生错误」+ 具体信息；同时写进设置 › 关于与诊断的「最近一次错误」</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════ 12 空状态 ══════════════ -->
+<section id="empty">
+  <div class="sec-head"><span class="sec-num">12</span><h2>空状态与文案基准</h2></div>
+  <p class="lede">空状态不是「这里什么都没有」，是「下一步做什么」或「这东西是怎么工作的」。统一两行：标题陈述事实，说明给出路。</p>
+
+  <h3>第一屏 —— 一个项目都没有的时候</h3>
+  <p>这是新用户看到的第一屏，也是全窗口唯一的「大」空状态。它要同时回答三件事：<b>该做什么</b>（加项目）、<b>有几种做法</b>（选、拖、命令行）、<b>环境齐了没有</b>（agent 装没装）。左右两栏都收起，整窗就是这一张卡。</p>
+  <div class="stage">
+    <div class="app anno" style="width:820px">
+      <div class="pin" style="left:162px;top:258px">1</div>
+      <div class="pin" style="left:162px;top:322px">2</div>
+      <div class="pin" style="left:162px;top:392px">3</div>
+      <div class="tbar" style="height:44px">
+        <div class="traffic"><i></i><i></i><i></i></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">YCode</span></div>
+        <div class="sp"></div>
+        <div class="seg" style="opacity:.4"><b>▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
+        <div class="tbtn">⌕</div>
+      </div>
+      <div class="body" style="--h:430px">
+        <div class="canvas" style="align-items:center;justify-content:center">
+          <div style="width:452px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:24px 24px 18px;text-align:center">
+            <svg style="width:40px;height:40px;margin:0 auto 12px;display:block;border-radius:9px"><use href="#i-ycode"/></svg>
+            <div style="font-size:17px;font-weight:600">先加一个项目</div>
+            <div style="font-size:12.5px;color:var(--soft);margin-top:5px;line-height:1.6">项目就是一个 git 仓库的目录。<br>加进来之后，你在这里开的每个 agent 都跑在它里面。</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:16px">
+              <span class="btn pri" style="height:26px;padding:0 14px">选择文件夹…</span>
+              <span class="kb">⌘O</span>
+            </div>
+            <div style="margin-top:14px;border:1px dashed var(--line);border-radius:10px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+              <div style="font-size:12.5px;color:var(--soft)">或者把文件夹拖到这儿</div>
+              <div style="font-size:11px;color:var(--faint)">一次可以拖多个，每个都会变成一个项目</div>
+            </div>
+            <div style="height:1px;background:var(--line);margin:16px 0 12px"></div>
+            <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;flex-wrap:wrap;justify-content:center">
+              <span class="chip"><span class="dot run"></span>Claude Code</span>
+              <span class="chip"><span class="dot run"></span>Codex</span>
+              <span class="chip"><span class="dot idle"></span>ycode 命令</span>
+              <span class="lnk">安装</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">无项目 · 主按钮、拖放区、环境自检三段，从上到下按「非做不可 → 更快的做法 → 顺手检查」排</div>
+  </div>
+  <ol class="notes">
+    <li><b>主按钮只有一个。</b>「选择文件夹…」= <span class="kbd">⌘O</span>，开系统目录选择面板（只能选目录）。旁边写快捷键，不写第二个按钮。</li>
+    <li><b>拖放区是真的能落的。</b> 拖着文件夹进窗口时<b>整窗</b>高亮（不只是这个框），虚线转实线 + 强调色；松手后逐个入库并选中第一个。拖到的若不是目录或不是 git 仓库，落地后在卡片下方给一句具体原因，不弹窗。</li>
+    <li><b>环境自检是状态不是动作。</b> 三个 chip 复用 §02 的状态点：绿=可用，灰=没装。agent 用命令可用性探测（与设置 › Agent 同源）；<code>ycode</code> 命令未安装时只在这里给一个「安装」链接（需要系统授权框）。都齐了整行仍显示，只是全绿——第一次打开就能确认环境，不用进设置翻。</li>
+  </ol>
+  <p><b>相邻状态：</b>项目全被移除后回到这一屏（不写「又空了」之类的话）；项目路径失效不算空状态——项目仍在侧栏，名字转 warn 色，画布里给「目录不在了：<span class="mono">~/work/foo</span>」＋［重新定位…］［移除项目］。</p>
+
+  <table>
+    <thead><tr><th style="width:20%">位置</th><th style="width:26%">标题</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>无项目（主区）</td><td>先加一个项目</td><td>项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。<span class="dim">＋［选择文件夹…］⌘O ＋拖放区「或者把文件夹拖到这儿 / 一次可以拖多个，每个都会变成一个项目」＋环境自检行</span></td></tr>
+      <tr><td>项目目录失效</td><td>目录不在了</td><td>贴出原路径 <span class="dim">＋［重新定位…］［移除项目］</span></td></tr>
+      <tr><td>无项目（侧栏）</td><td>还没有项目</td><td>使用 ⌘O 添加项目目录 <span class="dim">＋「添加项目」按钮</span></td></tr>
+      <tr><td>项目没有会话</td><td colspan="2">不写空状态——画布直接就是 agent 选择器</td></tr>
+      <tr><td>变更 · 干净</td><td>工作区是干净的</td><td>agent 改了文件之后，这里会出现逐块可暂存的 diff。</td></tr>
+      <tr><td>变更 · Git 不可用</td><td>Git 不可用</td><td>直接贴 <code>gitStatusMessage</code>（git 自己的输出），不要改写成「出错了」</td></tr>
+      <tr><td>待办 · 空</td><td>还没有待办</td><td>你可以在这里加，agent 也能通过 ycode-todos 自己加。两边是同一份清单。</td></tr>
+      <tr><td>历史 · 空</td><td>这个项目还没有历史记录</td><td>ycode 会读 ~/.claude 和 ~/.codex 里属于这个目录的会话。第一次扫描要几秒。<span class="dim">＋「重新扫描」</span></td></tr>
+      <tr><td>⌘K · 无结果</td><td>没有匹配「X」的结果</td><td>搜索覆盖会话名和历史全文。换个词，或者 ⇧⌘R 重新扫描历史。</td></tr>
+      <tr><td>会话启动失败</td><td>这个会话起不来</td><td>贴出 agent 报的具体错误（命令找不到、worktree 路径不存在…）<span class="dim">＋［重试］</span>。<b>不再有「这个会话没在跑」——会话总是自己起来</b></td></tr>
+      <tr><td>文件树 · 空目录</td><td>项目中没有文件</td><td>可在此创建文件或文件夹</td></tr>
+      <tr><td>Shell · 无项目</td><td>Shell 不可用</td><td>请先选择一个项目</td></tr>
+      <tr><td>Shell 退出</td><td>Shell 已退出</td><td><span class="dim">＋「重新启动」</span></td></tr>
+      <tr><td>二进制文件</td><td>二进制文件</td><td>此文件不能作为 UTF-8 文本编辑</td></tr>
+      <tr><td>设置未接入页</td><td>X 设置尚未接入</td><td>按迁移计划在 MX 实现；当前没有无效开关或伪功能</td></tr>
+    </tbody>
+  </table>
+
+  <h4>写法约定</h4>
+  <ul>
+    <li>标题<b>不带句号</b>，说明<b>带句号</b>。</li>
+    <li>说明里可以出现机制（「会读 ~/.claude」「两边是同一份清单」），因为用户问的其实是「它为什么空」。</li>
+    <li>不写「暂无数据」「敬请期待」；未实现就直说未实现，并说明在哪个阶段做。</li>
+    <li>检查器里的空状态用 <code>YCodeInspectorEmptyState</code>（小标题 + caption），不用 <code>ContentUnavailableView</code>。</li>
+  </ul>
+</section>
+
+<!-- ══════════════ 13 设置 ══════════════ -->
+<section id="settings">
+  <div class="sec-head"><span class="sec-num">13</span><h2>设置</h2></div>
+  <p class="lede">系统 <code>Settings</code> scene，三组十二页，按用户心智分组而不是按实现模块。<b>即时生效</b>，没有保存／取消。</p>
+
+  <div class="stage tight">
+    <div class="app" style="width:700px">
+      <div class="tbar" style="height:38px"><div class="traffic"><i></i><i></i><i></i></div><div class="sp"></div><div style="font-size:12.5px;font-weight:600">外观</div><div class="sp"></div></div>
+      <div class="body" style="--h:330px">
+        <div class="side" style="width:180px">
+          <div style="padding:8px 0">
+            <div class="grp"><span>通用</span></div>
+            <div class="row"><span class="nm">通用</span></div>
+            <div class="row sel"><span class="nm">外观</span></div>
+            <div class="row"><span class="nm">会话</span></div>
+            <div class="row"><span class="nm">键盘</span></div>
+            <div class="grp" style="margin-top:6px"><span>Agent</span></div>
+            <div class="row"><span class="nm">Agent</span></div>
+            <div class="row"><span class="nm">终端</span></div>
+            <div class="row"><span class="nm">语言服务</span></div>
+            <div class="row"><span class="nm">集成</span></div>
+            <div class="row"><span class="nm">用量</span></div>
+            <div class="grp" style="margin-top:6px"><span>系统</span></div>
+            <div class="row"><span class="nm">通知</span></div>
+            <div class="row"><span class="nm">数据</span></div>
+            <div class="row"><span class="nm">关于与诊断</span></div>
+          </div>
+        </div>
+        <div class="canvas" style="padding:16px 20px;gap:14px">
+          <div><div class="grp" style="padding:0">主题</div>
+            <div style="display:flex;gap:6px;margin-top:6px"><span class="chip">跟随系统</span><span class="chip on">浅色</span><span class="chip">深色</span></div>
+            <div class="dim" style="margin-top:6px">这里改的是整个窗口，终端画布也跟着变 —— app 里没有不听系统话的区域。</div>
+          </div>
+          <div><div class="grp" style="padding:0">界面语言</div>
+            <div style="display:flex;gap:6px;margin-top:6px"><span class="chip on">中文</span><span class="chip">English</span></div>
+          </div>
+          <div><div class="grp" style="padding:0">界面字号</div>
+            <div style="display:flex;gap:6px;margin-top:6px"><span class="chip">紧凑</span><span class="chip on">标准</span><span class="chip">宽松</span></div>
+            <div class="dim" style="margin-top:6px">按系统字阶整体缩放，标题与正文的相对关系保持不变</div>
+          </div>
+          <div><div class="grp" style="padding:0">字号</div>
+            <div class="dim" style="margin-top:6px">编辑器 13 · 终端 13 —— 非预设字号按 8–32 pt 保留，并应用到界面、编辑器和终端</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="cap">页名只在窗口标题栏上，内容区不再重复一个大标题；跟随 app 的深浅色与强调色</div>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:12%">组</th><th style="width:16%">页</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2"><b>通用</b></td><td>外观</td><td>主题（跟随系统/浅/深）· 界面语言（中/英）· 界面字号（紧凑 13/标准 14/宽松 16）· 字号（界面/编辑器/终端，8–32）</td></tr>
+      <tr><td>键盘</td><td>只读快捷键表（见 §14）；明写「原版没有可编辑快捷键映射，不提供无效开关」</td></tr>
+      <tr><td rowspan="5"><b>Agent</b></td><td>Agent</td><td>已配置列表（图标 / 图标样式：品牌色·单色 / 强调色 / 命令可用性徽标）· 已检测到 · 添加自定义 Agent</td></tr>
+      <tr><td>终端</td><td>启动环境变量（值可写 <code>$VAR</code>，启动时解析）· 代理（关 / 跟随系统 / 手动 + 例外）</td></tr>
+      <tr><td>语言服务</td><td>LSP 安装与管理</td></tr>
+      <tr><td>集成</td><td>MCP（ycode-todos）注册、CLI 安装、hook 注册</td></tr>
+      <tr><td>用量</td><td>用量上报设置</td></tr>
+      <tr><td rowspan="3"><b>系统</b></td><td>通知</td><td>系统通知开关（完成 / 需要关注）</td></tr>
+      <tr><td>数据</td><td>数据目录 · 「旧版数据保持不变；当前应用使用迁移副本」</td></tr>
+      <tr><td>关于与诊断</td><td>版本 · 检查更新（未配置签名源时禁用）· 更新渠道／自动下载（未实现，禁用）· 诊断段（数据目录 / 文件树宽度 / 架构 / 最近一次错误 /［复制诊断信息］）· 底部「恢复默认」</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note"><b>2026-09-21 删掉的两页：</b>「会话」整页（常驻 PTY / 空闲回收 / 自动归档三个都是永远点不动的禁用开关，照搬原版只会教用户忽略这一页）；
+  「通用」整页（只有「启动时显示」一组，三档的差别仅在「最近项目一个会话都没有时进不进去」，而「恢复最近工作区」根本恢复不了工作区 —— 画布布局只活在进程内）。
+  启动行为现在恒定：有最近项目就进它，没有就给项目总览。</p>
+
+  <div class="callout warn">
+    <b>界面上不出现内部里程碑编号。</b> 当前「文件树宽度」一行写的是 <code>180 px（M4.1 生效）</code>——「M4.1」是迁移计划的步骤编号，不该出现在正式界面。改成 <code>180 px</code>；未接入页的「按迁移计划在 M3 实现」同理，改成面向用户的说法或直接去掉。（<span class="mono">local-selfuse-log · L-04</span>）
+  </div>
+</section>
+
+<!-- ══════════════ 14 交付 ══════════════ -->
+<section id="deliver">
+  <div class="sec-head"><span class="sec-num">14</span><h2>交付与落点</h2></div>
+  <p class="lede">这一节把稿子和仓库对上：哪条规则落在哪个文件、哪些还没做、以及这套界面是怎么打包成 <code>/Applications/YCode.app</code> 的。</p>
+
+  <h3>快捷键总表</h3>
+  <table>
+    <thead><tr><th style="width:16%">键</th><th style="width:26%">动作</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td><span class="kbd">⌘O</span></td><td>添加项目…</td><td>替换系统的「新建」位</td></tr>
+      <tr><td><span class="kbd">⌘N</span></td><td>新建会话…</td><td>就地在画布上多占一格</td></tr>
+      <tr><td><span class="kbd">⌘K</span></td><td>命令面板</td><td>会话 / 待办 / 历史全文 / 动作</td></tr>
+      <tr><td><span class="kbd">⌘S</span></td><td>保存</td><td>编辑器；冲突时弹三选一</td></tr>
+      <tr><td><span class="kbd">⌘F</span></td><td>查找当前终端</td><td>焦点格的窗格内查找条</td></tr>
+      <tr><td><span class="kbd">⌘B</span></td><td>显示/隐藏侧栏</td><td></td></tr>
+      <tr><td><span class="kbd">⌥⌘→</span></td><td>显示/隐藏检查器</td><td></td></tr>
+      <tr><td><span class="kbd">⌘1</span>–<span class="kbd">⌘4</span></td><td>开／关 文件 · 变更 · 待办 · 终端</td><td>toggle，可并存</td></tr>
+      <tr><td><span class="kbd">⇧⌘1</span>–<span class="kbd">⇧⌘4</span></td><td>聚焦画布 1–4</td><td>与行上的格位徽标同一个编号</td></tr>
+      <tr><td><span class="kbd">⌃⌘1</span>–<span class="kbd">⌃⌘5</span></td><td>切换画布布局</td><td>只在 ⌘K 的动作组里提示</td></tr>
+      <tr><td><span class="kbd">⇧⌘Y</span></td><td>显示/隐藏变更文件列表</td><td><b>新增</b>，见 §09</td></tr>
+      <tr><td><span class="kbd">⇧⌘P</span></td><td>项目总览</td><td></td></tr>
+      <tr><td><span class="kbd">⇧⌘O</span></td><td>在独立窗口打开项目</td><td></td></tr>
+      <tr><td><span class="kbd">⌥⌘↑</span> / <span class="kbd">⌥⌘↓</span></td><td>项目上移 / 下移</td><td></td></tr>
+      <tr><td><span class="kbd">⇧⌘R</span></td><td>刷新历史</td><td></td></tr>
+      <tr><td><span class="kbd">esc</span></td><td>关闭当前浮层</td><td>⌘K、popover、查找条</td></tr>
+    </tbody>
+  </table>
+  <p>快捷键经 <code>NotificationCenter</code> 携 <code>windowToken</code> 派发，只作用于 key window——多项目窗口之间不会串。</p>
+
+  <h3>组件 ↔ 文件落点</h3>
+  <table>
+    <thead><tr><th style="width:26%">稿子里的东西</th><th>文件</th></tr></thead>
+    <tbody>
+      <tr><td>token（尺寸 / 状态色 / 状态点 / 空状态）</td><td><code>YCodeDesignSystem.swift</code></td></tr>
+      <tr><td>主题两套配色</td><td><code>Core/BasicSettings.swift</code> · <code>YCodeThemeCatalog</code></td></tr>
+      <tr><td>文案表（中/英）</td><td><code>YCodeAppearanceSupport.swift</code> · <code>YCodeLocalization</code></td></tr>
+      <tr><td>窗口骨架 / 工具栏 / 菜单 / 快捷键 / 对话框</td><td><code>YCodeNativeApp.swift</code></td></tr>
+      <tr><td>侧栏</td><td><code>WorkspaceSidebarView.swift</code></td></tr>
+      <tr><td>画布 / 窗格 / 检查器外壳 / 项目 shell</td><td><code>TerminalWorkspaceView.swift</code></td></tr>
+      <tr><td>变更面板</td><td><code>ChangesPanelView.swift</code> + <code>YCodeUnifiedDiff.swift</code> + <code>Core/GitService.swift</code></td></tr>
+      <tr><td>待办面板</td><td><code>TodoPanelView.swift</code> + <code>Core/TodoRepository.swift</code>（MCP 侧 <code>Helpers/YCodeMCP</code>）</td></tr>
+      <tr><td>文件树 / 编辑器</td><td><code>ProjectFileTreeView.swift</code> · <code>EditorWorkspaceView.swift</code> · <code>EditorWorkspaceModel.swift</code></td></tr>
+      <tr><td>⌘K / 新建会话</td><td><code>CommandPaletteView.swift</code> · <code>NewSessionPickerView.swift</code></td></tr>
+      <tr><td>图标资源与生成脚本</td><td><code>YCodeFileIcons.swift</code> · <code>YCodeAgentIcons.swift</code> · <code>macos/scripts/generate_*_icons.py</code></td></tr>
+      <tr><td>设置</td><td><code>SettingsView.swift</code> + 各专项设置视图</td></tr>
+    </tbody>
+  </table>
+
+  <h3>还没落地的（按优先级）</h3>
+  <table>
+    <thead><tr><th style="width:26%">项</th><th style="width:14%">档位</th><th>拦路的东西</th></tr></thead>
+    <tbody>
+      <tr><td><b>检查器改成面板区</b>（§07）</td><td><span class="tag on">已做</span></td><td>面板并存（<code>openPanels</code> 改成有序数组）、卡头（折叠／计数／关闭／上下移）、开关移到自绘的画布顶栏并图标化、⌘1–4 改 toggle、多列（每列 2 张）、8 的间距、列宽拖拽与持久化、画布最小宽 420。<span class="tag off">待做</span>卡头的 ⧉ / ⤢（要等 §08 §09 的展开态）、卡内高度拖拽</td></tr>
+      <tr><td><b>文件区重做</b>（§08 全节）</td><td><span class="tag off">未做</span></td><td>顶栏与 tab 合一、树上过滤框、自动保存、显示选项菜单、行号槽的 ⊕、展开态窗口</td></tr>
+      <tr><td><b>变更视图重做</b>（§09）</td><td><span class="tag">部分</span></td><td><span class="tag on">已做</span>范围选择器（全部变更／未提交／比较基准／提交+检查点）、折叠优先与阈值提示、只读汇总条（去掉提交）、写操作按范围收敛、忽略空白、全部折叠／展开。<span class="tag off">待做</span>左侧变更文件树、展开态窗口、按文件夹分组、分离生成文件、并排对比、词级高亮</td></tr><td><span class="tag off">未做</span></td><td>范围选择器、变更文件树、展开态窗口、显示选项、折叠优先——本稿新增的主要工作量</td></tr>
+      <tr><td>待办副行写「谁动的」</td><td><span class="tag off">未做</span></td><td><code>YCodeTodo</code> 缺 actor 字段，要改 Core 与 MCP 协议</td></tr>
+      <tr><td>新建会话的 worktree</td><td><span class="tag off">占位</span></td><td>勾了会提示「原生版还没接入」；<code>AgentSessionService</code> 对隔离项目直接抛错</td></tr>
+      <tr><td>项目「重命名…」</td><td><span class="tag off">未做</span></td><td><code>ProjectWorkspaceRepository</code> 没有 rename</td></tr>
+      <tr><td>会话「删除…」</td><td><span class="tag">只有归档</span></td><td>Core 只有 <code>archiveSession</code></td></tr>
+      <tr><td>设置 › 权限与信任</td><td><span class="tag off">未做</span></td><td>没有对应数据模型</td></tr>
+      <tr><td>「侧栏显示所属 agent」「启动恢复布局」</td><td><span class="tag off">未做</span></td><td>需要新的持久化字段</td></tr>
+      <tr><td>⌘K 的「打开文件 ›」</td><td><span class="tag off">未做</span></td><td>需要跨项目文件索引</td></tr>
+      <tr><td>会话信息浮层的残留</td><td><span class="tag on">已清理</span></td><td>删 <code>SessionInfoView.swift</code>、<code>sessionInfoSessionID</code>、工作区菜单与两处右键菜单里的入口、设置 › 键盘里的 ⌘I 一行、<code>showYCodeSessionInfo</code> 通知；设置 › 关于与诊断的［复制诊断信息］补上当前会话的 PID 与会话 ID</td></tr>
+      <tr><td><code>.history</code> 面板的残留</td><td><span class="tag on">已清理</span></td><td>历史早已回到侧栏，但 <code>YCodeWorkspacePanel</code> 里还留着 <code>.history</code>，<code>panelBody</code> 用一个空视图把它转回文件树，<code>showHistorySearch()</code> 也还在 <code>showPanel(.history)</code>（其通知 <code>showYCodeHistorySearch</code> 现在只被 ⌘K 复用）。枚举项、兜底分支、轮询开关一并删掉</td></tr>
+      <tr><td>界面里的里程碑编号（L-04）</td><td><span class="tag on">已修</span></td><td>设置未接入页的描述改成「这一页还没接入。现在不放无效开关，也不放伪功能。」；文件树宽度只写 px</td></tr>
+    </tbody>
+  </table>
+
+  <h3>怎么交付这套界面</h3>
+  <p>界面改完不是在 Xcode 里跑一下就算数，走的是同一条打包链：<code>macos/scripts/package_release.sh</code>，三个口径不能绕过。</p>
+  <table>
+    <thead><tr><th style="width:16%">阶段</th><th style="width:26%">做什么</th><th>验收</th></tr></thead>
+    <tbody>
+      <tr><td><b>prepare</b></td><td>分别构建 arm64 与 x86_64 → <code>lipo</code> 合并 universal2 → 嵌 Sparkle 2.10.0 → ad-hoc 深度签名</td><td><code>verify_release_candidate.sh</code> prepare 口径：架构、bundle 内容一致性、app/ZIP 逐字节一致；<b>不含 SUFeedURL/SUPublicEDKey，更新器保持禁用</b></td></tr>
+      <tr><td><b>release</b></td><td>同上 + Developer ID Application 签名 + Hardened Runtime + 安全时间戳</td><td>release 口径：主程序、4 个 helper、全部 Sparkle 嵌套代码逐一校验签名身份</td></tr>
+      <tr><td><b>notarize</b></td><td>公证 + 装订票据</td><td>notarized 口径：票据 + Gatekeeper 验证</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn">
+    <b>签名一致性是硬要求。</b> Hardened Runtime 预检里，ad-hoc 签名会因为 Team ID 不匹配直接加载不了 Sparkle（<code>mapping process and mapped file have different Team IDs</code>）。
+    真实 Developer ID 下不会出现——前提是<b>用同一个身份签全部嵌套代码</b>。任何一环漏签、换 identity 或事后单独重签主程序，app 都会起不来。M5.3b 的签名步骤不得拆开执行。
+  </div>
+  <p>
+    当前本地自用走 <b>prepare 口径</b>：<code>package_release.sh</code> + <code>ditto</code> 装进 <code>/Applications</code>（不再用 <code>cutover.sh</code>）。
+    正在用的是 <b>0.3.1（build 311）</b>，0.3.0 备份在 <code>macos/dist/backup/</code>。证书、EdDSA 公钥、appcast 尚缺，M5.3b 整体后置，但不阻塞本地路径。
+  </p>
+
+  <h3>这一稿的验收清单</h3>
+  <ol class="notes plain">
+    <li><b>逐项对照 §03 的十五条</b>，任何新面板不符合即返工。</li>
+    <li><b>浅色 / 深色各走一遍全稿</b>：本页右上角切主题，界面侧用系统外观切换；重点看侧栏与检查器有没有色差、窗口底边有没有黑边。</li>
+    <li><b>紧凑 / 标准 / 宽松三档字阶各开一次主窗口</b>：检查器 tab 是否被挤进 » 溢出菜单、面板头是否换行。</li>
+    <li><b>只用键盘走一遍</b>：⌘O → ⌘N → ⌘K → ⌘1–4 → ⇧⌘1–4 → ⌘F → ⌥⌘→ → esc。</li>
+    <li><b>中英各切一次</b>：英文标签更长，侧栏底部「新建会话 · 项目名」与检查器 tab 最容易先崩。</li>
+    <li><b>四格满载 + 两个项目窗口</b>：确认快捷键不串窗口、PTY 不互相抢焦点。</li>
+    <li><b>变更视图用真实大 diff 验</b>（<code>node_modules</code> 那种）：折叠阈值、树的滚动性能、「全部展开」的禁用条件。</li>
+  </ol>
+
+  <hr class="rule">
+  <p style="color:var(--doc-ink-3);font-size:13px">
+    口径：本稿取自 <code>feat/macos-native</code> 分支 2026-09-21 的实现；§09 变更一节是按 Claude Code 桌面版 diff 视图新定的稿，尚未实现。
+    历史决策见 <code>docs/ui-native-redesign.html</code>（v1 设计稿）与 <code>docs/macos-native/ui-redesign-implementation.md</code>（实施记录）。
+  </p>
+</section>
+
+</div>
+<script>
+function setTheme(t){
+  document.querySelectorAll('.app').forEach(function(a){a.classList.toggle('dark',t==='dark')});
+  document.getElementById('btn-light').classList.toggle('on',t==='light');
+  document.getElementById('btn-dark').classList.toggle('on',t==='dark');
+}
+</script>
+</body>
+</html>

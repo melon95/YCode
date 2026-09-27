@@ -4,6 +4,7 @@ import Darwin
 public enum YCodeHistoryAgent: String, Sendable, Codable, CaseIterable {
     case claude
     case codex
+    case pi
 }
 
 public enum YCodeHistoryRole: String, Sendable, Codable {
@@ -133,6 +134,7 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
         let canonicalWorkspace = workspace.standardizedFileURL.resolvingSymlinksInPath()
         var sessions = scanClaude(homeDirectory: homeDirectory, workspace: canonicalWorkspace)
         sessions.append(contentsOf: scanCodex(homeDirectory: homeDirectory, workspace: canonicalWorkspace))
+        sessions.append(contentsOf: scanPi(homeDirectory: homeDirectory, workspace: canonicalWorkspace))
         var seen = Set<String>()
         let result = sessions
             .filter { seen.insert($0.jsonlURL.standardizedFileURL.path).inserted }
@@ -146,6 +148,24 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
         workspaceCache[workspaceCacheKey(homeDirectory: homeDirectory, workspace: canonicalWorkspace)] = (Date(), result)
         metadataLock.unlock()
         return result
+    }
+
+    /// Refresh one known file after a filesystem event, without enumerating all projects.
+    public func refreshSession(_ session: YCodeHistorySession, homeDirectory: URL) -> YCodeHistorySession? {
+        guard let metadata = sessionMetadata(session.jsonlURL) else { return nil }
+        let title: String?
+        switch session.agent {
+        case .claude: title = claudeTitle(session.jsonlURL)
+        case .pi: title = piTitle(session.jsonlURL)
+        case .codex:
+            title = YCodeSessionTitleReader.shared.title(
+                url: homeDirectory.appendingPathComponent(".codex/session_index.jsonl"),
+                agent: "codex", sessionID: session.sessionID
+            ) ?? codexTitle(session.jsonlURL)
+        }
+        return YCodeHistorySession(agent: session.agent, sessionID: session.sessionID,
+            jsonlURL: session.jsonlURL, workspaceURL: session.workspaceURL, title: title,
+            sizeBytes: metadata.size, modifiedAtMilliseconds: metadata.modifiedAtMilliseconds)
     }
 
     public func events(for session: YCodeHistorySession, maximumCount: Int = .max) throws -> [YCodeHistoryEvent] {
@@ -433,6 +453,126 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
         return box.results.compactMap { $0 }
     }
 
+    /// pi 的会话目录名编码。取自 pi 自身的实现（`dist/core/session-manager.js`）：
+    ///
+    /// ```js
+    /// const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+    /// ```
+    ///
+    /// 即：去掉开头的 `/`，把 `/` `\` `:` 换成 `-`，再前后各包一个 `--`。
+    /// 注意它**不**像 Claude 那样把所有非字母数字都换掉 —— 路径里原有的 `-` 和 `.`
+    /// 原样保留，所以 `melon-autoui` 不会和 `melon/autoui` 撞名，歧义比 Claude 那套小。
+    public static func encodePiWorkspace(_ workspace: URL) -> String {
+        var path = workspace.standardizedFileURL.path
+        if path.hasPrefix("/") { path.removeFirst() }
+        let mapped = String(path.map { $0 == "/" || $0 == "\\" || $0 == ":" ? "-" : $0 })
+        return "--" + mapped + "--"
+    }
+
+    private func scanPi(homeDirectory: URL, workspace: URL) -> [YCodeHistorySession] {
+        let directory = homeDirectory
+            .appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+            .appendingPathComponent(Self.encodePiWorkspace(workspace), isDirectory: true)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        let jsonlURLs = entries.filter { $0.pathExtension == "jsonl" }
+        let box = YCodeHistorySessionBatchBox(count: jsonlURLs.count)
+        DispatchQueue.concurrentPerform(iterations: jsonlURLs.count) { index in
+            let url = jsonlURLs[index]
+            guard let metadata = sessionMetadata(url) else { return }
+            box.store(YCodeHistorySession(
+                agent: .pi,
+                sessionID: Self.piSessionID(url),
+                jsonlURL: url,
+                workspaceURL: workspace,
+                title: piTitle(url),
+                sizeBytes: metadata.size,
+                modifiedAtMilliseconds: metadata.modifiedAtMilliseconds
+            ), at: index)
+        }
+        return box.results.compactMap { $0 }
+    }
+
+    /// 文件名形如 `2026-09-22T02-07-38-346Z_01a0c6de-636a-7211-ae7f-725cfcc36faf.jsonl`，
+    /// 下划线后面才是会话 id。整段文件名当 id 用也能跑，但那样 id 里带着时间戳，
+    /// 和 pi 自己 `--resume` 认的 id 对不上。
+    private static func piSessionID(_ url: URL) -> String {
+        let stem = url.deletingPathExtension().lastPathComponent
+        guard let underscore = stem.lastIndex(of: "_") else { return stem }
+        let id = String(stem[stem.index(after: underscore)...])
+        return id.isEmpty ? stem : id
+    }
+
+    /// pi 有显式的会话名（`session_info`，可能来自 pi 自己的 `/name`，也可能是
+    /// 用户在 ycode 里改的名字）：有就用它，跟 pi 一样取最后一条。
+    /// 没有才退回第一条用户消息：pi 的首条 system 消息带着整段 preamble，
+    /// 不能当标题；用户消息里的图片分片只有 base64，也要跳过。
+    private func piTitle(_ url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
+        if let named = YCodeSessionTitleReader.shared.title(url: url, agent: "pi") { return named }
+        var start = data.startIndex
+        var lineCount = 0
+        while start < data.endIndex, lineCount < 60 {
+            let newline = data[start...].firstIndex(of: 0x0A) ?? data.endIndex
+            lineCount += 1
+            if newline > start,
+               let root = YCodeJSONSlice(data: data[start..<newline]),
+               root.member("type")?.string == "message",
+               let message = root.container("message"),
+               message.member("role")?.string == "user" {
+                let text = Self.piText(message).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty, !Self.isPiInjectedPreamble(text) { return Self.truncateTitle(text) }
+            }
+            guard newline < data.endIndex else { break }
+            start = data.index(after: newline)
+        }
+        return nil
+    }
+
+    /// 从后往前找最后一条 `session_info`。空名字在 pi 里是「清除标题」的意思，
+    /// 遇到它就停下来走回推导逻辑，而不是继续往前翻出一个更旧的名字。
+    /// 测试入口：改名写进文件后，扫描这侧要能原样读回来。
+    static func piSessionInfoNameForTesting(_ data: Data) -> String? { piSessionInfoName(data) }
+
+    private static func piSessionInfoName(_ data: Data) -> String? {
+        let needle = Data("\"type\":\"session_info\"".utf8)
+        guard data.range(of: needle) != nil else { return nil }
+        var end = data.endIndex
+        while end > data.startIndex {
+            while end > data.startIndex, data[data.index(before: end)] == 0x0A {
+                end = data.index(before: end)
+            }
+            guard end > data.startIndex else { return nil }
+            var start = end
+            while start > data.startIndex, data[data.index(before: start)] != 0x0A {
+                start = data.index(before: start)
+            }
+            let line = data[start..<end]
+            if let root = YCodeJSONSlice(data: line),
+               root.member("type")?.string == "session_info" {
+                let name = root.member("name")?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return name.isEmpty ? nil : name
+            }
+            end = start
+        }
+        return nil
+    }
+
+    /// 把 pi 的 content 取成纯文本。content 可能是字符串（system 消息）或分片数组。
+    /// **只取 `text` 分片** —— `image` 分片的 `data` 是整张 PNG 的 base64，
+    /// 一条就能有几百 KB，混进正文会把预览和搜索索引撑爆。
+    private static func piText(_ message: YCodeJSONSlice) -> String {
+        guard let content = message.container("content") else { return "" }
+        if let string = content.string { return string }
+        return content.elements
+            .filter { $0.member("type")?.string == "text" }
+            .compactMap { $0.member("text")?.string }
+            .joined(separator: "\n")
+    }
+
     private func scanCodex(homeDirectory: URL, workspace: URL) -> [YCodeHistorySession] {
         let root = homeDirectory.appendingPathComponent(".codex/sessions", isDirectory: true)
         guard let enumerator = FileManager.default.enumerator(
@@ -468,7 +608,10 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
                 sessionID: candidate.sessionID,
                 jsonlURL: candidate.url,
                 workspaceURL: workspace,
-                title: codexTitle(candidate.url),
+                title: YCodeSessionTitleReader.shared.title(
+                    url: homeDirectory.appendingPathComponent(".codex/session_index.jsonl"),
+                    agent: "codex", sessionID: candidate.sessionID
+                ) ?? codexTitle(candidate.url),
                 sizeBytes: metadata.size,
                 modifiedAtMilliseconds: metadata.modifiedAtMilliseconds
             ), at: index)
@@ -729,6 +872,52 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
             } else {
                 kind = .unknown(rawType: type)
             }
+        case .pi:
+            // 首行 `session` 是文件头（id/version/cwd），和 codex 的 `session_meta` 同性质，
+            // 直接丢弃而不是留成 unknown —— 它不是对话里的一步。
+            guard type != "session" else { return nil }
+            // model_change / thinking_level_change / context_edit 是会话状态变更，
+            // 留成 unknown：时间戳会被抹成 0，不参与排序与搜索，但仍占一个 sequence，
+            // 这样 sequence 始终等于行号，增量追加时不会错位。
+            guard type == "message", let message = root.container("message") else {
+                kind = .unknown(rawType: type)
+                break
+            }
+            switch message.member("role")?.string ?? "" {
+            case "user":
+                kind = .message(role: .user, text: Self.piText(message))
+            case "system":
+                kind = .message(role: .system, text: Self.piText(message))
+            case "toolResult":
+                kind = .toolResult(
+                    // pi 直接给了工具名，不用像 Claude 那样拿 tool_use_id 回查。
+                    tool: message.member("toolName")?.string ?? "",
+                    outputExcerpt: Self.piTextPrefix(message, maximumUTF8Bytes: 4096),
+                    status: message.member("isError")?.bool == true ? .error : .ok
+                )
+            case "assistant":
+                // 与 Claude 分支同构：一条 assistant 消息里可能同时有正文、thinking
+                // 和多个 toolCall，这里取第一个「非正文」分片代表它，正文兜底。
+                let blocks = message.container("content")?.elements ?? []
+                if let block = blocks.first(where: {
+                    let type = $0.member("type")?.string
+                    return type == "toolCall" || type == "thinking"
+                }) {
+                    if block.member("type")?.string == "toolCall" {
+                        kind = .toolUse(
+                            tool: block.member("name")?.string ?? "",
+                            inputJSON: includeToolInputs ? (block.member("arguments")?.rawString ?? "null") : "null",
+                            status: .pending
+                        )
+                    } else {
+                        kind = .thinking(text: block.member("thinking")?.string ?? "")
+                    }
+                } else {
+                    kind = .message(role: .assistant, text: Self.piText(message))
+                }
+            case let role:
+                kind = .unknown(rawType: "message.\(role)")
+            }
         }
         let timestamp: Int64
         if kind.isUnknown {
@@ -745,6 +934,26 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
             sessionID: sessionID,
             kind: kind
         )
+    }
+
+    /// toolResult 正文的截断版。工具输出动辄上万行，全取进内存没有意义。
+    private static func piTextPrefix(_ message: YCodeJSONSlice, maximumUTF8Bytes: Int) -> String {
+        guard let content = message.container("content") else { return "" }
+        if content.string != nil {
+            return message.stringPrefixMember("content", maximumUTF8Bytes: maximumUTF8Bytes) ?? ""
+        }
+        guard let first = content.elements.first(where: { $0.member("type")?.string == "text" }) else { return "" }
+        return first.stringPrefixMember("text", maximumUTF8Bytes: maximumUTF8Bytes) ?? ""
+    }
+
+    /// `piText` 的 Foundation 版，给慢路径用。同样只取 text 分片，跳过 image。
+    private static func piTextSlow(_ message: [String: Any]) -> String {
+        if let string = message["content"] as? String { return string }
+        guard let blocks = message["content"] as? [Any] else { return "" }
+        return blocks.compactMap { $0 as? [String: Any] }
+            .filter { ($0["type"] as? String) == "text" }
+            .compactMap { $0["text"] as? String }
+            .joined(separator: "\n")
     }
 
     private static func fastClaudeText(_ root: YCodeJSONSlice) -> String {
@@ -829,6 +1038,38 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
             } else {
                 kind = .unknown(rawType: type)
             }
+        case .pi:
+            let type = string(root, "type")
+            guard type != "session" else { return nil }
+            guard type == "message", let message = dictionary(root["message"]) else {
+                kind = .unknown(rawType: type)
+                break
+            }
+            switch string(message, "role") {
+            case "user": kind = .message(role: .user, text: Self.piTextSlow(message))
+            case "system": kind = .message(role: .system, text: Self.piTextSlow(message))
+            case "toolResult":
+                kind = .toolResult(
+                    tool: string(message, "toolName"),
+                    outputExcerpt: Self.truncate(Self.piTextSlow(message), maximumBytes: 4096),
+                    status: bool(message, "isError") ? .error : .ok
+                )
+            case "assistant":
+                let blocks = array(message["content"]).compactMap(dictionary)
+                if let block = blocks.first(where: {
+                    let type = string($0, "type")
+                    return type == "toolCall" || type == "thinking"
+                }) {
+                    if string(block, "type") == "toolCall" {
+                        kind = .toolUse(tool: string(block, "name"), inputJSON: Self.jsonText(block["arguments"]), status: .pending)
+                    } else {
+                        kind = .thinking(text: string(block, "thinking"))
+                    }
+                } else {
+                    kind = .message(role: .assistant, text: Self.piTextSlow(message))
+                }
+            case let role: kind = .unknown(rawType: "message.\(role)")
+            }
         }
         guard let kind else { return nil }
         return YCodeHistoryEvent(
@@ -841,6 +1082,7 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
     }
 
     private func claudeTitle(_ url: URL) -> String? {
+        if let name = YCodeSessionTitleReader.shared.title(url: url, agent: "claude") { return name }
         guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
         var firstUser: String?
         var start = data.startIndex
@@ -982,6 +1224,17 @@ public final class YCodeHistoryIndex: @unchecked Sendable {
               let startRange = text.range(of: "<command-args>"),
               let endRange = text.range(of: "</command-args>", range: startRange.upperBound..<text.endIndex) else { return nil }
         return String(text[startRange.upperBound..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// pi 会把 skill、系统提醒这类上下文**作为一条独立的 user 消息**塞进记录。
+    /// 不挡住的话，标题会变成一整段 22KB 的 skill 正文 —— 实测就是这样：
+    /// 有一条会话的标题是 `<skill name="apple-design" location=...`。
+    ///
+    /// 与 `isClaudeInjectedPreamble` 同构，只是标记不同。这里判前缀而不是「包含」：
+    /// 用户自己发的消息里出现 `<skill>` 字样是正常的，不该被吞掉。
+    private static func isPiInjectedPreamble(_ text: String) -> Bool {
+        ["<skill ", "<skill\n", "<system-reminder>", "<available_skills>", "<env>", "<project-context>"]
+            .contains { text.hasPrefix($0) }
     }
 
     private static func isClaudeInjectedPreamble(_ text: String) -> Bool {

@@ -7,7 +7,10 @@ struct AgentLaunchEnvironmentTests {
     @Test("defaults match the shipped Claude and Codex catalog")
     func defaults() {
         #expect(YCodeAgentCatalog.defaults.map(\.id) == ["claude-code", "codex"])
-        #expect(YCodeAgentCatalog.suggestions.contains { $0.id == "gemini-cli" })
+        #expect(YCodeAgentCatalog.suggestions.map(\.id) == ["grok-cli", "pi"])
+        // Gemini CLI 已停更，不再主动建议 —— 但支持仍在（见
+        // `geminiFromLoginShellPath` 与 `apiKeyHints`），手动加一个照样能跑。
+        #expect(!YCodeAgentCatalog.suggestions.contains { $0.id == "gemini-cli" })
     }
 
     @Test("config save preserves unknown fields and unresolved secrets")

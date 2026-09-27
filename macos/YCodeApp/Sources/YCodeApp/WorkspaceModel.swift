@@ -3,6 +3,40 @@ import Foundation
 import SwiftUI
 import YCodeCore
 
+/// 侧栏的「状态」过滤档。归档是单独一档：归档过的会话平时不该混在活跃列表里，
+/// 但也得有个地方能看见它们、把它们捞回来；`all` 则是活跃 + 归档一起看。
+/// 这几档从原来的一排 chip 挪进了顶栏那个漏斗菜单 —— chip 一排最多塞得下三档，
+/// 再加「排序」「显示空项目」就没地方了，而菜单是可以一直加行的。
+enum YCodeSidebarFilter: String, CaseIterable, Identifiable {
+    case active, archived, all
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .active: "filterActive"
+        case .archived: "filterArchived"
+        case .all: "filterAll"
+        }
+    }
+}
+
+/// 侧栏会话的排序方式。默认 `.manual` 就是仓库里的既有顺序（建会话的先后），
+/// 换句话说不选排序时列表跟以前一模一样。
+enum YCodeSidebarSort: String, CaseIterable, Identifiable {
+    case manual, lastUsed, title
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .manual: "sortManual"
+        case .lastUsed: "sortLastUsed"
+        case .title: "sortTitle"
+        }
+    }
+}
+
 enum YCodeWorkspacePanel: String, CaseIterable, Identifiable {
     case terminal, files, changes, todos
 
@@ -51,6 +85,11 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var visibleSessionIDs: [String] = []
     @Published private(set) var focusedCanvasSlot = 0
     @Published private(set) var terminalLayout: YCodeTerminalLayout = .single
+    /// CLI 通过 OSC 0/1/2 报出来的窗口标题，按会话 id 存。
+    /// 临时显示后备，不落库。正式会话名由元数据监听更新，避免把忙碌状态、
+    /// 当前目录等终端标题覆盖到用户起的名字上。
+    @Published private(set) var pendingTitleSessionIDs: Set<String> = []
+    @Published private(set) var liveTitles: [String: String] = [:]
     /// 面板区每列的宽度，拖画布与面板区之间那条分隔条来改。
     @Published private(set) var panelColumnWidth: CGFloat = YCodeMetrics.panelColumnWidth
 
@@ -166,12 +205,20 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var agentProfiles: [YCodeAgentProfile] = []
     /// 侧栏是多项目平铺的，所以它要看到所有项目的会话，而不只是当前项目的。
     @Published private(set) var sessionsByProject: [String: [SessionMetadata]] = [:]
+    /// 已归档的单独放一份：画布、计数那些地方只认活着的会话，
+    /// 归档的只在侧栏选中「已归档」那个 chip 时才露面。
+    @Published private(set) var archivedSessionsByProject: [String: [SessionMetadata]] = [:]
     @Published private(set) var availableAgentProfileIDs: Set<String> = []
     @Published var sidebarQuery = ""
-    @Published var sidebarShowsNeedsYouOnly = false
+    @Published var sidebarFilter: YCodeSidebarFilter = .active
+    @Published var sidebarSort: YCodeSidebarSort = .manual
+    /// 关掉之后，当前过滤下一条会话都不剩的项目连组标题都不画 ——
+    /// 项目多了以后「等你」那一档常常只有一两个项目有内容。
+    @Published var sidebarShowsEmptyProjects = true
     @Published var collapsedProjectIDs: Set<String> = []
     @Published var expandedHistoryProjectIDs: Set<String> = []
-    @Published var inspectorIsVisible = true
+    /// 还没选项目时右边也不摆面板区 —— 跟 `resetCanvas()` 给的默认保持一致。
+    @Published var inspectorIsVisible = false
     @Published var isPresentingNewSession = false
     /// 正在 resume 的会话：点一下就接着跑，重复点不再叠一次启动。
     @Published private(set) var resumingSessionIDs: Set<String> = []
@@ -196,9 +243,17 @@ final class WorkspaceModel: ObservableObject {
     private var terminalSearchGeneration = 0
     private let shellPool = YCodeProjectShellPool.shared
     private let historyIndex = YCodeHistoryIndex()
-    private let historyHomeDirectory = FileManager.default.homeDirectoryForCurrentUser
+    private let historyHomeDirectory = ProcessInfo.processInfo.environment["YCODE_HISTORY_HOME"]
+        .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.homeDirectoryForCurrentUser
     private var historyPollingTask: Task<Void, Never>?
     private var todoPollingTask: Task<Void, Never>?
+    private var titleWatchers: [YCodeDirectoryWatcher] = []
+    private var titleRefreshTask: Task<Void, Never>?
+    private var titleChangedPaths: Set<String> = []
+    private var knownHistory: [String: YCodeHistorySession] = [:]
+    private var titleGeneration = 0
+    private var lastIdentityProbe = Date.distantPast
+    private var idleArchiveTask: Task<Void, Never>?
     private var historyLoadGeneration = 0
     private var historySearchGeneration = 0
     private var todoLoadGeneration = 0
@@ -237,7 +292,15 @@ final class WorkspaceModel: ObservableObject {
                 checkpointService: checkpointService
             )
             self.sessionService = sessionService
-            sessionService.onSessionsChanged = { [weak self] in self?.reloadSessions() }
+            // 启动先扫一遍闲置会话：14 天没动静的收进归档，侧栏默认那一档就只剩真在用的。
+            // 放在挂 onSessionsChanged 之前，省得这一趟批量归档反过来触发一次 reload——
+            // 紧接着的 reloadForLaunch 本来就会读到归档之后的结果。
+            sessionService.archiveIdleSessions()
+            sessionService.onSessionsChanged = { [weak self] in
+                self?.titleGeneration += 1
+                self?.reloadSessions()
+            }
+            sessionService.onTitleSyncError = { [weak self] message in self?.errorMessage = message }
             legacyUIImportResult = try LegacyUIStateImporter(projects: repository, state: state)
                 .importIfNeeded(from: LegacyUIStateSourceLocator.locate())
             preferences = try state.preferences()
@@ -245,7 +308,7 @@ final class WorkspaceModel: ObservableObject {
             let settings = try configurationStore.loadBasicSettings()
             applyAppearance(settings.appearance)
             agentProfiles = try configurationStore.loadAgentSettings().agents
-            try reloadForLaunch(mode: settings.startupMode)
+            try reloadForLaunch()
             if let initialProjectID, projects.contains(where: { $0.id == initialProjectID }) {
                 selectedProjectID = initialProjectID
                 sessions = try repository.listSessions(projectID: initialProjectID)
@@ -256,7 +319,26 @@ final class WorkspaceModel: ObservableObject {
         }
         if let project = selectedProject { ensureEditorWorkspace(for: project) }
         observeAgentEvents()
+        prewarmAgentLaunchPath()
         refreshAgentAvailability()
+        startTitleMonitoring()
+        importDiscoveredSessions()
+        startIdleArchiveSweep()
+    }
+
+    /// 窗口一开就是好几天不关，光靠启动时那一次扫不够；每小时再扫一遍。
+    /// 归档本身是幂等的，扫空一趟的代价也就是一条 SELECT。
+    private func startIdleArchiveSweep() {
+        idleArchiveTask?.cancel()
+        idleArchiveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60 * 60 * 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.sessionService?.archiveIdleSessions()
+                // 同一趟里再对一次 jsonl：窗口开着的这一小时里，标题可能已经被 CLI 改过了。
+                self.importDiscoveredSessions()
+            }
+        }
     }
 
     var selectedProject: ProjectRecord? {
@@ -307,6 +389,25 @@ final class WorkspaceModel: ObservableObject {
     }
     var l10n: YCodeLocalization { YCodeLocalization(locale: locale) }
 
+    /// 终端吐出的标题。空的、跟上一条一样的都直接丢掉，免得每帧都发通知。
+    func recordLiveTitle(sessionID: String, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard liveTitles[sessionID] != trimmed else { return }
+        liveTitles[sessionID] = trimmed
+    }
+
+    /// 界面上这条会话叫什么：用户起的名字 > CLI 报的 live title > 斜体的「新会话」。
+    func displayName(for session: SessionMetadata) -> String {
+        l10n.sessionDisplayName(session, liveTitle: liveTitles[session.id])
+    }
+
+    /// 有没有名字可显示（库里的或 CLI 报的）。侧栏拿它决定要不要走斜体占位那一支。
+    func hasDisplayTitle(_ session: SessionMetadata) -> Bool {
+        !session.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || liveTitles[session.id] != nil
+    }
+
     /// PATH 上找得到的 agent —— 装不上的不进选择器（设计稿 §06）。
     var availableAgentProfiles: [YCodeAgentProfile] {
         let usable = agentProfiles.filter { availableAgentProfileIDs.contains($0.id) }
@@ -318,14 +419,52 @@ final class WorkspaceModel: ObservableObject {
         return sessionsByProject[projectID] ?? []
     }
 
-    /// 侧栏一行会话要不要显示：受搜索框与「等你」过滤 chip 控制。
+    func archivedSessions(in projectID: String) -> [SessionMetadata] {
+        archivedSessionsByProject[projectID] ?? []
+    }
+
+    /// 侧栏一行会话要不要显示：受搜索框与漏斗菜单里的状态档控制，最后按排序档排一次。
     func sidebarSessions(in projectID: String) -> [SessionMetadata] {
         let query = sidebarQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return sessions(in: projectID).filter { session in
-            if sidebarShowsNeedsYouOnly, attentionEvents[session.id] == nil { return false }
+        let pool: [SessionMetadata]
+        switch sidebarFilter {
+        case .archived: pool = archivedSessions(in: projectID)
+        case .all: pool = sessions(in: projectID) + archivedSessions(in: projectID)
+        case .active: pool = sessions(in: projectID)
+        }
+        let matched = pool.filter { session in
+            if sidebarFilter != .all, isEmptyShell(session) { return false }
             guard !query.isEmpty else { return true }
             return session.title.lowercased().contains(query)
+                || (liveTitles[session.id]?.lowercased().contains(query) ?? false)
                 || session.agentProfile.lowercased().contains(query)
+        }
+        return sidebarSorted(matched)
+    }
+
+    /// 空壳会话：CLI 从来没报出过标题，磁盘上也就没有对应的 jsonl —— 建完就没管的那一条。
+    /// 点开是空终端，resume 也没有内容可续，留在列表里只是占位。
+    ///
+    /// 但「正在跑」和「已经摆上画布」的不算：新建的头几秒还没有标题，
+    /// 它不能在用户眼皮底下闪一下就消失。选「全部」时这些空壳也会露面，
+    /// 好歹留一条能把它们找出来删掉的路。
+    private func isEmptyShell(_ session: SessionMetadata) -> Bool {
+        guard !hasDisplayTitle(session) else { return false }
+        if visibleSessionIDs.contains(session.id) || resumingSessionIDs.contains(session.id) { return false }
+        return runtimeStatus(for: session)?.isLive != true
+    }
+
+    /// `.manual` 直接原样返回 —— 仓库给的顺序本身就是用户建会话的顺序，别去动它。
+    private func sidebarSorted(_ sessions: [SessionMetadata]) -> [SessionMetadata] {
+        switch sidebarSort {
+        case .manual:
+            return sessions
+        case .lastUsed:
+            return sessions.sorted { $0.updatedAtMilliseconds > $1.updatedAtMilliseconds }
+        case .title:
+            return sessions.sorted {
+                displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
+            }
         }
     }
 
@@ -333,7 +472,9 @@ final class WorkspaceModel: ObservableObject {
         projects.reduce(0) { $0 + sessions(in: $1.id).count }
     }
 
-    var sidebarNeedsYouCount: Int { attentionEvents.count }
+    var sidebarArchivedCount: Int {
+        projects.reduce(0) { $0 + archivedSessions(in: $1.id).count }
+    }
 
     func canvasSlot(for sessionID: String) -> Int? {
         visibleSessionIDs.firstIndex(of: sessionID)
@@ -389,6 +530,16 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func isResuming(_ id: String) -> Bool { resumingSessionIDs.contains(id) }
+
+    /// 启动就把登录 shell 跑热一次（见 `YCodeAgentLauncher.prewarm`）。
+    /// 不做的话，用户开窗后第一次点 agent 要现付 rc 的冷启动成本（~0.5s+），
+    /// 而那一刻主线程正卡在 `createSession` 里。
+    private func prewarmAgentLaunchPath() {
+        let commands = agentProfiles.map(\.command)
+        Task.detached(priority: .utility) {
+            YCodeAgentLauncher.prewarm(commands: commands)
+        }
+    }
 
     func refreshAgentAvailability() {
         let profiles = agentProfiles
@@ -523,9 +674,22 @@ final class WorkspaceModel: ObservableObject {
 
     func startError(for id: String) -> String? { sessionStartErrors[id] }
 
+    func retryTitleSync(_ session: SessionMetadata) {
+        guard let title = try? repository?.pendingSessionTitle(id: session.id) else { return }
+        titleGeneration += 1
+        do { _ = try sessionService?.renameSession(id: session.id, title: title) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
     func renameSelectedSession(_ title: String) {
         guard let selectedSessionID else { return }
-        do { _ = try sessionService?.renameSession(id: selectedSessionID, title: title) }
+        // 空标题一路写进 jsonl 之后，列表只会回落到斜体的「新会话」，
+        // 看起来像是改名失败而不是改成了空 —— 两个重命名对话框各自挡了一道，
+        // 这里再兜一次，因为这是个公开方法。
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        titleGeneration += 1
+        do { _ = try sessionService?.renameSession(id: selectedSessionID, title: trimmed) }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -536,6 +700,64 @@ final class WorkspaceModel: ObservableObject {
                 try await sessionService?.archiveSession(id: selectedSessionID)
                 self.selectedSessionID = nil
                 self.reloadSessions()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// 删除会话：库里的行和磁盘上的 jsonl 一起收掉（jsonl 进废纸篓）。
+    /// 归档是「先收起来」，这个是「不要了」——不删 jsonl 的话，下一轮扫描又会把它导回来。
+    ///
+    /// 库里没记路径的（在应用里新建、没被扫描认领过的那些）现扫一遍当前项目来找；
+    /// 找不到就只能删库，并明确告诉用户这条可能会随扫描回来，别让它默默复活。
+    func deleteSession(id: String) {
+        guard let session = sessions.first(where: { $0.id == id })
+            ?? archivedSessionsByProject.values.flatMap({ $0 }).first(where: { $0.id == id }) else { return }
+        let recorded = (try? repository?.discoveredJsonlPath(sessionID: id)) ?? nil
+        let project = projects.first { $0.id == session.projectID }
+        let agentSessionID = session.agentSessionID
+        let home = historyHomeDirectory
+        let index = historyIndex
+        // 目录还在才扫得动。目录没了这一趟就查不出文件在哪，也就没资格说「它不存在」。
+        let workspace = project?.pathExists == true ? project?.repositoryURL : nil
+        Task {
+            var fallback: String?
+            var scanned = false
+            if recorded == nil, let agentSessionID, let workspace {
+                scanned = true
+                fallback = await Task.detached(priority: .userInitiated) {
+                    index.scanWorkspace(homeDirectory: home, workspace: workspace)
+                        .first { $0.sessionID == agentSessionID }?
+                        .jsonlURL.standardizedFileURL.path
+                }.value
+            }
+            do {
+                let removed = try await sessionService?.deleteSession(id: id, fallbackJsonlPath: fallback)
+                if selectedSessionID == id { selectedSessionID = nil }
+                liveTitles[id] = nil
+                reloadSessions()
+                // 没删到文件多数时候是正常的：刚建的会话还没跟 CLI 说过话，磁盘上本来就没有 jsonl；
+                // 扫过一遍也没找到，说明扫描根目录下就没有它，导入同样带不回来——这两种都不用打扰用户。
+                // 只有「压根没扫成」（项目目录不在了）才真有可能漏网，那时才提醒一句。
+                let couldHaveMissedIt = removed == nil && recorded == nil && agentSessionID != nil && !scanned
+                if couldHaveMissedIt {
+                    errorMessage = l10n.text("deleteSessionJsonlMissing")
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// 取消归档：会话回到活跃列表，agent 进程不会跟着起来 —— 要它跑得自己点一下继续。
+    func unarchiveSession(id: String) {
+        Task {
+            do {
+                try await sessionService?.unarchiveSession(id: id)
+                self.reloadSessions()
+                // 归档那一组里少了一条，空了就退回「全部」，不然停在一张空列表上。
+                if self.sidebarArchivedCount == 0 { self.sidebarFilter = .active }
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1302,6 +1524,10 @@ final class WorkspaceModel: ObservableObject {
     private func recordAttention(_ event: YCodeAgentHookEvent) {
         guard let session = try? repository?.session(id: event.terminalID),
               session.archivedAtMilliseconds == nil else { return }
+        if session.agentSessionID == nil, let nativeID = event.agentSessionID {
+            try? repository?.setAgentSessionID(id: session.id, agentSessionID: nativeID)
+            enqueueTitleRefresh(["__rescan__"])
+        }
         sessionService?.recordTurnCheckpoint(event: event)
         attentionEvents[event.terminalID] = event
         reloadSessions()
@@ -1309,6 +1535,12 @@ final class WorkspaceModel: ObservableObject {
 
     private func clearAttention(_ sessionID: String) {
         attentionEvents.removeValue(forKey: sessionID)
+        if Date().timeIntervalSince(lastIdentityProbe) > 2,
+           let row = try? repository?.session(id: sessionID), row.agentSessionID == nil,
+           agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex" {
+            lastIdentityProbe = Date()
+            enqueueTitleRefresh(["__rescan__"])
+        }
     }
 
     func addProject(directory: URL) {
@@ -1388,11 +1620,11 @@ final class WorkspaceModel: ObservableObject {
         reconcileCanvas()
     }
 
-    private func reloadForLaunch(mode: YCodeStartupMode) throws {
+    private func reloadForLaunch() throws {
         guard let repository else { return }
         projects = try repository.listProjects()
         let recent = try repository.selectedProjectID()
-        selectedProjectID = initialProjectID(mode: mode, recentProjectID: recent, projects: projects)
+        selectedProjectID = initialProjectID(recentProjectID: recent, projects: projects)
         sessions = try selectedProjectID.map { try repository.listSessions(projectID: $0) } ?? []
         refreshSessionsByProject()
         restoreCanvasSnapshot(for: selectedProjectID)
@@ -1401,10 +1633,17 @@ final class WorkspaceModel: ObservableObject {
     private func refreshSessionsByProject() {
         guard let repository else { return }
         var map: [String: [SessionMetadata]] = [:]
+        var archived: [String: [SessionMetadata]] = [:]
+        var pending: Set<String> = []
         for project in projects {
-            map[project.id] = (try? repository.listSessions(projectID: project.id)) ?? []
+            let all = (try? repository.listSessions(projectID: project.id, includeArchived: true)) ?? []
+            for row in all where (try? repository.pendingSessionTitle(id: row.id)) != nil { pending.insert(row.id) }
+            map[project.id] = all.filter { $0.archivedAtMilliseconds == nil }
+            archived[project.id] = all.filter { $0.archivedAtMilliseconds != nil }
         }
         sessionsByProject = map
+        archivedSessionsByProject = archived
+        pendingTitleSessionIDs = pending
     }
 
     private func reloadSessions() {
@@ -1463,10 +1702,11 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs = []
         focusedCanvasSlot = 0
         terminalLayout = .single
-        // 第一次打开一个项目：面板区先给文件，不然右边空着没人知道它在
-        openPanels = [.files]
+        // 第一次打开一个项目：只给画布和左边那列。文件树一开就摊开太主动了 ——
+        // 右边的面板区等顶栏那四个开关（或 ⌥⌘→）叫它，再照 focusedPanel 给回文件卡。
+        openPanels = []
         focusedPanel = .files
-        inspectorIsVisible = true
+        inspectorIsVisible = false
         selectedTerminalPath = nil
         terminalSearchSessionID = nil
         terminalSearchQuery = ""
@@ -1519,11 +1759,9 @@ final class WorkspaceModel: ObservableObject {
 
     private func ensureEditorWorkspace(for project: ProjectRecord) {
         guard editorWorkspaces[project.id] == nil else { return }
-        let languageService = try? YCodeLanguageServiceRegistry.shared.service(dataRoot: dataRoot)
         editorWorkspaces[project.id] = YCodeEditorWorkspace(
             projectID: project.id,
             root: project.repositoryURL,
-            languageService: languageService,
             locale: locale
         )
     }
@@ -1626,6 +1864,7 @@ final class WorkspaceModel: ObservableObject {
         let index = historyIndex
         let home = historyHomeDirectory
         let workspace = project.repositoryURL
+        let titleRevision = titleGeneration
         Task {
             let found = await Task.detached(priority: .userInitiated) {
                 index.scanWorkspace(homeDirectory: home, workspace: workspace)
@@ -1639,7 +1878,169 @@ final class WorkspaceModel: ObservableObject {
             if self.selectedHistorySessionID == nil { self.selectedHistorySessionID = found.first?.id }
             historyStatus = found.isEmpty ? self.l10n.text("noHistorySessions") : self.l10n.text("historySessionCountFormat", found.count)
             historyIsLoading = false
+            if titleRevision == titleGeneration { importDiscoveredSessions(found, into: project) }
+            else { enqueueTitleRefresh(["__rescan__"]) }
             if loadSelected { loadSelectedHistory(showSpinner: historyEvents.isEmpty) }
+        }
+    }
+
+    private func startTitleMonitoring() {
+        guard titleWatchers.isEmpty else { return }
+        _ = try? YCodePiTitleBridge.prepare(dataRoot: dataRoot)
+        let roots = [".claude", ".codex", ".pi"].map { historyHomeDirectory.appendingPathComponent($0) }
+            + [YCodePiTitleBridge.directory(dataRoot: dataRoot)]
+        for root in roots {
+            let observed = FileManager.default.fileExists(atPath: root.path) ? root : root.deletingLastPathComponent()
+            let canonical = observed.resolvingSymlinksInPath()
+            let watcher = YCodeDirectoryWatcher(root: observed, latency: 0.3) { [weak self] paths in
+                let changed = paths.map { canonical.appendingPathComponent($0).path }
+                    .filter { $0.hasSuffix(".jsonl") || $0.hasSuffix(".state.json") || $0 == canonical.path }
+                guard !changed.isEmpty else { return }
+                Task { @MainActor [weak self] in self?.enqueueTitleRefresh(changed) }
+            }
+            watcher.start()
+            titleWatchers.append(watcher)
+        }
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.enqueueTitleRefresh(["__rescan__"]) }
+            .store(in: &eventCancellables)
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in self?.enqueueTitleRefresh(["__rescan__"]) }
+            .store(in: &eventCancellables)
+    }
+
+    private func bindPiSessionIdentities() {
+        guard let repository else { return }
+        for project in projects {
+            for row in (try? repository.listSessions(projectID: project.id)) ?? [] {
+                guard agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "pi",
+                      sessionService?.runtime(id: row.id)?.status.isLive == true,
+                      let state = YCodePiTitleBridge.state(dataRoot: dataRoot, terminalID: row.id),
+                      state.terminalID == row.id, !state.sessionID.isEmpty else { continue }
+                if row.agentSessionID != state.sessionID {
+                    try? repository.setAgentSessionID(id: row.id, agentSessionID: state.sessionID)
+                }
+                if let path = state.path {
+                    let timestamp = ((try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date)
+                        .map { Int64($0.timeIntervalSince1970 * 1_000) } ?? row.updatedAtMilliseconds
+                    _ = try? repository.syncDiscoveredSessions([.init(projectID: project.id,
+                        title: state.name ?? row.title, agentProfile: row.agentProfile,
+                        agentSessionID: state.sessionID, jsonlPath: path,
+                        updatedAtMilliseconds: timestamp, archivedAtMilliseconds: nil)])
+                }
+                sessionService?.retryPendingTitle(id: row.id)
+            }
+        }
+        reloadSessions()
+    }
+
+    private func enqueueTitleRefresh(_ paths: [String]) {
+        titleChangedPaths.formUnion(paths)
+        guard titleRefreshTask == nil else { return }
+        titleRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard let self else { return }
+            let paths = titleChangedPaths
+            titleChangedPaths.removeAll()
+            bindPiSessionIdentities()
+            let generation = titleGeneration
+            let index = historyIndex, home = historyHomeDirectory
+            let codexIndexChanged = paths.contains { $0.hasSuffix("/session_index.jsonl") }
+            let targets = knownHistory.values.filter {
+                paths.contains($0.jsonlURL.resolvingSymlinksInPath().path) || (codexIndexChanged && $0.agent == .codex)
+            }
+            let changed = await Task.detached(priority: .utility) {
+                targets.compactMap { index.refreshSession($0, homeDirectory: home) }
+            }.value
+            if generation == titleGeneration {
+                for project in projects {
+                    let found = changed.filter { $0.workspaceURL.standardizedFileURL == project.repositoryURL.standardizedFileURL.resolvingSymlinksInPath() }
+                    importDiscoveredSessions(found, into: project)
+                }
+            } else { titleChangedPaths.insert("__rescan__") }
+            let unknown = paths.contains { knownHistory[$0] == nil && !$0.hasSuffix("/session_index.jsonl") }
+            titleRefreshTask = nil
+            if unknown { importDiscoveredSessions() }
+            if !titleChangedPaths.isEmpty { enqueueTitleRefresh([]) }
+        }
+    }
+
+    /// 把每个项目的 jsonl 历史都收成会话行。会话与「历史」不再是两种东西：
+    /// 磁盘上有这条对话，侧栏里就有这条会话，14 天没动静的落在归档档位里。
+    /// 扫描按项目各开一个后台任务，冷启动时不要卡住第一帧。
+    func importDiscoveredSessions() {
+        let home = historyHomeDirectory
+        let index = historyIndex
+        for project in projects {
+            let workspace = project.repositoryURL
+            guard project.pathExists else { continue }
+            let generation = titleGeneration
+            let unbound = ((try? repository?.listSessions(projectID: project.id)) ?? []).compactMap { row -> (String, Int32)? in
+                guard row.agentSessionID == nil,
+                      agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex",
+                      let runtime = sessionService?.runtime(id: row.id), runtime.status.isLive else { return nil }
+                return (row.id, runtime.processIdentifier)
+            }
+            Task { [weak self] in
+                let (found, bindings) = await Task.detached(priority: .utility) {
+                    let found = index.scanWorkspace(homeDirectory: home, workspace: workspace)
+                    let bindings = unbound.compactMap { id, pid -> (String, String)? in
+                        guard let path = YCodeAgentSessionIdentity.codexRolloutPath(pid: pid),
+                              let history = found.first(where: { $0.jsonlURL.resolvingSymlinksInPath().path == path }) else { return nil }
+                        return (id, history.sessionID)
+                    }
+                    return (found, bindings)
+                }.value
+                guard let self else { return }
+                guard generation == titleGeneration else { enqueueTitleRefresh(["__rescan__"]); return }
+                for (id, nativeID) in bindings { try? repository?.setAgentSessionID(id: id, agentSessionID: nativeID) }
+                importDiscoveredSessions(found, into: project)
+            }
+        }
+    }
+
+    /// 落库的那一半。没有对应 agent profile 的历史会被 `drafts` 丢掉——
+    /// 导进来也没有 CLI 能 resume 它；已经在库里的会跟着 jsonl 刷新标题和时间，
+    /// 所以每次扫描都可以无脑调用。
+    private func importDiscoveredSessions(_ found: [YCodeHistorySession], into project: ProjectRecord) {
+        guard let repository, !found.isEmpty else { return }
+        for item in found { knownHistory[item.jsonlURL.resolvingSymlinksInPath().path] = item }
+        bindPiSessionIdentities()
+        var profileIDsByIntrospect: [String: String] = [:]
+        for profile in agentProfiles {
+            guard let introspect = profile.introspect, !introspect.isEmpty else { continue }
+            if profileIDsByIntrospect[introspect] == nil { profileIDsByIntrospect[introspect] = profile.id }
+        }
+        guard !profileIDsByIntrospect.isEmpty else { return }
+        let existingRows = (try? repository.listSessions(projectID: project.id)) ?? []
+        let unboundCodex = existingRows.contains { row in
+            row.agentSessionID == nil && sessionService?.runtime(id: row.id)?.status.isLive == true
+                && agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex"
+        }
+        let importable = found.filter { item in
+            item.agent != .codex || !unboundCodex || existingRows.contains { $0.agentSessionID == item.sessionID }
+        }
+        let drafts = YCodeHistorySessionImport.drafts(
+            sessions: importable,
+            projectID: project.id,
+            profileIDsByIntrospect: profileIDsByIntrospect
+        ).map { draft in
+            // Several profiles may launch the same CLI. Keep the profile that owns an
+            // existing session instead of importing a second row under the first profile.
+            let parser = agentProfiles.first { $0.id == draft.agentProfile }?.introspect
+            guard let existing = existingRows.first(where: { row in
+                row.agentSessionID == draft.agentSessionID
+                    && agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == parser
+            }), existing.agentProfile != draft.agentProfile else { return draft }
+            return DiscoveredSessionDraft(projectID: draft.projectID, title: draft.title,
+                agentProfile: existing.agentProfile, agentSessionID: draft.agentSessionID,
+                jsonlPath: draft.jsonlPath, updatedAtMilliseconds: draft.updatedAtMilliseconds,
+                archivedAtMilliseconds: draft.archivedAtMilliseconds)
+        }
+        guard !drafts.isEmpty, let touched = try? repository.syncDiscoveredSessions(drafts) else { return }
+        if !touched.isEmpty { reloadSessions() }
+        for row in (try? repository.listSessions(projectID: project.id)) ?? [] {
+            sessionService?.retryPendingTitle(id: row.id)
         }
     }
 

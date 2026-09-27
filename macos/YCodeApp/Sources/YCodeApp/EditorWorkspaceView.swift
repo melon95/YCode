@@ -16,17 +16,16 @@ struct ProjectFileWorkspaceView: View {
     let onDeletePath: (URL) -> Void
     @Environment(\.ycodeL10n) private var l10n
 
-    /// 一张卡里是「树 ｜ 编辑器」并排，不是二选一。树在不在只看卡头上那枚开关；
-    /// 一篇文档都没开时强制留着树 —— 否则把它收起来这张卡就是一片空白。
+    /// 一张卡里是「树 ｜ 编辑器」并排，不是二选一。树在不在只看卡头上那枚开关 ——
+    /// 一篇文档都没开时也照样收得起来，收完这张卡给一段空状态，告诉你怎么把树叫回来。
     /// 卡头上没有编辑器的动作：保存走 ⌘S 与「文件 › 保存」，不值得在那排图标里再占一格。
-    private var treeIsVisible: Bool { workspace.isFileTreeVisible || workspace.tabs.paths.isEmpty }
+    private var treeIsVisible: Bool { workspace.isFileTreeVisible }
     private var showsEditor: Bool { !workspace.tabs.paths.isEmpty }
 
     /// 树的开关就是卡头最前面那枚图标（跟变更面板的树／平铺是同一套做法），
-    /// 不在右边另起一个按钮。没开文档时树必须在场，这枚图标就退回成纯标识。
+    /// 不在右边另起一个按钮。
     private var headerSpec: YCodePanelHeaderSpec {
         var spec = header
-        guard showsEditor else { return spec }
         spec.iconIsOn = treeIsVisible
         spec.iconHelp = l10n.text("fileTree")
         spec.iconAction = { workspace.isFileTreeVisible.toggle() }
@@ -79,7 +78,7 @@ private struct YCodeEditorWorkspaceView: View {
     var body: some View {
         VStack(spacing: 0) {
             // 标签条不在这里 —— 文件名在卡头最上面那一行，横跨树与编辑器（设计稿）。
-            // 这一条上的东西（LSP、跳定义、预览／源码）只属于当前选中的那篇文档，
+            // 这一条上的东西（预览／源码）只属于当前选中的那篇文档，
             // 所以它得站在标签条**下面** —— 浮在标签之上会读成「这排标签的工具条」。
             if hasDocumentBar {
                 documentBar
@@ -153,34 +152,17 @@ private struct YCodeEditorWorkspaceView: View {
         }
     }
 
-    /// 属于「当前这篇文档」的那几样（LSP、跳定义、预览／源码）留在这一条，
+    /// 属于「当前这篇文档」的那几样（预览／源码）留在这一条，
     /// 没有内容时整条不出现。面板级的动作在卡头上，不在这儿。
     private var hasDocumentBar: Bool {
         guard let document = workspace.selectedDocument else { return false }
-        return document.lspActive || document.canTogglePreview || document.previewKind == .image
+        return document.canTogglePreview || document.previewKind == .image
     }
 
     private var documentBar: some View {
         HStack(spacing: 10) {
             Spacer()
             if let document = workspace.selectedDocument {
-                if document.lspActive {
-                    Label("LSP", systemImage: document.diagnostics.isEmpty ? "checkmark.seal" : "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(document.diagnostics.isEmpty ? Color.green : Color.orange)
-                        .help(document.diagnostics.first?.message ?? "LSP")
-                    Button {
-                        workspace.requestDefinition(
-                            path: document.path,
-                            line: document.cursorLine,
-                            utf16Character: document.cursorUTF16Character
-                        )
-                    } label: {
-                        Label(l10n.text("jumpToDefinition"), systemImage: "arrowshape.turn.up.right")
-                    }
-                    .buttonStyle(.borderless)
-                    .help(l10n.text("jumpToDefinitionHelp"))
-                }
                 if document.canTogglePreview {
                     HStack(spacing: 2) {
                         presentationButton(l10n.text("preview"), systemImage: "eye", value: .preview, document: document)
@@ -210,7 +192,7 @@ private struct YCodeEditorWorkspaceView: View {
                 .labelStyle(.iconOnly)
                 .frame(width: 24, height: 22)
                 .background(document.presentation == value ? Color.accentColor.opacity(0.16) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip))
         }
         .buttonStyle(.plain)
         .help(title)
@@ -304,15 +286,8 @@ private struct YCodeEditorDocumentView: View {
                     fontSize: editorFontSize,
                     theme: theme,
                     revision: document.revision,
-                    semanticTokens: document.semanticTokens,
-                    semanticRevision: document.semanticRevision,
-                    diagnostics: document.diagnostics,
-                    navigationLine: document.navigationLine,
-                    navigationUTF16Character: document.navigationUTF16Character,
-                    navigationRevision: document.navigationRevision,
                     isActive: isActive,
-                    onChange: onChange,
-                    onCursor: { line, character in document.moveCursor(line: line, utf16Character: character) }
+                    onChange: onChange
                 )
             }
         }
@@ -325,17 +300,10 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
     let fontSize: CGFloat
     let theme: YCodeThemeOption
     let revision: Int
-    let semanticTokens: [YCodeLSPSemanticToken]
-    let semanticRevision: Int
-    let diagnostics: [YCodeLSPDiagnostic]
-    let navigationLine: Int?
-    let navigationUTF16Character: Int?
-    let navigationRevision: Int
     let isActive: Bool
     let onChange: (String) -> Void
-    let onCursor: (Int, Int) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange, onCursor: onCursor, fontSize: fontSize, theme: theme) }
+    func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange, fontSize: fontSize, theme: theme) }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -368,14 +336,10 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = false
         textView.string = text
         context.coordinator.lastRevision = revision
-        context.coordinator.lastSemanticRevision = semanticRevision
-        context.coordinator.lastNavigationRevision = navigationRevision
         context.coordinator.lastPath = path
         context.coordinator.requestHighlighting(
             for: textView,
-            path: path,
-            semanticTokens: semanticTokens,
-            diagnostics: diagnostics
+            path: path
         )
         scrollView.documentView = textView
         return scrollView
@@ -384,7 +348,6 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.onChange = onChange
-        context.coordinator.onCursor = onCursor
         let appearanceChanged = context.coordinator.fontSize != fontSize || context.coordinator.theme != theme
         context.coordinator.fontSize = fontSize
         context.coordinator.theme = theme
@@ -399,35 +362,16 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
             context.coordinator.isApplyingModel = false
             context.coordinator.lastRevision = revision
             needsHighlighting = true
-        } else if context.coordinator.lastSemanticRevision != semanticRevision {
-            needsHighlighting = true
         } else if context.coordinator.lastPath != path {
             needsHighlighting = true
         }
         if needsHighlighting {
             context.coordinator.requestHighlighting(
                 for: textView,
-                path: path,
-                semanticTokens: semanticTokens,
-                diagnostics: diagnostics
+                path: path
             )
         }
         context.coordinator.lastPath = path
-        context.coordinator.lastSemanticRevision = semanticRevision
-        if context.coordinator.lastNavigationRevision != navigationRevision,
-           let navigationLine,
-           let navigationUTF16Character,
-           let range = context.coordinator.range(
-                line: navigationLine,
-                utf16Character: navigationUTF16Character,
-                length: 0,
-                in: textView.string
-           ) {
-            context.coordinator.lastNavigationRevision = navigationRevision
-            textView.setSelectedRange(range)
-            textView.scrollRangeToVisible(range)
-            textView.window?.makeFirstResponder(textView)
-        }
         if isActive, !context.coordinator.wasActive {
             DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
         }
@@ -450,24 +394,18 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onChange: (String) -> Void
-        var onCursor: (Int, Int) -> Void
         var fontSize: CGFloat
         var theme: YCodeThemeOption
         var isApplyingModel = false
         var lastRevision = -1
-        var lastSemanticRevision = -1
-        var lastNavigationRevision = -1
         var lastPath = ""
         var wasActive = false
         weak var pendingTextView: NSTextView?
         var pendingPath = ""
-        var pendingSemanticTokens: [YCodeLSPSemanticToken] = []
-        var pendingDiagnostics: [YCodeLSPDiagnostic] = []
         private var highlightGeneration = 0
 
-        init(onChange: @escaping (String) -> Void, onCursor: @escaping (Int, Int) -> Void, fontSize: CGFloat, theme: YCodeThemeOption) {
+        init(onChange: @escaping (String) -> Void, fontSize: CGFloat, theme: YCodeThemeOption) {
             self.onChange = onChange
-            self.onCursor = onCursor
             self.fontSize = fontSize
             self.theme = theme
         }
@@ -475,31 +413,19 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isApplyingModel, let textView = notification.object as? NSTextView else { return }
             onChange(textView.string)
-            publishCursor(textView)
             scheduleHighlighting(
                 textView,
-                path: lastPath,
-                semanticTokens: pendingSemanticTokens,
-                diagnostics: pendingDiagnostics
+                path: lastPath
             )
-        }
-
-        func textViewDidChangeSelection(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            publishCursor(textView)
         }
 
         func scheduleHighlighting(
             _ textView: NSTextView,
-            path: String,
-            semanticTokens: [YCodeLSPSemanticToken],
-            diagnostics: [YCodeLSPDiagnostic]
+            path: String
         ) {
             NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(applyScheduledHighlighting), object: nil)
             pendingTextView = textView
             pendingPath = path
-            pendingSemanticTokens = semanticTokens
-            pendingDiagnostics = diagnostics
             perform(#selector(applyScheduledHighlighting), with: nil, afterDelay: 0.08)
         }
 
@@ -507,17 +433,13 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
             guard let textView = pendingTextView, !textView.hasMarkedText() else { return }
             requestHighlighting(
                 for: textView,
-                path: pendingPath,
-                semanticTokens: pendingSemanticTokens,
-                diagnostics: pendingDiagnostics
+                path: pendingPath
             )
         }
 
         func requestHighlighting(
             for textView: NSTextView,
-            path: String,
-            semanticTokens: [YCodeLSPSemanticToken],
-            diagnostics: [YCodeLSPDiagnostic]
+            path: String
         ) {
             guard !textView.hasMarkedText() else { return }
             let source = textView.string
@@ -533,14 +455,12 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
                       textView.string == source,
                       !textView.hasMarkedText()
                 else { return }
-                self.apply(tokens: tokens, semanticTokens: semanticTokens, diagnostics: diagnostics, to: textView)
+                self.apply(tokens: tokens, to: textView)
             }
         }
 
         private func apply(
             tokens: [YCodeSyntaxToken],
-            semanticTokens: [YCodeLSPSemanticToken],
-            diagnostics: [YCodeLSPDiagnostic],
             to textView: NSTextView
         ) {
             guard let storage = textView.textStorage else { return }
@@ -558,54 +478,11 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
                 }
                 storage.addAttributes(attributes, range: token.range)
             }
-            for token in semanticTokens {
-                guard let range = range(
-                    line: token.line,
-                    utf16Character: token.utf16Character,
-                    length: token.length,
-                    in: textView.string
-                ), NSMaxRange(range) <= storage.length else { continue }
-                storage.addAttribute(.foregroundColor, value: color(forSemanticType: token.type), range: range)
-            }
-            for diagnostic in diagnostics {
-                guard let line = diagnostic.line,
-                      let character = diagnostic.utf16Character,
-                      let range = range(line: line, utf16Character: character, length: 1, in: textView.string),
-                      NSMaxRange(range) <= storage.length else { continue }
-                storage.addAttributes([
-                    .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue,
-                    .underlineColor: NSColor.systemOrange
-                ], range: range)
-            }
             storage.endEditing()
             textView.undoManager?.enableUndoRegistration()
             textView.typingAttributes = [.font: baseFont, .foregroundColor: theme.nsTerminalForeground]
             if NSMaxRange(selection) <= storage.length { textView.setSelectedRange(selection) }
             isApplyingModel = false
-        }
-
-        func range(line: Int, utf16Character: Int, length: Int, in text: String) -> NSRange? {
-            guard line >= 0, utf16Character >= 0, length >= 0 else { return nil }
-            let nsText = text as NSString
-            var currentLine = 0
-            var lineStart = 0
-            while currentLine < line {
-                let searchRange = NSRange(location: lineStart, length: nsText.length - lineStart)
-                let newline = nsText.range(of: "\n", options: [], range: searchRange)
-                guard newline.location != NSNotFound else { return nil }
-                lineStart = newline.location + newline.length
-                currentLine += 1
-            }
-            let location = lineStart + utf16Character
-            guard location <= nsText.length else { return nil }
-            return NSRange(location: location, length: min(length, nsText.length - location))
-        }
-
-        private func publishCursor(_ textView: NSTextView) {
-            let location = textView.selectedRange().location
-            let prefix = (textView.string as NSString).substring(to: min(location, (textView.string as NSString).length))
-            let lines = prefix.components(separatedBy: "\n")
-            onCursor(max(0, lines.count - 1), lines.last.map { ($0 as NSString).length } ?? 0)
         }
 
         private func color(for kind: YCodeSyntaxTokenKind) -> NSColor {
@@ -619,18 +496,6 @@ private struct YCodeNativeTextEditor: NSViewRepresentable {
             case .addition: .systemGreen
             case .deletion: .systemRed
             case .metadata: .systemPurple
-            }
-        }
-
-        private func color(forSemanticType type: String) -> NSColor {
-            switch type {
-            case "function", "method": .systemIndigo
-            case "class", "struct", "interface", "type", "enum": .systemTeal
-            case "property", "variable", "parameter": .systemOrange
-            case "keyword", "macro": .systemPurple
-            case "string": .systemRed
-            case "number": .systemBlue
-            default: theme.nsTerminalForeground
             }
         }
     }
@@ -784,7 +649,7 @@ private struct YCodeEditorTabStrip: View {
         .padding(.horizontal, 8)
         .frame(height: 24)
         .background(workspace.tabs.selectedPath == path ? Color.accentColor.opacity(0.15) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius))
         .help(workspace.tabs.previewPath == path ? l10n.text("previewTabHelpFormat", path) : path)
     }
 

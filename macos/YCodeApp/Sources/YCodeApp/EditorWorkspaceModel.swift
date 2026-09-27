@@ -19,15 +19,6 @@ final class YCodeEditorDocument: ObservableObject, Identifiable {
     @Published private(set) var externalContents: String?
     @Published private(set) var externalWasDeleted = false
     @Published private(set) var revision = 0
-    @Published private(set) var semanticTokens: [YCodeLSPSemanticToken] = []
-    @Published private(set) var semanticRevision = 0
-    @Published private(set) var diagnostics: [YCodeLSPDiagnostic] = []
-    @Published private(set) var lspActive = false
-    @Published private(set) var navigationLine: Int?
-    @Published private(set) var navigationUTF16Character: Int?
-    @Published private(set) var navigationRevision = 0
-    @Published private(set) var cursorLine = 0
-    @Published private(set) var cursorUTF16Character = 0
     private(set) var baseline = ""
     private(set) var baselinePreviewData: Data?
 
@@ -107,35 +98,6 @@ final class YCodeEditorDocument: ObservableObject, Identifiable {
         self.path = path
         if previewKind == .source { presentation = .source }
     }
-
-    func setLSPActive(_ active: Bool) {
-        lspActive = active
-        if !active {
-            semanticTokens = []
-            diagnostics = []
-            semanticRevision += 1
-        }
-    }
-
-    func setSemanticTokens(_ tokens: [YCodeLSPSemanticToken]) {
-        semanticTokens = tokens
-        semanticRevision += 1
-    }
-
-    func setDiagnostics(_ diagnostics: [YCodeLSPDiagnostic]) {
-        self.diagnostics = diagnostics
-    }
-
-    func navigate(line: Int, utf16Character: Int) {
-        navigationLine = line
-        navigationUTF16Character = utf16Character
-        navigationRevision += 1
-    }
-
-    func moveCursor(line: Int, utf16Character: Int) {
-        cursorLine = line
-        cursorUTF16Character = utf16Character
-    }
 }
 
 private enum YCodeEditorReadResult: Sendable {
@@ -166,28 +128,12 @@ final class YCodeEditorWorkspace: ObservableObject {
     var locale: YCodeLocale
 
     private let service = YCodeEditorFileService()
-    private let languageService: YCodeLanguageServerService?
-    private var lspVersions: [String: Int] = [:]
-    private var lspChangeTasks: [String: Task<Void, Never>] = [:]
-    private var lspEventTask: Task<Void, Never>?
 
-    init(projectID: String, root: URL, languageService: YCodeLanguageServerService? = nil, locale: YCodeLocale = .zh) {
+    init(projectID: String, root: URL, locale: YCodeLocale = .zh) {
         self.projectID = projectID
         self.root = root
-        self.languageService = languageService
         self.locale = locale
-        if let languageService {
-            lspEventTask = Task { [weak self] in
-                let stream = await languageService.events()
-                for await event in stream {
-                    guard !Task.isCancelled else { break }
-                    self?.receiveLSPEvent(event)
-                }
-            }
-        }
     }
-
-    deinit { lspEventTask?.cancel() }
 
     var selectedDocument: YCodeEditorDocument? {
         tabs.selectedPath.flatMap { documents[$0] }
@@ -232,7 +178,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         var next = tabs
         next.markDirty(path, dirty: document.isDirty)
         tabs = next
-        scheduleLSPChange(document)
     }
 
     func requestClose(_ path: String) {
@@ -278,33 +223,6 @@ final class YCodeEditorWorkspace: ObservableObject {
               let document = documents[path] else { return }
         pendingSaveConflictPath = nil
         Task { await reload(document) }
-    }
-
-    func requestDefinition(path: String, line: Int, utf16Character: Int) {
-        guard let languageService, let sourceURL = url(for: path) else { return }
-        Task {
-            do {
-                guard let location = try await languageService.definition(
-                    fileURL: sourceURL,
-                    line: line,
-                    utf16Character: utf16Character
-                ).first else {
-                    errorMessage = YCodeLocalization(locale: self.locale).text("definitionNotFound")
-                    return
-                }
-                guard let targetURL = URL(string: location.uri),
-                      let relative = relativePath(for: targetURL), !relative.isEmpty else {
-                    throw YCodeLSPError.pathOutsideProject(location.uri)
-                }
-                open(url: targetURL, preview: false)
-                documents[relative]?.navigate(
-                    line: location.startLine,
-                    utf16Character: location.startUTF16Character
-                )
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
     }
 
     func checkForExternalChanges() async {
@@ -402,11 +320,6 @@ final class YCodeEditorWorkspace: ObservableObject {
     }
 
     private func close(_ path: String) {
-        lspChangeTasks.removeValue(forKey: path)?.cancel()
-        lspVersions.removeValue(forKey: path)
-        if let languageService, let fileURL = url(for: path) {
-            Task { await languageService.closeDocument(fileURL: fileURL) }
-        }
         var next = tabs
         next.close(path)
         tabs = next
@@ -428,7 +341,6 @@ final class YCodeEditorWorkspace: ObservableObject {
         switch result {
         case let .success(_, snapshot):
             document.finishLoading(snapshot)
-            await activateLanguageServer(document)
         case let .failure(_, message): document.failLoading(message)
         }
     }
@@ -477,75 +389,5 @@ final class YCodeEditorWorkspace: ObservableObject {
         var next = tabs
         next.markDirty(path, dirty: dirty)
         tabs = next
-    }
-
-    private func activateLanguageServer(_ document: YCodeEditorDocument) async {
-        guard let languageService,
-              !document.isBinary,
-              let fileURL = url(for: document.path) else { return }
-        do {
-            if let currentVersion = lspVersions[document.path] {
-                let version = currentVersion + 1
-                let tokens = try await languageService.changeDocument(
-                    fileURL: fileURL,
-                    text: document.value,
-                    version: version
-                )
-                lspVersions[document.path] = version
-                document.setLSPActive(true)
-                document.setSemanticTokens(tokens)
-                return
-            }
-            let version = 1
-            let active = try await languageService.openDocument(
-                projectID: projectID,
-                projectRoot: root,
-                fileURL: fileURL,
-                text: document.value,
-                version: version
-            )
-            if active { lspVersions[document.path] = version }
-            document.setLSPActive(active)
-            if active {
-                document.setSemanticTokens(try await languageService.semanticTokens(fileURL: fileURL))
-            }
-        } catch {
-            document.setLSPActive(false)
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func scheduleLSPChange(_ document: YCodeEditorDocument) {
-        guard document.lspActive, let languageService, let fileURL = url(for: document.path) else { return }
-        let path = document.path
-        let text = document.value
-        lspChangeTasks[path]?.cancel()
-        lspChangeTasks[path] = Task { [weak self, weak document] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, let self, let document, self.documents[path] === document else { return }
-            let version = (self.lspVersions[path] ?? 1) + 1
-            do {
-                let tokens = try await languageService.changeDocument(fileURL: fileURL, text: text, version: version)
-                guard !Task.isCancelled, document.value == text else { return }
-                self.lspVersions[path] = version
-                document.setSemanticTokens(tokens)
-            } catch {
-                guard !Task.isCancelled else { return }
-                document.setLSPActive(false)
-                self.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func receiveLSPEvent(_ event: YCodeLSPEvent) {
-        switch event {
-        case let .diagnostics(uri, _, items):
-            guard let url = URL(string: uri), let path = relativePath(for: url) else { return }
-            documents[path]?.setDiagnostics(items)
-        case let .serverExited(_, eventProjectID, exitCode):
-            guard eventProjectID == projectID else { return }
-            for document in documents.values where document.lspActive { document.setLSPActive(false) }
-            errorMessage = "语言服务器已退出（\(exitCode)）；下次打开文件时会重试。"
-        }
     }
 }

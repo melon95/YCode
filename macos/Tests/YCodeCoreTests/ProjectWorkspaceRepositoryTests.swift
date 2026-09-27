@@ -72,6 +72,144 @@ final class ProjectWorkspaceRepositoryTests: XCTestCase {
         XCTAssertEqual(isolated.agentSessionID, "claude-id")
     }
 
+    func testArchiveRoundTripHidesAndRestoresTheSessionWithoutTouchingOthers() throws {
+        let root = makeTemporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+        let directory = root.appendingPathComponent("repo", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("data/ycode.db")
+        let repository = try ProjectWorkspaceRepository(databaseURL: databaseURL)
+        let project = try repository.addProject(directory: directory)
+        let db = try SQLiteConnection(path: databaseURL.path)
+        for (id, title) in [("keep", "留着的"), ("gone", "归档的")] {
+            try db.execute("""
+                INSERT INTO sessions VALUES (
+                    ?, ?, 'codex', ?, NULL, 1, 10, NULL,
+                    'native-id', '线程', NULL, NULL, NULL
+                );
+                """, bindings: [.text(id), .text(title), .text(project.id)])
+        }
+
+        try repository.archiveSession(id: "gone")
+        XCTAssertEqual(try repository.listSessions(projectID: project.id).map(\.id), ["keep"])
+        XCTAssertEqual(try repository.listSessions(projectID: project.id, includeArchived: true).count, 2)
+        XCTAssertNotNil(try repository.session(id: "gone").archivedAtMilliseconds)
+        // 重复归档是幂等的，不该把时间戳改掉或者报错。
+        let firstStamp = try repository.session(id: "gone").archivedAtMilliseconds
+        try repository.archiveSession(id: "gone")
+        XCTAssertEqual(try repository.session(id: "gone").archivedAtMilliseconds, firstStamp)
+
+        try repository.unarchiveSession(id: "gone")
+        XCTAssertNil(try repository.session(id: "gone").archivedAtMilliseconds)
+        XCTAssertEqual(Set(try repository.listSessions(projectID: project.id).map(\.id)), ["keep", "gone"])
+        XCTAssertEqual(try repository.listProjects().first?.liveSessionCount, 2)
+        // 没归档过的那条再取消归档也是空操作。
+        XCTAssertNoThrow(try repository.unarchiveSession(id: "keep"))
+        XCTAssertNil(try repository.session(id: "keep").archivedAtMilliseconds)
+    }
+
+    func testIdleSessionsArchiveAfterFourteenDaysExceptRunningOnesAndKeepTheirLastActivity() throws {
+        let root = makeTemporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+        let directory = root.appendingPathComponent("repo", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("data/ycode.db")
+        let repository = try ProjectWorkspaceRepository(databaseURL: databaseURL)
+        let project = try repository.addProject(directory: directory)
+        let db = try SQLiteConnection(path: databaseURL.path)
+
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        let day: Int64 = 24 * 60 * 60 * 1_000
+        let stale = now - 15 * day
+        // "fresh" 刚用过，"stale" 和 "running" 都超过 14 天没动静。
+        for (id, updated) in [("fresh", now - 3 * day), ("stale", stale), ("running", now - 20 * day)] {
+            try db.execute("""
+                INSERT INTO sessions VALUES (
+                    ?, ?, 'codex', ?, NULL, 1, ?, NULL,
+                    'native-id', '线程', NULL, NULL, NULL
+                );
+                """, bindings: [.text(id), .text(id), .text(project.id), .integer(updated)])
+        }
+
+        let cutoff = now - 14 * day
+        let archived = try repository.archiveSessionsIdle(before: cutoff, keeping: ["running"])
+
+        XCTAssertEqual(archived.map(\.id), ["stale"])
+        XCTAssertEqual(Set(try repository.listSessions(projectID: project.id).map(\.id)), ["fresh", "running"])
+        XCTAssertNotNil(try repository.session(id: "stale").archivedAtMilliseconds)
+        // 自动归档不能把「最后一次有动静」改成现在，否则归档区按时间排序就全乱了。
+        XCTAssertEqual(try repository.session(id: "stale").updatedAtMilliseconds, stale)
+        // 再扫一遍是空操作。
+        XCTAssertTrue(try repository.archiveSessionsIdle(before: cutoff, keeping: ["running"]).isEmpty)
+    }
+
+    func testDiscoveredSessionsFollowTheirJsonlUnlessTheUserRenamedThem() throws {
+        let root = makeTemporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+        let directory = root.appendingPathComponent("repo", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let repository = try ProjectWorkspaceRepository(databaseURL: root.appendingPathComponent("data/ycode.db"))
+        let project = try repository.addProject(directory: directory)
+
+        let day: Int64 = 24 * 60 * 60 * 1_000
+        let firstScan: Int64 = 1_000 * day
+        func draft(_ agentSessionID: String, _ title: String, _ updated: Int64, archived: Int64? = nil) -> DiscoveredSessionDraft {
+            DiscoveredSessionDraft(
+                projectID: project.id,
+                title: title,
+                agentProfile: "claude-code",
+                agentSessionID: agentSessionID,
+                jsonlPath: "/tmp/\(agentSessionID).jsonl",
+                updatedAtMilliseconds: updated,
+                archivedAtMilliseconds: archived
+            )
+        }
+
+        let imported = try repository.syncDiscoveredSessions([
+            draft("followed", "初次标题", firstScan),
+            draft("renamed", "也是初次标题", firstScan),
+            draft("revived", "老会话", firstScan - 30 * day, archived: firstScan)
+        ])
+        XCTAssertEqual(imported.count, 3)
+        let followedID = try XCTUnwrap(imported.first { $0.agentSessionID == "followed" }).id
+        let renamedID = try XCTUnwrap(imported.first { $0.agentSessionID == "renamed" }).id
+        let revivedID = try XCTUnwrap(imported.first { $0.agentSessionID == "revived" }).id
+        XCTAssertNotNil(try repository.session(id: revivedID).archivedAtMilliseconds)
+
+        // 用户给其中一条起了自己的名字。
+        try repository.renameSession(id: renamedID, title: "我自己起的名字")
+        let renamedStamp = try repository.session(id: renamedID).updatedAtMilliseconds
+
+        // 第二轮扫描：jsonl 改了标题，并且那条老会话又被用了。
+        let touched = try repository.syncDiscoveredSessions([
+            draft("followed", "CLI 改过的标题", firstScan + day),
+            draft("renamed", "CLI 改过的标题", firstScan + day),
+            draft("revived", "老会话", firstScan + day)
+        ])
+
+        // 改过名的那条这一轮压根没被动：renameSession 已经把 updated_at 推到了现在，
+        // 比 jsonl 的时间还新，标题又是用户自己的——两样都没得可改。
+        XCTAssertEqual(Set(touched.map(\.id)), [followedID, revivedID])
+        XCTAssertEqual(try repository.session(id: followedID).title, "CLI 改过的标题")
+        XCTAssertEqual(try repository.session(id: renamedID).title, "我自己起的名字")
+        XCTAssertEqual(try repository.session(id: renamedID).updatedAtMilliseconds, renamedStamp)
+        // jsonl 又有动静了，归档的那条要回到活跃列表。
+        XCTAssertNil(try repository.session(id: revivedID).archivedAtMilliseconds)
+
+        // 同一批再对一次就没有变化了。
+        XCTAssertTrue(try repository.syncDiscoveredSessions([
+            draft("followed", "CLI 改过的标题", firstScan + day)
+        ]).isEmpty)
+        XCTAssertEqual(try repository.listSessions(projectID: project.id, includeArchived: true).count, 3)
+
+        // 删除会话时要能问出 jsonl 在哪，否则文件删不掉、下次扫描又把它导回来。
+        XCTAssertEqual(try repository.discoveredJsonlPath(sessionID: followedID), "/tmp/followed.jsonl")
+        try repository.deleteSession(id: followedID)
+        XCTAssertEqual(try repository.listSessions(projectID: project.id, includeArchived: true).count, 2)
+        XCTAssertNil(try repository.discoveredJsonlPath(sessionID: followedID))
+        XCTAssertThrowsError(try repository.deleteSession(id: followedID))
+    }
+
     func testInvalidDuplicateAndInvalidOrderAreRejected() throws {
         let root = makeTemporaryRoot()
         defer { try? fileManager.removeItem(at: root) }

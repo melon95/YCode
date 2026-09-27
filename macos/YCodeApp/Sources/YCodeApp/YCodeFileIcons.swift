@@ -1,5 +1,5 @@
 // 由 macos/scripts/generate_file_icons.py 生成，请勿手改。
-// 图标来自 material-icon-theme（MIT），与非原生版 src/lib/fileIcons.ts 同一套主题。
+// 图标来自 material-icon-theme（MIT），来源与许可证见 Resources/IconSources/README.md。
 
 enum YCodeFileIconCatalog {
     static let defaultFile = "file"

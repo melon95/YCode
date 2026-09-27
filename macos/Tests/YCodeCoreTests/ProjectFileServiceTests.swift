@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Project file service", .serialized)
 struct ProjectFileServiceTests {
-    @Test("listing preserves hidden and ignored files while pruning heavy directories")
+    @Test("listing a level keeps hidden and heavy directories, hides only .git, and never recurses")
     func listing() throws {
         let fixture = try ProjectFileFixture()
         defer { fixture.remove() }
@@ -16,16 +16,44 @@ struct ProjectFileServiceTests {
         try fixture.file("node_modules/pkg/index.js", contents: "heavy")
         try fixture.file("Sources/target/debug.log", contents: "heavy")
 
-        let entries = try YCodeProjectFileService().listFiles(root: fixture.root)
-        let paths = entries.map(\.path)
-        #expect(paths == paths.sorted())
-        #expect(paths.contains(".env"))
-        #expect(paths.contains("ignored.txt"))
-        #expect(paths.contains("中文 目录"))
-        #expect(paths.contains("中文 目录/嵌套/space file.swift"))
-        #expect(!paths.contains(where: { $0 == ".git" || $0.hasPrefix(".git/") }))
-        #expect(!paths.contains(where: { $0 == "node_modules" || $0.hasPrefix("node_modules/") }))
-        #expect(!paths.contains(where: { $0 == "Sources/target" || $0.hasPrefix("Sources/target/") }))
+        let service = YCodeProjectFileService()
+        let rootPaths = try service.listChildren(root: fixture.root).map(\.path)
+        #expect(rootPaths == rootPaths.sorted())
+        #expect(rootPaths.contains(".env"))
+        #expect(rootPaths.contains("ignored.txt"))
+        #expect(rootPaths.contains("中文 目录"))
+        #expect(rootPaths.contains("Sources"))
+        // 树按展开一层层读，所以重目录留在原地，不展开就不花钱。
+        #expect(rootPaths.contains("node_modules"))
+        #expect(!rootPaths.contains(".git"))
+        // 只列一层：孙子辈不该出现在根的结果里。
+        #expect(!rootPaths.contains(where: { $0.contains("/") }))
+
+        let nested = try service.listChildren(root: fixture.root, relativePath: "中文 目录").map(\.path)
+        #expect(nested == ["中文 目录/嵌套"])
+        let leaf = try service.listChildren(root: fixture.root, relativePath: "中文 目录/嵌套").map(\.path)
+        #expect(leaf == ["中文 目录/嵌套/space file.swift"])
+        #expect(try service.listChildren(root: fixture.root, relativePath: "Sources/target").map(\.path)
+            == ["Sources/target/debug.log"])
+    }
+
+    @Test("listing rejects paths that leave the project or do not exist")
+    func listingSafety() throws {
+        let fixture = try ProjectFileFixture()
+        defer { fixture.remove() }
+        try fixture.file("keep.txt", contents: "keep")
+        let service = YCodeProjectFileService()
+
+        #expect(throws: YCodeProjectFileError.self) {
+            try service.listChildren(root: fixture.root, relativePath: "../")
+        }
+        #expect(throws: YCodeProjectFileError.self) {
+            try service.listChildren(root: fixture.root, relativePath: "missing")
+        }
+        // 文件不是目录，列它应该报错而不是给一个空列表。
+        #expect(throws: YCodeProjectFileError.self) {
+            try service.listChildren(root: fixture.root, relativePath: "keep.txt")
+        }
     }
 
     @Test("create rename and delete change only the requested project paths")
