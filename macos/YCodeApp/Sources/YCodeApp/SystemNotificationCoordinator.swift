@@ -43,7 +43,7 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
             identifier: identifier
         )
         for _ in 0..<20 {
-            if await center.deliveredNotifications().contains(where: { $0.request.identifier == identifier }) {
+            if await hasDeliveredNotification(identifier: identifier) {
                 return
             }
             try await Task.sleep(for: .milliseconds(50))
@@ -52,11 +52,11 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
     }
 
     func permissionSummary() async -> String {
-        let settings = await center.notificationSettings()
+        let settings = await notificationSettingsSnapshot()
         let l10n = YCodeLocalization(locale: Self.currentLocale())
         return switch settings.authorizationStatus {
         case .authorized:
-            settings.alertSetting == .enabled ? l10n.text("permissionAllowed") : l10n.text("permissionAllowedBannersOff")
+            settings.alertsEnabled ? l10n.text("permissionAllowed") : l10n.text("permissionAllowedBannersOff")
         case .provisional: l10n.text("permissionProvisional")
         case .ephemeral: l10n.text("permissionEphemeral")
         case .denied: l10n.text("permissionDenied")
@@ -94,7 +94,7 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
     }
 
     private func authorizeIfNeeded() async throws {
-        let settings = await center.notificationSettings()
+        let settings = await notificationSettingsSnapshot()
         switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             return
@@ -106,6 +106,32 @@ final class YCodeSystemNotificationCoordinator: NSObject, UNUserNotificationCent
             throw YCodeSystemNotificationError.permissionDenied
         @unknown default:
             throw YCodeSystemNotificationError.permissionDenied
+        }
+    }
+
+    private struct NotificationSettingsSnapshot: Sendable {
+        let authorizationStatus: UNAuthorizationStatus
+        let alertsEnabled: Bool
+    }
+
+    // Older SDKs do not mark notification objects Sendable. Read them in the
+    // completion handler and pass only value snapshots back to the main actor.
+    private func notificationSettingsSnapshot() async -> NotificationSettingsSnapshot {
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: NotificationSettingsSnapshot(
+                    authorizationStatus: settings.authorizationStatus,
+                    alertsEnabled: settings.alertSetting == .enabled
+                ))
+            }
+        }
+    }
+
+    private func hasDeliveredNotification(identifier: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            center.getDeliveredNotifications { notifications in
+                continuation.resume(returning: notifications.contains { $0.request.identifier == identifier })
+            }
         }
     }
 

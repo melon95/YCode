@@ -524,6 +524,7 @@ extension WorkspaceModel {
     }
 }
 
+@MainActor
 enum YCodeAppearanceProbe {
     /// 当前系统外观是不是深色。
     static var prefersDark: Bool {
