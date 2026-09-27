@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import YCodeCore
@@ -98,6 +99,61 @@ struct AgentHookNotificationTests {
         #expect(secondWindowRecorder.events.last?.terminalID == "session-two")
     }
 
+    @Test("listener waits for delayed payloads and split newline frames", arguments: [false, true])
+    func delayedSocketDelivery(splitFrame: Bool) async throws {
+        let fixture = try HookListenerFixture()
+        defer { fixture.remove() }
+        let recorder = EventRecorder()
+        let token = fixture.center.addObserver(forName: .ycodeAgentHookEvent, object: nil, queue: nil) { note in
+            if let event = note.object as? YCodeAgentHookEvent { recorder.append(event) }
+        }
+        defer { fixture.center.removeObserver(token) }
+        try fixture.listener.start()
+
+        let descriptor = try connectSocket(to: fixture.socket)
+        defer { Darwin.close(descriptor) }
+        let payload = Data(json([
+            "terminal_id": "delayed-session", "source": "codex", "event": "turn_complete"
+        ]).utf8)
+        if splitFrame { try writeSocket(payload, to: descriptor) }
+        // Give accept/read time to run before the first bytes or the framing newline
+        // arrive. This delay stays within the listener's existing 200 ms read timeout.
+        usleep(50_000)
+        try writeSocket(splitFrame ? Data([10]) : payload + Data([10]), to: descriptor)
+
+        try await waitUntil { recorder.events.count == 1 }
+        #expect(recorder.events.map(\.terminalID) == ["delayed-session"])
+        #expect(recorder.events.first?.eventKind == "turn_complete")
+    }
+
+    @Test("unfinished frames time out without blocking the next notification")
+    func unfinishedFrameTimesOut() async throws {
+        let fixture = try HookListenerFixture()
+        defer { fixture.remove() }
+        let recorder = EventRecorder()
+        let token = fixture.center.addObserver(forName: .ycodeAgentHookEvent, object: nil, queue: nil) { note in
+            if let event = note.object as? YCodeAgentHookEvent { recorder.append(event) }
+        }
+        defer { fixture.center.removeObserver(token) }
+        try fixture.listener.start()
+        let descriptor = try connectSocket(to: fixture.socket)
+        defer { Darwin.close(descriptor) }
+        try writeSocket(Data(json(["terminal_id": "unfinished-session"]).utf8), to: descriptor)
+        var pending = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+        try #require(Darwin.poll(&pending, 1, 2_000) > 0, "Listener did not close the unfinished frame")
+        var byte: UInt8 = 0
+        try #require(Darwin.read(descriptor, &byte, 1) == 0)
+
+        try runHelper(
+            executable: try helperExecutable(),
+            arguments: ["turn_complete", "codex"],
+            environment: ["YCODE_TERMINAL_ID": "next-session", "YCODE_NOTIFY_SOCK": fixture.socket.path],
+            stdin: ""
+        )
+        try await waitUntil { recorder.events.count == 1 }
+        #expect(recorder.events.map(\.terminalID) == ["next-session"])
+    }
+
     @Test("notification delivery policy respects master and focus gates")
     func notificationPolicy() {
         #expect(!YCodeNotificationPolicy.shouldDeliver(
@@ -157,6 +213,46 @@ struct AgentHookNotificationTests {
         let deadline = clock.now.advanced(by: .seconds(2))
         while !condition(), clock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         #expect(condition())
+    }
+
+    private func connectSocket(to url: URL) throws -> Int32 {
+        let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        try #require(descriptor >= 0)
+        do {
+            var noSigPipe: Int32 = 1
+            try #require(setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe,
+                                   socklen_t(MemoryLayout<Int32>.size)) == 0)
+            var address = sockaddr_un()
+            let bytes = Array(url.path.utf8) + [0]
+            try #require(bytes.count <= MemoryLayout.size(ofValue: address.sun_path))
+            address.sun_family = sa_family_t(AF_UNIX)
+            let length = (MemoryLayout.offset(of: \sockaddr_un.sun_path) ?? 0) + bytes.count
+            address.sun_len = UInt8(length)
+            withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+            let result = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.connect(descriptor, $0, socklen_t(length))
+                }
+            }
+            try #require(result == 0)
+            return descriptor
+        } catch {
+            Darwin.close(descriptor)
+            throw error
+        }
+    }
+
+    private func writeSocket(_ data: Data, to descriptor: Int32) throws {
+        try data.withUnsafeBytes { bytes in
+            let base = try #require(bytes.baseAddress)
+            var sent = 0
+            while sent < bytes.count {
+                let count = Darwin.write(descriptor, base.advanced(by: sent), bytes.count - sent)
+                if count < 0, errno == EINTR { continue }
+                try #require(count > 0, "Socket write failed: errno \(errno)")
+                sent += count
+            }
+        }
     }
 }
 

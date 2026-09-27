@@ -272,12 +272,19 @@ public final class YCodeAgentHookListener: @unchecked Sendable {
 
     private func readConnection(_ descriptor: Int32) {
         defer { Darwin.close(descriptor) }
+        // Darwin accept inherits O_NONBLOCK from the listening socket. Clear it
+        // so a sender can finish its newline frame within the receive timeout.
+        let flags = fcntl(descriptor, F_GETFL)
+        guard flags >= 0, fcntl(descriptor, F_SETFL, flags & ~O_NONBLOCK) == 0 else { return }
         var timeout = timeval(tv_sec: 0, tv_usec: 200_000)
+        // A helper may already have closed its side; drain its buffered frame
+        // even if Darwin can no longer set socket options on that connection.
         setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)
         while data.count < 128 * 1024 {
             let count = Darwin.read(descriptor, &buffer, min(buffer.count, 128 * 1024 - data.count))
+            if count < 0, errno == EINTR { continue }
             if count <= 0 { break }
             data.append(buffer, count: count)
             if buffer.prefix(count).contains(10) { break }
