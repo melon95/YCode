@@ -64,7 +64,9 @@ struct YCodeAgentIconView: View {
         switch profile?.icon {
         case "ClaudeCode", "Claude", "Anthropic": return Color.ycodeDynamic(light: "C15F3C", dark: "D97757")
         case "GeminiCLI", "Gemini", "Google": return Color.ycodeDynamic(light: "1A73E8", dark: "6BA1FF")
-        default: return Color.accentColor
+        // 没有品牌色的单色图标（Pi、Grok 等）用官网的 agent 蓝：
+        // 用应用强调色的话会和 Claude 的橙色撞在一起，侧栏里分不清是哪个 agent。
+        default: return Color.ycodeDynamic(light: "2F6FED", dark: "6BA1FF")
         }
     }
 }

@@ -18,7 +18,7 @@ struct YCodeFileIconView: View {
                     .aspectRatio(contentMode: .fit)
             } else {
                 Image(systemName: isDirectory ? "folder.fill" : "doc")
-                    .foregroundStyle(isDirectory ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isDirectory ? Color.ycodeAccent : Color.secondary)
             }
         }
         .frame(width: size, height: size)

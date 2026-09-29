@@ -53,7 +53,9 @@ struct TerminalWorkspaceView: View {
     private var terminalCanvas: some View {
         let panes = canvasPanes
         let layout = YCodeTerminalLayout.reflow(model.terminalLayout, for: panes.count)
-        return TerminalCanvasView(panes: panes, layout: layout) { item in
+        // 只有一个窗格时不标焦点，与窗格自己的描边规则一致。
+        let focusedID = panes.count > 1 ? model.focusedCanvasSessionID : nil
+        return TerminalCanvasView(panes: panes, layout: layout, focusedID: focusedID) { item in
             pane(item, standalone: panes.count == 1)
         }
     }
@@ -87,30 +89,28 @@ struct TerminalWorkspaceView: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: YCodeMetrics.paneHeaderHeight)
-                .background(Color(nsColor: .controlBackgroundColor))
-                Divider()
+                Rectangle().fill(Color.ycodeHairline).frame(height: 1)
             }
             NewSessionPickerView(model: model)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.ycodeCard)
     }
 
     private func terminalPane(_ session: SessionMetadata, slot: Int) -> some View {
         let focused = slot == model.focusedCanvasSlot
+        // 只有画布上不止一个窗格时，「哪个是焦点」才需要标出来。
+        let marked = focused && model.visibleSessionIDs.count > 1
         return VStack(spacing: 0) {
-            paneHeader(session, slot: slot, focused: focused)
-            Divider()
+            paneHeader(session, slot: slot, focused: marked)
+            Rectangle().fill(Color.ycodeHairline).frame(height: 1)
             if model.terminalSearchSessionID == session.id { searchBar }
             paneBody(session, slot: slot)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .overlay {
-            // 焦点有两层标记：窗格头带强调底色，窗格四周一圈 1px 强调描边（设计稿 §04 标注 1）。
-            RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
-                .stroke(focused ? Color.accentColor : Color.clear, lineWidth: 1)
-        }
+        // 焦点只有一种表达（视觉方向 B）：卡片一圈 1px 强调描边加外侧光晕，都由画布画
+        // （描边在窗格的裁切层上，布局切换时始终完整）；窗格头不再整条上色。
+        .background(Color(nsColor: model.activeTheme.nsTerminalBackground))
     }
 
     /// 窗格头 28px，只放会话本身：状态点、agent 图标、名称、⌘⇧N、移出画布。
@@ -121,7 +121,8 @@ struct TerminalWorkspaceView: View {
             YCodeStatusDot(presence: model.presence(for: session))
             YCodeAgentIconView(profile: model.agentProfiles.first { $0.id == session.agentProfile }, size: 12)
             Text(model.displayName(for: session))
-                .font(.caption.weight(.medium))
+                .font(.caption.weight(focused ? .semibold : .medium))
+                .foregroundStyle(focused ? Color.primary : Color.secondary)
                 .lineLimit(1)
             Spacer(minLength: 4)
             Text("⌘⇧\(slot + 1)")
@@ -134,9 +135,8 @@ struct TerminalWorkspaceView: View {
             .foregroundStyle(.secondary)
             .help(l10n.text("hideDoNotStopAgent"))
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .frame(height: YCodeMetrics.paneHeaderHeight)
-        .background(focused ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .onTapGesture { model.focusCanvasSlot(slot) }
         .contextMenu { paneMenu(session, slot: slot) }
@@ -201,7 +201,11 @@ struct TerminalWorkspaceView: View {
             ) { result, generation in
                 model.updateTerminalSearchResult(result, generation: generation)
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            // 终端离卡片边缘留一点呼吸空间，字不再贴着圆角。
+            .padding(.leading, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            .background(Color(nsColor: model.activeTheme.nsTerminalBackground))
         } else if let failure = model.startError(for: session.id) {
             // 启动失败才有例外：命令找不到、worktree 路径不存在这类硬失败，就地给原因与重试。
             VStack(spacing: 10) {
@@ -253,35 +257,39 @@ struct WorkspaceInspectorView: View {
                 .frame(width: model.resolvedPanelColumnWidth)
             }
         }
+        // 面板卡与画布窗格一样浮在底色上：外侧留白与画布的留白同宽，顶上留出与卡缝一样的一段。
+        .padding(.top, YCodeMetrics.panelCardGap)
+        .padding([.trailing, .bottom], YCodeMetrics.panelCardGap)
         // 靠左钉住：容器还没长到位的那几帧，多出来的那列先探到窗口右缘外面，由窗口裁掉。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(Color.ycodeChrome)
     }
 
-    /// 卡与卡、列与列之间的 5 px 隔条（设计稿 §07 的 `.grip`）。一条 1 px 的线不够 ——
-    /// 上一张卡的最后一行会像是直接续在下一张的卡头上，两列之间的两片内容也会连成一片。
+    /// 卡与卡、列与列之间的缝。浮卡之间露出的底色就是分隔，不再画隔条。
     private func panelGrip(vertical: Bool) -> some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(width: vertical ? YCodeMetrics.panelGrip : nil,
-                   height: vertical ? nil : YCodeMetrics.panelGrip)
+        Color.clear
+            .frame(width: vertical ? YCodeMetrics.panelCardGap : nil,
+                   height: vertical ? nil : YCodeMetrics.panelCardGap)
     }
 
     /// 卡本身不画卡头 —— 卡头交给面板自己，好让面板把自己的动作按钮摆进同一行。
     private func panelCard(_ panel: YCodeWorkspacePanel, headOfColumn: Bool) -> some View {
-        panelBody(panel, spec: headerSpec(panel, headOfColumn: headOfColumn))
+        let shape = RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard, style: .continuous)
+        return panelBody(panel, spec: headerSpec(panel, headOfColumn: headOfColumn))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.ycodeCard)
+            .clipShape(shape)
+            .ycodeCard(cornerRadius: YCodeMetrics.radiusCard)
     }
 
-    /// 列首那张 44（与画布顶栏同高），其余 30。
+    /// 列首那张的卡头下沿与画布顶栏下沿对齐（顶上让出卡缝），其余 30。
     /// 没有折叠箭头 —— 一张收起来的卡只剩一条占着高度的卡头，要它不如直接 ✕ 关掉；
     /// ✕ 等同于灭掉画布顶栏上那个开关，再点亮就回来。
     private func headerSpec(_ panel: YCodeWorkspacePanel, headOfColumn: Bool) -> YCodePanelHeaderSpec {
         YCodePanelHeaderSpec(
             panel: panel,
             badge: badgeCount(panel),
-            height: headOfColumn ? YCodeMetrics.topBarHeight : YCodeMetrics.panelHeaderHeight,
+            height: headOfColumn ? YCodeMetrics.topBarHeight - YCodeMetrics.panelCardGap : YCodeMetrics.panelHeaderHeight,
             close: { model.togglePanel(panel) },
             moveUp: { model.movePanel(panel, by: -1) },
             moveDown: { model.movePanel(panel, by: 1) },

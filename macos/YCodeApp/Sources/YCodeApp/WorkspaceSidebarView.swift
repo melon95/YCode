@@ -19,9 +19,9 @@ struct WorkspaceSidebarView: View {
     @State private var hoveredSessionID: String?
 
     var body: some View {
+        // 侧栏融进窗口底色，不画分隔线（视觉方向 B）：顶栏、列表、底栏靠留白分开。
         VStack(spacing: 0) {
             topBar
-            Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(visibleProjects) { project in
@@ -31,9 +31,9 @@ struct WorkspaceSidebarView: View {
                 .padding(.vertical, 6)
             }
             .overlay { if model.projects.isEmpty { emptyProjects } }
-            Divider()
             footer
         }
+        // 铺品牌底色而不是露出系统材质：macOS 26 的侧栏玻璃是偏冷的灰，跟画布的紫调底色对不上。
         .background(Color.ycodeChrome)
     }
 
@@ -113,7 +113,7 @@ struct WorkspaceSidebarView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         // 过滤器不在默认档位时按钮变色 —— 否则「我的会话去哪了」没有任何线索。
-        .foregroundStyle(isFiltering ? Color.accentColor : Color.secondary)
+        .foregroundStyle(isFiltering ? Color.ycodeAccent : Color.secondary)
         .frame(width: 22, height: 24)
         .help(l10n.text("sessionFilters"))
     }
@@ -225,7 +225,7 @@ struct WorkspaceSidebarView: View {
             YCodeAgentIconView(
                 profile: model.agentProfiles.first { $0.id == session.agentProfile },
                 size: 13,
-                tint: selected ? Color.white.opacity(0.9) : nil
+                tint: nil
             )
             .frame(width: 16, height: 16)
             .overlay(alignment: .topTrailing) {
@@ -233,14 +233,14 @@ struct WorkspaceSidebarView: View {
                     // 归档的会话没有运行时，状态无从谈起 —— 用箱子说明它在哪。
                     Image(systemName: "archivebox.fill")
                         .font(.system(size: 7))
-                        .foregroundStyle(selected ? Color.white.opacity(0.85) : Color.secondary)
+                        .foregroundStyle(Color.secondary)
                         .padding(1)
-                        .background(Circle().fill(selected ? Color.accentColor : Color.ycodeChrome))
+                        .background(Circle().fill(selected ? Color.ycodeSelection : Color.ycodeChrome))
                         .offset(x: 3, y: -3)
                 } else {
                     YCodeStatusBadge(
                         presence: model.presence(for: session),
-                        ringColor: selected ? Color.accentColor : Color.ycodeChrome
+                        ringColor: selected ? Color.ycodeSelection : Color.ycodeChrome
                     )
                     .offset(x: 2, y: -2)
                 }
@@ -259,7 +259,7 @@ struct WorkspaceSidebarView: View {
                     // 只有上了画布的行才带格位徽标，没上画布的右侧就是空的（设计稿 §04 标注 4）。
                     Text("⌘⇧\(slot + 1)")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(selected ? Color.white.opacity(0.75) : Color.ycodeLabel3)
+                        .foregroundStyle(Color.ycodeLabel3)
                         .opacity(hoveredSessionID == session.id ? 0 : 1)
                 }
                 Menu {
@@ -274,7 +274,7 @@ struct WorkspaceSidebarView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .foregroundStyle(selected ? Color.white.opacity(0.9) : Color.secondary)
+                .foregroundStyle(Color.secondary)
                 .help(l10n.text("sessionActions"))
                 .opacity(hoveredSessionID == session.id ? 1 : 0)
                 // 淡出的那枚不能还接得住点击，否则鼠标停在格位徽标上也能拉开菜单。
@@ -288,8 +288,9 @@ struct WorkspaceSidebarView: View {
         // 选中 / hover / 按下三态统一走 ycodeRow：改之前这一行只认「选中」，
         // 指针扫过整条侧栏没有任何反馈，按下去也没有 —— 点击是否落在这一行，
         // 唯一的线索是列表事后变了。
-        .ycodeRow(isSelected: selected, selection: .fill, horizontalInset: 8)
-        .foregroundStyle(selected ? Color.white : (archived ? Color.secondary : Color.primary))
+        .ycodeRow(isSelected: selected, selection: .raised, horizontalInset: 8)
+        .foregroundStyle(archived ? Color.secondary : Color.primary)
+        .fontWeight(selected ? .medium : .regular)
         .padding(.horizontal, 8)
         // 归档的点不开 —— 它没有运行时，双击就是「我要它回来」。
         //
@@ -316,7 +317,7 @@ struct WorkspaceSidebarView: View {
             Text(l10n.text("newSessionFallback"))
                 .font(.body.italic())
                 .lineLimit(1)
-                .foregroundStyle(selected ? Color.white.opacity(0.8) : .secondary)
+                .foregroundStyle(.secondary)
         }
     }
 

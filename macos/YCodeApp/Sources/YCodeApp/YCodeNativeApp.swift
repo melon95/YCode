@@ -119,7 +119,7 @@ private struct DeferredNativeRootView: View {
             if isReady {
                 NativeRootView()
             } else {
-                Color(nsColor: .windowBackgroundColor)
+                Color.ycodeChrome
                     .overlay { ProgressView().controlSize(.small) }
             }
         }
@@ -208,9 +208,8 @@ private struct NativeRootView: View {
             .dynamicTypeSize(model.uiDynamicTypeSize)
             .preferredColorScheme(model.preferredColorScheme)
             .tint(Color(hex: model.activeTheme.accent))
-            // 窗口底色交给系统：主题的 background 是给终端画布用的深色，
-            // 铺在窗口上会在浅色外观下从各栏之间的缝隙里露出一条黑边。
-            .background(Color(nsColor: .windowBackgroundColor))
+            // 窗口底色就是侧栏、顶栏、画布缝隙共用的那一层，窗格与卡片浮在它上面。
+            .background(Color.ycodeChrome)
     }
 
     private var baseWorkspace: some View {
@@ -243,9 +242,9 @@ private struct NativeRootView: View {
             // 面板区一旦超宽，那个宽度就跟着变大，等于拿自己的结果给自己当上限，钳不住。
             GeometryReader { proxy in
                 HStack(spacing: 0) {
+                    // 顶栏与画布之间不画线：顶栏融进底色，下面的窗格是浮卡，层次由卡片表达。
                     VStack(spacing: 0) {
                         canvasTopBar
-                        Divider()
                         projectDetail
                     }
                     .frame(minWidth: YCodeMetrics.canvasMinWidth, maxWidth: .infinity, maxHeight: .infinity)
@@ -533,12 +532,12 @@ private struct NativeRootView: View {
             .frame(height: 64)
             .background(
                 RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
-                    .fill(isDropTargeted ? Color.accentColor.opacity(0.10) : .clear)
+                    .fill(isDropTargeted ? Color.ycodeAccent.opacity(0.10) : .clear)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
                     .strokeBorder(
-                        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.35),
+                        isDropTargeted ? Color.ycodeAccent : Color.secondary.opacity(0.35),
                         style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4, 3])
                     )
             }
@@ -557,8 +556,7 @@ private struct NativeRootView: View {
         }
         .padding(24)
         .frame(width: 452)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusSheet))
-        .overlay { RoundedRectangle(cornerRadius: YCodeMetrics.radiusSheet).stroke(Color.secondary.opacity(0.18)) }
+        .ycodeCard()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
@@ -730,8 +728,9 @@ private struct NativeRootView: View {
 
     /// 画布与面板区之间的分隔条。列宽在 260–460 之间，画布最小 420。
     private var panelAreaDivider: some View {
+        // 面板区与画布之间也不画线：两边都是浮卡，中间露出的底色就是分隔。只留拖动命中区。
         Rectangle()
-            .fill(Color.primary.opacity(0.08))
+            .fill(Color.clear)
             .frame(width: 1)
             .overlay {
                 Rectangle()
@@ -759,7 +758,7 @@ private struct NativeRootView: View {
                 .overlay(alignment: .topTrailing) {
                     if panelHasContent(panel) {
                         Circle()
-                            .fill(Color.accentColor)
+                            .fill(Color.ycodeAccent)
                             .frame(width: 4, height: 4)
                             .offset(x: 4, y: -2)
                     }

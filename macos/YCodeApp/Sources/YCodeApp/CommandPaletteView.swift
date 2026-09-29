@@ -105,15 +105,16 @@ struct CommandPaletteView: View {
             Spacer(minLength: 8)
             Text(item.detail)
                 .font(.caption)
-                .foregroundStyle(active ? Color.white.opacity(0.8) : .secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .frame(height: YCodeMetrics.rowHeight)
         // 原先只认键盘高亮项：用鼠标在面板里移动时一片死寂，必须先按方向键
         // 才知道自己指着哪一条。现在 hover 与键盘高亮是同一套底。
-        .ycodeRow(isSelected: active, selection: .fill, horizontalInset: 8)
-        .foregroundStyle(active ? Color.white : Color.primary)
+        // 命令面板本身就是白底浮层，浮起的小卡片在上面看不出来；用淡强调色底，字色不变。
+        .ycodeRow(isSelected: active, selection: .tint, horizontalInset: 8)
+        .foregroundStyle(Color.primary)
         .padding(.horizontal, 8)
         .onTapGesture {
             item.run()

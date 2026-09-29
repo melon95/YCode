@@ -35,10 +35,12 @@ struct NewSessionPickerView: View {
 
     private func card(compact: Bool) -> some View {
         VStack(spacing: 0) {
-            ycodeLogo(size: compact ? 28 : 36)
-                .padding(.bottom, compact ? 7 : 10)
+            ycodeLogo(size: compact ? 32 : 44)
+                .shadow(color: Color.ycodeShadow, radius: 6, y: 3)
+                .padding(.bottom, compact ? 9 : 14)
             Text(l10n.text("newSessionTitle"))
-                .font(compact ? .headline : .title3.weight(.semibold))
+                .font(compact ? .headline : .title2.weight(.semibold))
+                .tracking(-0.2)
             Text(model.selectedProject.map { l10n.text("newSessionSubtitleFormat", $0.name) } ?? l10n.text("newSessionSubtitleNoProject"))
                 .font(compact ? .caption : .subheadline)
                 .foregroundStyle(.secondary)
@@ -47,15 +49,12 @@ struct NewSessionPickerView: View {
 
             agents(compact: compact)
 
-            Divider().padding(.top, compact ? 9 : 17).padding(.bottom, compact ? 8 : 15)
+            Rectangle().fill(Color.ycodeHairline).frame(height: 1)
+                .padding(.top, compact ? 10 : 18).padding(.bottom, compact ? 8 : 14)
             foot(compact: compact)
         }
+        // 选择器本身就放在一张浮卡（画布窗格）里，不再套第二层卡片。
         .padding(compact ? 13 : 22)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: compact ? 10 : 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: compact ? 10 : 14)
-                .stroke(Color.secondary.opacity(0.18))
-        }
     }
 
     /// agent 横排一行 —— 选一个是一次横向扫视，不是一列待读的清单。
@@ -64,7 +63,7 @@ struct NewSessionPickerView: View {
             ForEach(model.availableAgentProfiles) { profile in
                 let starting = startingProfileID == profile.id
                 Button { start(profile) } label: {
-                    VStack(spacing: compact ? 4 : 6) {
+                    VStack(spacing: compact ? 4 : 7) {
                         ZStack {
                             YCodeAgentIconView(profile: profile, size: compact ? 18 : 24)
                                 .opacity(starting ? 0 : 1)
@@ -76,13 +75,9 @@ struct NewSessionPickerView: View {
                             .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, compact ? 8 : 12)
-                    .background(
-                        Color.secondary.opacity(starting ? 0.16 : 0.08),
-                        in: RoundedRectangle(cornerRadius: compact ? 8 : 10)
-                    )
+                    .padding(.vertical, compact ? 9 : 14)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(YCodeAgentTileStyle(active: starting, cornerRadius: compact ? 8 : YCodeMetrics.radiusCard))
                 .disabled(startingProfileID != nil)
             }
             if model.availableAgentProfiles.isEmpty {
@@ -158,6 +153,46 @@ struct NewSessionPickerView: View {
             )
             // 成功的话这个视图已经被终端替掉了；失败时要把按钮放回可点状态。
             startingProfileID = nil
+        }
+    }
+}
+
+/// 新会话里的 agent 按钮：白色小卡片，悬停时一圈强调色描边加淡光晕，按下时略微压低。
+/// 之前是四块没有任何反馈的灰色色块，看不出哪个能点、指针在哪一个上。
+private struct YCodeAgentTileStyle: ButtonStyle {
+    var active: Bool
+    var cornerRadius: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        Tile(configuration: configuration, active: active, cornerRadius: cornerRadius)
+    }
+
+    private struct Tile: View {
+        let configuration: ButtonStyleConfiguration
+        let active: Bool
+        let cornerRadius: CGFloat
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            let lit = active || (hovering && isEnabled)
+            configuration.label
+                .background {
+                    shape.fill(active ? Color.ycodeAccent.opacity(0.10) : Color.ycodeSelection)
+                        .shadow(color: Color.ycodeShadow, radius: configuration.isPressed ? 0.5 : 1.5,
+                                y: configuration.isPressed ? 0 : 1)
+                }
+                .overlay { shape.strokeBorder(lit ? Color.ycodeAccent : Color.ycodeHairline, lineWidth: 1) }
+                .background {
+                    // 光晕画在卡片外侧，不占布局。
+                    shape.stroke(Color.ycodeAccent.opacity(lit ? 0.16 : 0), lineWidth: 6)
+                }
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+                .contentShape(shape)
+                .onHover { hovering = $0 }
+                .animation(YCodeMotion.hover, value: hovering)
+                .animation(YCodeMotion.hover, value: configuration.isPressed)
         }
     }
 }

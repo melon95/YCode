@@ -27,6 +27,11 @@ struct TerminalCanvasTransitionTests {
         canvas.layoutSubtreeIfNeeded()
     }
 
+    /// Width available to panes inside the canvas' outer margin.
+    private var contentWidth: CGFloat {
+        1000 - YCodeCanvasHost<String>.insets.left - YCodeCanvasHost<String>.insets.right
+    }
+
     private func slots(_ canvas: YCodeCanvasHost<String>) -> [YCodeCanvasPane] {
         canvas.subviews.compactMap { $0 as? YCodeCanvasPane }
     }
@@ -57,7 +62,7 @@ struct TerminalCanvasTransitionTests {
         #expect(canvas.isTransitioning)
         #expect(live(canvas).map(ObjectIdentifier.init) == oldHosts.map(ObjectIdentifier.init))
         // Terminals are resized once, to the destination, and stay visible.
-        #expect(live(canvas).allSatisfy { $0.frame.width == 1000 && $0.alphaValue == 1 })
+        #expect(live(canvas).allSatisfy { $0.frame.width == contentWidth && $0.alphaValue == 1 })
         #expect(snapshots(canvas).count == 2)
         for (index, pane) in slots(canvas).enumerated() {
             let snapshot = try #require(pane.snapshot)
@@ -167,7 +172,9 @@ struct TerminalCanvasTransitionTests {
         #expect(ghosts.count == 1)
         canvas.cancelTransition()
         #expect(snapshots(canvas).isEmpty)
-        #expect(canvas.subviews.count == 1)
+        // One floating card plus the shadow view drawn behind it.
+        #expect(canvas.subviews.count == 2)
+        #expect(slots(canvas).first.map { canvas.subviews.contains($0.cardShadow) } == true)
         #expect(slots(canvas).first?.alphaValue == 1)
     }
 
@@ -191,7 +198,9 @@ struct TerminalCanvasTransitionTests {
             if let color = pixels.colorAt(x: x, y: 8)?.usingColorSpace(.deviceRGB), color.redComponent < 0.5 { dark += 1 }
         }
         #expect(dark > 0)
-        #expect(snapshot.size == CGSize(width: 497.5, height: 700))
+        let insets = YCodeCanvasHost<String>.insets
+        #expect(snapshot.size == CGSize(width: (contentWidth - YCodeCanvasHost<String>.paneGap) / 2,
+                                        height: 700 - insets.top - insets.bottom))
     }
 }
 

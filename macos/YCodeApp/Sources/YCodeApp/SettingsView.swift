@@ -259,19 +259,21 @@ struct BasicSettingsView: View {
             Image(systemName: section.icon)
                 .font(.system(size: 13))
                 .frame(width: 18)
-                .foregroundStyle(selected ? Color.white : Color.accentColor)
+                .foregroundStyle(Color.ycodeAccent)
             Text(section.localizedTitle(l10n))
-                .font(.system(size: 13))
+                .font(.system(size: 13, weight: selected ? .medium : .regular))
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .frame(height: 26)
+        // 与主窗口侧栏同一种选中态：浮起的小卡片，字色不变（珊瑚底上的白字只有 3:1）。
         .background(
-            RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius)
-                .fill(selected ? Color.accentColor : .clear)
+            RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius, style: .continuous)
+                .fill(selected ? Color.ycodeSelection : .clear)
+                .shadow(color: selected ? Color.ycodeShadow : .clear, radius: 1, y: 1)
         )
-        .foregroundStyle(selected ? Color.white : Color.primary)
+        .foregroundStyle(Color.primary)
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
         .onTapGesture { selectedSection = section }
@@ -636,7 +638,7 @@ private struct AgentBadge: View {
     let profile: YCodeAgentProfile
 
     private var tint: Color {
-        guard let raw = profile.color, let color = NSColor(hex: raw) else { return .accentColor }
+        guard let raw = profile.color, let color = NSColor(hex: raw) else { return .ycodeAccent }
         return Color(nsColor: color)
     }
 

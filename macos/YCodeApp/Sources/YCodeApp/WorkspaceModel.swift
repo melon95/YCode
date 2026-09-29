@@ -108,12 +108,13 @@ final class WorkspaceModel: ObservableObject {
         availableDetailWidth = width
     }
 
-    /// 面板区总宽 = 列宽 × 列数 + 列间那几条隔条。面板铺满整列，四周不留白边。
+    /// 面板区总宽 = 列宽 × 列数 + 列间的缝 + 右侧留白（面板是浮卡，外侧留一条与卡缝同宽的底色）。
     /// 往宽了不设上限，只有一条硬底线：画布不能被挤到 `canvasMinWidth` 以下。
     /// 窗口变窄或多开一列时也走这里 —— 让步的是面板区，不是画布。
     var panelAreaWidth: CGFloat {
         let columns = max(1, panelColumns.count)
         let raw = panelColumnWidth * CGFloat(columns) + YCodeMetrics.panelGrip * CGFloat(columns - 1)
+            + YCodeMetrics.panelCardGap
         return min(raw, maximumPanelAreaWidth ?? raw)
     }
 
@@ -122,7 +123,7 @@ final class WorkspaceModel: ObservableObject {
     /// 加列时容器宽是动画着长的，等分的话开头那一帧原有的列会被压成一半再撑开。
     var resolvedPanelColumnWidth: CGFloat {
         let columns = max(1, panelColumns.count)
-        let grips = YCodeMetrics.panelGrip * CGFloat(columns - 1)
+        let grips = YCodeMetrics.panelGrip * CGFloat(columns - 1) + YCodeMetrics.panelCardGap
         return max(YCodeMetrics.panelColumnMinWidth, (panelAreaWidth - grips) / CGFloat(columns))
     }
 
@@ -136,7 +137,7 @@ final class WorkspaceModel: ObservableObject {
 
     func dragPanelArea(by delta: CGFloat) {
         let columns = max(1, panelColumns.count)
-        let grips = YCodeMetrics.panelGrip * CGFloat(columns - 1)
+        let grips = YCodeMetrics.panelGrip * CGFloat(columns - 1) + YCodeMetrics.panelCardGap
         let next = panelColumnWidth + delta / CGFloat(columns)
         let ceiling = maximumPanelAreaWidth.map { max(YCodeMetrics.panelColumnMinWidth, ($0 - grips) / CGFloat(columns)) }
         panelColumnWidth = min(max(next, YCodeMetrics.panelColumnMinWidth), ceiling ?? .greatestFiniteMagnitude)

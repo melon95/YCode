@@ -26,7 +26,9 @@ public struct YCodeTerminalCanvasGeometry {
     public private(set) var frames: [CGRect] = []
     public private(set) var dividers: [Divider] = []
 
-    public init(layout: YCodeTerminalLayout, count: Int, size: CGSize, weights: [String: [CGFloat]] = [:]) {
+    /// `gap` 是窗格之间的缝，也是分隔条的命中宽度；浮卡布局传 8，贴合布局用默认的 5。
+    public init(layout: YCodeTerminalLayout, count: Int, size: CGSize, weights: [String: [CGFloat]] = [:],
+                gap preferredGap: CGFloat = 5) {
         guard count > 0 else { return }
         let count = min(count, YCodeTerminalCanvasRouting.maximumVisibleSessions)
         let layout = YCodeTerminalLayout.reflow(layout, for: count)
@@ -34,7 +36,7 @@ public struct YCodeTerminalCanvasGeometry {
         func split(_ rect: CGRect, count: Int, vertical: Bool, group: String, defaults: [CGFloat]? = nil) -> [CGRect] {
             guard count > 1 else { return [rect] }
             let total = vertical ? rect.width : rect.height
-            let gap = min(5, total / CGFloat(count - 1))
+            let gap = min(preferredGap, total / CGFloat(count - 1))
             let available = max(0, total - gap * CGFloat(count - 1))
             let proposed = weights[group] ?? defaults ?? Array(repeating: 1, count: count)
             let valid = proposed.count == count && proposed.allSatisfy { $0.isFinite && $0 > 0 }

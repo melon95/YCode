@@ -104,18 +104,20 @@ public enum YCodeThemeCatalog {
     public static let systemID = "system"
     public static let defaultID = systemID
 
+    // 品牌色取自应用图标与官网（docs/ui-visual-direction.html 方向 B）：
+    // 珊瑚强调、深墨文字、向日葵黄光标，底色带一点紫调。
     public static let light = YCodeThemeOption(
         id: "light", label: "Light", systemColorScheme: "light",
-        background: "#ffffff", surface: "#f4f4f6", panel: "#fbfbfc",
-        text: "#1d1d1f", textSoft: "#5a5a5e", accent: "#0b63e5",
-        terminal: .init(background: "#ffffff", foreground: "#1d1d1f", cursor: "#0b63e5")
+        background: "#efeef4", surface: "#fcfcfe", panel: "#fcfcfe",
+        text: "#16133a", textSoft: "#6a6787", accent: "#ff5a4e",
+        terminal: .init(background: "#fcfcfe", foreground: "#16133a", cursor: "#ff5a4e")
     )
 
     public static let dark = YCodeThemeOption(
         id: "dark", label: "Dark", systemColorScheme: "dark",
-        background: "#1e1e20", surface: "#242426", panel: "#242426",
-        text: "#f2f2f4", textSoft: "#b4b4b8", accent: "#4c8dff",
-        terminal: .init(background: "#16181d", foreground: "#e8e8ea", cursor: "#4c8dff")
+        background: "#110f28", surface: "#1b1840", panel: "#1b1840",
+        text: "#f1f0f8", textSoft: "#8d89ad", accent: "#ff7d72",
+        terminal: .init(background: "#1b1840", foreground: "#e6e3f2", cursor: "#ffc83d")
     )
 
     public static let options: [YCodeThemeOption] = [light, dark]

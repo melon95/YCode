@@ -191,7 +191,7 @@ private struct YCodeEditorWorkspaceView: View {
             Label(title, systemImage: systemImage)
                 .labelStyle(.iconOnly)
                 .frame(width: 24, height: 22)
-                .background(document.presentation == value ? Color.accentColor.opacity(0.16) : Color.clear)
+                .background(document.presentation == value ? Color.ycodeAccent.opacity(0.16) : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip))
         }
         .buttonStyle(.plain)
@@ -648,7 +648,7 @@ private struct YCodeEditorTabStrip: View {
         .font(.system(size: 11))
         .padding(.horizontal, 8)
         .frame(height: 24)
-        .background(workspace.tabs.selectedPath == path ? Color.accentColor.opacity(0.15) : Color.clear)
+        .background(workspace.tabs.selectedPath == path ? Color.ycodeAccent.opacity(0.15) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius))
         .help(workspace.tabs.previewPath == path ? l10n.text("previewTabHelpFormat", path) : path)
     }

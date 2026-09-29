@@ -146,7 +146,7 @@ struct ChangesPanelView: View {
                     .font(.system(size: 8, weight: .semibold))
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(Color.ycodeAccentText)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

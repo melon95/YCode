@@ -17,7 +17,9 @@ enum YCodeMetrics {
     /// 画布顶栏 = 面板区第一张卡的卡头：全窗顶上只有这一条横向元素（设计稿 §04）。
     static let topBarHeight: CGFloat = 44
     /// 面板区里卡与卡、列与列之间那条隔条（设计稿 §07 的 `.grip`）。
-    static let panelGrip: CGFloat = 5
+    /// 浮卡之间的缝与画布四周的留白（视觉方向 B）。画布窗格由 AppKit 画，数值与这里一致。
+    static let panelCardGap: CGFloat = 8
+    static let panelGrip: CGFloat = panelCardGap
     /// 红绿灯浮在内容上，侧栏顶栏给它让开的左边一段。
     static let trafficLightWidth: CGFloat = 70
     static let canvasMinWidth: CGFloat = 420
@@ -42,7 +44,7 @@ enum YCodeMetrics {
 
     static let radiusChip: CGFloat = 4
     static let cornerRadius: CGFloat = 6
-    static let radiusCard: CGFloat = 10
+    static let radiusCard: CGFloat = 11
     static let radiusSheet: CGFloat = 14
 }
 
@@ -70,6 +72,9 @@ enum YCodeMotion {
 enum YCodeRowSelection {
     case fill
     case tint
+    /// 选中行是一张浮在底色上的小卡片（视觉方向 B）：卡片底 + 一层极淡的阴影，字色不变。
+    /// 侧栏用它 —— 实心强调色底上的白字在珊瑚色上只有 3:1。
+    case raised
 }
 
 /// 所有列表行共用的一层底。
@@ -108,6 +113,7 @@ struct YCodeRowSurface: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(fill)
+                    .shadow(color: raised ? Color.ycodeShadow : .clear, radius: 1, y: 1)
                     .padding(.horizontal, horizontalInset)
                     .animation(YCodeMotion.hover, value: hovering)
             )
@@ -119,11 +125,14 @@ struct YCodeRowSurface: ViewModifier {
     /// 命令面板的副标题各有一套「选中时的次级白」，收到这里来只会变成一堆开关。
     private var fill: Color {
         switch (isSelected, selection) {
-        case (true, .fill): Color.accentColor
-        case (true, .tint): Color.accentColor.opacity(0.16)
+        case (true, .fill): Color.ycodeAccent
+        case (true, .tint): Color.ycodeAccent.opacity(0.16)
+        case (true, .raised): Color.ycodeSelection
         case (false, _): hovering ? Color.primary.opacity(0.06) : .clear
         }
     }
+
+    private var raised: Bool { isSelected && selection == .raised }
 
 }
 
@@ -249,6 +258,31 @@ extension View {
     }
 }
 
+/// 视觉方向 B 的「浮卡」：卡片底 + 极细描边 + 两层柔和阴影（贴近的一层给轮廓，
+/// 散开的一层给悬浮感）。欢迎卡片、新会话卡片、面板卡片都走这一个修饰器，
+/// 于是窗口里所有「浮起来的东西」是同一种高度。终端窗格是 AppKit 画的，参数与这里对齐。
+struct YCodeCardSurface: ViewModifier {
+    var cornerRadius: CGFloat = YCodeMetrics.radiusSheet
+    var elevated = true
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .background {
+                shape.fill(Color.ycodeCard)
+                    .shadow(color: elevated ? Color.ycodeShadow : .clear, radius: 1, y: 1)
+                    .shadow(color: elevated ? Color.ycodeShadow : .clear, radius: 12, y: 6)
+            }
+            .overlay { shape.strokeBorder(Color.ycodeHairline) }
+    }
+}
+
+extension View {
+    func ycodeCard(cornerRadius: CGFloat = YCodeMetrics.radiusSheet, elevated: Bool = true) -> some View {
+        modifier(YCodeCardSurface(cornerRadius: cornerRadius, elevated: elevated))
+    }
+}
+
 extension Color {
     /// 随系统外观切换的动态色；两个值都取自设计稿的 token 表。
     static func ycodeDynamic(light: String, dark: String) -> Color {
@@ -267,9 +301,32 @@ extension Color {
     static let ycodeErr = Color.ycodeDynamic(light: "D2382F", dark: "F0655A")
     /// 三级文字
     static let ycodeLabel3 = Color(nsColor: .tertiaryLabelColor)
-    /// 侧栏与检查器共用的 chrome 底色（设计稿 §02 的 --sidebar / --inspector）。
+    /// 窗口底色：侧栏、画布顶栏、画布缝隙与面板区共用这一层（视觉方向 B 的「底」）。
+    /// 取官网的 --bg，带一点紫调；侧栏与顶栏融进它，不再靠分隔线切开。
     /// 不用系统材质：sidebar 的 vibrancy 偏亮、inspector 偏暗，两边摆在同一个窗口里能看出色差。
-    static let ycodeChrome = Color.ycodeDynamic(light: "F4F4F6", dark: "242426")
+    static let ycodeChrome = Color.ycodeDynamic(light: "EFEEF4", dark: "110F28")
+    /// 品牌强调色（珊瑚）。不用 `Color.ycodeAccent`：macOS 上它读的是系统强调色，
+    /// 不跟随 `.tint`，结果焦点描边、开关高亮在一个珊瑚色的应用里还是系统蓝。
+    /// 珊瑚在白底上只有 3:1，只用于描边、图形与填充；小字号文字用 `ycodeAccentText`。
+    static let ycodeAccent = Color.ycodeDynamic(light: "FF5A4E", dark: "FF7D72")
+    /// 强调色的文字版，白底 5.4:1。
+    static let ycodeAccentText = Color.ycodeDynamic(light: "C3301F", dark: "FF8F85")
+    /// 浮在底色上的卡片：终端窗格、面板卡片、新会话卡片（视觉方向 B 的「卡」）。
+    static let ycodeCard = Color.ycodeDynamic(light: "FCFCFE", dark: "1B1840")
+    /// 侧栏选中行的小卡片底。
+    static let ycodeSelection = Color.ycodeDynamic(light: "FFFFFF", dark: "2A2658")
+    /// 卡片内部的分隔线与卡片描边。
+    static let ycodeHairline = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor.white.withAlphaComponent(0.07)
+            : NSColor(srgbRed: 22 / 255, green: 19 / 255, blue: 58 / 255, alpha: 0.08)
+    })
+    /// 浮起元素的阴影色（深色下阴影在深墨底上看不见，交给描边表达层次）。
+    static let ycodeShadow = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor.black.withAlphaComponent(0.25)
+            : NSColor(srgbRed: 22 / 255, green: 19 / 255, blue: 58 / 255, alpha: 0.08)
+    })
 }
 
 /// 顶栏与卡头上的图标按钮。系统的 `.bordered` / `.toggleStyle(.button)` 会给每个图标套一个
@@ -296,7 +353,7 @@ struct YCodeIconButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.system(size: fontSize, weight: .regular))
-                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isOn ? Color.ycodeAccent : Color.secondary)
                 .frame(width: width, height: height)
                 .background(fill, in: RoundedRectangle(cornerRadius: YCodeMetrics.cornerRadius, style: .continuous))
                 // hover 淡入、按下即时 —— press 是确认，不能有过渡。
@@ -307,7 +364,7 @@ struct YCodeIconButtonStyle: ButtonStyle {
 
         private var fill: Color {
             if configuration.isPressed { return Color.primary.opacity(0.14) }
-            if isOn { return Color.accentColor.opacity(0.15) }
+            if isOn { return Color.ycodeAccent.opacity(0.15) }
             return hovering ? Color.primary.opacity(0.07) : .clear
         }
     }
@@ -381,7 +438,7 @@ struct YCodePanelHeader<Leading: View, Actions: View>: View {
         .padding(.leading, 8)
         .padding(.trailing, 6)
         .frame(height: spec.height)
-        .background(Color.ycodeChrome)
+        // 卡头是卡片的一部分，底色跟卡片走，不再是一条 chrome 色带。
         .contentShape(Rectangle())
         .contextMenu {
             Button(l10n.text("moveUp"), action: spec.moveUp).disabled(!spec.canMoveUp)

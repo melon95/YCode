@@ -108,7 +108,7 @@ struct UsageSettingsView: View {
     private func summaryCard(_ label: String, value: String, emphasized: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.semibold)).foregroundStyle(emphasized ? Color.accentColor : .primary)
+            Text(value).font(.title2.weight(.semibold)).foregroundStyle(emphasized ? Color.ycodeAccent : .primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
