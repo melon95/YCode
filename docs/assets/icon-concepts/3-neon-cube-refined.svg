@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="bg" x1="160" y1="100" x2="864" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#34197f"/><stop offset=".6" stop-color="#170d4a"/><stop offset="1" stop-color="#0b0726"/></linearGradient>
+  <radialGradient id="halo" cx="512" cy="560" r="360" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#8a5cff" stop-opacity=".55"/><stop offset=".55" stop-color="#ff3fa4" stop-opacity=".16"/><stop offset="1" stop-color="#ff3fa4" stop-opacity="0"/></radialGradient>
+  <linearGradient id="top" x1="250" y1="226" x2="774" y2="528" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff07a"/><stop offset=".55" stop-color="#ffc02e"/><stop offset="1" stop-color="#ff8a00"/></linearGradient>
+  <linearGradient id="left" x1="250" y1="377" x2="512" y2="830" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff6fb5"/><stop offset="1" stop-color="#d01274"/></linearGradient>
+  <linearGradient id="right" x1="774" y1="377" x2="512" y2="830" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5cf0ff"/><stop offset="1" stop-color="#2a5cff"/></linearGradient>
+  <linearGradient id="gloss" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset=".42" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <filter id="lift" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#05021a" flood-opacity=".6"/></filter>
+  <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="soft" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="22" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#halo)"/>
+<g filter="url(#lift)">
+  <path d="M512 226 774 377 512 528 250 377Z" fill="url(#top)"/>
+  <path d="M250 377 512 528 512 830 250 679Z" fill="url(#left)"/>
+  <path d="M774 377 512 528 512 830 774 679Z" fill="url(#right)"/>
+</g>
+<!-- Faint outer rim keeps the silhouette crisp at small sizes. -->
+<path d="M512 226 774 377 774 679 512 830 250 679 250 377Z" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="6" stroke-linejoin="round"/>
+<!-- The Y: three glowing edges meeting at the front vertex. -->
+<path d="M250 377 L512 528 L774 377 M512 528 L512 830" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+<circle cx="512" cy="528" r="17" fill="#fff" filter="url(#glow)"/>
+<path d="M774 158 C787.76 230.24 787.76 230.24 860 244 C787.76 257.76 787.76 257.76 774 330 C760.24 257.76 760.24 257.76 688 244 C760.24 230.24 760.24 230.24 774 158Z" fill="#fff" filter="url(#soft)"/>
+<path d="M262 736 C269.04 772.96 269.04 772.96 306 780 C269.04 787.04 269.04 787.04 262 824 C254.96 787.04 254.96 787.04 218 780 C254.96 772.96 254.96 772.96 262 736Z" fill="#fff" fill-opacity=".9" filter="url(#soft)"/>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#gloss)"/>
+<rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="4"/>
+</svg>

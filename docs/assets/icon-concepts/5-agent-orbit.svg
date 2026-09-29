@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs>
+<linearGradient id="bg" x1="120" y1="120" x2="904" y2="904" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff7a2f"/><stop offset=".45" stop-color="#ff2d87"/><stop offset="1" stop-color="#6a2cff"/></linearGradient>
+<radialGradient id="core" cx="512" cy="520" r="130" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#fff6c7"/><stop offset="1" stop-color="#ffc83d" stop-opacity="0"/></radialGradient>
+<linearGradient id="gloss" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<filter id="lift" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1a0630" flood-opacity=".4"/></filter>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="20" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+<g filter="url(#lift)"><ellipse cx="512" cy="520" rx="300" ry="104" transform="rotate(0 512 520)" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="14"/><ellipse cx="512" cy="520" rx="300" ry="104" transform="rotate(60 512 520)" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="14"/><ellipse cx="512" cy="520" rx="300" ry="104" transform="rotate(120 512 520)" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="14"/></g>
+<circle cx="512" cy="520" r="150" fill="url(#core)"/>
+<path d="M512.0 416.0 C528.6 503.4 528.6 503.4 616.0 520.0 C528.6 536.6 528.6 536.6 512.0 624.0 C495.4 536.6 495.4 536.6 408.0 520.0 C495.4 503.4 495.4 503.4 512.0 416.0Z" fill="#fff" filter="url(#glow)"/>
+<g filter="url(#lift)"><circle cx="212.0" cy="520.0" r="44" fill="#3ef0ff" stroke="#fff" stroke-width="12"/><circle cx="662.0" cy="779.8" r="44" fill="#c6ff3d" stroke="#fff" stroke-width="12"/><circle cx="662.0" cy="260.2" r="44" fill="#ffe24d" stroke="#fff" stroke-width="12"/></g>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#gloss)"/><rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="4"/></svg>

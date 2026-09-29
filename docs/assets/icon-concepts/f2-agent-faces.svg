@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><rect x="100" y="100" width="824" height="824" rx="186" fill="#ffc83d"/>
+<path d="M318 318 L512 540 L706 318 M512 540 L512 776" fill="none" stroke="#16133a" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="318" cy="318" r="96" fill="#5b3df5"/><circle cx="288" cy="310" r="15" fill="#ffffff"/><circle cx="348" cy="310" r="15" fill="#ffffff"/><path d="M292 348 Q318 368 344 348" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/><circle cx="706" cy="318" r="96" fill="#ff5a4e"/><circle cx="676" cy="310" r="15" fill="#ffffff"/><circle cx="736" cy="310" r="15" fill="#ffffff"/><path d="M680 348 Q706 368 732 348" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/><circle cx="512" cy="776" r="96" fill="#2fb6ff"/><circle cx="482" cy="768" r="15" fill="#ffffff"/><circle cx="542" cy="768" r="15" fill="#ffffff"/><path d="M486 806 Q512 826 538 806" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+<circle cx="512" cy="540" r="70" fill="#16133a"/>
+<path d="M512.0 484.0 C519.8 532.2 519.8 532.2 568.0 540.0 C519.8 547.8 519.8 547.8 512.0 596.0 C504.2 547.8 504.2 547.8 456.0 540.0 C504.2 532.2 504.2 532.2 512.0 484.0Z" fill="#ffffff"/>
+</svg>

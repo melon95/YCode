@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="bg" x1="140" y1="120" x2="900" y2="920" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#5b2cff"/><stop offset=".55" stop-color="#b3179f"/><stop offset="1" stop-color="#ff4d5a"/></linearGradient>
+<radialGradient id="n1" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3b0"/><stop offset="1" stop-color="#ffb000"/></radialGradient>
+<radialGradient id="n2" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#c9fbff"/><stop offset="1" stop-color="#00c2ff"/></radialGradient>
+<radialGradient id="n3" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#dcffd2"/><stop offset="1" stop-color="#2fe07a"/></radialGradient>
+<linearGradient id="gloss" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient><filter id="lift" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1a0b3d" flood-opacity=".45"/></filter><filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="26" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+<g filter="url(#lift)">
+  <path d="M330 330 L512 540 L694 330 M512 540 L512 790" fill="none" stroke="#fff" stroke-opacity=".92" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="330" cy="330" r="86" fill="url(#n1)" stroke="#fff" stroke-width="16"/>
+  <circle cx="694" cy="330" r="86" fill="url(#n2)" stroke="#fff" stroke-width="16"/>
+  <circle cx="512" cy="790" r="86" fill="url(#n3)" stroke="#fff" stroke-width="16"/>
+</g>
+<path d="M512 422 C530.88 521.12 530.88 521.12 630 540 C530.88 558.88 530.88 558.88 512 658 C493.12 558.88 493.12 558.88 394 540 C493.12 521.12 493.12 521.12 512 422Z" fill="#fff" filter="url(#glow)"/>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#gloss)"/><rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="4"/>
+</svg>

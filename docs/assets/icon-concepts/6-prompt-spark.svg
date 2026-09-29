@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs>
+<linearGradient id="bg" x1="100" y1="100" x2="924" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2b6bff"/><stop offset="1" stop-color="#7a1fff"/></linearGradient>
+<radialGradient id="m1" cx="230" cy="220" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#00e5ff" stop-opacity=".95"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></radialGradient>
+<radialGradient id="m2" cx="860" cy="860" r="560" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff3d7a" stop-opacity=".95"/><stop offset="1" stop-color="#ff3d7a" stop-opacity="0"/></radialGradient>
+<radialGradient id="m3" cx="880" cy="180" r="420" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffb020" stop-opacity=".9"/><stop offset="1" stop-color="#ffb020" stop-opacity="0"/></radialGradient>
+<linearGradient id="sp" x1="600" y1="560" x2="800" y2="800" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fffbe0"/><stop offset="1" stop-color="#ffd23d"/></linearGradient>
+<linearGradient id="gloss" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<filter id="lift" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1a0630" flood-opacity=".4"/></filter>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="20" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/><rect x="100" y="100" width="824" height="824" rx="186" fill="url(#m1)"/><rect x="100" y="100" width="824" height="824" rx="186" fill="url(#m3)"/><rect x="100" y="100" width="824" height="824" rx="186" fill="url(#m2)"/>
+<path d="M268 336 L476 512 L268 688" fill="none" stroke="#fff" stroke-width="92" stroke-linecap="round" stroke-linejoin="round" filter="url(#lift)"/>
+<path d="M676.0 498.0 C698.5 625.5 698.5 625.5 826.0 648.0 C698.5 670.5 698.5 670.5 676.0 798.0 C653.5 670.5 653.5 670.5 526.0 648.0 C653.5 625.5 653.5 625.5 676.0 498.0Z" fill="url(#sp)" filter="url(#glow)"/>
+<path d="M784.0 272.0 C791.4 310.6 791.4 310.6 830.0 318.0 C791.4 325.4 791.4 325.4 784.0 364.0 C776.6 325.4 776.6 325.4 738.0 318.0 C776.6 310.6 776.6 310.6 784.0 272.0Z" fill="#fff" fill-opacity=".9"/>
+<rect x="100" y="100" width="824" height="824" rx="186" fill="url(#gloss)"/><rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="4"/></svg>

@@ -7,7 +7,7 @@ python3 macos/scripts/generate_agent_icons.py
 python3 macos/scripts/generate_file_icons.py
 ```
 
-- `agent-icons.json`：7 个品牌图标、320 个单色图标。应用标志来自 `docs/ui-native-redesign.html`；Agent 图标来自 `@lobehub/icons` 5.18.0，已规范化 SVG path。
+- `agent-icons.json`：7 个品牌图标、320 个单色图标。应用标志取自 `macos/Resources/AppIcon.svg`，`viewBox` 裁到图标本体、去掉 App 图标的外边距；Agent 图标来自 `@lobehub/icons` 5.18.0，已规范化 SVG path。
 - `file-icons.json`：182 个 SVG 及扩展名、文件名、文件夹名映射，来自 `material-icon-theme` 5.34.0。
 - 两个上游项目均为 MIT 许可，完整许可保存在相邻的 `*-LICENSE.txt`；构建时随应用打包。
 
