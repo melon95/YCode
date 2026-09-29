@@ -79,6 +79,11 @@ let package = Package(
             path: "Tests/Tools/YCodeLaunchProbe"
         ),
         .testTarget(
+            name: "YCodeAppTests",
+            dependencies: ["YCodeApp"],
+            path: "Tests/YCodeAppTests"
+        ),
+        .testTarget(
             name: "YCodeCoreTests",
             dependencies: ["YCodeCore", "YCodeEditorSupport", "SwiftTerm"],
             path: "Tests/YCodeCoreTests"

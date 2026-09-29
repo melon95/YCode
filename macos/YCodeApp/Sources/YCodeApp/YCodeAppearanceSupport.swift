@@ -59,6 +59,8 @@ struct YCodeLocalization {
         "migration": [.zh: "迁移", .en: "Migration"],
         "showHidePanelFormat": [.zh: "显示/隐藏%@面板", .en: "Show/Hide %@ Panel"],
         "focusCanvasFormat": [.zh: "聚焦画布 %d", .en: "Focus Canvas %d"],
+        "resizeCanvasColumns": [.zh: "调整画布列宽", .en: "Resize canvas columns"],
+        "resizeCanvasRows": [.zh: "调整画布行高", .en: "Resize canvas rows"],
         "terminal": [.zh: "终端", .en: "Terminal"],
         "files": [.zh: "文件", .en: "Files"],
         "changes": [.zh: "变更", .en: "Changes"],

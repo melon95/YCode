@@ -28,15 +28,19 @@ public enum YCodeTerminalLayout: String, CaseIterable, Codable, Identifiable, Se
         }
     }
 
-    public static func reflow(_ current: Self, for count: Int) -> Self {
-        let valid = validModes(for: count)
-        if valid.contains(current) { return current }
+    /// The progression the intro film shows as sessions are added:
+    /// one pane, side by side, main + side, then the grid.
+    public static func defaultLayout(for count: Int) -> Self {
         switch count {
-        case ...1: return .single
-        case 2: return .stack
-        case 3: return .mainSide
-        default: return .grid2x2
+        case ...1: .single
+        case 2: .columns
+        case 3: .mainSide
+        default: .grid2x2
         }
+    }
+
+    public static func reflow(_ current: Self, for count: Int) -> Self {
+        validModes(for: count).contains(current) ? current : defaultLayout(for: count)
     }
 }
 
@@ -66,6 +70,7 @@ public enum YCodeTerminalCanvasRouting {
         mode: YCodeTerminalCanvasOpenMode
     ) -> YCodeTerminalCanvasOpenResult {
         var sessionIDs = Array(visibleSessionIDs.prefix(maximumVisibleSessions))
+        let previousCount = sessionIDs.count
         var resolvedFocus = sessionIDs.isEmpty ? 0 : min(max(focusedSlot, 0), sessionIDs.count - 1)
 
         if let existing = sessionIDs.firstIndex(of: sessionID) {
@@ -80,10 +85,16 @@ public enum YCodeTerminalCanvasRouting {
             sessionIDs[resolvedFocus] = sessionID
         }
 
+        // A canvas still on the automatic layout keeps following the default progression
+        // as it grows; a layout the user picked explicitly is kept whenever it still fits.
+        let followsDefault = sessionIDs.count > previousCount
+            && layout == YCodeTerminalLayout.defaultLayout(for: previousCount)
         return .init(
             sessionIDs: sessionIDs,
             focusedSlot: resolvedFocus,
-            layout: YCodeTerminalLayout.reflow(layout, for: sessionIDs.count)
+            layout: followsDefault
+                ? YCodeTerminalLayout.defaultLayout(for: sessionIDs.count)
+                : YCodeTerminalLayout.reflow(layout, for: sessionIDs.count)
         )
     }
 }

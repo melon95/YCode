@@ -50,37 +50,11 @@ struct TerminalWorkspaceView: View {
         return panes
     }
 
-    @ViewBuilder
     private var terminalCanvas: some View {
         let panes = canvasPanes
         let layout = YCodeTerminalLayout.reflow(model.terminalLayout, for: panes.count)
-        switch layout {
-        case .single:
-            pane(panes[0], standalone: panes.count == 1)
-        case .stack:
-            VSplitView {
-                ForEach(panes) { item in pane(item) }
-            }
-        case .columns:
-            HSplitView {
-                ForEach(panes) { item in pane(item) }
-            }
-        case .grid2x2:
-            VSplitView {
-                HSplitView {
-                    ForEach(Array(panes.prefix(2))) { item in pane(item) }
-                }
-                HSplitView {
-                    ForEach(Array(panes.dropFirst(2))) { item in pane(item) }
-                }
-            }
-        case .mainSide:
-            HSplitView {
-                pane(panes[0])
-                VSplitView {
-                    ForEach(Array(panes.dropFirst())) { item in pane(item) }
-                }
-            }
+        return TerminalCanvasView(panes: panes, layout: layout) { item in
+            pane(item, standalone: panes.count == 1)
         }
     }
 
@@ -118,7 +92,7 @@ struct TerminalWorkspaceView: View {
             }
             NewSessionPickerView(model: model)
         }
-        .frame(minWidth: 220, minHeight: 150)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -130,7 +104,7 @@ struct TerminalWorkspaceView: View {
             if model.terminalSearchSessionID == session.id { searchBar }
             paneBody(session, slot: slot)
         }
-        .frame(minWidth: 220, minHeight: 150)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             // 焦点有两层标记：窗格头带强调底色，窗格四周一圈 1px 强调描边（设计稿 §04 标注 1）。
@@ -500,9 +474,13 @@ private struct YCodeTerminalView: NSViewRepresentable {
             font: .monospacedSystemFont(ofSize: fontSize, weight: .regular),
             options: TerminalOptions(cols: 80, rows: 24, scrollback: 10_000)
         )
+        // Keep the native backing surface inside the same bounds as the pane
+        // throughout a SwiftUI resize, including its cursor/scrollbar sublayers.
+        view.layer?.masksToBounds = true
         view.terminalDelegate = context.coordinator
         view.linkReporting = .implicit
         applyTheme(to: view)
+        context.coordinator.appliedTheme = theme
         context.coordinator.view = view
         view.onUsableSize = { [weak coordinator = context.coordinator, weak view] in
             guard let coordinator, let view else { return }
@@ -524,7 +502,10 @@ private struct YCodeTerminalView: NSViewRepresentable {
             view.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
             view.setFrameSize(view.frame.size)
         }
-        applyTheme(to: view)
+        if context.coordinator.appliedTheme != theme {
+            applyTheme(to: view)
+            context.coordinator.appliedTheme = theme
+        }
         context.coordinator.attachIfReady(view)
         context.coordinator.applySearch(searchRequest, to: view)
         if focused, !context.coordinator.wasFocused {
@@ -558,6 +539,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
         var onTitle: (String) -> Void
         var onSearchResult: (String, Int) -> Void
         weak var view: TerminalView?
+        var appliedTheme: YCodeThemeOption?
         private var lastTitle: String?
         var lastSearchGeneration = -1
         var wasFocused = false
@@ -674,7 +656,16 @@ private struct YCodeTerminalView: NSViewRepresentable {
 private final class YCodeHostedTerminalView: TerminalView {
     var onUsableSize: (() -> Void)?
 
+#if DEBUG
+    private static let tracesCanvasResize = ProcessInfo.processInfo.environment["YCODE_TRACE_CANVAS_RESIZE"] == "1"
+#endif
+
     override func setFrameSize(_ newSize: NSSize) {
+#if DEBUG
+        if Self.tracesCanvasResize, newSize != frame.size {
+            NSLog("YCODE_CANVAS_RESIZE view=%@ width=%.1f height=%.1f", String(describing: ObjectIdentifier(self)), newSize.width, newSize.height)
+        }
+#endif
         super.setFrameSize(newSize)
         if newSize.width > 1, newSize.height > 1 { onUsableSize?() }
     }
