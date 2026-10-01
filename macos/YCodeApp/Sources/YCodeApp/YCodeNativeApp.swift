@@ -14,7 +14,7 @@ struct YCodeNativeApp: App {
 
     var body: some Scene {
         Window("YCode", id: "main") {
-            DeferredNativeRootView().frame(minWidth: 980, minHeight: 640)
+            DeferredNativeRootView().frame(minWidth: YCodeMetrics.windowMinWidth, minHeight: 640)
         }
         .defaultSize(width: 1240, height: 780)
         // 画布与面板区是同级的两块：标题栏交给内容自己画，
@@ -191,6 +191,8 @@ private struct NativeRootView: View {
     @State private var pendingSessionDelete: SessionMetadata?
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// 侧栏是被窄窗口自动收起的（而不是用户收的）——窗口变宽时只自动恢复这一种。
+    @State private var sidebarAutoCollapsed = false
     @State private var showingCommandPalette = false
     @State private var renameTarget: SessionMetadata?
     @State private var isDropTargeted = false
@@ -229,8 +231,7 @@ private struct NativeRootView: View {
             .ignoresSafeArea(.container, edges: .top)
             .navigationSplitViewColumnWidth(
                 min: YCodeMetrics.sidebarMinWidth,
-                ideal: YCodeMetrics.sidebarWidth,
-                max: YCodeMetrics.sidebarMaxWidth
+                ideal: YCodeMetrics.sidebarWidth
             )
             .toolbar(removing: .sidebarToggle)
             .navigationTitle("YCode")
@@ -268,10 +269,18 @@ private struct NativeRootView: View {
             // 两列各自的安全区不受影响，顶上会留一条标题栏高度的空带（画布顶栏因此被压到 44+28）。
             .ignoresSafeArea(.container, edges: .top)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            applyAutoSidebarCollapse(windowWidth: width)
+        }
+        .onAppear {
+            // 窗口是从上次保存的尺寸恢复的，宽度一开始就可能偏窄，不会再触发尺寸变化。
+            DispatchQueue.main.async { applyAutoSidebarCollapse(windowWidth: windowWidthNow()) }
+        }
         .background {
             if lockedProjectID == nil { NativeWindowStateBridge(dataRoot: model.dataRoot) }
         }
         .ignoresSafeArea(.container, edges: .top)
+        .background(YCodeSidebarMinWidthBridge(minWidth: YCodeMetrics.sidebarMinWidth, fallbackWidth: YCodeMetrics.sidebarWidth))
         .background(YCodeWindowTagBridge(
             token: windowToken,
             title: lockedProjectID == nil ? nil : YCodeLocalization(locale: model.locale).text("projectWindowTitleFormat", model.selectedProject?.displayTitle ?? YCodeLocalization(locale: model.locale).text("project"))
@@ -652,9 +661,27 @@ private struct NativeRootView: View {
     /// 两列的 `NavigationSplitView` 里 `.doubleColumn` 就是「两列都显示」，跟 `.all` 同义 ——
     /// 原先在这两者之间来回切，等于没切。收起侧栏要用 `.detailOnly`。
     private func toggleSidebar() {
+        sidebarAutoCollapsed = false
         withAnimation(YCodeMotion.panelArea) {
             columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
         }
+    }
+
+    /// 窗口窄于 `sidebarAutoCollapseWidth` 就收起侧栏把空间让给画布；变宽后只恢复自动收起的那次，
+    /// 用户自己收起的不动。
+    private func applyAutoSidebarCollapse(windowWidth: CGFloat) {
+        if windowWidth < YCodeMetrics.sidebarAutoCollapseWidth {
+            guard columnVisibility != .detailOnly else { return }
+            sidebarAutoCollapsed = true
+            withAnimation(YCodeMotion.panelArea) { columnVisibility = .detailOnly }
+        } else if sidebarAutoCollapsed {
+            sidebarAutoCollapsed = false
+            withAnimation(YCodeMotion.panelArea) { columnVisibility = .all }
+        }
+    }
+
+    private func windowWidthNow() -> CGFloat {
+        NSApp.windows.first { $0.identifier?.rawValue == windowToken }?.contentLayoutRect.width ?? .greatestFiniteMagnitude
     }
 
     private var sidebarIsHidden: Bool { columnVisibility == .detailOnly }
@@ -834,6 +861,83 @@ private extension Color {
     }
 }
 
+/// SwiftUI 的 `navigationSplitViewColumnWidth(min:)` 在这里不起作用：AppKit 里侧栏分栏项的下限实际是 140，
+/// 而且 NavigationSplitView 还会从 NSSplitView 的自动保存里恢复上次拖出来的宽度，窄于我们的下限就把标题截得很难看。
+/// 所以直接把下限压在 `NSSplitViewItem.minimumThickness` 上，拖分隔条时也过不去；
+/// 窗口出现后再把已经恢复成窄的宽度推回默认值。侧栏收起时（宽度为 0）不动。
+private struct YCodeSidebarMinWidthBridge: NSViewRepresentable {
+    let minWidth: CGFloat
+    let fallbackWidth: CGFloat
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView(frame: .zero)
+        view.minWidth = minWidth
+        view.fallbackWidth = fallbackWidth
+        return view
+    }
+
+    func updateNSView(_ view: ProbeView, context: Context) {}
+
+    final class ProbeView: NSView {
+        var minWidth: CGFloat = 0
+        var fallbackWidth: CGFloat = 0
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            attach(attempt: 0)
+        }
+
+        // 分栏视图要等第一轮布局之后才就位，隔一会儿多查几次。
+        private func attach(attempt: Int) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, let root = self.window?.contentView else { return }
+                guard let split = Self.firstSplitView(in: root), split.subviews.count > 1 else {
+                    if attempt < 6 { self.attach(attempt: attempt + 1) }
+                    return
+                }
+                self.applyMinimum(to: split)
+                let width = self.sidebarWidth(of: split)
+                if width > 1, width < self.minWidth - 0.5 {
+                    split.setPosition(self.fallbackWidth, ofDividerAt: 0)
+                }
+                // SwiftUI 重新布局时可能把分栏项的下限改回去，每次分栏变动都再压一遍。
+                if self.observer == nil {
+                    self.observer = NotificationCenter.default.addObserver(
+                        forName: NSSplitView.didResizeSubviewsNotification, object: split, queue: .main
+                    ) { [weak self, weak split] _ in
+                        MainActor.assumeIsolated {
+                            guard let self, let split else { return }
+                            self.applyMinimum(to: split)
+                        }
+                    }
+                }
+            }
+        }
+
+        private func applyMinimum(to split: NSSplitView) {
+            guard let controller = split.delegate as? NSSplitViewController,
+                  let item = controller.splitViewItems.first(where: { $0.behavior == .sidebar }),
+                  item.minimumThickness != minWidth else { return }
+            item.minimumThickness = minWidth
+        }
+
+        // 侧栏是分栏里较窄的那一块（详情区在它下面是整窗宽）。
+        private func sidebarWidth(of split: NSSplitView) -> CGFloat {
+            split.subviews
+                .filter { String(describing: type(of: $0)).contains("SplitViewItemViewWrapper") }
+                .map(\.frame.width).min() ?? 0
+        }
+
+        private static func firstSplitView(in view: NSView) -> NSSplitView? {
+            if let split = view as? NSSplitView { return split }
+            for sub in view.subviews { if let found = firstSplitView(in: sub) { return found } }
+            return nil
+        }
+    }
+}
+
 private struct YCodeWindowTagBridge: NSViewRepresentable {
     let token: String
     let title: String?
@@ -864,6 +968,8 @@ private struct YCodeWindowTagBridge: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            // 隐藏标题栏的窗口里 SwiftUI 的 minWidth 不一定管得住窗口本身，窗口最小尺寸在 AppKit 层定死。
+            window.contentMinSize = NSSize(width: YCodeMetrics.windowMinWidth, height: 580)
             coordinator.connect(to: window)
         }
     }
@@ -970,7 +1076,7 @@ final class YCodeProjectWindowManager: NSObject, NSWindowDelegate {
         window.identifier = NSUserInterfaceItemIdentifier(token)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 1120, height: 720))
-        window.minSize = NSSize(width: 900, height: 580)
+        window.minSize = NSSize(width: YCodeMetrics.windowMinWidth, height: 580)
         window.setFrameAutosaveName("YCode Project \(project.id)")
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -1060,8 +1166,8 @@ private struct NativeWindowStateBridge: NSViewRepresentable {
             let proposed = NSRect(x: restored.x, y: restored.y, width: restored.width, height: restored.height)
             let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(proposed) }) ?? NSScreen.main
             guard let visible = screen?.visibleFrame else { return }
-            let width = min(max(proposed.width, 980), visible.width)
-            let height = min(max(proposed.height, 640), visible.height)
+            let width = min(max(proposed.width, YCodeMetrics.windowMinWidth), visible.width)
+            let height = min(max(proposed.height, 580), visible.height)
             let x = min(max(proposed.minX, visible.minX), visible.maxX - width)
             let y = min(max(proposed.minY, visible.minY), visible.maxY - height)
             window.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)

@@ -93,7 +93,7 @@ struct YCodeLocalization {
         "emptyScopeChangesTitle": [.zh: "这个范围里没有改动", .en: "Nothing changed in this range"],
         "emptyScopeChangesBody": [.zh: "换一个对比基准或另一次提交看看。", .en: "Try another base branch or commit."],
         "findTerminal": [.zh: "查找终端", .en: "Find Terminal"],
-        "hideDoNotStopAgent": [.zh: "从画布隐藏；不停止 Agent", .en: "Hide from canvas; do not stop the agent"],
+        "closeAndStopAgent": [.zh: "关闭窗格并停止 Agent", .en: "Close pane and stop the agent"],
         "noMatches": [.zh: "无匹配", .en: "No Matches"],
         "agentNotRunning": [.zh: "Agent 未运行", .en: "Agent Not Running"],
         "lastExitStatusFormat": [.zh: "上次退出状态：%d", .en: "Last exit status: %d"],

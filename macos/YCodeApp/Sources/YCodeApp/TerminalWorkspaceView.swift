@@ -128,12 +128,17 @@ struct TerminalWorkspaceView: View {
             Text("⌘⇧\(slot + 1)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
-            Button { model.closeCanvasSlot(slot) } label: {
+            // 关窗格 = 停掉里面的 Agent：只隐藏的话进程还在后台跑，侧栏上的绿点也一直不灭。
+            // 想只隐藏不停止，用右键菜单里的「从画布移除」。
+            Button {
+                if model.runtimeStatus(for: session)?.isLive == true { model.stopSession(session.id) }
+                model.closeCanvasSlot(slot)
+            } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help(l10n.text("hideDoNotStopAgent"))
+            .help(l10n.text("closeAndStopAgent"))
         }
         .padding(.horizontal, 12)
         .frame(height: YCodeMetrics.paneHeaderHeight)
@@ -195,6 +200,8 @@ struct TerminalWorkspaceView: View {
                 locale: model.locale,
                 focused: slot == model.focusedCanvasSlot,
                 searchRequest: model.terminalSearchRequest,
+                // 点终端正文、或键盘焦点落进来，都算选中这个窗格，不必非点标题。
+                onFocus: { if model.focusedCanvasSlot != slot { model.focusCanvasSlot(slot) } },
                 onFilePath: model.recordTerminalPath,
                 // CLI 报出来的窗口标题直接回给模型，侧栏那条当场改名。
                 onTitle: { model.recordLiveTitle(sessionID: session.id, title: $0) }
@@ -436,6 +443,7 @@ private struct ProjectShellWorkspaceView: View {
                 locale: model.locale,
                 focused: false,
                 searchRequest: nil,
+                onFocus: { model.selectShellPane(paneID) },
                 onFilePath: model.recordTerminalPath,
                 onTitle: { _ in },
                 onSearchResult: { _, _ in }
@@ -460,6 +468,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
     let locale: YCodeLocale
     let focused: Bool
     let searchRequest: YCodeTerminalSearchRequest?
+    let onFocus: () -> Void
     let onFilePath: (URL) -> Void
     let onTitle: (String) -> Void
     let onSearchResult: (String, Int) -> Void
@@ -486,6 +495,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
         // throughout a SwiftUI resize, including its cursor/scrollbar sublayers.
         view.layer?.masksToBounds = true
         view.terminalDelegate = context.coordinator
+        view.onBecomeFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus() }
         view.linkReporting = .implicit
         applyTheme(to: view)
         context.coordinator.appliedTheme = theme
@@ -503,6 +513,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
         context.coordinator.runtime = runtime
         context.coordinator.workingDirectory = workingDirectory
         context.coordinator.locale = locale
+        context.coordinator.onFocus = onFocus
         context.coordinator.onFilePath = onFilePath
         context.coordinator.onTitle = onTitle
         context.coordinator.onSearchResult = onSearchResult
@@ -543,6 +554,7 @@ private struct YCodeTerminalView: NSViewRepresentable {
         var runtime: YCodeAgentRuntime
         var workingDirectory: URL?
         var locale: YCodeLocale
+        var onFocus: () -> Void = {}
         var onFilePath: (URL) -> Void
         var onTitle: (String) -> Void
         var onSearchResult: (String, Int) -> Void
@@ -663,6 +675,14 @@ private struct YCodeTerminalView: NSViewRepresentable {
 
 private final class YCodeHostedTerminalView: TerminalView {
     var onUsableSize: (() -> Void)?
+    var onBecomeFirstResponder: (() -> Void)?
+
+    // 点击终端正文即选中这个窗格；becomeFirstResponder 在 SwiftTerm 里不是 open，
+    // 覆盖不了，鼠标按下是进入终端焦点的唯一入口。
+    override func mouseDown(with event: NSEvent) {
+        onBecomeFirstResponder?()
+        super.mouseDown(with: event)
+    }
 
 #if DEBUG
     private static let tracesCanvasResize = ProcessInfo.processInfo.environment["YCODE_TRACE_CANVAS_RESIZE"] == "1"

@@ -166,9 +166,12 @@ struct WorkspaceSidebarView: View {
             .frame(minWidth: 16, alignment: .trailing)
             .animation(YCodeMotion.contentSwap, value: hoveredProjectID == project.id)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        // 右端多收 13：会话行的三点在悬停底里面，「＋」要落在三点的竖线上。
+        .padding(.trailing, 21)
         .frame(height: 22)
-        .ycodeRow(isSelected: false, cornerRadius: YCodeMetrics.radiusChip, horizontalInset: 4)
+        // 项目行 hover 不铺底：它是分组标题，不是可选中的行；「＋」自己有 hover 反馈。
+        .contentShape(Rectangle())
         .onTapGesture { model.toggleProjectCollapsed(project.id) }
         .onHover { inside in hoveredProjectID = inside ? project.id : (hoveredProjectID == project.id ? nil : hoveredProjectID) }
         .contextMenu { projectMenu(project) }
@@ -219,6 +222,9 @@ struct WorkspaceSidebarView: View {
         let selected = model.selectedSessionID == session.id
         let slot = model.canvasSlot(for: session.id)
         let archived = session.archivedAtMilliseconds != nil
+        // 上了画布的行（不止选中的那一条）都铺「hover 底」；角标的描边得跟这层底同色才分得开。
+        let lit = selected || slot != nil
+        let rowBase = lit ? Color.ycodeRowLitBase : Color.ycodeChrome
         return HStack(spacing: 8) {
             // 状态不再单占一列：它描述的就是这个 agent，贴在图标角上。
             // idle 不画角标，所以平时这一片是干净的，一旦有绿/黄亮起来就很显眼。
@@ -235,14 +241,14 @@ struct WorkspaceSidebarView: View {
                         .font(.system(size: 7))
                         .foregroundStyle(Color.secondary)
                         .padding(1)
-                        .background(Circle().fill(selected ? Color.ycodeSelection : Color.ycodeChrome))
+                        .background(Circle().fill(rowBase))
                         .offset(x: 3, y: -3)
                 } else {
                     YCodeStatusBadge(
                         presence: model.presence(for: session),
-                        ringColor: selected ? Color.ycodeSelection : Color.ycodeChrome
+                        ringColor: rowBase
                     )
-                    .offset(x: 2, y: -2)
+                    .offset(x: 3, y: -3)
                 }
             }
             sessionTitle(session, selected: selected)
@@ -265,16 +271,14 @@ struct WorkspaceSidebarView: View {
                 Menu {
                     sessionMenu(session, archived: archived)
                 } label: {
-                    // SF Symbols 里的 ellipsis 是横的；这里要竖的三点，转 90° 即可，
-                    // 比依赖只有新系统才有的 ellipsis.vertical 稳。
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .semibold))
-                        .rotationEffect(.degrees(90))
+                    // 竖的三点：borderlessButton 菜单只认图片标签（SwiftUI 形状会被丢掉），
+                    // 而 SF Symbols 的 ellipsis 是横的、旋转也会被丢掉，所以自己画一张模板图。
+                    Image(nsImage: Self.verticalEllipsis)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .foregroundStyle(Color.secondary)
+                .tint(Color.secondary)
                 .help(l10n.text("sessionActions"))
                 .opacity(hoveredSessionID == session.id ? 1 : 0)
                 // 淡出的那枚不能还接得住点击，否则鼠标停在格位徽标上也能拉开菜单。
@@ -288,7 +292,7 @@ struct WorkspaceSidebarView: View {
         // 选中 / hover / 按下三态统一走 ycodeRow：改之前这一行只认「选中」，
         // 指针扫过整条侧栏没有任何反馈，按下去也没有 —— 点击是否落在这一行，
         // 唯一的线索是列表事后变了。
-        .ycodeRow(isSelected: selected, selection: .raised, horizontalInset: 8)
+        .ycodeRow(isSelected: lit, selection: .quiet, cornerRadius: 10)
         .foregroundStyle(archived ? Color.secondary : Color.primary)
         .fontWeight(selected ? .medium : .regular)
         .padding(.horizontal, 8)
@@ -307,6 +311,21 @@ struct WorkspaceSidebarView: View {
         }
         .contextMenu { sessionMenu(session, archived: archived) }
     }
+
+    /// 竖排三点的模板图（随 tint 着色）。
+    private static let verticalEllipsis: NSImage = {
+        let image = NSImage(size: NSSize(width: 14, height: 18), flipped: false) { rect in
+            NSColor.black.setFill()
+            let d: CGFloat = 2.6
+            for i in 0..<3 {
+                let y = rect.midY - d / 2 + CGFloat(i - 1) * 4.6
+                NSBezierPath(ovalIn: NSRect(x: rect.midX - d / 2, y: y, width: d, height: d)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }()
 
     @ViewBuilder
     private func sessionTitle(_ session: SessionMetadata, selected: Bool) -> some View {

@@ -5,9 +5,8 @@ import YCodeCore
 /// 设计稿 §02 的 token。整份界面的颜色、尺寸、状态语言都从这里取，不在各视图里另写字面量。
 
 enum YCodeMetrics {
-    static let sidebarWidth: CGFloat = 238
-    static let sidebarMinWidth: CGFloat = 200
-    static let sidebarMaxWidth: CGFloat = 320
+    static let sidebarWidth: CGFloat = 280
+    static let sidebarMinWidth: CGFloat = 280
     static let inspectorWidth: CGFloat = 302
     static let inspectorMinWidth: CGFloat = 260
     static let inspectorMaxWidth: CGFloat = 460
@@ -23,6 +22,10 @@ enum YCodeMetrics {
     /// 红绿灯浮在内容上，侧栏顶栏给它让开的左边一段。
     static let trafficLightWidth: CGFloat = 70
     static let canvasMinWidth: CGFloat = 420
+    /// 窗口最窄能拉到多少；再窄侧栏已经自动收起，剩下的全归画布。
+    static let windowMinWidth: CGFloat = 720
+    /// 窗口窄于此值自动收起侧栏（侧栏 280 + 画布 420 + 面板区的余量）。
+    static let sidebarAutoCollapseWidth: CGFloat = 920
     /// 一列最多两张卡，开第三个就另起一列。
     static let panelsPerColumn = 2
     static let inspectorTabBarHeight: CGFloat = 38
@@ -75,6 +78,9 @@ enum YCodeRowSelection {
     /// 选中行是一张浮在底色上的小卡片（视觉方向 B）：卡片底 + 一层极淡的阴影，字色不变。
     /// 侧栏用它 —— 实心强调色底上的白字在珊瑚色上只有 3:1。
     case raised
+    /// 常亮的「hover 底」：跟指针扫过时同一种灰，只是不随指针走。
+    /// 侧栏里所有已经在画布上的会话行都用它，多个窗格同时亮着。
+    case quiet
 }
 
 /// 所有列表行共用的一层底。
@@ -128,6 +134,7 @@ struct YCodeRowSurface: ViewModifier {
         case (true, .fill): Color.ycodeAccent
         case (true, .tint): Color.ycodeAccent.opacity(0.16)
         case (true, .raised): Color.ycodeSelection
+        case (true, .quiet): Color.primary.opacity(hovering ? 0.09 : 0.06)
         case (false, _): hovering ? Color.primary.opacity(0.06) : .clear
         }
     }
@@ -314,6 +321,8 @@ extension Color {
     /// 浮在底色上的卡片：终端窗格、面板卡片、新会话卡片（视觉方向 B 的「卡」）。
     static let ycodeCard = Color.ycodeDynamic(light: "FCFCFE", dark: "1B1840")
     /// 侧栏选中行的小卡片底。
+    /// chrome 底上叠 6% 前景色（`.quiet` 行底）之后的实色，给压在行上的角标描边用。
+    static let ycodeRowLitBase = Color.ycodeDynamic(light: "E1E0E6", dark: "1F1D35")
     static let ycodeSelection = Color.ycodeDynamic(light: "FFFFFF", dark: "2A2658")
     /// 卡片内部的分隔线与卡片描边。
     static let ycodeHairline = Color(nsColor: NSColor(name: nil) { appearance in
@@ -552,7 +561,7 @@ struct YCodeStatusBadge: View {
     /// 角标要压在图标上，得有一圈和行底同色的描边才分得开。
     /// 选中行是实心强调色，非选中行是 chrome 底，所以这个颜色由调用方给。
     let ringColor: Color
-    var size: CGFloat = 6
+    var size: CGFloat = 9
 
     var body: some View {
         if presence != .idle {
