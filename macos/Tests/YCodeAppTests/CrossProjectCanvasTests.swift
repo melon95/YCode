@@ -37,9 +37,7 @@ struct CrossProjectCanvasTests {
         let alphaSessions = try sessions(alpha)
         let betaSessions = try sessions(beta)
 
-        setenv("YCODE_NATIVE_DATA_ROOT", dataRoot.path, 1)
-        defer { unsetenv("YCODE_NATIVE_DATA_ROOT") }
-        let model = WorkspaceModel(initialProjectID: alpha.id)
+        let model = WorkspaceModel(initialProjectID: alpha.id, dataRootOverride: dataRoot)
         return Fixture(model: model, alpha: alpha, beta: beta, alphaSessions: alphaSessions, betaSessions: betaSessions)
     }
 

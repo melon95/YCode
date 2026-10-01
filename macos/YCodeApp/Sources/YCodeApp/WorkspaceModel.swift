@@ -275,8 +275,9 @@ final class WorkspaceModel: ObservableObject {
     private var eventCancellables: Set<AnyCancellable> = []
     private let gitService = YCodeGitService()
 
-    init(initialProjectID: String? = nil) {
-        dataRoot = YCodeDataRootResolver.resolve()
+    /// `dataRootOverride` 只给测试用：测试在同一个进程里并行跑，用 `setenv` 指路径会和别的线程读环境变量撞车。
+    init(initialProjectID: String? = nil, dataRootOverride: URL? = nil) {
+        dataRoot = dataRootOverride ?? YCodeDataRootResolver.resolve()
         do {
             let databaseURL = dataRoot.appendingPathComponent("ycode.db")
             let repository = try ProjectWorkspaceRepository(databaseURL: databaseURL)
