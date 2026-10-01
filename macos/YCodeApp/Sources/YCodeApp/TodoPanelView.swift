@@ -1,23 +1,20 @@
 import SwiftUI
 import YCodeCore
 
-/// 设计稿 §03c：这份清单的特别之处是 agent 和你在写同一份，
-/// 所以面板要回答的是「刚才那条是谁动的、动成了什么样」，而不是「有几项待办」。
+/// 待办只记「有哪些事要做」：一条平铺的清单，没有进行中 / 已完成这些状态。
+/// 做完了就删掉。agent 通过 ycode-todos 写的也是同一份。
 struct TodoPanelView: View {
     @ObservedObject var model: WorkspaceModel
     let header: YCodePanelHeaderSpec
     @Environment(\.ycodeL10n) private var l10n
     @State private var draft = ""
-    @State private var showDone = false
     @State private var hoveredID: String?
     @State private var editingTodo: YCodeTodo?
     @State private var editingTitle = ""
     @State private var pendingDelete: YCodeTodo?
     @FocusState private var titleFieldFocused: Bool
 
-    private var doing: [YCodeTodo] { model.todos.filter { $0.status == .doing } }
-    private var queued: [YCodeTodo] { model.todos.filter { $0.status == .todo } }
-    private var done: [YCodeTodo] { model.todos.filter { $0.status == .done } }
+    private var items: [YCodeTodo] { model.openTodos }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,7 +23,7 @@ struct TodoPanelView: View {
             captureField
             if model.todoIsLoading && model.todos.isEmpty {
                 ProgressView(l10n.text("readingTodos")).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if doing.isEmpty && queued.isEmpty && done.isEmpty {
+            } else if items.isEmpty {
                 YCodeInspectorEmptyState(
                     title: l10n.text("emptyTodosTitle"),
                     message: l10n.text("emptyTodosBody")
@@ -88,58 +85,16 @@ struct TodoPanelView: View {
     private var list: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                group(l10n.text("doing"), items: doing)
-                group(l10n.text("queue"), items: queued)
-                if !done.isEmpty {
-                    // 做完的事只在需要回看时展开，不占清单顶部的注意力。
-                    Button { showDone.toggle() } label: {
-                        groupLabel(l10n.text("done"), count: done.count, chevron: showDone ? "chevron.down" : "chevron.right")
-                    }
-                    .buttonStyle(.plain)
-                    if showDone {
-                        ForEach(done) { row($0, in: done) }
-                    }
-                }
+                ForEach(items) { row($0, in: items) }
             }
-            .padding(.bottom, 8)
+            .padding(.vertical, 6)
         }
-    }
-
-    @ViewBuilder
-    private func group(_ title: String, items: [YCodeTodo]) -> some View {
-        if !items.isEmpty {
-            groupLabel(title, count: items.count, chevron: nil)
-            ForEach(items) { row($0, in: items) }
-        }
-    }
-
-    private func groupLabel(_ title: String, count: Int, chevron: String?) -> some View {
-        HStack(spacing: 6) {
-            if let chevron {
-                Image(systemName: chevron)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 10)
-            }
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("\(count)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 22)
-        .padding(.top, 6)
-        .contentShape(Rectangle())
     }
 
     private func row(_ item: YCodeTodo, in group: [YCodeTodo]) -> some View {
         let index = group.firstIndex { $0.id == item.id } ?? 0
-        let byline = byline(item)
         return HStack(alignment: .top, spacing: 8) {
-            statusBox(item)
+            marker
             VStack(alignment: .leading, spacing: 1) {
                 if editingTodo?.id == item.id {
                     // 重命名就是把这一行的文字变成输入框，不弹窗：改的是哪一条，位置自己回答了。
@@ -157,21 +112,18 @@ struct TodoPanelView: View {
                 } else {
                     Text(item.title)
                         .font(.system(size: 12.5))
-                        .foregroundStyle(item.status == .done ? .secondary : .primary)
-                        .strikethrough(item.status == .done)
                         .lineLimit(2)
-                }
-                // 值得占一行的是「谁动的」，不是「添加于 17 秒前」（设计稿 §03c 标注 2）。
-                if let byline {
-                    Text(byline)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 4)
-            // 行右边只有一个 ⋯，而且只在 hover 时出现（标注 3）。
+            // 行右边的动作只在 hover 时出现：✕ 就是「做完了」，⋯ 里是排序、改名和带确认的删除。
             if hoveredID == item.id, editingTodo?.id != item.id {
+                Button { model.deleteTodo(id: item.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(l10n.text("deleteTodoDone"))
                 Menu {
                     rowMenu(item, index: index, count: group.count)
                 } label: {
@@ -192,76 +144,23 @@ struct TodoPanelView: View {
         // 再走一遍 beginEditing 就把已经改了一半的标题重置回原样了。
         .onTapGesture(count: 2) { if editingTodo?.id != item.id { beginEditing(item) } }
         .contextMenu { rowMenu(item, index: index, count: group.count) }
-        // MCP 改动会让一条待办在几个分组之间移动，把版本放进视图标识，
-        // SwiftUI 才不会复用搬家前那一行的旧标题。
-        .id("\(item.id)|\(item.updatedAtMilliseconds)|\(item.title)|\(item.status.rawValue)|\(item.sortOrder)")
+        // MCP 改动会让一条待办改标题或换位置，把版本放进视图标识，
+        // SwiftUI 才不会复用改之前那一行的旧标题。
+        .id("\(item.id)|\(item.updatedAtMilliseconds)|\(item.title)|\(item.sortOrder)")
     }
 
-    /// 点方块按 队列 → 进行中 → 完成 → 队列 循环：三种状态都点得到，
-    /// 不用为了「我开始做了」去翻一次 ⋯ 菜单。
-    private func statusBox(_ item: YCodeTodo) -> some View {
-        let next = nextStatus(item.status)
-        return Button {
-            model.updateTodo(id: item.id, status: next)
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
-                    .fill(boxFill(item))
-                RoundedRectangle(cornerRadius: YCodeMetrics.radiusChip)
-                    .strokeBorder(item.status == .todo ? Color.secondary.opacity(0.55) : .clear, lineWidth: 1.5)
-                if item.status == .done {
-                    Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
-                } else if item.status == .doing {
-                    Circle().fill(.white).frame(width: 5, height: 5)
-                }
-            }
+    /// 只是个行首记号，不是按钮：没有状态可切。
+    private var marker: some View {
+        Circle()
+            .fill(Color.secondary.opacity(0.45))
+            .frame(width: 5, height: 5)
             .frame(width: 14, height: 14)
-            // 未完成时方框里是透明的，只有那圈 1.5pt 描边算「画出来的内容」，
-            // 不补形状就只有描边能点中 —— 勾不上，却能取消已完成的那种怪逻辑。
-            // 负 padding 把命中区放大到 20×20，行里的间距保持设计稿的样子。
-            .padding(3)
-            .contentShape(Rectangle())
-            .padding(-3)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 1)
-        .help(hint(for: next))
-    }
-
-    private func nextStatus(_ status: YCodeTodoStatus) -> YCodeTodoStatus {
-        switch status {
-        case .todo: .doing
-        case .doing: .done
-        case .done: .todo
-        }
-    }
-
-    /// tooltip 说的是「点下去会变成什么」，和菜单里那三条同一套文案。
-    private func hint(for status: YCodeTodoStatus) -> String {
-        switch status {
-        case .todo: l10n.text("moveToQueue")
-        case .doing: l10n.text("markDoing")
-        case .done: l10n.text("markDone")
-        }
-    }
-
-    private func boxFill(_ item: YCodeTodo) -> Color {
-        switch item.status {
-        case .doing: .ycodeWarn
-        case .done: .ycodeOK
-        case .todo: .clear
-        }
+            .padding(.top, 1)
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
     private func rowMenu(_ item: YCodeTodo, index: Int, count: Int) -> some View {
-        Button(l10n.text("markDoing")) { model.updateTodo(id: item.id, status: .doing) }
-            .disabled(item.status == .doing)
-        Button(l10n.text("moveToQueue")) { model.updateTodo(id: item.id, status: .todo) }
-            .disabled(item.status == .todo)
-        Button(l10n.text("markDone")) { model.updateTodo(id: item.id, status: .done) }
-            .disabled(item.status == .done)
-        Divider()
         Button(l10n.text("moveUp")) { model.moveTodo(id: item.id, by: -1) }
             .disabled(index == 0)
         Button(l10n.text("moveDown")) { model.moveTodo(id: item.id, by: 1) }
@@ -269,30 +168,6 @@ struct TodoPanelView: View {
         Divider()
         Button(l10n.text("renameEllipsis")) { beginEditing(item) }
         Button(l10n.text("deleteEllipsis"), role: .destructive) { pendingDelete = item }
-    }
-
-    // MARK: 文案
-
-    /// 队列里的条目不写副行 —— 刚敲进去的那条，「添加于 17 秒前」没有任何信息量。
-    private func byline(_ item: YCodeTodo) -> String? {
-        switch item.status {
-        case .todo:
-            return nil
-        case .doing:
-            return l10n.text("todoStartedFormat", relative(item.startedAtMilliseconds ?? item.updatedAtMilliseconds))
-        case .done:
-            return l10n.text("todoCompletedFormat", relative(item.doneAtMilliseconds ?? item.updatedAtMilliseconds))
-        }
-    }
-
-    /// 粒度只到分钟。待办面板在轮询，秒级的相对时间会跟着每秒重算一次，
-    /// 于是「11秒前 / 12秒前」在眼角一直闪 —— 而那个秒数没有任何信息量。
-    /// 一分钟内一律「刚刚」，之后按分钟走，文案就稳住了。
-    private func relative(_ milliseconds: Int64) -> String {
-        let date = Date(timeIntervalSince1970: Double(milliseconds) / 1_000)
-        let now = Date()
-        if abs(date.timeIntervalSince(now)) < 60 { return l10n.text("justNow") }
-        return Self.relativeFormatter.localizedString(for: date, relativeTo: now)
     }
 
     private func beginEditing(_ item: YCodeTodo) {
@@ -310,11 +185,4 @@ struct TodoPanelView: View {
         editingTodo = nil
     }
 
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        // 跨天的那条读「昨天」比「1 天前」自然（设计稿 §03c 副行）。
-        formatter.dateTimeStyle = .named
-        return formatter
-    }()
 }

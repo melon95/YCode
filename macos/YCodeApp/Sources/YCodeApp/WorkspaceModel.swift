@@ -76,12 +76,24 @@ struct YCodeTerminalSearchRequest: Equatable {
     let generation: Int
 }
 
+struct YCodeProjectBranches: Sendable {
+    var isGitRepository: Bool
+    var current: String
+    var branches: [YCodeGitBranch]
+
+    static let none = YCodeProjectBranches(isGitRepository: false, current: "", branches: [])
+}
+
 @MainActor
 final class WorkspaceModel: ObservableObject {
     @Published private(set) var projects: [ProjectRecord] = []
     @Published private(set) var sessions: [SessionMetadata] = []
     @Published var selectedProjectID: String?
     @Published var selectedSessionID: String?
+    /// 侧栏项目行的「+」想让新会话落在哪个项目；选择器读走之后清掉。
+    @Published var newSessionProjectRequest: String?
+    /// 最近一次建会话用的项目，新会话选择器没有更具体的线索时用它。
+    private(set) var lastNewSessionProjectID: String?
     @Published private(set) var visibleSessionIDs: [String] = []
     @Published private(set) var focusedCanvasSlot = 0
     @Published private(set) var terminalLayout: YCodeTerminalLayout = .single
@@ -144,7 +156,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func commitPanelAreaWidth() {
-        saveCanvasSnapshot()
     }
 
     /// 面板区里开着的面板，数组顺序 = 从上到下的堆叠顺序。
@@ -239,7 +250,8 @@ final class WorkspaceModel: ObservableObject {
     let dataRoot: URL
     private var repository: ProjectWorkspaceRepository?
     private var sessionService: YCodeAgentSessionService?
-    private var canvasByProject: [String: CanvasSnapshot] = [:]
+    /// 画布本身（会话、焦点、布局）和面板区的开关是全局的，只有「文件面板里选中的文件」属于项目。
+    private var selectedFileByProject: [String: URL] = [:]
     private var editorWorkspaces: [String: YCodeEditorWorkspace] = [:]
     private var terminalSearchGeneration = 0
     private let shellPool = YCodeProjectShellPool.shared
@@ -262,16 +274,6 @@ final class WorkspaceModel: ObservableObject {
     private var checkpointService: YCodeCheckpointService?
     private var eventCancellables: Set<AnyCancellable> = []
     private let gitService = YCodeGitService()
-
-    private struct CanvasSnapshot {
-        var sessionIDs: [String]
-        var focusSlot: Int
-        var layout: YCodeTerminalLayout
-        var openPanels: [YCodeWorkspacePanel]
-        var panelColumnWidth: CGFloat
-        var focusedPanel: YCodeWorkspacePanel
-        var selectedFileURL: URL?
-    }
 
     init(initialProjectID: String? = nil) {
         dataRoot = YCodeDataRootResolver.resolve()
@@ -313,7 +315,7 @@ final class WorkspaceModel: ObservableObject {
             if let initialProjectID, projects.contains(where: { $0.id == initialProjectID }) {
                 selectedProjectID = initialProjectID
                 sessions = try repository.listSessions(projectID: initialProjectID)
-                restoreCanvasSnapshot(for: initialProjectID)
+                resetCanvas()
             }
         } catch {
             errorMessage = String(describing: error)
@@ -356,7 +358,25 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var selectedSession: SessionMetadata? {
-        selectedSessionID.flatMap { id in sessions.first { $0.id == id } }
+        selectedSessionID.flatMap { session(id: $0) }
+    }
+
+    /// 画布是跨项目的，所以按 id 找会话要在所有项目里找，不能只看当前项目的 `sessions`。
+    func session(id: String) -> SessionMetadata? {
+        if let hit = sessions.first(where: { $0.id == id }) { return hit }
+        for list in sessionsByProject.values {
+            if let hit = list.first(where: { $0.id == id }) { return hit }
+        }
+        return nil
+    }
+
+    func project(id: String) -> ProjectRecord? {
+        projects.first { $0.id == id }
+    }
+
+    /// 焦点窗格所属的项目。右侧面板、新会话的默认项目都跟它走。
+    var focusedCanvasProjectID: String? {
+        focusedCanvasSessionID.flatMap { session(id: $0)?.projectID }
     }
 
     var selectedEditorWorkspace: YCodeEditorWorkspace? {
@@ -368,7 +388,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var visibleSessions: [SessionMetadata] {
-        visibleSessionIDs.compactMap { id in sessions.first { $0.id == id } }
+        visibleSessionIDs.compactMap { session(id: $0) }
     }
 
     var validTerminalLayouts: [YCodeTerminalLayout] {
@@ -514,17 +534,17 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 侧栏点一行会话：跨项目时先切项目，把它放到画布上，没在跑就直接接着跑。
+    /// 侧栏点一行会话：把它放到画布上（不管属于哪个项目），没在跑就直接接着跑。
     /// 并排是 ycode 的核心差异，所以走 `.newPane` —— 已经在画布上就聚焦过去，
     /// 还有空格位就并排开一格，满 4 格才替换当前焦点格。
     func activateSession(_ session: SessionMetadata) {
-        if session.projectID != selectedProjectID { selectProject(session.projectID) }
+        // 画布是跨项目的：不再为了换项目而换掉整块画布，焦点落到哪个会话，右侧面板就跟到哪个项目。
         openSessionInCanvas(session.id, mode: .newPane)
         resumeIfNeeded(session.id)
     }
 
     func resumeIfNeeded(_ id: String) {
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
+        guard let session = session(id: id) else { return }
         guard runtimeStatus(for: session)?.isLive != true else { return }
         guard !resumingSessionIDs.contains(id) else { return }
         restartSession(id)
@@ -557,7 +577,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func showOverview() {
-        saveCanvasSnapshot()
+        rememberSelectedFile()
         stopHistoryPolling()
         stopTodoPolling()
         clearHistoryState()
@@ -566,7 +586,6 @@ final class WorkspaceModel: ObservableObject {
         selectedProjectID = nil
         selectedSessionID = nil
         sessions = []
-        resetCanvas()
     }
 
     func selectProject(_ id: String?) {
@@ -574,7 +593,7 @@ final class WorkspaceModel: ObservableObject {
             if let project = selectedProject { ensureEditorWorkspace(for: project) }
             return
         }
-        saveCanvasSnapshot()
+        rememberSelectedFile()
         stopHistoryPolling()
         stopTodoPolling()
         clearHistoryState()
@@ -586,9 +605,14 @@ final class WorkspaceModel: ObservableObject {
             try repository?.setSelectedProjectID(id)
             sessions = try id.map { try repository?.listSessions(projectID: $0) ?? [] } ?? []
             refreshSessionsByProject()
-            restoreCanvasSnapshot(for: id)
+            restoreProjectContext(for: id)
+            // 画布上已经有这个项目的会话、而焦点在别的项目上：把焦点挪过来，右侧面板才对得上。
+            if focusedCanvasProjectID != id,
+               let slot = visibleSessionIDs.firstIndex(where: { session(id: $0)?.projectID == id }) {
+                focusedCanvasSlot = slot
+            }
+            selectedSessionID = focusedCanvasProjectID == id ? focusedCanvasSessionID : nil
             if let project = selectedProject { ensureEditorWorkspace(for: project) }
-            if openPanels.contains(.terminal) { ensureSelectedProjectShells() }
             if !expandedHistoryProjectIDs.isEmpty { startHistoryPolling() }
             if openPanels.contains(.todos) { startTodoPolling() }
             if openPanels.contains(.changes) { refreshGitStatus() }
@@ -608,30 +632,36 @@ final class WorkspaceModel: ObservableObject {
     }
 
     /// 新建会话：不勾 worktree 就是「切到这个分支再起」；分支留空表示用仓库当前分支。
-    func createSession(agentProfileID: String, title: String, branch: String?, useWorktree: Bool) {
-        if let branch, !branch.isEmpty, branch != gitStatus?.branch.current, let project = selectedProject {
-            do { try gitService.checkout(root: project.repositoryURL, branch: branch) }
-            catch {
-                errorMessage = error.localizedDescription
-                return
+    /// `projectID` 为空表示当前项目。新会话选择器里可以选别的项目，所以分支也要在那个项目的仓库里切。
+    func createSession(agentProfileID: String, title: String, branch: String?, useWorktree: Bool, projectID: String? = nil) {
+        guard let targetID = projectID ?? selectedProjectID, let project = project(id: targetID) else { return }
+        if let branch, !branch.isEmpty {
+            let current = (try? gitService.branches(root: project.repositoryURL))?.first(where: \.current)?.name
+            if branch != current {
+                do { try gitService.checkout(root: project.repositoryURL, branch: branch) }
+                catch {
+                    errorMessage = error.localizedDescription
+                    return
+                }
+                if targetID == selectedProjectID { refreshGitStatus() }
             }
-            refreshGitStatus()
         }
         if useWorktree {
             errorMessage = l10n.text("worktreeNotSupportedYet")
             return
         }
-        createSession(agentProfileID: agentProfileID, title: title)
+        createSession(agentProfileID: agentProfileID, title: title, projectID: targetID)
     }
 
-    func createSession(agentProfileID: String, title: String) {
-        guard let selectedProjectID else { return }
+    func createSession(agentProfileID: String, title: String, projectID: String? = nil) {
+        guard let targetID = projectID ?? selectedProjectID else { return }
         do {
             let row = try sessionService?.createSession(
-                projectID: selectedProjectID,
+                projectID: targetID,
                 agentProfileID: agentProfileID,
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines)
             )
+            lastNewSessionProjectID = targetID
             reloadSessions()
             isPresentingNewSession = false
             if let id = row?.id { openSessionInCanvas(id, mode: .newPane) }
@@ -774,7 +804,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func openSessionInCanvas(_ id: String, mode: YCodeTerminalCanvasOpenMode) {
-        guard sessions.contains(where: { $0.id == id }) else { return }
+        guard session(id: id) != nil else { return }
         let result = YCodeTerminalCanvasRouting.open(
             sessionID: id,
             visibleSessionIDs: visibleSessionIDs,
@@ -785,9 +815,31 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs = result.sessionIDs
         focusedCanvasSlot = result.focusedSlot
         terminalLayout = result.layout
+        followFocusedProject()
         selectedSessionID = id
         if openPanels.contains(.changes) { refreshCheckpoints() }
-        saveCanvasSnapshot()
+    }
+
+    /// 右侧面板（文件、变更、待办、项目终端）永远属于焦点窗格的项目：焦点跨项目了就把项目上下文换过去。
+    /// 只换上下文，不碰画布。
+    /// 窗格菜单「在侧栏中定位」：把所属项目展开，让这一行露出来。
+    func revealSessionInSidebar(_ session: SessionMetadata) {
+        collapsedProjectIDs.remove(session.projectID)
+    }
+
+    /// 窗格菜单「仅看此项目」：画布上别的项目的窗格收起来。只是移出画布，里面的 agent 继续在后台跑。
+    func keepOnlyProjectInCanvas(_ projectID: String) {
+        let focusedID = focusedCanvasSessionID
+        visibleSessionIDs = visibleSessionIDs.filter { session(id: $0)?.projectID == projectID }
+        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
+        terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
+        followFocusedProject()
+        selectedSessionID = focusedCanvasSessionID
+    }
+
+    private func followFocusedProject() {
+        guard let projectID = focusedCanvasProjectID, projectID != selectedProjectID else { return }
+        selectProject(projectID)
     }
 
     func attentionEvent(for sessionID: String) -> YCodeAgentHookEvent? { attentionEvents[sessionID] }
@@ -797,22 +849,21 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs.remove(at: index)
         focusedCanvasSlot = visibleSessionIDs.isEmpty ? 0 : min(index, visibleSessionIDs.count - 1)
         terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
+        followFocusedProject()
         selectedSessionID = focusedCanvasSessionID
-        saveCanvasSnapshot()
     }
 
     func focusCanvasSlot(_ index: Int) {
         guard visibleSessionIDs.indices.contains(index) else { return }
         focusedCanvasSlot = index
+        followFocusedProject()
         selectedSessionID = visibleSessionIDs[index]
         if openPanels.contains(.changes) { refreshCheckpoints() }
-        saveCanvasSnapshot()
     }
 
     func setTerminalLayout(_ layout: YCodeTerminalLayout) {
         guard validTerminalLayouts.contains(layout) else { return }
         terminalLayout = layout
-        saveCanvasSnapshot()
     }
 
     /// 画布顶栏右端那四个图标：开关，不是单选。全关则面板区整体收起。
@@ -831,7 +882,6 @@ final class WorkspaceModel: ObservableObject {
             if panel == .todos { startTodoPolling() }
             if panel == .changes { refreshGitStatus() }
         }
-        saveCanvasSnapshot()
     }
 
     /// 面板区里上下换位（拖卡头，或从菜单里移动）。
@@ -840,7 +890,6 @@ final class WorkspaceModel: ObservableObject {
         let target = index + offset
         guard openPanels.indices.contains(target) else { return }
         openPanels.swapAt(index, target)
-        saveCanvasSnapshot()
     }
 
     /// 「把这个面板叫出来」：没开就开，已经开着就只是聚焦，不会把别的面板关掉。
@@ -862,7 +911,18 @@ final class WorkspaceModel: ObservableObject {
         if panel == .terminal { ensureSelectedProjectShells() }
         if panel == .todos { startTodoPolling() }
         if panel == .changes { refreshGitStatus() }
-        saveCanvasSnapshot()
+    }
+
+    /// 新会话选择器里切项目时读那个项目的分支。不走 `gitBranches`（那份只属于当前项目），
+    /// 也不改任何已发布状态。
+    func loadBranches(projectID: String) async -> YCodeProjectBranches {
+        guard let project = project(id: projectID) else { return .none }
+        let root = project.repositoryURL
+        let service = gitService
+        return await Task.detached(priority: .userInitiated) {
+            guard let branches = try? service.branches(root: root) else { return YCodeProjectBranches.none }
+            return YCodeProjectBranches(isGitRepository: true, current: branches.first(where: \.current)?.name ?? "", branches: branches)
+        }.value
     }
 
     func refreshGitStatus() {
@@ -1217,16 +1277,17 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
+    /// 面板里看得到的待办：没有「进行中 / 已完成」的区分，只有还要做的事。
+    /// 库里和 MCP 里仍然带着 status（agent 可能标成 done），标了 done 的当作做完了，不再露面。
+    var openTodos: [YCodeTodo] { todos.filter { $0.status != .done } }
+
     func moveTodo(id: String, by offset: Int) {
-        guard let projectID = selectedProjectID,
-              let item = todos.first(where: { $0.id == id }) else { return }
-        var group = todos.filter { $0.status == item.status }
-        guard let source = group.firstIndex(where: { $0.id == id }),
-              group.indices.contains(source + offset) else { return }
-        group.swapAt(source, source + offset)
-        let ordered = [YCodeTodoStatus.doing, .todo, .done].flatMap { status in
-            status == item.status ? group.map(\.id) : todos.filter { $0.status == status }.map(\.id)
-        }
+        guard let projectID = selectedProjectID else { return }
+        var open = openTodos
+        guard let source = open.firstIndex(where: { $0.id == id }),
+              open.indices.contains(source + offset) else { return }
+        open.swapAt(source, source + offset)
+        let ordered = open.map(\.id) + todos.filter { $0.status == .done }.map(\.id)
         do {
             try todoRepository?.reorder(projectID: projectID, orderedIDs: ordered)
             loadTodos(showSpinner: false)
@@ -1423,14 +1484,12 @@ final class WorkspaceModel: ObservableObject {
         if let url, let workspace = selectedEditorWorkspace {
             workspace.open(url: url, preview: true)
         }
-        saveCanvasSnapshot()
     }
 
     /// 树里双击 = 固定这个标签（不再是斜体的预览位），下一次单击别的文件就不会把它顶掉。
     func pinProjectFile(_ url: URL) {
         selectedTerminalPath = url
         selectedEditorWorkspace?.open(url: url, preview: false)
-        saveCanvasSnapshot()
     }
 
     func saveSelectedEditorFile() {
@@ -1444,7 +1503,6 @@ final class WorkspaceModel: ObservableObject {
         self.selectedTerminalPath = suffix.isEmpty
             ? newURL
             : newURL.appendingPathComponent(suffix)
-        saveCanvasSnapshot()
     }
 
     func projectFileDeleted(at url: URL) {
@@ -1452,7 +1510,6 @@ final class WorkspaceModel: ObservableObject {
         guard let selectedTerminalPath,
               relativeDescendantPath(of: selectedTerminalPath, below: url) != nil else { return }
         self.selectedTerminalPath = nil
-        saveCanvasSnapshot()
     }
 
     func openTerminalSearch(sessionID: String) {
@@ -1628,7 +1685,8 @@ final class WorkspaceModel: ObservableObject {
         selectedProjectID = initialProjectID(recentProjectID: recent, projects: projects)
         sessions = try selectedProjectID.map { try repository.listSessions(projectID: $0) } ?? []
         refreshSessionsByProject()
-        restoreCanvasSnapshot(for: selectedProjectID)
+        resetCanvas()
+        restoreProjectContext(for: selectedProjectID)
     }
 
     private func refreshSessionsByProject() {
@@ -1658,45 +1716,23 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    private func saveCanvasSnapshot() {
+    private func rememberSelectedFile() {
         guard let selectedProjectID else { return }
-        canvasByProject[selectedProjectID] = CanvasSnapshot(
-            sessionIDs: visibleSessionIDs,
-            focusSlot: focusedCanvasSlot,
-            layout: terminalLayout,
-            openPanels: openPanels,
-            panelColumnWidth: panelColumnWidth,
-            focusedPanel: focusedPanel,
-            selectedFileURL: selectedTerminalPath
-        )
+        selectedFileByProject[selectedProjectID] = selectedTerminalPath
     }
 
-    private func restoreCanvasSnapshot(for projectID: String?) {
-        guard let projectID, let snapshot = canvasByProject[projectID] else {
-            resetCanvas()
-            return
-        }
-        let known = Set(sessions.map(\.id))
-        visibleSessionIDs = Array(snapshot.sessionIDs.filter(known.contains).prefix(4))
-        focusedCanvasSlot = visibleSessionIDs.isEmpty ? 0 : min(snapshot.focusSlot, visibleSessionIDs.count - 1)
-        terminalLayout = YCodeTerminalLayout.reflow(snapshot.layout, for: visibleSessionIDs.count)
-        openPanels = snapshot.openPanels
-        panelColumnWidth = snapshot.panelColumnWidth
-        focusedPanel = snapshot.focusedPanel
-        inspectorIsVisible = !openPanels.isEmpty
-        // 终端面板的 shell 是按项目起的，跟着面板一起恢复。
+    /// 切项目只换「属于项目」的那部分：文件面板选中的文件，以及按项目起的 shell。
+    private func restoreProjectContext(for projectID: String?) {
+        selectedTerminalPath = projectID.flatMap { selectedFileByProject[$0] }
         if openPanels.contains(.terminal) { ensureSelectedProjectShells() }
-        selectedTerminalPath = snapshot.selectedFileURL
-        selectedSessionID = focusedCanvasSessionID
     }
 
     private func reconcileCanvas() {
-        let known = Set(sessions.map(\.id))
+        let known = Set(sessionsByProject.values.flatMap { $0.map(\.id) })
         visibleSessionIDs = visibleSessionIDs.filter(known.contains)
         focusedCanvasSlot = visibleSessionIDs.isEmpty ? 0 : min(focusedCanvasSlot, visibleSessionIDs.count - 1)
         terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
         if let selectedSessionID, !known.contains(selectedSessionID) { self.selectedSessionID = focusedCanvasSessionID }
-        saveCanvasSnapshot()
     }
 
     private func resetCanvas() {

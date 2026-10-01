@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import YCodeCore
 
@@ -8,6 +9,10 @@ struct NewSessionPickerView: View {
     @Environment(\.ycodeL10n) private var l10n
     @State private var useWorktree = false
     @State private var branch: String = ""
+    /// 新会话落在哪个项目。默认值的来历见 `defaultProjectID()`。
+    @State private var projectID: String?
+    @State private var projectBranches = YCodeProjectBranches.none
+    @State private var branchesLoaded = false
     /// 已经点下去的 agent。只用来先把反馈画出来——真正的启动下一个 runloop 才跑。
     @State private var startingProfileID: String?
 
@@ -25,12 +30,11 @@ struct NewSessionPickerView: View {
         }
         .onAppear {
             model.reloadAgentProfiles()
-            if model.gitBranches.isEmpty { model.refreshGitStatus() }
-            if branch.isEmpty { branch = model.gitStatus?.branch.current ?? "" }
+            applyProjectRequest()
         }
-        .onChange(of: model.gitStatus?.branch.current) { _, current in
-            if branch.isEmpty, let current { branch = current }
-        }
+        .onChange(of: model.newSessionProjectRequest) { _, _ in applyProjectRequest() }
+        // 项目变了，分支列表和当前分支都要重读，不能把 A 项目的分支名带进 B 项目。
+        .task(id: projectID) { await reloadBranches() }
     }
 
     private func card(compact: Bool) -> some View {
@@ -41,7 +45,7 @@ struct NewSessionPickerView: View {
             Text(l10n.text("newSessionTitle"))
                 .font(compact ? .headline : .title2.weight(.semibold))
                 .tracking(-0.2)
-            Text(model.selectedProject.map { l10n.text("newSessionSubtitleFormat", $0.name) } ?? l10n.text("newSessionSubtitleNoProject"))
+            Text(chosenProject.map { l10n.text("newSessionSubtitleFormat", $0.name) } ?? l10n.text("newSessionSubtitleNoProject"))
                 .font(compact ? .caption : .subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
@@ -90,36 +94,131 @@ struct NewSessionPickerView: View {
         }
     }
 
-    /// 只有两件事必须在起会话前决定：要不要隔离、基于哪个分支。起来之后就改不了了。
+    /// 起会话前要决定三件事：项目、分支、是否隔离。起来之后就改不了了。
+    /// 项目和分支挨在一起（分支是项目的下一级，换项目分支就跟着重读），worktree 单独靠右。
     private func foot(compact: Bool) -> some View {
         HStack(spacing: compact ? 7 : 9) {
+            projectMenu(compact: compact)
+            branchMenu(compact: compact)
+            Spacer(minLength: 4)
             Toggle(isOn: $useWorktree) {
                 Text("worktree").font(compact ? .caption : .subheadline)
             }
             .toggleStyle(.checkbox)
             .fixedSize()
-            Spacer(minLength: 4)
-            Menu {
-                ForEach(model.gitBranches) { item in
-                    Button {
-                        branch = item.name
-                    } label: {
-                        if item.name == branch { Label(item.name, systemImage: "checkmark") } else { Text(item.name) }
-                    }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
-                    Text(branch.isEmpty ? l10n.text("currentBranch") : branch)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            .disabled(!projectBranches.isGitRepository)
+        }
+    }
+
+    private func projectMenu(compact: Bool) -> some View {
+        Menu {
+            ForEach(model.projects) { project in
+                Button {
+                    projectID = project.id
+                } label: {
+                    if project.id == projectID { Label(project.name, systemImage: "checkmark") } else { Text(project.name) }
                 }
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .frame(height: compact ? 22 : 24)
+            Divider()
+            Button(l10n.text("addProjectEllipsis")) { addProject() }
+        } label: {
+            HStack(spacing: 5) {
+                if let project = chosenProject {
+                    Image(nsImage: YCodeProjectPalette.dotImage(for: project.id))
+                    Text(project.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                } else {
+                    Text(l10n.text("newSessionProject")).font(.system(size: 11, weight: .semibold))
+                }
+            }
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .frame(height: compact ? 22 : 24)
+        .help(l10n.text("newSessionProjectHelp"))
+        .accessibilityLabel("\(l10n.text("newSessionProject")): \(chosenProject?.name ?? "")")
+    }
+
+    private func branchMenu(compact: Bool) -> some View {
+        Menu {
+            ForEach(projectBranches.branches) { item in
+                Button {
+                    branch = item.name
+                } label: {
+                    if item.name == branch { Label(item.name, systemImage: "checkmark") } else { Text(item.name) }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
+                Text(branchLabel)
+                    .font(.system(size: 11, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .frame(height: compact ? 22 : 24)
+        .disabled(!projectBranches.isGitRepository)
+    }
+
+    private var branchLabel: String {
+        if branchesLoaded, !projectBranches.isGitRepository { return l10n.text("notGitRepository") }
+        return branch.isEmpty ? l10n.text("currentBranch") : branch
+    }
+
+    private var chosenProject: ProjectRecord? {
+        projectID.flatMap { model.project(id: $0) }
+    }
+
+    /// 默认项目：侧栏「+」点名的 > 焦点窗格所属项目（⌘N 再开一个同项目的最常见）
+    /// > 最近建会话用过的 > 当前项目 > 侧栏第一个。
+    private func defaultProjectID() -> String? {
+        let candidates = [
+            model.newSessionProjectRequest,
+            model.focusedCanvasProjectID,
+            model.lastNewSessionProjectID,
+            model.selectedProjectID,
+            model.projects.first?.id
+        ]
+        return candidates.compactMap { $0 }.first { model.project(id: $0) != nil }
+    }
+
+    /// 「+」点名的项目只用一次；选择器读走就清掉，免得下一次 ⌘N 还被它钉住。
+    private func applyProjectRequest() {
+        if let request = model.newSessionProjectRequest, model.project(id: request) != nil {
+            projectID = request
+            model.newSessionProjectRequest = nil
+        } else if projectID == nil || chosenProject == nil {
+            projectID = defaultProjectID()
+        }
+    }
+
+    private func reloadBranches() async {
+        guard let projectID else { return }
+        branchesLoaded = false
+        branch = ""
+        let result = await model.loadBranches(projectID: projectID)
+        // 读的过程中又换了项目：这份结果已经过期。
+        guard !Task.isCancelled, self.projectID == projectID else { return }
+        projectBranches = result
+        branch = result.current
+        if !result.isGitRepository { useWorktree = false }
+        branchesLoaded = true
+    }
+
+    private func addProject() {
+        let panel = NSOpenPanel()
+        panel.prompt = l10n.text("add")
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.addProject(directory: url)
+        projectID = model.selectedProjectID
     }
 
     @ViewBuilder
@@ -149,7 +248,8 @@ struct NewSessionPickerView: View {
                 agentProfileID: profile.id,
                 title: "",
                 branch: branch.isEmpty ? nil : branch,
-                useWorktree: useWorktree
+                useWorktree: useWorktree,
+                projectID: projectID
             )
             // 成功的话这个视图已经被终端替掉了；失败时要把按钮放回可点状态。
             startingProfileID = nil

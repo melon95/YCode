@@ -26,14 +26,14 @@ struct NotificationsSettingsView: View {
             Section {
                 // 「选一个值」而不是模式开关 —— 切换它不改变这一页显示什么，
                 // 所以用弹出菜单。分段控件留给真正会换内容的地方（比如代理模式）。
-                YCodeFormRow(label: l10n.text("deliveryTiming")) {
+                YCodeFormRow(label: l10n.text("deliveryTiming"), trailing: true) {
                     Picker("", selection: delivery) {
                         ForEach(Delivery.allCases) { Text($0.title(l10n)).tag($0) }
                     }
                     .labelsHidden()
                     .fixedSize()
                 }
-                YCodeFormRow(label: l10n.text("testNotification")) {
+                YCodeFormRow(label: l10n.text("testNotification"), trailing: true) {
                     Button(l10n.text("send")) {
                         sendingTest = true
                         testResult = nil
@@ -49,19 +49,20 @@ struct NotificationsSettingsView: View {
                     }
                     .disabled(!settings.enabled || sendingTest)
                 }
-                YCodeFormValueRow(label: l10n.text("systemPermission"), value: permissionSummary)
+                YCodeFormValueRow(label: l10n.text("systemPermission"), value: permissionSummary, trailing: true)
                 if let testResult {
-                    YCodeFormValueRow(label: l10n.text("recentTest"), value: testResult)
+                    YCodeFormValueRow(label: l10n.text("recentTest"), value: testResult, trailing: true)
                 }
             } header: {
                 Text(l10n.text("systemNotifications"))
             } footer: {
                 Text(l10n.text("notificationsHelp"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Section(l10n.text("connectedEvents")) {
-                YCodeFormValueRow(label: l10n.text("agentTurnComplete"), value: l10n.text("enabled"))
-                YCodeFormValueRow(label: l10n.text("needsApprovalOrAttention"), value: l10n.text("enabled"))
+                YCodeFormValueRow(label: l10n.text("agentTurnComplete"), value: l10n.text("enabled"), trailing: true)
+                YCodeFormValueRow(label: l10n.text("needsApprovalOrAttention"), value: l10n.text("enabled"), trailing: true)
                 Text(l10n.text("notificationApprovalHelp"))
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -381,7 +381,7 @@ struct BasicSettingsView: View {
                     // 只剩它一个是分段的话，同一个窗口里就有了两套「选一个」的说法。
                     // **一致性优先于这条细分规则**：看起来一样的东西应该行为一样，
                     // 反过来也成立 —— 做同一件事的东西不该长得不一样。
-                    YCodeFormRow(label: l10n.text("mode")) {
+                    YCodeFormRow(label: l10n.text("mode"), trailing: true) {
                         Picker("", selection: $model.proxy.mode) {
                             Text(l10n.text("off")).tag(YCodeProxyMode.off)
                             Text(l10n.text("followSystem")).tag(YCodeProxyMode.system)
@@ -394,7 +394,8 @@ struct BasicSettingsView: View {
                         YCodeFormValueRow(
                             label: l10n.text("currentDetection"),
                             value: proxySummary(model.systemProxy, l10n: l10n),
-                            mono: true
+                            mono: true,
+                            trailing: true
                         )
                     }
                     if model.proxy.mode == .manual {
@@ -434,7 +435,7 @@ struct BasicSettingsView: View {
                 // 所以用弹出菜单而不是分段控件 —— 这也是 macOS 系统设置的做法。
                 // 三个分段控件叠在一起时，三块实心强调色会把整页的重心全抢走。
                 Section(l10n.text("theme")) {
-                    YCodeFormRow(label: l10n.text("theme")) {
+                    YCodeFormRow(label: l10n.text("theme"), trailing: true) {
                         Picker("", selection: $model.appearance.theme) {
                             Text(l10n.text("followSystem")).tag(YCodeThemeCatalog.systemID)
                             Text(l10n.text("lightAppearance")).tag(YCodeThemeCatalog.light.id)
@@ -448,7 +449,7 @@ struct BasicSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section(l10n.text("language")) {
-                    YCodeFormRow(label: l10n.text("interfaceLanguage")) {
+                    YCodeFormRow(label: l10n.text("interfaceLanguage"), trailing: true) {
                         Picker("", selection: $model.appearance.locale) {
                             Text("中文").tag(YCodeLocale.zh)
                             Text("English").tag(YCodeLocale.en)
@@ -462,7 +463,7 @@ struct BasicSettingsView: View {
                 }
                 Section(l10n.text("uiScale")) {
                     // 三档按系统字阶整体缩放，不再整棵视图树覆盖一个绝对字号（设计稿问题 07）。
-                    YCodeFormRow(label: l10n.text("uiScale")) {
+                    YCodeFormRow(label: l10n.text("uiScale"), trailing: true) {
                         Picker("", selection: uiScaleBinding) {
                             Text(l10n.text("uiScaleCompact")).tag(13)
                             Text(l10n.text("uiScaleStandard")).tag(14)
@@ -568,7 +569,7 @@ struct BasicSettingsView: View {
     /// 一路顶穿设置窗固定的 780pt —— 表现为窗口左右两边各被裁掉一截。
     /// labelsHidden 之后 Stepper 只剩箭头，fixedSize 才是真的紧凑。
     private func fontRow(_ label: String, keyPath: WritableKeyPath<YCodeFontSizes, Int>) -> some View {
-        YCodeFormRow(label: label) {
+        YCodeFormRow(label: label, trailing: true) {
             HStack(spacing: 6) {
                 Text("\(model.appearance.fontSizes[keyPath: keyPath])")
                     .font(.system(.body, design: .monospaced))

@@ -654,7 +654,7 @@ private struct NativeRootView: View {
     /// 只喂给窗口标题（「窗口」菜单、调度中心那些地方按它认窗口）。
     /// 画布顶栏不再画它——那条名字在下面的窗格头里已经有了。
     private var focusedSessionTitle: String {
-        guard let session = model.focusedCanvasSessionID.flatMap({ id in model.sessions.first { $0.id == id } }) else { return "" }
+        guard let session = model.focusedCanvasSessionID.flatMap({ model.session(id: $0) }) else { return "" }
         return model.displayName(for: session)
     }
 
@@ -842,7 +842,7 @@ private struct NativeRootView: View {
 
     /// ⌘N 就地把选择器摆进画布，没有中间对话框（设计稿 §06 标注 1）。
     private func presentNewSession() {
-        guard model.selectedProject != nil else { return }
+        guard !model.projects.isEmpty else { return }
         model.reloadAgentProfiles()
         model.isPresentingNewSession = true
     }

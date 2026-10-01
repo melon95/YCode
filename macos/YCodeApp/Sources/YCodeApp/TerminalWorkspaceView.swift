@@ -117,7 +117,24 @@ struct TerminalWorkspaceView: View {
     /// 名字后面什么都不跟——是哪个 agent 由图标回答，CLI 吐的终端标题各家格式不一，
     /// 而且终端第一行就在说同一件事。查找（⌘F）有快捷键和右键菜单，不在这条上占按钮。
     private func paneHeader(_ session: SessionMetadata, slot: Int, focused: Bool) -> some View {
+        // 窗格窄到放不下项目名时，徽章收成只剩首字母图标（设计稿 §6）。
+        ViewThatFits(in: .horizontal) {
+            paneHeaderContent(session, slot: slot, focused: focused, badgeShowsName: true)
+            paneHeaderContent(session, slot: slot, focused: focused, badgeShowsName: false)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: YCodeMetrics.paneHeaderHeight)
+        .contentShape(Rectangle())
+        .onTapGesture { model.focusCanvasSlot(slot) }
+        .contextMenu { paneMenu(session, slot: slot) }
+    }
+
+    private func paneHeaderContent(_ session: SessionMetadata, slot: Int, focused: Bool, badgeShowsName: Bool) -> some View {
         HStack(spacing: 8) {
+            // 项目徽章放在最前：混放时第一眼要回答的是「这是哪个项目的 agent」。
+            if let project = model.project(id: session.projectID) {
+                YCodeProjectBadge(projectID: project.id, name: project.name, showsName: badgeShowsName)
+            }
             YCodeStatusDot(presence: model.presence(for: session))
             YCodeAgentIconView(profile: model.agentProfiles.first { $0.id == session.agentProfile }, size: 12)
             Text(model.displayName(for: session))
@@ -140,11 +157,6 @@ struct TerminalWorkspaceView: View {
             .foregroundStyle(.secondary)
             .help(l10n.text("closeAndStopAgent"))
         }
-        .padding(.horizontal, 12)
-        .frame(height: YCodeMetrics.paneHeaderHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { model.focusCanvasSlot(slot) }
-        .contextMenu { paneMenu(session, slot: slot) }
     }
 
     @ViewBuilder
@@ -157,6 +169,8 @@ struct TerminalWorkspaceView: View {
             renameTarget = session
         }
         Divider()
+        Button(l10n.text("locateInSidebar")) { model.revealSessionInSidebar(session) }
+        Button(l10n.text("onlyThisProject")) { model.keepOnlyProjectInCanvas(session.projectID) }
         Button(l10n.text("removeFromCanvas")) { model.closeCanvasSlot(slot) }
         Button(l10n.text("stop"), role: .destructive) { model.stopSession(session.id) }
             .disabled(model.runtimeStatus(for: session)?.isLive != true)
@@ -194,7 +208,7 @@ struct TerminalWorkspaceView: View {
             YCodeTerminalView(
                 sessionID: session.id,
                 runtime: runtime,
-                workingDirectory: model.selectedProject?.repositoryURL,
+                workingDirectory: model.project(id: session.projectID)?.repositoryURL,
                 fontSize: model.terminalFontSize,
                 theme: model.activeTheme,
                 locale: model.locale,
@@ -304,14 +318,15 @@ struct WorkspaceInspectorView: View {
             canMoveDown: model.openPanels.last != panel,
             // 只有点得动的图标才留：文件卡那枚是文件树开关，变更卡那枚是树／平铺开关；
             // 终端和待办的图标既不点，旁边也已经写着自己是谁。
-            showsIcon: panel != .terminal && panel != .todos
+            showsIcon: panel != .terminal && panel != .todos,
+            project: model.selectedProject.map { ($0.id, $0.name) }
         )
     }
 
     private func badgeCount(_ panel: YCodeWorkspacePanel) -> Int? {
         switch panel {
         case .changes: model.scopedChanges.count
-        case .todos: model.todos.filter { $0.status != .done }.count
+        case .todos: model.openTodos.count
         default: nil
         }
     }

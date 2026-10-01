@@ -142,6 +142,7 @@ struct WorkspaceSidebarView: View {
             // 折叠箭头跟在项目名后面，而不是抢在行首：行首那一列留给会话行的 agent 图标，
             // 箭头挤在那里会让项目名和会话标题对不齐，概览卡片用的也是「名字 › 」这个顺序。
             HStack(spacing: 4) {
+                YCodeProjectDot(projectID: project.id)
                 Text(project.name)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(project.pathExists ? .secondary : Color.ycodeWarn)
@@ -155,7 +156,8 @@ struct WorkspaceSidebarView: View {
             // 「+」常驻：它是这一行唯一的动作，藏在 hover 后面等于要求用户先猜它存在。
             // 会话数已经在下面一条条列着了，右端再报一遍数字只是噪音 —— 去掉。
             Button {
-                model.selectProject(project.id)
+                // 只指定新会话的默认项目，不切换项目、不动画布。
+                model.newSessionProjectRequest = project.id
                 onNewSession()
             } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)) }
             .buttonStyle(YCodePlainButtonStyle())
@@ -191,7 +193,7 @@ struct WorkspaceSidebarView: View {
         Button(l10n.text("openInTerminal")) { openInTerminal(project.repositoryURL) }
         Divider()
         Button(l10n.text("newSession")) {
-            model.selectProject(project.id)
+            model.newSessionProjectRequest = project.id
             onNewSession()
         }
         .keyboardShortcut("n")
@@ -376,18 +378,8 @@ struct WorkspaceSidebarView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            Button(action: onNewSession) {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                    // 侧栏是多项目平铺的，所以按钮要说清建到哪个项目。
-                    Text(model.selectedProject.map { l10n.text("newSessionInProjectFormat", $0.name) } ?? l10n.text("newSession"))
-                        .lineLimit(1)
-                }
-                .font(.subheadline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(YCodePlainButtonStyle())
-            .disabled(model.selectedProject == nil)
+            // 新建会话在各项目行的「+」和 ⌘N 里，这里只留添加项目。
+            Spacer(minLength: 0)
             Button(action: onAddProject) {
                 Image(systemName: "folder.badge.plus")
             }

@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCode 跨项目画布</title>
+<style>
+/* 文档外壳：doc- 前缀；窗口模拟：m- 前缀。沿用 ui-visual-direction.html 方向 B「纸面浮卡」的色板。 */
+:root {
+  --doc-bg: #f6f5f9; --doc-ink: #16133a; --doc-muted: #5a5873; --doc-line: #dedce8; --doc-card: #ffffff;
+  --coral: #ff5a4e; --coral-text: #c8372c; --sun: #ffc83d;
+  /* 项目标识色：与珊瑚强调色错开，避免「项目色」被误读成「焦点色」 */
+  --pj-a: #1c9c85; --pj-b: #7b6cf6; --pj-c: #d98a1f; --pj-d: #2f6fed;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--doc-bg); color: var(--doc-ink);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; }
+.doc-wrap { max-width: 1180px; margin: 0 auto; padding: 48px 24px 96px; }
+.doc-kicker { font-size: 12px; letter-spacing: .08em; color: var(--coral-text); font-weight: 600; }
+h1 { font-size: 32px; line-height: 1.2; margin: 6px 0 12px; }
+h2 { font-size: 22px; margin: 56px 0 6px; }
+h2 small { font-size: 13px; color: var(--doc-muted); font-weight: 400; margin-left: 8px; }
+.doc-lede, .doc-sub { color: var(--doc-muted); max-width: 800px; margin: 0 0 18px; }
+.doc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.doc-card { background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; padding: 16px 20px; }
+.doc-card h3 { margin: 0 0 6px; font-size: 15px; }
+.doc-card ul { margin: 0; padding-left: 18px; color: var(--doc-muted); }
+.doc-card li { margin: 3px 0; }
+.doc-cap { font-size: 12px; color: var(--doc-muted); margin: 8px 0 0; }
+.doc-tag { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #ffe7e4; color: var(--coral-text); font-weight: 600; }
+table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; overflow: hidden; font-size: 13px; }
+.doc-table th, .doc-table td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--doc-line); vertical-align: top; }
+.doc-table th { background: #faf9fc; color: var(--doc-muted); font-size: 12px; }
+.doc-table tr:last-child td { border-bottom: 0; }
+code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5; padding: 1px 5px; border-radius: 4px; }
+.doc-pj { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.doc-pj i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ——— 窗口模拟（亮色，方向 B） ——— */
+.m-win { --m-bg: #efeef4; --m-card: #fcfcfe; --m-text: #16133a; --m-soft: #3d3a5c; --m-muted: #7a7893;
+  --m-field: rgba(22,19,58,.06); --m-term: #1b1840; --m-term-text: #d9d7f2;
+  border-radius: 12px; overflow: hidden; background: var(--m-bg); color: var(--m-text);
+  box-shadow: 0 30px 60px -22px rgba(22,19,58,.35), 0 0 0 1px rgba(22,19,58,.1);
+  display: grid; grid-template-columns: 208px 1fr; height: 470px; font-size: 11px; }
+.m-win.m-r { grid-template-columns: 208px 1fr 168px; }
+.m-side { padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
+.m-lights { display: flex; gap: 6px; padding: 2px 4px 10px; }
+.m-lights i { width: 10px; height: 10px; border-radius: 50%; }
+.m-lights i:nth-child(1) { background: #ff5f57; } .m-lights i:nth-child(2) { background: #febc2e; } .m-lights i:nth-child(3) { background: #28c840; }
+.m-pjhead { display: flex; align-items: center; gap: 6px; padding: 7px 6px 3px; font-weight: 650; font-size: 11px; color: var(--m-text); }
+.m-pjhead i { width: 9px; height: 9px; border-radius: 3px; background: var(--p); flex: none; }
+.m-pjhead em { margin-left: auto; font-style: normal; font: 9.5px ui-monospace, Menlo, monospace; color: var(--m-muted); font-weight: 400; }
+.m-row { height: 25px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 16px; border-radius: 7px; color: var(--m-soft); white-space: nowrap; overflow: hidden; }
+.m-row b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.m-row .m-slot { font: 600 9px ui-monospace, Menlo, monospace; min-width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center; background: var(--p); color: #fff; flex: none; }
+.m-row .m-off { width: 14px; flex: none; }
+.m-row.m-on { background: #fff; box-shadow: 0 1px 3px rgba(22,19,58,.14); color: var(--m-text); }
+.m-row.m-dim { opacity: .55; }
+.m-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.m-dot.run { background: #28a745; } .m-dot.wait { background: var(--sun); } .m-dot.idle { background: #b9b7c9; }
+.m-main { display: flex; flex-direction: column; min-width: 0; padding: 0 8px 8px 0; }
+.m-top { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 10px; }
+.m-top .m-title { font-weight: 650; font-size: 12px; }
+.m-top .m-crumb { color: var(--m-muted); font-size: 10.5px; }
+.m-seg { margin-left: auto; display: flex; background: var(--m-field); border-radius: 7px; padding: 2px; gap: 2px; }
+.m-seg i { width: 22px; height: 18px; border-radius: 5px; display: grid; place-items: center; }
+.m-seg i::before { content: ""; width: 11px; height: 8px; border: 1.3px solid var(--m-muted); border-radius: 2px; }
+.m-seg i.m-on { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.m-seg i.m-on::before { border-color: var(--coral); }
+.m-panes { flex: 1; display: grid; gap: 8px; min-height: 0; }
+.g22 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.gms { grid-template-columns: 1.5fr 1fr; grid-template-rows: 1fr 1fr; } .gms .m-pane:first-child { grid-row: span 2; }
+.m-pane { background: var(--m-term); border-radius: 11px; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(22,19,58,.14); border: 1px solid transparent; position: relative; }
+.m-pane.m-focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(255,90,78,.22), 0 4px 14px rgba(22,19,58,.2); }
+.m-ph { height: 26px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--m-term-text); border-bottom: 1px solid rgba(255,255,255,.07); white-space: nowrap; }
+.m-chip { display: inline-flex; align-items: center; gap: 4px; height: 16px; padding: 0 6px 0 5px; border-radius: 5px; font-weight: 650; font-size: 9.5px; color: #fff; background: var(--p); flex: none; max-width: 96px; }
+.m-chip u { text-decoration: none; width: 10px; height: 10px; border-radius: 3px; background: rgba(255,255,255,.28); display: grid; place-items: center; font-size: 7px; }
+.m-chip span { overflow: hidden; text-overflow: ellipsis; }
+.m-ph .m-ag { font-weight: 600; font-size: 10px; }
+.m-ph .m-br { font: 9.5px ui-monospace, Menlo, monospace; opacity: .55; overflow: hidden; text-overflow: ellipsis; }
+.m-ph .m-k { margin-left: auto; font: 9px ui-monospace, Menlo, monospace; opacity: .5; flex: none; }
+.m-term { flex: 1; padding: 7px 9px; font: 9.5px/1.55 ui-monospace, Menlo, monospace; color: var(--m-term-text); overflow: hidden; white-space: pre; }
+.m-term .c { color: var(--sun); } .m-term .d { opacity: .5; } .m-term .g { color: #6fd08c; } .m-term .r { color: #ff8a80; }
+.m-rail { background: var(--m-card); border-radius: 11px; box-shadow: 0 2px 8px rgba(22,19,58,.12); margin: 0 8px 8px 0; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.m-rail .m-rh { padding: 9px 10px 7px; border-bottom: 1px solid rgba(22,19,58,.07); }
+.m-rail .m-rh small { display: block; color: var(--m-muted); font-size: 9.5px; margin-bottom: 3px; }
+.m-rail .m-rh .m-chip { max-width: none; }
+.m-rail .m-rt { display: flex; gap: 10px; padding: 7px 10px 0; color: var(--m-muted); font-weight: 600; font-size: 10px; }
+.m-rail .m-rt b { color: var(--m-text); border-bottom: 2px solid var(--coral); padding-bottom: 3px; }
+.m-rail ul { list-style: none; margin: 0; padding: 6px 10px; color: var(--m-soft); font: 10px/1.9 ui-monospace, Menlo, monospace; }
+.m-rail li.s { color: var(--coral-text); }
+.m-pop { position: absolute; z-index: 3; background: #fff; border-radius: 9px; box-shadow: 0 10px 30px rgba(22,19,58,.28), 0 0 0 1px rgba(22,19,58,.08); padding: 6px; font-size: 10.5px; color: var(--m-text); }
+.callout { position: absolute; z-index: 4; font-size: 10px; font-weight: 700; color: #fff; background: var(--doc-ink); border-radius: 999px; width: 18px; height: 18px; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.rel { position: relative; }
+.legend { display: grid; gap: 8px; margin-top: 14px; }
+.legend div { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start; color: var(--doc-muted); }
+.legend b.n { width: 18px; height: 18px; border-radius: 50%; background: var(--doc-ink); color: #fff; display: grid; place-items: center; font-size: 10px; margin-top: 3px; }
+.legend strong { color: var(--doc-ink); }
+.stage { background: #e4e2ee; border-radius: 16px; padding: 28px; }
+
+/* 小图：状态示意 */
+.mini { background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; padding: 14px; }
+.mini h3 { margin: 0 0 4px; font-size: 14px; }
+.mini p { margin: 0 0 10px; color: var(--doc-muted); font-size: 12.5px; }
+.mini .m-win { height: auto; display: block; box-shadow: none; padding: 10px; background: var(--m-bg); border-radius: 10px; font-size: 11px; }
+
+/* 新建会话选择器 */
+.np { background: var(--m-card); border-radius: 11px; box-shadow: 0 2px 8px rgba(22,19,58,.14); padding: 20px 22px 12px; width: 100%; max-width: 520px; margin: 0 auto; color: var(--m-text); }
+.np .np-t { text-align: center; font-size: 17px; font-weight: 650; }
+.np .np-s { text-align: center; color: var(--m-muted); font-size: 11.5px; margin: 2px 0 14px; }
+.np .np-ag { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.np .np-ag i { font-style: normal; background: #fff; border: 1px solid rgba(22,19,58,.1); border-radius: 10px; box-shadow: 0 1px 2px rgba(22,19,58,.1); padding: 12px 0; text-align: center; font-weight: 600; font-size: 11.5px; }
+.np .np-ag i b { display: block; width: 22px; height: 22px; border-radius: 6px; margin: 0 auto 6px; }
+.np hr { border: 0; border-top: 1px solid rgba(22,19,58,.09); margin: 14px 0 8px; }
+.np .np-f { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--m-soft); position: relative; }
+.np .np-f .sp { flex: 1; }
+.np .np-chk { display: inline-flex; align-items: center; gap: 5px; }
+.np .np-chk::before { content: ""; width: 12px; height: 12px; border: 1.3px solid var(--m-muted); border-radius: 3px; background: #fff; }
+.np .np-chk.dis { opacity: .4; }
+.np .np-menu { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: var(--m-field); font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; max-width: 170px; white-space: nowrap; }
+.np .np-menu.pj { font-family: -apple-system, "PingFang SC", sans-serif; font-weight: 600; font-size: 11px; }
+.np .np-menu.pj i { width: 9px; height: 9px; border-radius: 3px; background: var(--p); flex: none; }
+.np .np-menu::after { content: "⌄"; color: var(--m-muted); margin-left: 2px; font-size: 11px; line-height: 1; }
+.np .np-menu.hl { box-shadow: 0 0 0 2px rgba(255,90,78,.35); }
+.np-pop { position: absolute; left: 0; bottom: 30px; width: 208px; background: #fff; border-radius: 9px; box-shadow: 0 10px 30px rgba(22,19,58,.28), 0 0 0 1px rgba(22,19,58,.08); padding: 5px; font-size: 11px; z-index: 5; }
+.np-pop div { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 6px; }
+.np-pop div i { width: 9px; height: 9px; border-radius: 3px; background: var(--p); flex: none; }
+.np-pop div em { font-style: normal; margin-left: auto; color: var(--m-muted); font: 9.5px ui-monospace, Menlo, monospace; }
+.np-pop div.on { background: #f2f1f8; }
+.np-pop hr { margin: 4px 0; }
+.np-pop .add { color: var(--m-muted); }
+.np-wrap { background: var(--m-bg, #efeef4); border-radius: 12px; padding: 22px 18px 26px; }
+.np-wrap.m-win { display: block; height: auto; }
+@media (max-width: 900px) { .doc-grid2 { grid-template-columns: 1fr; } .m-win, .m-win.m-r { grid-template-columns: 1fr; height: auto; } .m-side, .m-rail { display: none; } .m-panes { min-height: 320px; } }
+</style>
+</head>
+<body>
+<div class="doc-wrap">
+
+<div class="doc-kicker">设计稿 · 方案 A</div>
+<h1>跨项目画布</h1>
+<p class="doc-lede">画布从「当前项目的会话」改成「任意项目的会话」。同一个窗口里最多 4 格，每一格可以来自不同项目。窗格必须一眼分清「这是哪个项目的 agent」，右侧的文件、Git、Todo 面板跟随焦点窗格的项目切换。</p>
+
+<div class="doc-grid2" style="margin-top:20px">
+  <div class="doc-card"><h3>要解决的问题</h3>
+    <ul><li>同时盯多个项目的 agent，现在只能来回切项目，画布整体被换掉。</li>
+    <li>混放之后，4 格里哪格属于哪个项目、哪格在等输入，必须一眼可辨。</li></ul></div>
+  <div class="doc-card"><h3>成功标准</h3>
+    <ul><li>侧栏点任意项目的会话，只聚焦或并排新开一格，不再切换整块画布。</li>
+    <li>不靠颜色也能认出项目（名称 + 首字母图标）。</li>
+    <li>右侧面板始终和焦点窗格的项目一致，且有明确标识。</li></ul></div>
+</div>
+
+<h2>1　主界面：2×2 混放三个项目<small>亮色 · 方向 B</small></h2>
+<p class="doc-sub">下图是焦点在右上格（项目 api-gateway）时的状态。侧栏沿用现有的按项目分组，新增「画布槽位」角标；窗格头新增项目徽章。</p>
+
+<div class="stage">
+<div class="rel">
+<div class="m-win m-r">
+  <div class="m-side">
+    <div class="m-lights"><i></i><i></i><i></i></div>
+
+    <div class="m-pjhead" style="--p:var(--pj-a)"><i></i>web-app<em>2</em></div>
+    <div class="m-row" style="--p:var(--pj-a)"><span class="m-dot run"></span><b>重构登录表单</b><span class="m-slot">1</span></div>
+    <div class="m-row m-dim"><span class="m-dot idle"></span><b>修复 CSS 抖动</b><span class="m-off"></span></div>
+
+    <div class="m-pjhead" style="--p:var(--pj-b)"><i></i>api-gateway<em>2</em></div>
+    <div class="m-row m-on" style="--p:var(--pj-b)"><span class="m-dot wait"></span><b>限流中间件</b><span class="m-slot">2</span></div>
+    <div class="m-row" style="--p:var(--pj-b)"><span class="m-dot run"></span><b>补充 OpenAPI</b><span class="m-slot">3</span></div>
+
+    <div class="m-pjhead" style="--p:var(--pj-c)"><i></i>infra<em>1</em></div>
+    <div class="m-row" style="--p:var(--pj-c)"><span class="m-dot run"></span><b>升级 Terraform</b><span class="m-slot">4</span></div>
+
+    <div class="m-pjhead" style="--p:var(--pj-d)"><i></i>docs-site<em>1</em></div>
+    <div class="m-row m-dim"><span class="m-dot idle"></span><b>翻译首页</b><span class="m-off"></span></div>
+  </div>
+
+  <div class="m-main">
+    <div class="m-top"><span class="m-title">画布</span><span class="m-crumb">4 个会话 · 3 个项目</span>
+      <div class="m-seg"><i></i><i></i><i></i><i class="m-on"></i><i></i></div></div>
+    <div class="m-panes g22">
+      <div class="m-pane" style="--p:var(--pj-a)">
+        <div class="m-ph"><span class="m-chip"><u>W</u><span>web-app</span></span><span class="m-ag">Claude</span><span class="m-br">feat/login</span><span class="m-k">⌘1</span></div>
+        <div class="m-term"><span class="d">web-app ›</span> 重构登录表单
+<span class="g">✓</span> 拆分 LoginForm
+<span class="g">✓</span> 补充校验用例
+● 正在更新 snapshot<span class="c">▌</span></div></div>
+
+      <div class="m-pane m-focus" style="--p:var(--pj-b)">
+        <div class="m-ph"><span class="m-chip"><u>A</u><span>api-gateway</span></span><span class="m-ag">Codex</span><span class="m-br">feat/rate-limit</span><span class="m-k">⌘2</span></div>
+        <div class="m-term"><span class="d">api-gateway ›</span> 限流中间件
+需要确认：
+  令牌桶 or 滑动窗口？
+<span class="c">› 1. 令牌桶（推荐）</span>
+  2. 滑动窗口<span class="c">▌</span></div></div>
+
+      <div class="m-pane" style="--p:var(--pj-b)">
+        <div class="m-ph"><span class="m-chip"><u>A</u><span>api-gateway</span></span><span class="m-ag">Claude</span><span class="m-br">docs/openapi</span><span class="m-k">⌘3</span></div>
+        <div class="m-term"><span class="d">api-gateway ›</span> 补充 OpenAPI
+<span class="g">✓</span> /v1/orders
+<span class="g">✓</span> /v1/users
+● 生成 /v1/refunds<span class="c">▌</span></div></div>
+
+      <div class="m-pane" style="--p:var(--pj-c)">
+        <div class="m-ph"><span class="m-chip"><u>I</u><span>infra</span></span><span class="m-ag">Pi</span><span class="m-br">main</span><span class="m-k">⌘4</span></div>
+        <div class="m-term"><span class="d">infra ›</span> 升级 Terraform
+<span class="g">✓</span> init -upgrade
+● plan 中…
+<span class="r">~ 3 to change</span><span class="c">▌</span></div></div>
+    </div>
+  </div>
+
+  <div class="m-rail">
+    <div class="m-rh"><small>跟随焦点窗格</small><span class="m-chip" style="--p:var(--pj-b)"><u>A</u><span>api-gateway</span></span></div>
+    <div class="m-rt"><b>Git</b><span>文件</span><span>Todo</span></div>
+    <ul><li>feat/rate-limit</li><li class="s">M  limiter.go</li><li class="s">M  config.yaml</li><li class="s">A  limiter_test.go</li></ul>
+  </div>
+</div>
+<div class="callout" style="top:96px;left:226px">1</div>
+<div class="callout" style="top:132px;left:520px">2</div>
+<div class="callout" style="top:62px;left:830px">3</div>
+<div class="callout" style="top:155px;left:196px">4</div>
+</div>
+</div>
+
+<div class="legend">
+  <div><b class="n">1</b><span><strong>窗格头项目徽章</strong>：项目色底 + 首字母图标 + 项目名。是新增的唯一一块常驻元素，宽度上限 96px，超长项目名省略。同一项目的两格徽章相同，视觉上自然成组。</span></div>
+  <div><b class="n">2</b><span><strong>焦点仍是珊瑚描边 + 光晕</strong>，与项目色互不干扰。项目色只出现在徽章和侧栏，不画在窗格边框上，避免和焦点混淆。</span></div>
+  <div><b class="n">3</b><span><strong>右侧面板顶部标明所属项目</strong>（小标题「跟随焦点窗格」加同款徽章），切换焦点时内容和徽章一起换。</span></div>
+  <div><b class="n">4</b><span><strong>侧栏槽位角标</strong>：已在画布上的会话右侧显示 ⌘ 数字对应的槽位号，底色用项目色；不在画布上的会话淡显、无角标。角标代替了「在画布上吗」的猜测。</span></div>
+</div>
+
+<h2>2　焦点切换与右侧面板<small>面板跟随焦点窗格的项目</small></h2>
+<p class="doc-sub">这是方案 A 里最容易出问题的一块：文件树、Git、Todo 都按项目工作。规则是「面板始终属于焦点窗格的项目」，焦点切到另一个项目时，面板内容整体替换，头部徽章同步变化。</p>
+
+<div class="doc-grid2">
+  <div class="mini"><h3>焦点在 web-app（⌘1）</h3><p>面板显示 web-app 的分支和改动文件。</p>
+    <div class="m-win"><div style="display:grid;grid-template-columns:1fr 150px;gap:8px">
+      <div class="m-panes g22" style="height:150px">
+        <div class="m-pane m-focus" style="--p:var(--pj-a)"><div class="m-ph"><span class="m-chip"><u>W</u><span>web-app</span></span></div></div>
+        <div class="m-pane" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u><span>api</span></span></div></div>
+        <div class="m-pane" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u><span>api</span></span></div></div>
+        <div class="m-pane" style="--p:var(--pj-c)"><div class="m-ph"><span class="m-chip"><u>I</u><span>infra</span></span></div></div>
+      </div>
+      <div class="m-rail" style="margin:0"><div class="m-rh"><small>跟随焦点窗格</small><span class="m-chip" style="--p:var(--pj-a)"><u>W</u><span>web-app</span></span></div><ul><li>feat/login</li><li class="s">M  LoginForm.tsx</li><li class="s">M  login.test.ts</li></ul></div>
+    </div></div></div>
+
+  <div class="mini"><h3>焦点切到 infra（⌘4）</h3><p>面板整体替换；窗格和徽章不动，只有焦点描边移动。</p>
+    <div class="m-win"><div style="display:grid;grid-template-columns:1fr 150px;gap:8px">
+      <div class="m-panes g22" style="height:150px">
+        <div class="m-pane" style="--p:var(--pj-a)"><div class="m-ph"><span class="m-chip"><u>W</u><span>web-app</span></span></div></div>
+        <div class="m-pane" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u><span>api</span></span></div></div>
+        <div class="m-pane" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u><span>api</span></span></div></div>
+        <div class="m-pane m-focus" style="--p:var(--pj-c)"><div class="m-ph"><span class="m-chip"><u>I</u><span>infra</span></span></div></div>
+      </div>
+      <div class="m-rail" style="margin:0"><div class="m-rh"><small>跟随焦点窗格</small><span class="m-chip" style="--p:var(--pj-c)"><u>I</u><span>infra</span></span></div><ul><li>main</li><li class="s">M  main.tf</li><li class="s">M  versions.tf</li></ul></div>
+    </div></div></div>
+</div>
+
+<h2>3　侧栏点击与窗格操作<small>不再切项目</small></h2>
+<p class="doc-sub">现有行为是跨项目点击会话就调 <code>selectProject</code>，整块画布被换掉。改成：画布永远是同一块，点击只改变「哪些会话在画布上」。</p>
+
+<table class="doc-table">
+  <tr><th style="width:26%">操作</th><th style="width:37%">现在</th><th>方案 A</th></tr>
+  <tr><td>点击别的项目的会话（未在画布）</td><td>切换项目，换成该项目的画布</td><td>有空位就并排新开一格，满 4 格替换焦点格。画布其余窗格不动</td></tr>
+  <tr><td>点击已在画布上的会话</td><td>同项目内聚焦</td><td>聚焦该格，右侧面板跟随切换</td></tr>
+  <tr><td>项目行「+」新建会话</td><td>先切项目再新建</td><td>打开新建会话选择器，项目下拉框默认选该项目（见 §4）；新会话进画布，不切换其他窗格</td></tr>
+  <tr><td>窗格头右键 / 菜单</td><td>关闭窗格</td><td>新增「在侧栏中定位」「仅看此项目」（见 §5）</td></tr>
+  <tr><td>关闭窗格</td><td>reflow 布局</td><td>不变；该会话进程继续在后台运行</td></tr>
+</table>
+
+<h2>4　新建会话：增加项目下拉框<small>与分支下拉框并列</small></h2>
+<p class="doc-sub">画布混放后，「新会话属于哪个项目」不能再靠「当前选中的项目」隐式决定。在选择器底部那一行，把<strong>项目下拉框放在 worktree 勾选框前面</strong>，和右侧的分支下拉框一样是 Menu 样式。顺序即决策顺序：项目 → 是否隔离 → 分支。</p>
+
+<div class="stage"><div class="np-wrap m-win" style="background:#efeef4"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-chk">worktree</span><span class="sp"></span><span class="np-menu">⎇ feat/rate-limit</span></div></div></div></div>
+<div class="legend">
+  <div><b class="n">1</b><span><strong>项目下拉框</strong>：左侧项目色小方块 + 项目名，样式、高度（24px）和分支下拉框一致。默认值是「最近使用的项目」；从侧栏项目行的「+」进来时，默认值是那个项目。</span></div>
+  <div><b class="n">2</b><span><strong>联动</strong>：换项目后，分支列表重新读取该项目的分支，分支重置为该项目的当前分支，避免把 A 项目的分支名带到 B 项目。</span></div>
+</div>
+
+<div class="doc-grid2" style="margin-top:20px">
+  <div class="mini"><h3>展开状态</h3><p>列表按侧栏顺序排列，每行右侧小字显示该项目当前分支，选中项带 ✓。底部「添加项目…」复用现有添加流程。</p>
+    <div class="m-win np-wrap" style="padding-top:150px;position:relative"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><div class="np-pop"><div class="on" style="--p:var(--pj-b)"><i></i>api-gateway<em>✓</em></div><div style="--p:var(--pj-a)"><i></i>web-app<em>feat/login</em></div><div style="--p:var(--pj-c)"><i></i>infra<em>main</em></div><div style="--p:var(--pj-d)"><i></i>docs-site<em>main</em></div><hr><div class="add">＋ 添加项目…</div></div><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-chk">worktree</span><span class="sp"></span><span class="np-menu">⎇ feat/rate-limit</span></div></div></div></div>
+  <div class="mini"><h3>非 Git 项目</h3><p>worktree 勾选框置灰，分支下拉框显示「非 Git 仓库」且不可点。该行高度不变，不会让卡片跳动。</p>
+    <div class="m-win np-wrap"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj" style="--p:var(--pj-d)"><i></i>docs-site</span><span class="np-chk dis">worktree</span><span class="sp"></span><span class="np-menu" style="opacity:.45">⎇ 非 Git 仓库</span></div></div></div></div>
+</div>
+
+<table class="doc-table" style="margin-top:20px">
+  <tr><th style="width:26%">场景</th><th>项目下拉框的默认值</th></tr>
+  <tr><td>画布空状态（⌘N 或首次进入）</td><td>最近使用的项目；没有则取侧栏第一个</td></tr>
+  <tr><td>项目行「+」</td><td>该项目；用户仍可以在下拉框里改</td></tr>
+  <tr><td>已有窗格时 ⌘N 新开一格</td><td>焦点窗格所属项目（最常见的意图是「再开一个同项目的」）</td></tr>
+  <tr><td>只有一个项目</td><td>仍显示下拉框但没有可选项，保持布局稳定，也方便从中添加项目</td></tr>
+</table>
+<p class="doc-cap">无障碍：下拉框的标签读作「项目：api-gateway」；展开列表可用 ↑↓ 选择、回车确认、Esc 关闭，和分支下拉框一致。键盘 Tab 顺序：agent 卡片 → 项目 → worktree → 分支。</p>
+
+<h2>5　不靠颜色识别<small>无障碍</small></h2>
+<div class="doc-grid2">
+  <div class="doc-card"><h3>为什么不能只靠项目色</h3>
+    <ul><li>项目色之间的区分，对红绿色弱不可靠；徽章必带项目名和首字母图标。</li>
+    <li>徽章白字在项目色上的对比度需 ≥ 4.5:1。上图 4 个色里，琥珀色 <code>#d98a1f</code> 偏低，实现时需加深或改用深色字，以验证器为准。</li>
+    <li>项目色超过 4 个时会重复，所以颜色只做辅助，名称才是身份。</li></ul></div>
+  <div class="doc-card"><h3>键盘与读屏</h3>
+    <ul><li>⌘1–⌘4 继续是按槽位聚焦，不变。</li>
+    <li>窗格的无障碍标签：「项目 api-gateway，Codex，会话：限流中间件，等待输入」。</li>
+    <li>焦点变化时读出「焦点：api-gateway」，因为右侧面板内容随之改变。</li></ul></div>
+</div>
+
+<h2>6　窄窗口与「仅看此项目」<small>响应式与降噪</small></h2>
+<div class="doc-grid2">
+  <div class="mini"><h3>窄窗口：徽章收成图标</h3><p>窗格宽度 &lt; 220px 时只显示首字母图标，名称进 tooltip 和无障碍标签。最小宽度下仍保留图标，不会失去身份。</p>
+    <div class="m-win"><div class="m-panes" style="grid-template-columns:repeat(4,1fr);height:96px">
+      <div class="m-pane" style="--p:var(--pj-a)"><div class="m-ph"><span class="m-chip"><u>W</u></span></div></div>
+      <div class="m-pane m-focus" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u></span></div></div>
+      <div class="m-pane" style="--p:var(--pj-b)"><div class="m-ph"><span class="m-chip"><u>A</u></span></div></div>
+      <div class="m-pane" style="--p:var(--pj-c)"><div class="m-ph"><span class="m-chip"><u>I</u></span></div></div>
+    </div></div></div>
+  <div class="mini"><h3>窗格菜单</h3><p>混放后想回到「只看一个项目」时，用窗格头菜单一键收拢：关闭画布上其他项目的窗格（进程不停）。</p>
+    <div class="m-win" style="height:120px;position:relative"><div class="m-pop" style="top:14px;left:20px;width:178px">
+      <div style="padding:5px 8px;border-radius:6px;background:#f2f1f8">在侧栏中定位</div>
+      <div style="padding:5px 8px">仅看此项目（api-gateway）</div>
+      <div style="padding:5px 8px">关闭窗格</div></div></div></div>
+</div>
+
+<h2>7　待确认的取舍</h2>
+<table class="doc-table">
+  <tr><th style="width:28%">问题</th><th style="width:40%">建议</th><th>理由</th></tr>
+  <tr><td>画布快照是否仍按项目保存</td><td>改成全局一份；每个会话仍属于自己的项目</td><td>混放后「按项目的画布」没有意义，保留两套会让恢复逻辑变复杂</td></tr>
+  <tr><td>切换项目（侧栏项目行/概览）的含义</td><td>只决定侧栏展开和「新建会话」的默认项目，不动画布</td><td>项目选择和画布解耦，是整个方案的前提</td></tr>
+  <tr><td>画布上没有任何会话</td><td>仍显示 agent 选择器，项目下拉框默认最近使用的项目</td><td>沿用现有空状态，改动最小</td></tr>
+  <tr><td>项目色来源</td><td>按项目 id 哈希自动分配，用户可在项目右键菜单里改</td><td>零配置可用，且颜色稳定不随排序变化</td></tr>
+  <tr><td>只混放同项目会话时</td><td>徽章照常显示</td><td>避免「有时有、有时无」导致窗格头高度和布局跳动</td></tr>
+</table>
+
+<p class="doc-cap" style="margin-top:28px">定稿后再进入实现：按之前的约定，窗格阴影与描边在 AppKit 层（<code>YCodeCanvasShadow</code> / <code>YCodeCanvasPane</code>），徽章属于 SwiftUI 窗格头内容；强调色一律用 <code>ycodeAccent</code>。</p>
+
+</div>
+</body>
+</html>
