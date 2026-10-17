@@ -22,7 +22,7 @@ YCode is a native macOS workspace for coding agents. Run Claude Code, Codex, Pi,
 ## Features
 
 - **Projects and sessions**: Organize sessions by project, with search, filters, archiving, and resume. Open projects in separate windows when needed.
-- **Multiple sessions**: Display up to four sessions at once, switch layouts and focus, and keep each terminal process running independently.
+- **Multiple sessions**: Use browser-style tabs or display up to four sessions in split panes. Switch layouts and focus while keeping each terminal process running independently.
 - **Flexible panels**: Open files, changes, todos, and project terminals together. Adjust their arrangement and width.
 - **Files and editing**: Browse the file tree, use preview and pinned tabs, edit and save with basic syntax highlighting, preview Markdown, SVG, and images, and handle conflicts from external file changes.
 - **Git review**: Read inline diffs, navigate a directory tree, stage individual hunks, commit, switch branches, and fetch, pull, or push. Inspect session checkpoints as well.

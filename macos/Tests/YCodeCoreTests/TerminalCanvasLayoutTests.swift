@@ -11,6 +11,11 @@ struct TerminalCanvasLayoutTests {
                 for size in [CGSize(width: 1200, height: 800), CGSize(width: 420, height: 300), .zero] {
                     let geometry = YCodeTerminalCanvasGeometry(layout: layout, count: count, size: size)
                     #expect(geometry.frames.count == count)
+                    if layout == .tabs {
+                        #expect(geometry.dividers.isEmpty)
+                        #expect(geometry.frames.allSatisfy { $0 == CGRect(origin: .zero, size: size) })
+                        continue
+                    }
                     let rectangles = geometry.frames + geometry.dividers.map(\.frame)
                     for (index, frame) in rectangles.enumerated() {
                         #expect(frame.width >= 0 && frame.height >= 0)
@@ -50,10 +55,10 @@ struct TerminalCanvasLayoutTests {
 
     @Test("layout availability and automatic reflow match the legacy canvas")
     func validModesAndReflow() {
-        #expect(YCodeTerminalLayout.validModes(for: 1) == [.single])
-        #expect(YCodeTerminalLayout.validModes(for: 2) == [.stack, .columns])
-        #expect(YCodeTerminalLayout.validModes(for: 3) == [.stack, .columns, .mainSide])
-        #expect(YCodeTerminalLayout.validModes(for: 4) == [.stack, .columns, .grid2x2, .mainSide])
+        #expect(YCodeTerminalLayout.validModes(for: 1) == [.single, .tabs])
+        #expect(YCodeTerminalLayout.validModes(for: 2) == [.stack, .columns, .tabs])
+        #expect(YCodeTerminalLayout.validModes(for: 3) == [.stack, .columns, .mainSide, .tabs])
+        #expect(YCodeTerminalLayout.validModes(for: 4) == [.stack, .columns, .grid2x2, .mainSide, .tabs])
         #expect(YCodeTerminalLayout.reflow(.single, for: 2) == .columns)
         #expect(YCodeTerminalLayout.reflow(.stack, for: 3) == .stack)
         #expect(YCodeTerminalLayout.reflow(.single, for: 3) == .mainSide)
@@ -79,6 +84,28 @@ struct TerminalCanvasLayoutTests {
             sessionID: "three", visibleSessionIDs: ["one", "two"], focusedSlot: 0, layout: .stack, mode: .newPane
         )
         #expect(picked.layout == .stack)
+    }
+
+    @Test("pending session pickers already use the layout of the session being created")
+    func newSessionPreviewMatchesCreation() {
+        for count in 0...4 {
+            let ids = (0..<count).map { "session-\($0)" }
+            let layouts = count == 0 ? [YCodeTerminalLayout.single] : YCodeTerminalLayout.validModes(for: count)
+            for layout in layouts {
+                let previewCount = layout == .tabs ? count + 1 : min(count + 1, YCodeTerminalCanvasRouting.maximumVisibleSessions)
+                let preview = YCodeTerminalLayout.reflow(layout, from: count, to: previewCount)
+                let created = YCodeTerminalCanvasRouting.open(
+                    sessionID: "created", visibleSessionIDs: ids, focusedSlot: max(0, count - 1),
+                    layout: layout, mode: .newPane
+                )
+                #expect(preview == created.layout)
+            }
+        }
+        #expect(YCodeTerminalLayout.reflow(.columns, from: 2, to: 3) == .mainSide)
+        #expect(YCodeTerminalLayout.reflow(.mainSide, from: 3, to: 4) == .grid2x2)
+        #expect(YCodeTerminalLayout.reflow(.stack, from: 3, to: 4) == .stack)
+        // Cancelling a picker returns to the stored three-session layout.
+        #expect(YCodeTerminalLayout.reflow(.mainSide, from: 3, to: 3) == .mainSide)
     }
 
     @Test("new panes grow the canvas while session selection replaces only the focused slot")
@@ -115,6 +142,32 @@ struct TerminalCanvasLayoutTests {
         )
         #expect(atCapacity.sessionIDs == ["one", "two", "five", "four"])
         #expect(atCapacity.focusedSlot == 2)
+    }
+
+    @Test("tabs append beyond four sessions and selecting history does not replace another tab")
+    func tabRoutingHasNoSplitLimit() {
+        var ids: [String] = []
+        for index in 0..<7 {
+            let result = YCodeTerminalCanvasRouting.open(
+                sessionID: "tab-\(index)", visibleSessionIDs: ids, focusedSlot: 0,
+                layout: .tabs, mode: .replaceFocused
+            )
+            ids = result.sessionIDs
+            #expect(ids.count == index + 1)
+            #expect(result.focusedSlot == index)
+            #expect(result.layout == .tabs)
+        }
+        let focused = YCodeTerminalCanvasRouting.open(
+            sessionID: "tab-2", visibleSessionIDs: ids, focusedSlot: 6,
+            layout: .tabs, mode: .newPane
+        )
+        #expect(focused.sessionIDs == ids)
+        #expect(focused.focusedSlot == 2)
+        let size = CGSize(width: 900, height: 600)
+        let geometry = YCodeTerminalCanvasGeometry(layout: .tabs, count: 7, size: size)
+        #expect(geometry.frames.count == 7)
+        #expect(geometry.frames.allSatisfy { $0 == CGRect(origin: .zero, size: size) })
+        #expect(geometry.dividers.isEmpty)
     }
 
     @Test("terminal links resolve URLs and project-relative source locations")

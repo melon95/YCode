@@ -18,15 +18,15 @@ struct NewSessionPickerView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let compact = proxy.size.width < 470
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
+            let compact = proxy.size.width < 470 || proxy.size.height < 300
+            ScrollView(.vertical) {
                 card(compact: compact)
                     .frame(maxWidth: compact ? .infinity : 520)
                     .padding(compact ? 8 : 16)
-                Spacer(minLength: 0)
+                    .frame(width: proxy.size.width)
+                    .frame(minHeight: proxy.size.height)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .onAppear {
             model.reloadAgentProfiles()
@@ -45,10 +45,6 @@ struct NewSessionPickerView: View {
             Text(l10n.text("newSessionTitle"))
                 .font(compact ? .headline : .title2.weight(.semibold))
                 .tracking(-0.2)
-            Text(chosenProject.map { l10n.text("newSessionSubtitleFormat", $0.name) } ?? l10n.text("newSessionSubtitleNoProject"))
-                .font(compact ? .caption : .subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
                 .padding(.bottom, compact ? 10 : 16)
 
             agents(compact: compact)
@@ -97,17 +93,31 @@ struct NewSessionPickerView: View {
     /// 起会话前要决定三件事：项目、分支、是否隔离。起来之后就改不了了。
     /// 项目和分支挨在一起（分支是项目的下一级，换项目分支就跟着重读），worktree 单独靠右。
     private func foot(compact: Bool) -> some View {
-        HStack(spacing: compact ? 7 : 9) {
-            projectMenu(compact: compact)
-            branchMenu(compact: compact)
-            Spacer(minLength: 4)
-            Toggle(isOn: $useWorktree) {
-                Text("worktree").font(compact ? .caption : .subheadline)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: compact ? 7 : 9) {
+                projectMenu(compact: compact)
+                branchMenu(compact: compact)
+                Spacer(minLength: 4)
+                worktreeToggle(compact: compact)
             }
-            .toggleStyle(.checkbox)
-            .fixedSize()
-            .disabled(!projectBranches.isGitRepository)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 7) {
+                    projectMenu(compact: compact)
+                    Spacer(minLength: 4)
+                    worktreeToggle(compact: compact)
+                }
+                branchMenu(compact: compact)
+            }
         }
+    }
+
+    private func worktreeToggle(compact: Bool) -> some View {
+        Toggle(isOn: $useWorktree) {
+            Text("worktree").font(compact ? .caption : .subheadline)
+        }
+        .toggleStyle(.checkbox)
+        .fixedSize()
+        .disabled(!projectBranches.isGitRepository)
     }
 
     private func projectMenu(compact: Bool) -> some View {
@@ -135,7 +145,6 @@ struct NewSessionPickerView: View {
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
         .frame(height: compact ? 22 : 24)
         .help(l10n.text("newSessionProjectHelp"))
         .accessibilityLabel("\(l10n.text("newSessionProject")): \(chosenProject?.name ?? "")")
@@ -160,7 +169,6 @@ struct NewSessionPickerView: View {
             }
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
         .frame(height: compact ? 22 : 24)
         .disabled(!projectBranches.isGitRepository)
     }

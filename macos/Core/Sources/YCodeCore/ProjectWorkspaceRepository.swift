@@ -302,14 +302,31 @@ public final class ProjectWorkspaceRepository {
         ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
     }
 
+    public func pinnedSessionIDs() throws -> Set<String> {
+        Set(try database.query("SELECT session_id FROM native_session_pins") { sqliteString($0, column: 0) ?? "" })
+    }
+
+    public func setSessionPinned(id: String, pinned: Bool) throws {
+        let row = try session(id: id)
+        if pinned {
+            guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(id) }
+            try database.execute("INSERT OR IGNORE INTO native_session_pins (session_id) VALUES (?)", bindings: [.text(id)])
+        } else {
+            try database.execute("DELETE FROM native_session_pins WHERE session_id=?", bindings: [.text(id)])
+        }
+    }
+
     public func archiveSession(id: String) throws {
         let row = try session(id: id)
         if row.archivedAtMilliseconds != nil { return }
         let now = Int64(Date().timeIntervalSince1970 * 1_000)
-        guard try database.execute(
-            "UPDATE sessions SET archived_at=?,updated_at=? WHERE id=? AND archived_at IS NULL",
-            bindings: [.integer(now), .integer(now), .text(id)]
-        ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
+        try transaction {
+            guard try database.execute(
+                "UPDATE sessions SET archived_at=?,updated_at=? WHERE id=? AND archived_at IS NULL",
+                bindings: [.integer(now), .integer(now), .text(id)]
+            ) == 1 else { throw ProjectWorkspaceError.sessionNotFound(id) }
+            try database.execute("DELETE FROM native_session_pins WHERE session_id=?", bindings: [.text(id)])
+        }
     }
 
     /// 超过 `cutoffMilliseconds` 没动静的会话批量归档（`keptIDs` 里的除外——那是还在跑的进程，
@@ -324,6 +341,7 @@ public final class ProjectWorkspaceRepository {
             SELECT id, title, agent_profile, agent_session_id, agent_thread_name,
                    last_exit_code, updated_at, archived_at, worktree_path, branch, base_branch, project_id
             FROM sessions WHERE archived_at IS NULL AND updated_at < ?
+              AND id NOT IN (SELECT session_id FROM native_session_pins)
             ORDER BY updated_at, id;
             """, bindings: [.integer(cutoffMilliseconds)], map: Self.sessionMetadata)
             .filter { !keptIDs.contains($0.id) }
@@ -495,6 +513,9 @@ public final class ProjectWorkspaceRepository {
         CREATE TABLE IF NOT EXISTS native_workspace_state (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS native_session_pins (
+            session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS native_session_title_sync (
             session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,

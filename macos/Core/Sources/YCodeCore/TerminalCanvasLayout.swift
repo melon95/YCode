@@ -6,6 +6,7 @@ public enum YCodeTerminalLayout: String, CaseIterable, Codable, Identifiable, Se
     case columns
     case grid2x2
     case mainSide
+    case tabs
 
     public var id: String { rawValue }
 
@@ -16,15 +17,16 @@ public enum YCodeTerminalLayout: String, CaseIterable, Codable, Identifiable, Se
         case .columns: "并排多栏"
         case .grid2x2: "网格 2×2"
         case .mainSide: "主 + 侧"
+        case .tabs: "标签页"
         }
     }
 
     public static func validModes(for count: Int) -> [Self] {
         switch count {
-        case ...1: [.single]
-        case 2: [.stack, .columns]
-        case 3: [.stack, .columns, .mainSide]
-        default: [.stack, .columns, .grid2x2, .mainSide]
+        case ...1: [.single, .tabs]
+        case 2: [.stack, .columns, .tabs]
+        case 3: [.stack, .columns, .mainSide, .tabs]
+        default: [.stack, .columns, .grid2x2, .mainSide, .tabs]
         }
     }
 
@@ -41,6 +43,15 @@ public enum YCodeTerminalLayout: String, CaseIterable, Codable, Identifiable, Se
 
     public static func reflow(_ current: Self, for count: Int) -> Self {
         validModes(for: count).contains(current) ? current : defaultLayout(for: count)
+    }
+
+    /// A pending picker occupies the same slot and layout as the session it creates.
+    /// Keep a non-default layout selected by the user when it still fits.
+    public static func reflow(_ current: Self, from previousCount: Int, to count: Int) -> Self {
+        if count > previousCount, current == defaultLayout(for: previousCount) {
+            return defaultLayout(for: count)
+        }
+        return reflow(current, for: count)
     }
 }
 
@@ -69,13 +80,13 @@ public enum YCodeTerminalCanvasRouting {
         layout: YCodeTerminalLayout,
         mode: YCodeTerminalCanvasOpenMode
     ) -> YCodeTerminalCanvasOpenResult {
-        var sessionIDs = Array(visibleSessionIDs.prefix(maximumVisibleSessions))
+        var sessionIDs = layout == .tabs ? visibleSessionIDs : Array(visibleSessionIDs.prefix(maximumVisibleSessions))
         let previousCount = sessionIDs.count
         var resolvedFocus = sessionIDs.isEmpty ? 0 : min(max(focusedSlot, 0), sessionIDs.count - 1)
 
         if let existing = sessionIDs.firstIndex(of: sessionID) {
             resolvedFocus = existing
-        } else if mode == .newPane, sessionIDs.count < maximumVisibleSessions {
+        } else if layout == .tabs || (mode == .newPane && sessionIDs.count < maximumVisibleSessions) {
             sessionIDs.append(sessionID)
             resolvedFocus = sessionIDs.count - 1
         } else if sessionIDs.isEmpty {
@@ -85,16 +96,10 @@ public enum YCodeTerminalCanvasRouting {
             sessionIDs[resolvedFocus] = sessionID
         }
 
-        // A canvas still on the automatic layout keeps following the default progression
-        // as it grows; a layout the user picked explicitly is kept whenever it still fits.
-        let followsDefault = sessionIDs.count > previousCount
-            && layout == YCodeTerminalLayout.defaultLayout(for: previousCount)
         return .init(
             sessionIDs: sessionIDs,
             focusedSlot: resolvedFocus,
-            layout: followsDefault
-                ? YCodeTerminalLayout.defaultLayout(for: sessionIDs.count)
-                : YCodeTerminalLayout.reflow(layout, for: sessionIDs.count)
+            layout: YCodeTerminalLayout.reflow(layout, from: previousCount, to: sessionIDs.count)
         )
     }
 }

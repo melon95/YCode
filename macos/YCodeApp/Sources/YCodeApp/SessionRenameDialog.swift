@@ -56,8 +56,7 @@ private struct SessionRenameDialog: ViewModifier {
         // target 必须存在才动手。原先 YCodeNativeApp 那份把改名放在 guard 外面，
         // 于是 target 为 nil 时会去改「当前选中的会话」—— 改错对象，且没有撤销。
         guard let session = target else { return }
-        model.selectSession(session.id)
-        model.renameSelectedSession(draft)
+        model.renameSession(id: session.id, title: draft)
         target = nil
     }
 }

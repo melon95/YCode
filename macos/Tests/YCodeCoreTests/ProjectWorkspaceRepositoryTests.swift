@@ -5,6 +5,39 @@ import XCTest
 final class ProjectWorkspaceRepositoryTests: XCTestCase {
     private let fileManager = FileManager.default
 
+    func testSessionPinsPersistProtectIdleSessionsAndClearOnArchiveOrDelete() throws {
+        let root = makeTemporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+        let directory = root.appendingPathComponent("repo", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = root.appendingPathComponent("data/ycode.db")
+        let repository = try ProjectWorkspaceRepository(databaseURL: databaseURL)
+        let project = try repository.addProject(directory: directory)
+        let pinned = try repository.createSession(projectID: project.id, title: "Pinned", agentProfile: "codex")
+        let ordinary = try repository.createSession(projectID: project.id, title: "Ordinary", agentProfile: "codex")
+        let db = try SQLiteConnection(path: databaseURL.path)
+        try db.execute("UPDATE sessions SET updated_at=1")
+
+        try repository.setSessionPinned(id: pinned.id, pinned: true)
+        try repository.setSessionPinned(id: pinned.id, pinned: true)
+        let reopened = try ProjectWorkspaceRepository(databaseURL: databaseURL)
+        XCTAssertEqual(try reopened.pinnedSessionIDs(), [pinned.id])
+        XCTAssertEqual(try reopened.session(id: pinned.id).updatedAtMilliseconds, 1)
+        XCTAssertEqual(try reopened.archiveSessionsIdle(before: 2).map(\.id), [ordinary.id])
+        XCTAssertNil(try reopened.session(id: pinned.id).archivedAtMilliseconds)
+
+        try reopened.setSessionPinned(id: pinned.id, pinned: false)
+        XCTAssertTrue(try reopened.pinnedSessionIDs().isEmpty)
+        try reopened.setSessionPinned(id: pinned.id, pinned: true)
+        try reopened.archiveSession(id: pinned.id)
+        XCTAssertTrue(try reopened.pinnedSessionIDs().isEmpty)
+        XCTAssertThrowsError(try reopened.setSessionPinned(id: pinned.id, pinned: true))
+        try reopened.unarchiveSession(id: pinned.id)
+        try reopened.setSessionPinned(id: pinned.id, pinned: true)
+        try reopened.deleteSession(id: pinned.id)
+        XCTAssertTrue(try reopened.pinnedSessionIDs().isEmpty)
+    }
+
     func testThreeProjectCRUDOrderSelectionPersistAndDiskUntouched() throws {
         let root = makeTemporaryRoot()
         defer { try? fileManager.removeItem(at: root) }

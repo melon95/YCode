@@ -10,11 +10,18 @@ struct TerminalWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.ycodeL10n) private var l10n
     @State private var renameTarget: SessionMetadata?
+    @State private var archiveTarget: SessionMetadata?
 
     var body: some View {
-        terminalCanvas
+        VStack(spacing: 0) {
+            if model.presentedTerminalLayout == .tabs {
+                TerminalSessionTabBar(model: model, onRename: { renameTarget = $0 }, onArchive: { archiveTarget = $0 })
+            }
+            terminalCanvas
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ycodeSessionRenameDialog(model: model, target: $renameTarget)
+        .ycodeSessionArchiveDialog(model: model, target: $archiveTarget)
     }
 
     // MARK: 画布
@@ -28,7 +35,7 @@ struct TerminalWorkspaceView: View {
         var id: String {
             switch self {
             case let .session(session, _): session.id
-            case .picker: "new-session-picker"
+            case .picker: TerminalSessionTabBar.pickerID
             }
         }
     }
@@ -41,7 +48,7 @@ struct TerminalWorkspaceView: View {
             return [.picker]
         }
         if model.isPresentingNewSession {
-            if panes.count < YCodeTerminalCanvasRouting.maximumVisibleSessions {
+            if model.terminalLayout == .tabs || panes.count < YCodeTerminalCanvasRouting.maximumVisibleSessions {
                 panes.append(.picker)
             } else {
                 panes[model.focusedCanvasSlot] = .picker
@@ -52,9 +59,11 @@ struct TerminalWorkspaceView: View {
 
     private var terminalCanvas: some View {
         let panes = canvasPanes
-        let layout = YCodeTerminalLayout.reflow(model.terminalLayout, for: panes.count)
+        let layout = model.presentedTerminalLayout
         // 只有一个窗格时不标焦点，与窗格自己的描边规则一致。
-        let focusedID = panes.count > 1 ? model.focusedCanvasSessionID : nil
+        let focusedID = layout == .tabs && model.isPresentingNewSession
+            ? TerminalSessionTabBar.pickerID
+            : (panes.count > 1 ? model.focusedCanvasSessionID : nil)
         return TerminalCanvasView(panes: panes, layout: layout, focusedID: focusedID) { item in
             pane(item, standalone: panes.count == 1)
         }
@@ -64,9 +73,17 @@ struct TerminalWorkspaceView: View {
     private func pane(_ item: CanvasPane, standalone: Bool = false) -> some View {
         switch item {
         case let .session(session, slot):
-            terminalPane(session, slot: slot)
+            if model.presentedTerminalLayout == .tabs {
+                VStack(spacing: 0) {
+                    if model.terminalSearchSessionID == session.id { searchBar }
+                    paneBody(session, slot: slot)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                terminalPane(session, slot: slot)
+            }
         case .picker:
-            pickerPane(standalone: standalone)
+            pickerPane(standalone: standalone || model.presentedTerminalLayout == .tabs)
         }
     }
 
@@ -141,7 +158,12 @@ struct TerminalWorkspaceView: View {
                 .font(.caption.weight(focused ? .semibold : .medium))
                 .foregroundStyle(focused ? Color.primary : Color.secondary)
                 .lineLimit(1)
+            if model.pinnedSessionIDs.contains(session.id) {
+                Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
             Spacer(minLength: 4)
+            SessionActionsMenu(model: model, session: session,
+                               onRename: { renameTarget = session }, onArchive: { archiveTarget = session })
             Text("⌘⇧\(slot + 1)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
@@ -161,12 +183,12 @@ struct TerminalWorkspaceView: View {
 
     @ViewBuilder
     private func paneMenu(_ session: SessionMetadata, slot: Int) -> some View {
+        SessionActionItems(model: model, session: session,
+                           onRename: { renameTarget = session }, onArchive: { archiveTarget = session })
+        Divider()
         Button(l10n.text("findTerminal")) {
             model.focusCanvasSlot(slot)
             model.openTerminalSearch(sessionID: session.id)
-        }
-        Button(l10n.text("renameEllipsis")) {
-            renameTarget = session
         }
         Divider()
         Button(l10n.text("locateInSidebar")) { model.revealSessionInSidebar(session) }
@@ -212,7 +234,7 @@ struct TerminalWorkspaceView: View {
                 fontSize: model.terminalFontSize,
                 theme: model.activeTheme,
                 locale: model.locale,
-                focused: slot == model.focusedCanvasSlot,
+                focused: slot == model.focusedCanvasSlot && !(model.presentedTerminalLayout == .tabs && model.isPresentingNewSession),
                 searchRequest: model.terminalSearchRequest,
                 // 点终端正文、或键盘焦点落进来，都算选中这个窗格，不必非点标题。
                 onFocus: { if model.focusedCanvasSlot != slot { model.focusCanvasSlot(slot) } },

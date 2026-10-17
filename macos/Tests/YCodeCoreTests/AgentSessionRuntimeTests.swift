@@ -139,6 +139,47 @@ struct AgentSessionRuntimeTests {
         try await service.archiveSession(id: row.id)
     }
 
+    @Test("Pi CLI uses a PTY and keeps title bridge and exact history resume arguments")
+    func piCLILifecycle() async throws {
+        let fixture = try RuntimeFixture()
+        defer { fixture.remove() }
+        let data = fixture.directory.appendingPathComponent("pi-cli-data")
+        let repository = try ProjectWorkspaceRepository(databaseURL: data.appendingPathComponent("ycode.db"))
+        let project = try repository.addProject(directory: fixture.directory.appendingPathComponent("repo"))
+        let argsFile = fixture.directory.appendingPathComponent("pi-cli-args")
+        let profile = YCodeAgentProfile(
+            id: "pi", command: fixture.script.path, arguments: ["--base"],
+            environment: ["ARGS_FILE": argsFile.path], introspect: "pi"
+        )
+        let store = YCodeConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
+        try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
+        let pool = YCodeSessionProcessPool()
+        defer { pool.terminateAllImmediately() }
+        let service = YCodeAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let row = try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "CLI")
+        let runtime = try #require(service.runtime(id: row.id))
+        #expect(await eventually { runtime.backlogText.contains("READY") })
+        let bridge = data.appendingPathComponent("title-bridge/pi-title-bridge.mjs")
+        #expect(try String(contentsOf: argsFile, encoding: .utf8) == "--base\n--extension\n\(bridge.path)\n")
+        #expect(FileManager.default.fileExists(atPath: bridge.path))
+        #expect(!FileManager.default.fileExists(atPath: data.appendingPathComponent("pi/sessions").path))
+
+        try await service.stopSession(id: row.id)
+        let history = fixture.directory.appendingPathComponent("pi history.jsonl")
+        try "".write(to: history, atomically: true, encoding: .utf8)
+        try service.updateAgentSessionID(id: row.id, agentSessionID: "pi-cli-history")
+        _ = try repository.syncDiscoveredSessions([DiscoveredSessionDraft(
+            projectID: project.id, title: "CLI", agentProfile: profile.id,
+            agentSessionID: "pi-cli-history", jsonlPath: history.path,
+            updatedAtMilliseconds: Int64(Date().timeIntervalSince1970 * 1_000), archivedAtMilliseconds: nil
+        )])
+        _ = try await service.restartSession(id: row.id)
+        let expected = "--base\n--extension\n\(bridge.path)\n--session\n\(history.path)\n"
+        #expect(await eventually { (try? String(contentsOf: argsFile, encoding: .utf8)) == expected })
+        try await service.archiveSession(id: row.id)
+        #expect(pool.sessions.isEmpty)
+    }
+
     @Test("spawn failure archives the provisional row and keeps the missing command saveable")
     func failedSpawnRollback() throws {
         let directory = try temporaryDirectory(named: "rollback")

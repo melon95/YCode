@@ -2,8 +2,7 @@ import AppKit
 import SwiftUI
 import YCodeCore
 
-/// 设计稿 §03 标注 1／2／6：项目与会话合成一列。
-/// 项目是可折叠的组标题，会话是组里的行，历史会话挂在各自项目组下，新建会话在底部。
+/// 置顶、项目、最近共用一列；会话标题优先，操作在悬停时出现。
 struct WorkspaceSidebarView: View {
     @ObservedObject var model: WorkspaceModel
     let lockedProjectID: String?
@@ -16,7 +15,9 @@ struct WorkspaceSidebarView: View {
 
     @Environment(\.ycodeL10n) private var l10n
     @State private var hoveredProjectID: String?
-    @State private var hoveredSessionID: String?
+    @State private var hoveredSessionKey: String?
+    @State private var pinnedSessionsCollapsed = false
+    @State private var recentSessionsCollapsed = false
 
     var body: some View {
         // 侧栏融进窗口底色，不画分隔线（视觉方向 B）：顶栏、列表、底栏靠留白分开。
@@ -24,8 +25,12 @@ struct WorkspaceSidebarView: View {
             topBar
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(visibleProjects) { project in
-                        projectSection(project)
+                    if model.sidebarFilter != .archived, !model.projects.isEmpty {
+                        shortcutSection(pinned: true)
+                    }
+                    if !model.projects.isEmpty { projectsSection }
+                    if model.sidebarFilter != .archived, !model.projects.isEmpty {
+                        shortcutSection(pinned: false)
                     }
                 }
                 .padding(.vertical, 6)
@@ -57,7 +62,6 @@ struct WorkspaceSidebarView: View {
         HStack(spacing: 4) {
             Color.clear.frame(width: YCodeMetrics.trafficLightWidth)
             searchField
-            filterMenu
         }
         .frame(height: YCodeMetrics.topBarHeight)
         .padding(.trailing, 8)
@@ -124,6 +128,80 @@ struct WorkspaceSidebarView: View {
             || !model.sidebarShowsEmptyProjects
     }
 
+    private func sectionHeader(
+        _ title: String, collapsed: Bool, recentActions: Bool = false,
+        onToggle: @escaping () -> Void
+    ) -> some View {
+        let action = l10n.text(collapsed ? "expandSectionFormat" : "collapseSectionFormat", title)
+        return HStack(spacing: 6) {
+            Button(action: onToggle) {
+                HStack(spacing: 6) {
+                    Text(title).font(.subheadline.weight(.medium))
+                    Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 10, weight: .medium))
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(action)
+            .accessibilityLabel(action)
+            if recentActions {
+                filterMenu
+                Button(action: onNewSession) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 12))
+                        .frame(width: 22, height: 24)
+                }
+                .buttonStyle(YCodePlainButtonStyle(drawsBackground: false))
+                .help(l10n.text("newSessionEllipsis"))
+                .accessibilityLabel(l10n.text("newSessionEllipsis"))
+            }
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .frame(height: 28)
+    }
+
+    private func shortcutSection(pinned: Bool) -> some View {
+        let sessions = model.sidebarShortcutSessions(pinned: pinned, projectID: lockedProjectID)
+        let collapsed = pinned ? pinnedSessionsCollapsed : recentSessionsCollapsed
+        let title = l10n.text(pinned ? "sidebarPinned" : "sidebarRecent")
+        return VStack(alignment: .leading, spacing: 2) {
+            sectionHeader(title, collapsed: collapsed, recentActions: !pinned) {
+                if pinned { pinnedSessionsCollapsed.toggle() } else { recentSessionsCollapsed.toggle() }
+            }
+            if !collapsed {
+                if sessions.isEmpty {
+                    Text(l10n.text(model.sidebarQuery.isEmpty
+                                   ? (pinned ? "noPinnedSessions" : "noRecentSessions") : "noMatches"))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                } else {
+                    ForEach(sessions) { session in sessionRow(session, shortcut: true) }
+                }
+            }
+        }
+        .padding(.top, 12)
+    }
+
+    private var projectsSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 0) {
+                sectionHeader(l10n.text("projects"), collapsed: model.sidebarProjectsCollapsed) { model.sidebarProjectsCollapsed.toggle() }
+                if model.sidebarFilter == .archived {
+                    filterMenu.padding(.trailing, 16)
+                }
+            }
+            if !model.sidebarProjectsCollapsed {
+                ForEach(visibleProjects) { project in projectSection(project) }
+            }
+        }
+        .padding(.top, 12)
+    }
+
     // MARK: 项目组
 
     @ViewBuilder
@@ -132,50 +210,81 @@ struct WorkspaceSidebarView: View {
         projectHeader(project, collapsed: collapsed)
         if !collapsed {
             ForEach(model.sidebarSessions(in: project.id)) { session in
-                sessionRow(session)
+                sessionRow(session).padding(.leading, 24)
             }
         }
     }
 
     private func projectHeader(_ project: ProjectRecord, collapsed: Bool) -> some View {
-        HStack(spacing: 6) {
-            // 折叠箭头跟在项目名后面，而不是抢在行首：行首那一列留给会话行的 agent 图标，
-            // 箭头挤在那里会让项目名和会话标题对不齐，概览卡片用的也是「名字 › 」这个顺序。
-            HStack(spacing: 4) {
-                YCodeProjectDot(projectID: project.id)
-                Text(project.name)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(project.pathExists ? .secondary : Color.ycodeWarn)
-                    .lineLimit(1)
-                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+        let selected = model.selectedProjectID == project.id
+        let hovering = hoveredProjectID == project.id
+        let showsActions = hovering || selected
+        let action = l10n.text(collapsed ? "expandSectionFormat" : "collapseSectionFormat", project.name)
+        return HStack(spacing: 6) {
+            Button { model.toggleProjectCollapsed(project.id) } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(project.pathExists ? YCodeProjectPalette.color(for: project.id) : Color.secondary)
+                        .frame(width: 17)
+                    Text(project.name)
+                        .font(.body)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            .layoutPriority(1)
-            Spacer(minLength: 4)
-            // 「+」常驻：它是这一行唯一的动作，藏在 hover 后面等于要求用户先猜它存在。
-            // 会话数已经在下面一条条列着了，右端再报一遍数字只是噪音 —— 去掉。
-            Button {
-                // 只指定新会话的默认项目，不切换项目、不动画布。
-                model.newSessionProjectRequest = project.id
-                onNewSession()
-            } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)) }
-            .buttonStyle(YCodePlainButtonStyle())
-            // 常驻之后不能再用 .secondary：那是项目名的颜色，一行里两处同色会互相争。
-            // 平时压到 label3，hover 到这一行再提亮，可点这件事依然有反馈。
-            .foregroundStyle(hoveredProjectID == project.id ? Color.secondary : Color.ycodeLabel3)
-            .help(l10n.text("newSessionInProjectFormat", project.name))
-            .frame(minWidth: 16, alignment: .trailing)
-            .animation(YCodeMotion.contentSwap, value: hoveredProjectID == project.id)
+            .buttonStyle(.plain)
+            .foregroundStyle(project.pathExists ? Color.primary : Color.secondary)
+            .help(action + "\n" + project.repositoryURL.path)
+            .accessibilityLabel(project.name)
+            .accessibilityHint(action)
+            HStack(spacing: 4) {
+                Menu { projectMenu(project) } label: {
+                    Image(systemName: "ellipsis").font(.system(size: 12))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .tint(Color.secondary)
+                .frame(width: 22, height: 24)
+                .help(l10n.text("projectActions"))
+                .accessibilityLabel(l10n.text("projectActions") + " · " + project.name)
+                Button {
+                    model.newSessionProjectRequest = project.id
+                    onNewSession()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 12))
+                        .frame(width: 22, height: 24)
+                }
+                .buttonStyle(YCodePlainButtonStyle(drawsBackground: false))
+                .help(l10n.text("newSessionInProjectFormat", project.name))
+                .accessibilityLabel(l10n.text("newSessionInProjectFormat", project.name))
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: 48)
+            .opacity(showsActions ? 1 : 0)
+            .allowsHitTesting(showsActions)
+            .accessibilityHidden(!showsActions)
         }
-        .padding(.leading, 8)
-        // 右端多收 13：会话行的三点在悬停底里面，「＋」要落在三点的竖线上。
-        .padding(.trailing, 21)
-        .frame(height: 22)
-        // 项目行 hover 不铺底：它是分组标题，不是可选中的行；「＋」自己有 hover 反馈。
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(selected ? (hovering ? 0.09 : 0.06) : (hovering ? 0.06 : 0)))
+        )
         .contentShape(Rectangle())
-        .onTapGesture { model.toggleProjectCollapsed(project.id) }
-        .onHover { inside in hoveredProjectID = inside ? project.id : (hoveredProjectID == project.id ? nil : hoveredProjectID) }
+        .padding(.horizontal, 6)
+        .accessibilityElement(children: .contain)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: hoveredProjectID = project.id
+            case .ended:
+                if hoveredProjectID == project.id { hoveredProjectID = nil }
+            }
+        }
         .contextMenu { projectMenu(project) }
     }
 
@@ -220,126 +329,96 @@ struct WorkspaceSidebarView: View {
 
     // MARK: 会话行
 
-    private func sessionRow(_ session: SessionMetadata) -> some View {
+    private func sessionRow(_ session: SessionMetadata, shortcut: Bool = false) -> some View {
         let selected = model.selectedSessionID == session.id
-        let slot = model.canvasSlot(for: session.id)
         let archived = session.archivedAtMilliseconds != nil
-        // 上了画布的行（不止选中的那一条）都铺「hover 底」；角标的描边得跟这层底同色才分得开。
-        let lit = selected || slot != nil
-        let rowBase = lit ? Color.ycodeRowLitBase : Color.ycodeChrome
-        return HStack(spacing: 8) {
-            // 状态不再单占一列：它描述的就是这个 agent，贴在图标角上。
-            // idle 不画角标，所以平时这一片是干净的，一旦有绿/黄亮起来就很显眼。
-            YCodeAgentIconView(
-                profile: model.agentProfiles.first { $0.id == session.agentProfile },
-                size: 13,
-                tint: nil
-            )
-            .frame(width: 16, height: 16)
-            .overlay(alignment: .topTrailing) {
-                if archived {
-                    // 归档的会话没有运行时，状态无从谈起 —— 用箱子说明它在哪。
-                    Image(systemName: "archivebox.fill")
-                        .font(.system(size: 7))
-                        .foregroundStyle(Color.secondary)
-                        .padding(1)
-                        .background(Circle().fill(rowBase))
-                        .offset(x: 3, y: -3)
-                } else {
-                    YCodeStatusBadge(
-                        presence: model.presence(for: session),
-                        ringColor: rowBase
-                    )
-                    .offset(x: 3, y: -3)
-                }
+        let key = session.id + (shortcut ? "-shortcut" : "-project")
+        let hovering = hoveredSessionKey == key
+        let showsActions = hovering || selected
+        let pinned = model.pinnedSessionIDs.contains(session.id)
+        let pinAction = l10n.text(pinned ? "unpinSession" : "pinSession")
+        let presence = model.presence(for: session)
+        let projectName = model.project(id: session.projectID)?.name ?? ""
+        return HStack(spacing: 6) {
+            if shortcut, let project = model.project(id: session.projectID) {
+                YCodeProjectBadge(projectID: project.id, name: project.name, showsName: false)
             }
-            sessionTitle(session, selected: selected)
-            if model.pendingTitleSessionIDs.contains(session.id) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 10))
-                    .help(l10n.text("sessionTitlePending"))
-            }
-            Spacer(minLength: 4)
-            // 格位徽标与「更多」占同一块固定宽度、互相替换：宽度不变，所以指针扫过
-            // 一列会话时右端不会横跳。hover 之前是信息（在第几格），hover 之后是动作。
+            Text(model.displayName(for: session))
+                .font(.body)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
             ZStack(alignment: .trailing) {
-                if let slot {
-                    // 只有上了画布的行才带格位徽标，没上画布的右侧就是空的（设计稿 §04 标注 4）。
-                    Text("⌘⇧\(slot + 1)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Color.ycodeLabel3)
-                        .opacity(hoveredSessionID == session.id ? 0 : 1)
+                HStack(spacing: 6) {
+                    if model.pendingTitleSessionIDs.contains(session.id) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .help(l10n.text("sessionTitlePending"))
+                    }
+                    if archived {
+                        Image(systemName: "archivebox").font(.system(size: 10)).foregroundStyle(.secondary)
+                    } else if presence != .idle {
+                        YCodeStatusDot(presence: presence, size: 7)
+                            .help(presence.title(l10n))
+                            .accessibilityLabel(presence.title(l10n))
+                    }
                 }
-                Menu {
-                    sessionMenu(session, archived: archived)
-                } label: {
-                    // 竖的三点：borderlessButton 菜单只认图片标签（SwiftUI 形状会被丢掉），
-                    // 而 SF Symbols 的 ellipsis 是横的、旋转也会被丢掉，所以自己画一张模板图。
-                    Image(nsImage: Self.verticalEllipsis)
+                .opacity(showsActions ? 0 : 1)
+                HStack(spacing: 4) {
+                    Menu {
+                        sessionMenu(session, archived: archived)
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 12))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .frame(width: 22, height: 24)
+                    .help(l10n.text("sessionActions"))
+                    .accessibilityLabel(l10n.text("sessionActions") + " · " + model.displayName(for: session))
+                    if !archived {
+                        Button { model.toggleSessionPin(session) } label: {
+                            Image(systemName: pinned ? "pin.slash" : "pin")
+                                .font(.system(size: 12))
+                                .frame(width: 22, height: 24)
+                        }
+                        .buttonStyle(YCodePlainButtonStyle(drawsBackground: false))
+                        .help(pinAction)
+                        .accessibilityLabel(pinAction + " · " + model.displayName(for: session))
+                    }
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .tint(Color.secondary)
-                .help(l10n.text("sessionActions"))
-                .opacity(hoveredSessionID == session.id ? 1 : 0)
-                // 淡出的那枚不能还接得住点击，否则鼠标停在格位徽标上也能拉开菜单。
-                .allowsHitTesting(hoveredSessionID == session.id)
+                .foregroundStyle(.secondary)
+                .opacity(showsActions ? 1 : 0)
+                .allowsHitTesting(showsActions)
+                .accessibilityHidden(!showsActions)
             }
-            .frame(minWidth: 22, alignment: .trailing)
-            .animation(YCodeMotion.contentSwap, value: hoveredSessionID == session.id)
+            .frame(width: 48, height: 24, alignment: .trailing)
         }
-        .padding(.horizontal, 8)
-        .frame(height: YCodeMetrics.rowHeight)
-        // 选中 / hover / 按下三态统一走 ycodeRow：改之前这一行只认「选中」，
-        // 指针扫过整条侧栏没有任何反馈，按下去也没有 —— 点击是否落在这一行，
-        // 唯一的线索是列表事后变了。
-        .ycodeRow(isSelected: lit, selection: .quiet, cornerRadius: 10)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        // 行底与操作共用同一份悬停状态，避免嵌套的跟踪区域相互覆盖。
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(selected ? (hovering ? 0.09 : 0.06) : (hovering ? 0.06 : 0)))
+        )
+        .contentShape(Rectangle())
         .foregroundStyle(archived ? Color.secondary : Color.primary)
-        .fontWeight(selected ? .medium : .regular)
-        .padding(.horizontal, 8)
-        // 归档的点不开 —— 它没有运行时，双击就是「我要它回来」。
-        //
-        // 两条 onTapGesture 叠在一起时，SwiftUI 必须先等完双击判定窗口才敢派发单击，
-        // 于是每一次普通的「打开会话」都白白慢上一个双击间隔。改成
-        // simultaneousGesture 后单击立刻派发，双击照旧识别 —— 只有归档行付这个延迟，
-        // 而归档行本来就只有双击这一个动作。
+        .padding(.horizontal, 6)
+        .help([projectName, model.displayName(for: session), session.agentProfile].joined(separator: " · "))
+        .accessibilityElement(children: .contain)
         .simultaneousGesture(
             TapGesture(count: 2).onEnded { if archived { model.unarchiveSession(id: session.id) } }
         )
         .onTapGesture { if !archived { model.activateSession(session) } }
-        .onHover { inside in
-            hoveredSessionID = inside ? session.id : (hoveredSessionID == session.id ? nil : hoveredSessionID)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: hoveredSessionKey = key
+            case .ended:
+                if hoveredSessionKey == key { hoveredSessionKey = nil }
+            }
         }
         .contextMenu { sessionMenu(session, archived: archived) }
-    }
-
-    /// 竖排三点的模板图（随 tint 着色）。
-    private static let verticalEllipsis: NSImage = {
-        let image = NSImage(size: NSSize(width: 14, height: 18), flipped: false) { rect in
-            NSColor.black.setFill()
-            let d: CGFloat = 2.6
-            for i in 0..<3 {
-                let y = rect.midY - d / 2 + CGFloat(i - 1) * 4.6
-                NSBezierPath(ovalIn: NSRect(x: rect.midX - d / 2, y: y, width: d, height: d)).fill()
-            }
-            return true
-        }
-        image.isTemplate = true
-        return image
-    }()
-
-    @ViewBuilder
-    private func sessionTitle(_ session: SessionMetadata, selected: Bool) -> some View {
-        // 名字来自 CLI：title 为空时先显示斜体的「新会话」，CLI 报出 live title 后自动改名。
-        if model.hasDisplayTitle(session) {
-            Text(model.displayName(for: session)).font(.body).lineLimit(1)
-        } else {
-            Text(l10n.text("newSessionFallback"))
-                .font(.body.italic())
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
-        }
     }
 
     /// 会话菜单：改名字、收起来（归档）、彻底不要了（连 jsonl 一起删）。
@@ -350,9 +429,8 @@ struct WorkspaceSidebarView: View {
         if archived {
             Button(l10n.text("unarchive")) { model.unarchiveSession(id: session.id) }
         } else {
-            Button(l10n.text("renameEllipsis")) { onRenameSession(session) }
-            Divider()
-            Button(l10n.text("archiveEllipsis"), role: .destructive) { onArchiveSession(session) }
+            SessionActionItems(model: model, session: session,
+                               onRename: { onRenameSession(session) }, onArchive: { onArchiveSession(session) })
         }
         if model.pendingTitleSessionIDs.contains(session.id) {
             Button(l10n.text("retryTitleSync")) { model.retryTitleSync(session) }

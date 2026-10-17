@@ -51,6 +51,49 @@ struct TerminalCanvasTransitionTests {
         return (position, bounds)
     }
 
+    @Test("the fourth-session picker and created terminal occupy identical grid frames")
+    func fourthSessionReplacesPickerWithoutReflow() {
+        let (window, canvas) = fixture()
+        defer { canvas.cancelTransition(); window.close() }
+        update(canvas, .mainSide, ids: ["one", "two", "three"], reduced: true)
+        let preview = YCodeTerminalLayout.reflow(.mainSide, from: 3, to: 4)
+        update(canvas, preview, ids: ["one", "two", "three", "picker"], reduced: true)
+        let previewFrames = slots(canvas).map(\.frame)
+        let existingHosts = live(canvas).prefix(3).map(ObjectIdentifier.init)
+        #expect(previewFrames.count == 4)
+        #expect(previewFrames[0].height == previewFrames[3].height)
+        #expect(previewFrames[2].minY == previewFrames[3].minY)
+        #expect(previewFrames[3].width == previewFrames[1].width)
+
+        update(canvas, .grid2x2, ids: ["one", "two", "three", "four"], reduced: true)
+        #expect(slots(canvas).map(\.frame) == previewFrames)
+        #expect(live(canvas).prefix(3).map(ObjectIdentifier.init) == existingHosts)
+        #expect(!canvas.isTransitioning)
+    }
+
+    @Test("tab switching retains pane hosts and exposes only the focused content")
+    func tabVisibilityAndViewIdentity() {
+        let (window, canvas) = fixture()
+        defer { canvas.cancelTransition(); window.close() }
+        let ids = (1...6).map { "tab-\($0)" }
+        func select(_ id: String) {
+            canvas.update(panes: ids.map { ($0, AnyView(Text($0))) }, layout: .tabs, focusedID: id,
+                          reduceMotion: false, columnLabel: "Column", rowLabel: "Row")
+        }
+        select(ids[2])
+        let originalHosts = live(canvas).map(ObjectIdentifier.init)
+        #expect(slots(canvas).count == 6)
+        #expect(slots(canvas).enumerated().filter { !$0.element.isHidden }.map(\.offset) == [2])
+        select(ids[5])
+        #expect(live(canvas).map(ObjectIdentifier.init) == originalHosts)
+        #expect(slots(canvas).enumerated().filter { !$0.element.isHidden }.map(\.offset) == [5])
+        #expect(!canvas.isTransitioning)
+        update(canvas, .grid2x2, ids: Array(ids.prefix(4)))
+        #expect(slots(canvas).count == 4)
+        #expect(slots(canvas).allSatisfy { !$0.isHidden })
+        #expect(!canvas.isTransitioning)
+    }
+
     @Test("live panes jump to their destination while old pixels cover them at the original size")
     func liveDestinationUnderSnapshot() throws {
         let (window, canvas) = fixture()

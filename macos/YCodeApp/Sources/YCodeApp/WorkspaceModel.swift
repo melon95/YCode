@@ -3,6 +3,15 @@ import Foundation
 import SwiftUI
 import YCodeCore
 
+private extension Notification.Name {
+    static let ycodeSessionMetadataChanged = Notification.Name("dev.ycode.native.session-metadata-changed")
+}
+
+private struct SessionMetadataChange: Sendable {
+    let dataRoot: String
+    let sender: UUID
+}
+
 /// 侧栏的「状态」过滤档。归档是单独一档：归档过的会话平时不该混在活跃列表里，
 /// 但也得有个地方能看见它们、把它们捞回来；`all` 则是活跃 + 归档一起看。
 /// 这几档从原来的一排 chip 挪进了顶栏那个漏斗菜单 —— chip 一排最多塞得下三档，
@@ -95,6 +104,8 @@ final class WorkspaceModel: ObservableObject {
     /// 最近一次建会话用的项目，新会话选择器没有更具体的线索时用它。
     private(set) var lastNewSessionProjectID: String?
     @Published private(set) var visibleSessionIDs: [String] = []
+    /// Retain open tabs when a split layout shows only four of them.
+    private var tabSessionIDs: [String] = []
     @Published private(set) var focusedCanvasSlot = 0
     @Published private(set) var terminalLayout: YCodeTerminalLayout = .single
     /// CLI 通过 OSC 0/1/2 报出来的窗口标题，按会话 id 存。
@@ -215,6 +226,8 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var checkpointStatus = ""
     @Published private(set) var attentionEvents: [String: YCodeAgentHookEvent] = [:]
     @Published private(set) var agentProfiles: [YCodeAgentProfile] = []
+    @Published private(set) var pinnedSessionIDs: Set<String> = []
+    private let sessionMetadataSender = UUID()
     /// 侧栏是多项目平铺的，所以它要看到所有项目的会话，而不只是当前项目的。
     @Published private(set) var sessionsByProject: [String: [SessionMetadata]] = [:]
     /// 已归档的单独放一份：画布、计数那些地方只认活着的会话，
@@ -222,7 +235,10 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var archivedSessionsByProject: [String: [SessionMetadata]] = [:]
     @Published private(set) var availableAgentProfileIDs: Set<String> = []
     @Published var sidebarQuery = ""
-    @Published var sidebarFilter: YCodeSidebarFilter = .active
+    @Published var sidebarFilter: YCodeSidebarFilter = .active {
+        didSet { if sidebarFilter == .archived { sidebarProjectsCollapsed = false } }
+    }
+    @Published var sidebarProjectsCollapsed = true
     @Published var sidebarSort: YCodeSidebarSort = .manual
     /// 关掉之后，当前过滤下一条会话都不剩的项目连组标题都不画 ——
     /// 项目多了以后「等你」那一档常常只有一两个项目有内容。
@@ -231,7 +247,10 @@ final class WorkspaceModel: ObservableObject {
     @Published var expandedHistoryProjectIDs: Set<String> = []
     /// 还没选项目时右边也不摆面板区 —— 跟 `resetCanvas()` 给的默认保持一致。
     @Published var inspectorIsVisible = false
-    @Published var isPresentingNewSession = false
+    @Published var isPresentingNewSession = false {
+        didSet { if isPresentingNewSession != oldValue { newSessionLayout = nil } }
+    }
+    @Published private var newSessionLayout: YCodeTerminalLayout?
     /// 正在 resume 的会话：点一下就接着跑，重复点不再叠一次启动。
     @Published private(set) var resumingSessionIDs: Set<String> = []
     /// 会话起不来时的具体原因，按会话 id 记。窗格里只有硬失败才显示内容，其余时候永远是终端。
@@ -303,6 +322,7 @@ final class WorkspaceModel: ObservableObject {
             sessionService.onSessionsChanged = { [weak self] in
                 self?.titleGeneration += 1
                 self?.reloadSessions()
+                self?.publishSessionMetadataChange()
             }
             sessionService.onTitleSyncError = { [weak self] message in self?.errorMessage = message }
             legacyUIImportResult = try LegacyUIStateImporter(projects: repository, state: state)
@@ -315,7 +335,7 @@ final class WorkspaceModel: ObservableObject {
             try reloadForLaunch()
             if let initialProjectID, projects.contains(where: { $0.id == initialProjectID }) {
                 selectedProjectID = initialProjectID
-                sessions = try repository.listSessions(projectID: initialProjectID)
+                sessions = try cliSessions(projectID: initialProjectID)
                 resetCanvas()
             }
         } catch {
@@ -392,8 +412,20 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs.compactMap { session(id: $0) }
     }
 
+    var canvasPaneCount: Int {
+        let count = visibleSessionIDs.count + (isPresentingNewSession ? 1 : 0)
+        return max(1, terminalLayout == .tabs ? count : min(YCodeTerminalCanvasRouting.maximumVisibleSessions, count))
+    }
+
+    var presentedTerminalLayout: YCodeTerminalLayout {
+        if isPresentingNewSession, let newSessionLayout {
+            return YCodeTerminalLayout.reflow(newSessionLayout, for: canvasPaneCount)
+        }
+        return YCodeTerminalLayout.reflow(terminalLayout, from: visibleSessionIDs.count, to: canvasPaneCount)
+    }
+
     var validTerminalLayouts: [YCodeTerminalLayout] {
-        YCodeTerminalLayout.validModes(for: visibleSessionIDs.count)
+        YCodeTerminalLayout.validModes(for: canvasPaneCount)
     }
 
     /// 「跟随系统」时按当前外观解析；视图 body 会随系统外观重算，所以不用自己监听。
@@ -461,7 +493,32 @@ final class WorkspaceModel: ObservableObject {
                 || (liveTitles[session.id]?.lowercased().contains(query) ?? false)
                 || session.agentProfile.lowercased().contains(query)
         }
-        return sidebarSorted(matched)
+        let sorted = sidebarSorted(matched)
+        return sorted.filter { pinnedSessionIDs.contains($0.id) }
+            + sorted.filter { !pinnedSessionIDs.contains($0.id) }
+    }
+
+    /// 顶部快捷入口跨项目汇总；最近会话固定按活动时间排序，并与固定组去重。
+    func sidebarShortcutSessions(pinned: Bool, projectID: String? = nil) -> [SessionMetadata] {
+        guard sidebarFilter != .archived else { return [] }
+        let query = sidebarQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matched = projects.filter { projectID == nil || $0.id == projectID }
+            .flatMap { sessions(in: $0.id) }
+            .filter { session in
+                session.archivedAtMilliseconds == nil
+                    && pinnedSessionIDs.contains(session.id) == pinned
+                    && !isEmptyShell(session)
+                    && (query.isEmpty || session.title.lowercased().contains(query)
+                        || (liveTitles[session.id]?.lowercased().contains(query) ?? false)
+                        || session.agentProfile.lowercased().contains(query))
+            }
+        if pinned { return sidebarSorted(matched) }
+        return Array(matched.sorted {
+            if $0.updatedAtMilliseconds != $1.updatedAtMilliseconds {
+                return $0.updatedAtMilliseconds > $1.updatedAtMilliseconds
+            }
+            return $0.id < $1.id
+        }.prefix(10))
     }
 
     /// 空壳会话：CLI 从来没报出过标题，磁盘上也就没有对应的 jsonl —— 建完就没管的那一条。
@@ -471,7 +528,7 @@ final class WorkspaceModel: ObservableObject {
     /// 它不能在用户眼皮底下闪一下就消失。选「全部」时这些空壳也会露面，
     /// 好歹留一条能把它们找出来删掉的路。
     private func isEmptyShell(_ session: SessionMetadata) -> Bool {
-        guard !hasDisplayTitle(session) else { return false }
+        guard !pinnedSessionIDs.contains(session.id), !hasDisplayTitle(session) else { return false }
         if visibleSessionIDs.contains(session.id) || resumingSessionIDs.contains(session.id) { return false }
         return runtimeStatus(for: session)?.isLive != true
     }
@@ -604,7 +661,7 @@ final class WorkspaceModel: ObservableObject {
         selectedSessionID = nil
         do {
             try repository?.setSelectedProjectID(id)
-            sessions = try id.map { try repository?.listSessions(projectID: $0) ?? [] } ?? []
+            sessions = try id.map { try cliSessions(projectID: $0) } ?? []
             refreshSessionsByProject()
             restoreProjectContext(for: id)
             // 画布上已经有这个项目的会话、而焦点在别的项目上：把焦点挪过来，右侧面板才对得上。
@@ -664,8 +721,12 @@ final class WorkspaceModel: ObservableObject {
             )
             lastNewSessionProjectID = targetID
             reloadSessions()
+            let chosenLayout = newSessionLayout
             isPresentingNewSession = false
-            if let id = row?.id { openSessionInCanvas(id, mode: .newPane) }
+            if let id = row?.id {
+                openSessionInCanvas(id, mode: .newPane)
+                if let chosenLayout { terminalLayout = YCodeTerminalLayout.reflow(chosenLayout, for: visibleSessionIDs.count) }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -715,27 +776,52 @@ final class WorkspaceModel: ObservableObject {
 
     func renameSelectedSession(_ title: String) {
         guard let selectedSessionID else { return }
+        renameSession(id: selectedSessionID, title: title)
+    }
+
+    func renameSession(id: String, title: String) {
         // 空标题一路写进 jsonl 之后，列表只会回落到斜体的「新会话」，
         // 看起来像是改名失败而不是改成了空 —— 两个重命名对话框各自挡了一道，
         // 这里再兜一次，因为这是个公开方法。
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         titleGeneration += 1
-        do { _ = try sessionService?.renameSession(id: selectedSessionID, title: trimmed) }
+        do { _ = try sessionService?.renameSession(id: id, title: trimmed) }
         catch { errorMessage = error.localizedDescription }
+    }
+
+    func toggleSessionPin(_ session: SessionMetadata) {
+        guard let repository else { return }
+        do {
+            let pinned = try repository.pinnedSessionIDs().contains(session.id)
+            try repository.setSessionPinned(id: session.id, pinned: !pinned)
+            reloadSessions()
+            publishSessionMetadataChange()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private var sessionMetadataRoot: String {
+        dataRoot.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    private func publishSessionMetadataChange() {
+        NotificationCenter.default.post(
+            name: .ycodeSessionMetadataChanged,
+            object: SessionMetadataChange(dataRoot: sessionMetadataRoot, sender: sessionMetadataSender)
+        )
     }
 
     func archiveSelectedSession() {
         guard let selectedSessionID else { return }
-        Task {
-            do {
-                try await sessionService?.archiveSession(id: selectedSessionID)
-                self.selectedSessionID = nil
-                self.reloadSessions()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
+        Task { await archiveSession(id: selectedSessionID) }
+    }
+
+    func archiveSession(id: String) async {
+        do {
+            try await sessionService?.archiveSession(id: id)
+            reloadSessions()
+            followFocusedProject()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     /// 删除会话：库里的行和磁盘上的 jsonl 一起收掉（jsonl 进废纸篓）。
@@ -806,6 +892,8 @@ final class WorkspaceModel: ObservableObject {
 
     func openSessionInCanvas(_ id: String, mode: YCodeTerminalCanvasOpenMode) {
         guard session(id: id) != nil else { return }
+        if terminalLayout == .tabs { isPresentingNewSession = false }
+        if !tabSessionIDs.contains(id) { tabSessionIDs.append(id) }
         let result = YCodeTerminalCanvasRouting.open(
             sessionID: id,
             visibleSessionIDs: visibleSessionIDs,
@@ -816,6 +904,7 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs = result.sessionIDs
         focusedCanvasSlot = result.focusedSlot
         terminalLayout = result.layout
+        orderPinnedTabsFirst()
         followFocusedProject()
         selectedSessionID = id
         if openPanels.contains(.changes) { refreshCheckpoints() }
@@ -825,6 +914,7 @@ final class WorkspaceModel: ObservableObject {
     /// 只换上下文，不碰画布。
     /// 窗格菜单「在侧栏中定位」：把所属项目展开，让这一行露出来。
     func revealSessionInSidebar(_ session: SessionMetadata) {
+        sidebarProjectsCollapsed = false
         collapsedProjectIDs.remove(session.projectID)
     }
 
@@ -832,6 +922,7 @@ final class WorkspaceModel: ObservableObject {
     func keepOnlyProjectInCanvas(_ projectID: String) {
         let focusedID = focusedCanvasSessionID
         visibleSessionIDs = visibleSessionIDs.filter { session(id: $0)?.projectID == projectID }
+        tabSessionIDs = tabSessionIDs.filter { session(id: $0)?.projectID == projectID }
         focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
         terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
         followFocusedProject()
@@ -847,8 +938,11 @@ final class WorkspaceModel: ObservableObject {
 
     func closeCanvasSlot(_ index: Int) {
         guard visibleSessionIDs.indices.contains(index) else { return }
-        visibleSessionIDs.remove(at: index)
-        focusedCanvasSlot = visibleSessionIDs.isEmpty ? 0 : min(index, visibleSessionIDs.count - 1)
+        let focusedID = focusedCanvasSessionID
+        let removed = visibleSessionIDs.remove(at: index)
+        tabSessionIDs.removeAll { $0 == removed }
+        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) }
+            ?? (visibleSessionIDs.isEmpty ? 0 : min(index, visibleSessionIDs.count - 1))
         terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
         followFocusedProject()
         selectedSessionID = focusedCanvasSessionID
@@ -856,6 +950,7 @@ final class WorkspaceModel: ObservableObject {
 
     func focusCanvasSlot(_ index: Int) {
         guard visibleSessionIDs.indices.contains(index) else { return }
+        if terminalLayout == .tabs { isPresentingNewSession = false }
         focusedCanvasSlot = index
         followFocusedProject()
         selectedSessionID = visibleSessionIDs[index]
@@ -864,7 +959,25 @@ final class WorkspaceModel: ObservableObject {
 
     func setTerminalLayout(_ layout: YCodeTerminalLayout) {
         guard validTerminalLayouts.contains(layout) else { return }
+        let changesTabMode = (terminalLayout == .tabs) != (layout == .tabs)
+        if isPresentingNewSession && !changesTabMode {
+            newSessionLayout = layout
+            return
+        }
+        let wasPresenting = isPresentingNewSession
+        if changesTabMode { isPresentingNewSession = false }
+        let focusedID = focusedCanvasSessionID
+        if layout == .tabs {
+            for id in visibleSessionIDs where !tabSessionIDs.contains(id) { tabSessionIDs.append(id) }
+            visibleSessionIDs = tabSessionIDs
+        } else if terminalLayout == .tabs {
+            let start = max(0, focusedCanvasSlot - YCodeTerminalCanvasRouting.maximumVisibleSessions + 1)
+            visibleSessionIDs = Array(tabSessionIDs.dropFirst(start).prefix(YCodeTerminalCanvasRouting.maximumVisibleSessions))
+        }
+        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
         terminalLayout = layout
+        orderPinnedTabsFirst()
+        if changesTabMode { isPresentingNewSession = wasPresenting }
     }
 
     /// 画布顶栏右端那四个图标：开关，不是单选。全关则面板区整体收起。
@@ -1561,6 +1674,21 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func observeAgentEvents() {
+        NotificationCenter.default.publisher(for: .ycodeSessionMetadataChanged)
+            .compactMap { $0.object as? SessionMetadataChange }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                guard let self, change.sender != self.sessionMetadataSender,
+                      change.dataRoot == self.sessionMetadataRoot else { return }
+                let wasShowingProject = self.selectedProjectID != nil
+                let focusedID = self.focusedCanvasSessionID
+                self.titleGeneration += 1
+                self.reloadSessions()
+                if wasShowingProject, focusedID != self.focusedCanvasSessionID {
+                    self.followFocusedProject()
+                }
+            }
+            .store(in: &eventCancellables)
         NotificationCenter.default.publisher(for: .ycodeAgentHookEvent)
             .compactMap { $0.object as? YCodeAgentHookEvent }
             .sink { [weak self] event in self?.recordAttention(event) }
@@ -1671,7 +1799,7 @@ final class WorkspaceModel: ObservableObject {
         if try repository.selectedProjectID() != resolved {
             try repository.setSelectedProjectID(resolved)
         }
-        sessions = try resolved.map { try repository.listSessions(projectID: $0) } ?? []
+        sessions = try resolved.map { try cliSessions(projectID: $0) } ?? []
         refreshSessionsByProject()
         if let selectedSessionID, !sessions.contains(where: { $0.id == selectedSessionID }) {
             self.selectedSessionID = nil
@@ -1682,21 +1810,29 @@ final class WorkspaceModel: ObservableObject {
     private func reloadForLaunch() throws {
         guard let repository else { return }
         projects = try repository.listProjects()
+        collapsedProjectIDs = Set(projects.map(\.id))
         let recent = try repository.selectedProjectID()
         selectedProjectID = initialProjectID(recentProjectID: recent, projects: projects)
-        sessions = try selectedProjectID.map { try repository.listSessions(projectID: $0) } ?? []
+        sessions = try selectedProjectID.map { try cliSessions(projectID: $0) } ?? []
         refreshSessionsByProject()
         resetCanvas()
         restoreProjectContext(for: selectedProjectID)
     }
 
+    /// Retired native Pi rows remain on disk, but cannot be opened as CLI sessions.
+    private func cliSessions(projectID: String, includeArchived: Bool = false) throws -> [SessionMetadata] {
+        try (repository?.listSessions(projectID: projectID, includeArchived: includeArchived) ?? [])
+            .filter { $0.agentProfile != "pi-rpc" }
+    }
+
     private func refreshSessionsByProject() {
         guard let repository else { return }
+        pinnedSessionIDs = (try? repository.pinnedSessionIDs()) ?? []
         var map: [String: [SessionMetadata]] = [:]
         var archived: [String: [SessionMetadata]] = [:]
         var pending: Set<String> = []
         for project in projects {
-            let all = (try? repository.listSessions(projectID: project.id, includeArchived: true)) ?? []
+            let all = (try? cliSessions(projectID: project.id, includeArchived: true)) ?? []
             for row in all where (try? repository.pendingSessionTitle(id: row.id)) != nil { pending.insert(row.id) }
             map[project.id] = all.filter { $0.archivedAtMilliseconds == nil }
             archived[project.id] = all.filter { $0.archivedAtMilliseconds != nil }
@@ -1709,7 +1845,7 @@ final class WorkspaceModel: ObservableObject {
     private func reloadSessions() {
         do {
             projects = try repository?.listProjects() ?? projects
-            sessions = try selectedProjectID.map { try repository?.listSessions(projectID: $0) ?? [] } ?? []
+            sessions = try selectedProjectID.map { try cliSessions(projectID: $0) } ?? []
             refreshSessionsByProject()
             reconcileCanvas()
         } catch {
@@ -1728,16 +1864,31 @@ final class WorkspaceModel: ObservableObject {
         if openPanels.contains(.terminal) { ensureSelectedProjectShells() }
     }
 
+    private func orderPinnedTabsFirst() {
+        tabSessionIDs = tabSessionIDs.filter { pinnedSessionIDs.contains($0) }
+            + tabSessionIDs.filter { !pinnedSessionIDs.contains($0) }
+        guard terminalLayout == .tabs else { return }
+        let focusedID = focusedCanvasSessionID
+        visibleSessionIDs = visibleSessionIDs.filter { pinnedSessionIDs.contains($0) }
+            + visibleSessionIDs.filter { !pinnedSessionIDs.contains($0) }
+        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
+    }
+
     private func reconcileCanvas() {
+        let focusedID = focusedCanvasSessionID
         let known = Set(sessionsByProject.values.flatMap { $0.map(\.id) })
         visibleSessionIDs = visibleSessionIDs.filter(known.contains)
-        focusedCanvasSlot = visibleSessionIDs.isEmpty ? 0 : min(focusedCanvasSlot, visibleSessionIDs.count - 1)
+        tabSessionIDs = tabSessionIDs.filter(known.contains)
+        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) }
+            ?? (visibleSessionIDs.isEmpty ? 0 : min(focusedCanvasSlot, visibleSessionIDs.count - 1))
         terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
+        orderPinnedTabsFirst()
         if let selectedSessionID, !known.contains(selectedSessionID) { self.selectedSessionID = focusedCanvasSessionID }
     }
 
     private func resetCanvas() {
         visibleSessionIDs = []
+        tabSessionIDs = []
         focusedCanvasSlot = 0
         terminalLayout = .single
         // 第一次打开一个项目：只给画布和左边那列。文件树一开就摊开太主动了 ——

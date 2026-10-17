@@ -6,7 +6,10 @@ if [[ $# -gt 0 ]]; then shift; fi
 APP_NAME="YCodeApp"
 BUNDLE_ID="dev.ycode.native.dev"
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIST_DIR="$NATIVE_DIR/dist"
+DIST_DIR="${YCODE_BUILD_DIST_DIR:-$NATIVE_DIR/dist}"
+SCRATCH_DIR="${YCODE_BUILD_SCRATCH_DIR:-$NATIVE_DIR/.build}"
+export CLANG_MODULE_CACHE_PATH="$SCRATCH_DIR/module-cache"
+export SWIFTPM_CACHE_PATH="$SCRATCH_DIR/cache"
 APP_BUNDLE="$DIST_DIR/YCode.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 BUILD_LOG="$DIST_DIR/build.log"
@@ -33,20 +36,19 @@ if [[ -z "$DEV_SIGNING_IDENTITY" ]]; then
 fi
 echo "Development signing identity: $DEV_SIGNING_IDENTITY"
 
-if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
-  pkill -x "$APP_NAME"
-fi
+# Builds never stop running apps. Each launch owns its own process.
+
 
 mkdir -p "$APP_CONTENTS/MacOS" "$APP_CONTENTS/Resources"
 cd "$NATIVE_DIR"
-swift build --product YCodeApp 2>&1 | tee "$BUILD_LOG"
+swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --product YCodeApp 2>&1 | tee "$BUILD_LOG"
 for product in YCodeApp ycode ycode-mcp ycode-notify ycode-migrate; do
   if [[ "$product" != "YCodeApp" ]]; then
-    swift build --product "$product" 2>&1 | tee -a "$BUILD_LOG"
+    swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --product "$product" 2>&1 | tee -a "$BUILD_LOG"
   fi
 done
 
-BIN_DIR="$(swift build --show-bin-path)"
+BIN_DIR="$(swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --show-bin-path)"
 cp "$BIN_DIR/YCodeApp" "$APP_CONTENTS/MacOS/YCodeApp"
 /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$APP_CONTENTS/MacOS/YCodeApp" 2>/dev/null || true
 cp "$NATIVE_DIR/Resources/YCodeApp-Info.plist" "$APP_CONTENTS/Info.plist"
@@ -65,8 +67,10 @@ cp "$NATIVE_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 mkdir -p "$APP_CONTENTS/Resources/ThirdPartyNotices"
 cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
 cp "$BIN_DIR/ycode" "$BIN_DIR/ycode-mcp" "$BIN_DIR/ycode-notify" "$BIN_DIR/ycode-migrate" "$APP_CONTENTS/Resources/"
+# Remove the retired native Pi bridge from reused development bundles.
+rm -rf "$APP_CONTENTS/Resources/Pi"
 mkdir -p "$APP_CONTENTS/Frameworks"
-SPARKLE_FRAMEWORK="$(find "$NATIVE_DIR/.build" -path '*/Sparkle.framework' -type d -print -quit)"
+SPARKLE_FRAMEWORK="$(find "$SCRATCH_DIR" -path '*/Sparkle.framework' -type d -print -quit)"
 if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
   rm -rf "$APP_CONTENTS/Frameworks/Sparkle.framework"
   /usr/bin/ditto "$SPARKLE_FRAMEWORK" "$APP_CONTENTS/Frameworks/Sparkle.framework"
@@ -111,9 +115,10 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
-    /usr/bin/open -n "$APP_BUNDLE" --args "$@"
+    "$APP_CONTENTS/MacOS/YCodeApp" "$@" &
+    owned_pid=$!
     sleep 1
-    pgrep -x YCodeApp >/dev/null
+    kill -0 "$owned_pid"
     /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
     ;;
   *)

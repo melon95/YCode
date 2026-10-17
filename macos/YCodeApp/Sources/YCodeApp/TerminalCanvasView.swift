@@ -114,7 +114,8 @@ final class YCodeCanvasHost<ID: Hashable>: NSView {
         let nextFrames = nextGeometry.frames.map(placed)
         let geometryChanged = previousIDs.compactMap { panes[$0]?.frame } != nextFrames
         self.focusedID = focusedID
-        let animate = !reduceMotion && window != nil && !previousIDs.isEmpty
+        let animate = !reduceMotion && layout != .tabs && layoutMode != .tabs
+            && window != nil && !previousIDs.isEmpty
             && bounds.width > 0 && bounds.height > 0 && geometryChanged
         let continuing = isTransitioning && !reduceMotion && !geometryChanged
 
@@ -147,7 +148,13 @@ final class YCodeCanvasHost<ID: Hashable>: NSView {
                     addSubview(pane.cardShadow)
                     addSubview(pane)
                 }
-                pane.isFocused = id == focusedID
+                let hidden = layout == .tabs && id != (focusedID ?? nextIDs.first)
+                if hidden, let responder = window?.firstResponder as? NSView, responder.isDescendant(of: pane) {
+                    window?.makeFirstResponder(nil)
+                }
+                pane.isHidden = hidden
+                pane.cardShadow.isHidden = hidden
+                pane.isFocused = layout != .tabs && id == focusedID
                 // Live content goes straight to its destination: each terminal
                 // reflows once instead of on every animation frame.
                 pane.frame = nextFrames[index]

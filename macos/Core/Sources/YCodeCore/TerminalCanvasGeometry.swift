@@ -30,7 +30,7 @@ public struct YCodeTerminalCanvasGeometry {
     public init(layout: YCodeTerminalLayout, count: Int, size: CGSize, weights: [String: [CGFloat]] = [:],
                 gap preferredGap: CGFloat = 5) {
         guard count > 0 else { return }
-        let count = min(count, YCodeTerminalCanvasRouting.maximumVisibleSessions)
+        let count = layout == .tabs ? count : min(count, YCodeTerminalCanvasRouting.maximumVisibleSessions)
         let layout = YCodeTerminalLayout.reflow(layout, for: count)
         let bounds = CGRect(origin: .zero, size: CGSize(width: max(0, size.width), height: max(0, size.height)))
         func split(_ rect: CGRect, count: Int, vertical: Bool, group: String, defaults: [CGFloat]? = nil) -> [CGRect] {
@@ -65,6 +65,8 @@ public struct YCodeTerminalCanvasGeometry {
         switch layout {
         case .single:
             frames = [bounds]
+        case .tabs:
+            frames = Array(repeating: bounds, count: count)
         case .stack, .columns:
             frames = split(bounds, count: count, vertical: layout == .columns, group: "linear")
         case .grid2x2:

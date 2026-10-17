@@ -427,7 +427,7 @@ private struct NativeRootView: View {
             titleVisibility: .visible
         ) {
             Button(YCodeLocalization(locale: model.locale).text("stopAndArchive"), role: .destructive) {
-                model.archiveSelectedSession()
+                if let session = pendingArchive { Task { await model.archiveSession(id: session.id) } }
                 pendingArchive = nil
             }
             Button(YCodeLocalization(locale: model.locale).text("cancel"), role: .cancel) { pendingArchive = nil }
@@ -714,11 +714,11 @@ private struct NativeRootView: View {
             .buttonStyle(YCodeIconButtonStyle())
             .help(l10n.text("commandPalette") + " ⌘K")
 
-            // 至少两个 Agent 才需要切换布局；空白选择器不算 Agent。
-            if model.visibleSessionIDs.count > 1 {
+            // A single session can also enter tab mode before opening more tabs.
+            if !model.visibleSessionIDs.isEmpty {
                 let layouts = model.validTerminalLayouts
                 Picker("", selection: Binding(
-                    get: { YCodeTerminalLayout.reflow(model.terminalLayout, for: model.visibleSessionIDs.count) },
+                    get: { model.presentedTerminalLayout },
                     set: { model.setTerminalLayout($0) }
                 )) {
                     ForEach(layouts) { layout in
@@ -730,7 +730,7 @@ private struct NativeRootView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 // 数量变化时重建原生分段控件，避免保留上一组布局选项。
-                .id(model.visibleSessionIDs.count)
+                .id(model.canvasPaneCount)
                 .fixedSize()
                 .disabled(layouts.count <= 1)
                 .padding(.horizontal, 2)
@@ -810,6 +810,7 @@ private struct NativeRootView: View {
         case .columns: "square.split.2x1"
         case .grid2x2: "square.split.2x2"
         case .mainSide: "rectangle.trailinghalf.inset.filled.arrow.trailing"
+        case .tabs: "rectangle.topthird.inset.filled"
         }
     }
 
