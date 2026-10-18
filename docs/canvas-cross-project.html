@@ -43,6 +43,8 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
   box-shadow: 0 30px 60px -22px rgba(22,19,58,.35), 0 0 0 1px rgba(22,19,58,.1);
   display: grid; grid-template-columns: 208px 1fr; height: 470px; font-size: 11px; }
 .m-win.m-r { grid-template-columns: 208px 1fr 168px; }
+.m-foot { margin-top: auto; display: flex; justify-content: flex-end; padding: 6px 6px 2px; color: var(--m-muted); }
+.m-foot i { width: 15px; height: 12px; border: 1.3px solid var(--m-muted); border-radius: 3px; display: block; opacity: .75; }
 .m-side { padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
 .m-lights { display: flex; gap: 6px; padding: 2px 4px 10px; }
 .m-lights i { width: 10px; height: 10px; border-radius: 50%; }
@@ -174,6 +176,7 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 
     <div class="m-pjhead" style="--p:var(--pj-d)"><i></i>docs-site<em>1</em></div>
     <div class="m-row m-dim"><span class="m-dot idle"></span><b>翻译首页</b><span class="m-off"></span></div>
+    <div class="m-foot"><i></i></div>
   </div>
 
   <div class="m-main">
@@ -267,13 +270,15 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
   <tr><td>点击已在画布上的会话</td><td>同项目内聚焦</td><td>聚焦该格，右侧面板跟随切换</td></tr>
   <tr><td>项目行「+」新建会话</td><td>先切项目再新建</td><td>打开新建会话选择器，项目下拉框默认选该项目（见 §4）；新会话进画布，不切换其他窗格</td></tr>
   <tr><td>窗格头右键 / 菜单</td><td>关闭窗格</td><td>新增「在侧栏中定位」「仅看此项目」（见 §5）</td></tr>
+  <tr><td>侧栏底栏「＋ 新建会话 · 项目名」</td><td>跟着当前项目，建到哪个项目靠它的文案说明</td><td><strong>去掉</strong>。画布混放后「当前项目」不再唯一，这个按钮的文案会误导。底栏只保留右侧「添加项目」图标；新建会话入口剩项目行「+」和 ⌘N</td></tr>
   <tr><td>关闭窗格</td><td>reflow 布局</td><td>不变；该会话进程继续在后台运行</td></tr>
 </table>
 
-<h2>4　新建会话：增加项目下拉框<small>与分支下拉框并列</small></h2>
-<p class="doc-sub">画布混放后，「新会话属于哪个项目」不能再靠「当前选中的项目」隐式决定。在选择器底部那一行，把<strong>项目下拉框放在 worktree 勾选框前面</strong>，和右侧的分支下拉框一样是 Menu 样式。顺序即决策顺序：项目 → 是否隔离 → 分支。</p>
+<h2>4　新建会话：增加项目下拉框<small>项目与分支并排，worktree 靠右</small></h2>
+<p class="doc-sub"><strong>历史设计边界：</strong>本节插图中的 Worktree 勾选、隔离选择及相关 Tab 顺序保留作历史参考，当前暂缓，不属于本轮实施。现有应用只使用普通项目会话；当前范围以 <a href="ycode-feature-spec.md">产品说明</a> 为准。</p>
+<p class="doc-sub">画布混放后，「新会话属于哪个项目」不能再靠「当前选中的项目」隐式决定。在选择器底部那一行加<strong>项目下拉框，和分支下拉框并排挨在左边</strong>，worktree 勾选框单独靠右。分支是项目的下一级（换项目分支就跟着重读），所以两者放在一起；顺序即决策顺序：项目 → 分支 → 是否隔离。</p>
 
-<div class="stage"><div class="np-wrap m-win" style="background:#efeef4"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-chk">worktree</span><span class="sp"></span><span class="np-menu">⎇ feat/rate-limit</span></div></div></div></div>
+<div class="stage"><div class="np-wrap m-win" style="background:#efeef4"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-menu">⎇ feat/rate-limit</span><span class="sp"></span><span class="np-chk">worktree</span></div></div></div></div>
 <div class="legend">
   <div><b class="n">1</b><span><strong>项目下拉框</strong>：左侧项目色小方块 + 项目名，样式、高度（24px）和分支下拉框一致。默认值是「最近使用的项目」；从侧栏项目行的「+」进来时，默认值是那个项目。</span></div>
   <div><b class="n">2</b><span><strong>联动</strong>：换项目后，分支列表重新读取该项目的分支，分支重置为该项目的当前分支，避免把 A 项目的分支名带到 B 项目。</span></div>
@@ -281,9 +286,9 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 
 <div class="doc-grid2" style="margin-top:20px">
   <div class="mini"><h3>展开状态</h3><p>列表按侧栏顺序排列，每行右侧小字显示该项目当前分支，选中项带 ✓。底部「添加项目…」复用现有添加流程。</p>
-    <div class="m-win np-wrap" style="padding-top:150px;position:relative"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><div class="np-pop"><div class="on" style="--p:var(--pj-b)"><i></i>api-gateway<em>✓</em></div><div style="--p:var(--pj-a)"><i></i>web-app<em>feat/login</em></div><div style="--p:var(--pj-c)"><i></i>infra<em>main</em></div><div style="--p:var(--pj-d)"><i></i>docs-site<em>main</em></div><hr><div class="add">＋ 添加项目…</div></div><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-chk">worktree</span><span class="sp"></span><span class="np-menu">⎇ feat/rate-limit</span></div></div></div></div>
+    <div class="m-win np-wrap" style="padding-top:150px;position:relative"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><div class="np-pop"><div class="on" style="--p:var(--pj-b)"><i></i>api-gateway<em>✓</em></div><div style="--p:var(--pj-a)"><i></i>web-app<em>feat/login</em></div><div style="--p:var(--pj-c)"><i></i>infra<em>main</em></div><div style="--p:var(--pj-d)"><i></i>docs-site<em>main</em></div><hr><div class="add">＋ 添加项目…</div></div><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-menu">⎇ feat/rate-limit</span><span class="sp"></span><span class="np-chk">worktree</span></div></div></div></div>
   <div class="mini"><h3>非 Git 项目</h3><p>worktree 勾选框置灰，分支下拉框显示「非 Git 仓库」且不可点。该行高度不变，不会让卡片跳动。</p>
-    <div class="m-win np-wrap"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj" style="--p:var(--pj-d)"><i></i>docs-site</span><span class="np-chk dis">worktree</span><span class="sp"></span><span class="np-menu" style="opacity:.45">⎇ 非 Git 仓库</span></div></div></div></div>
+    <div class="m-win np-wrap"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj" style="--p:var(--pj-d)"><i></i>docs-site</span><span class="np-menu" style="opacity:.45">⎇ 非 Git 仓库</span><span class="sp"></span><span class="np-chk dis">worktree</span></div></div></div></div>
 </div>
 
 <table class="doc-table" style="margin-top:20px">
@@ -293,7 +298,7 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
   <tr><td>已有窗格时 ⌘N 新开一格</td><td>焦点窗格所属项目（最常见的意图是「再开一个同项目的」）</td></tr>
   <tr><td>只有一个项目</td><td>仍显示下拉框但没有可选项，保持布局稳定，也方便从中添加项目</td></tr>
 </table>
-<p class="doc-cap">无障碍：下拉框的标签读作「项目：api-gateway」；展开列表可用 ↑↓ 选择、回车确认、Esc 关闭，和分支下拉框一致。键盘 Tab 顺序：agent 卡片 → 项目 → worktree → 分支。</p>
+<p class="doc-cap">无障碍：下拉框的标签读作「项目：api-gateway」；展开列表可用 ↑↓ 选择、回车确认、Esc 关闭，和分支下拉框一致。键盘 Tab 顺序：agent 卡片 → 项目 → 分支 → worktree。</p>
 
 <h2>5　不靠颜色识别<small>无障碍</small></h2>
 <div class="doc-grid2">

@@ -22,7 +22,7 @@
 - 普通 Git 分支操作、提交、diff 和检查点仍保留，不能因暂缓 worktree 一并删掉。
 - 本次不切换到 pi，不增加自研模型对话、权限引擎等新产品范围。
 
-基准是当前代码。`pi-implementation-plan.md`、`ycode-feature-spec.md` 中删除 Agent 管理、编辑能力和 LSP 的方案不适用于本次重构。
+基准是当前代码。Agent 管理和手动编辑按迁移对照表保留；LSP 按已确认范围移除，当前产品范围见 [产品说明](ycode-feature-spec.md)。
 
 ## 2. 已确认的现状
 
