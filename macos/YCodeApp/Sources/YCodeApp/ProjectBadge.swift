@@ -3,7 +3,7 @@ import SwiftUI
 import YCodeCore
 
 /// 跨项目画布里「这格属于哪个项目」的标识（设计稿 docs/canvas-cross-project.html §1）。
-/// 颜色只是辅助：徽章永远带首字母图标和项目名，不靠颜色单独传达身份。
+/// 颜色只是辅助：徽章显示项目名，紧凑模式用首字母，不靠颜色单独传达身份。
 enum YCodeProjectPalette {
     /// 白字压在每一个底色上都 ≥ 4.5:1；刻意避开珊瑚，免得被误读成焦点色。
     private static let hexes = ["1A7F6C", "6A5AE0", "A8620F", "2A5FD0", "B8447A", "5F7A1F", "4F5D75", "8A4B2E"]
@@ -39,30 +39,31 @@ enum YCodeProjectPalette {
     }
 }
 
-/// 项目徽章：项目色底 + 首字母 + 项目名。`showsName == false` 时收成只剩图标（窄窗格）。
+/// 项目徽章：项目色底 + 项目名。`showsName == false` 时收成首字母图标（窄窗格）。
 struct YCodeProjectBadge: View {
     let projectID: String
     let name: String
     var showsName = true
-    var maxNameWidth: CGFloat = 96
+    var maxNameWidth: CGFloat = 120
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(YCodeProjectPalette.initial(of: name))
-                .font(.system(size: 8, weight: .bold))
-                .frame(width: 11, height: 11)
-                .background(Color.white.opacity(0.28), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
             if showsName {
                 Text(name)
                     .font(.system(size: 9.5, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: maxNameWidth, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+            } else {
+                Text(YCodeProjectPalette.initial(of: name))
+                    .font(.system(size: 8, weight: .bold))
+                    .frame(width: 11, height: 11)
+                    .background(Color.white.opacity(0.28), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
             }
         }
         .foregroundStyle(Color.white)
-        .padding(.leading, 4)
+        .padding(.leading, showsName ? 6 : 4)
         .padding(.trailing, showsName ? 6 : 4)
         .frame(height: 16)
         .background(YCodeProjectPalette.color(for: projectID), in: RoundedRectangle(cornerRadius: 5, style: .continuous))

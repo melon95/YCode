@@ -420,8 +420,6 @@ struct YCodePanelHeaderSpec {
     /// 终端面板关掉它：卡头上没有「终端」两个字，标签自己写着「终端 1」，
     /// 图标既不点也不说明什么，只是占着 26 pt。
     var showsIcon = true
-    /// 面板跟随焦点窗格的项目；跨项目画布里要标出「这张卡现在是谁的」。
-    var project: (id: String, name: String)?
 }
 
 /// 卡头默认的那段 —— 面板名 + 计数。终端面板用标签条顶掉它。
@@ -464,9 +462,6 @@ struct YCodePanelHeader<Leading: View, Actions: View>: View {
             // 还要硬占 6 就会把整行顶宽，右端的 ✕ 被挤出卡外。
             Spacer(minLength: 0).layoutPriority(-1)
             actions()
-            if let project = spec.project {
-                YCodeProjectBadge(projectID: project.id, name: project.name, maxNameWidth: 72)
-            }
             Button(action: spec.close) { Image(systemName: "xmark") }
                 .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 11))
                 .help(l10n.text("closePanel"))

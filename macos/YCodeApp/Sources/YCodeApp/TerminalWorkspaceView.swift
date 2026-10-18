@@ -340,8 +340,7 @@ struct WorkspaceInspectorView: View {
             canMoveDown: model.openPanels.last != panel,
             // 只有点得动的图标才留：文件卡那枚是文件树开关，变更卡那枚是树／平铺开关；
             // 终端和待办的图标既不点，旁边也已经写着自己是谁。
-            showsIcon: panel != .terminal && panel != .todos,
-            project: model.selectedProject.map { ($0.id, $0.name) }
+            showsIcon: panel != .terminal && panel != .todos
         )
     }
 
