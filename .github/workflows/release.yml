@@ -58,7 +58,7 @@ jobs:
           done
       - name: Run tests
         run: |
-          swift test --package-path macos --force-resolved-versions
+          swift test --package-path macos --force-resolved-versions --no-parallel
           python3 -m unittest discover -s macos/scripts/tests -v
           python3 macos/scripts/generate_agent_icons.py
           python3 macos/scripts/generate_file_icons.py
