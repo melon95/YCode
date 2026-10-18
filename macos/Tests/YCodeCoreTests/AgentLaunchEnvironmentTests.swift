@@ -54,6 +54,27 @@ struct AgentLaunchEnvironmentTests {
         #expect(agent["color"] == .string("#123456"))
     }
 
+    @Test("legacy agents default to enabled and disabling preserves their launch configuration")
+    func enabledRoundTrip() throws {
+        let directory = try temporaryDirectory(named: "enabled agents")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("config.json")
+        try Data(#"{"agents":[{"id":"custom","command":"echo","args":["--flag"],"env":{"TOKEN":"$LOCAL_TOKEN"},"future":{"keep":true}}]}"#.utf8).write(to: url)
+        let store = YCodeConfigurationStore(configurationURL: url)
+        var settings = try store.loadAgentSettings()
+        #expect(settings.agents[0].enabled)
+        let original = settings.agents[0]
+        settings.agents[0].enabled = false
+        try store.saveAgentSettings(settings)
+        let disabled = try store.loadAgentSettings().agents[0]
+        var expected = original
+        expected.enabled = false
+        #expect(disabled == expected)
+        settings.agents[0].enabled = true
+        try store.saveAgentSettings(settings)
+        #expect(try store.loadAgentSettings().agents[0] == original)
+    }
+
     @Test("duplicate IDs fail without writing")
     func duplicateIDs() throws {
         let directory = try temporaryDirectory(named: "duplicate")

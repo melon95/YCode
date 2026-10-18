@@ -29,6 +29,8 @@ struct YCodeLocalization {
     static let zh = YCodeLocalization(locale: .zh)
 
     static let translations: [String: [YCodeLocale: String]] = [
+        "agentEnablementHelp": [.zh: "开关控制新建会话入口；停用会保留配置，不影响已有会话。", .en: "Switches control new sessions. Disabling an agent keeps its configuration and existing sessions."],
+        "agentEnableDetectedHelp": [.zh: "启用并添加 %@", .en: "Enable and add %@"],
         "customizationSkillList": [.zh: "本地技能", .en: "Local skills"],
         "customizationMCPList": [.zh: "MCP 服务", .en: "MCP servers"],
         "customizationSharedSource": [.zh: "共享", .en: "Shared"],
@@ -310,7 +312,7 @@ struct YCodeLocalization {
         "stoppedSignalFormat": [.zh: "已停止 SIG%d", .en: "Stopped SIG%d"],
         "recoverable": [.zh: "可恢复", .en: "Recoverable"],
         "sessionName": [.zh: "会话名称", .en: "Session Name"],
-        "addAgentFirst": [.zh: "请先在设置中添加 Agent", .en: "Add an agent in Settings first"],
+        "addAgentFirst": [.zh: "请先在设置中添加或启用 Agent", .en: "Add or enable an agent in Settings first"],
         "start": [.zh: "启动", .en: "Start"],
         "searchHistoryBody": [.zh: "搜索历史正文", .en: "Search history text"],
         "search": [.zh: "搜索", .en: "Search"],

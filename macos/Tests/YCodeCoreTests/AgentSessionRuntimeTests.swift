@@ -116,6 +116,29 @@ struct AgentSessionRuntimeTests {
         #expect(try reopened.session(id: created.id).archivedAtMilliseconds != nil)
     }
 
+    @Test("disabled agents reject new sessions while existing sessions can resume")
+    func disabledProfileKeepsExistingSession() async throws {
+        let fixture = try RuntimeFixture()
+        defer { fixture.remove() }
+        let data = fixture.directory.appendingPathComponent("data")
+        let repository = try ProjectWorkspaceRepository(databaseURL: data.appendingPathComponent("ycode.db"))
+        let project = try repository.addProject(directory: fixture.directory.appendingPathComponent("repo"))
+        let store = YCodeConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
+        let profile = YCodeAgentProfile(id: "disabled", command: fixture.script.path, enabled: false)
+        try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
+        let pool = YCodeSessionProcessPool()
+        let service = YCodeAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        #expect(throws: YCodeAgentSessionServiceError.disabledAgent(profile.resolvedDisplayName)) {
+            try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Blocked")
+        }
+        #expect(try repository.listSessions(projectID: project.id).isEmpty)
+        let existing = try repository.createSession(projectID: project.id, title: "Existing", agentProfile: profile.id)
+        _ = try await service.restartSession(id: existing.id)
+        #expect(service.runtime(id: existing.id)?.status.isLive == true)
+        try await service.stopSession(id: existing.id)
+        #expect(try repository.session(id: existing.id).title == "Existing")
+    }
+
     @Test("Codex historical resume uses exact conversation ID")
     func codexResumeArguments() async throws {
         let fixture = try RuntimeFixture()

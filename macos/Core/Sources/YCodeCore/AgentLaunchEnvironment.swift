@@ -117,6 +117,7 @@ public struct YCodeAgentProfile: Equatable, Sendable, Identifiable {
     public var id: String
     public var displayName: String?
     public var command: String
+    public var enabled: Bool
     public var arguments: [String]
     public var environment: [String: String]
     public var icon: String?
@@ -129,6 +130,7 @@ public struct YCodeAgentProfile: Equatable, Sendable, Identifiable {
         id: String,
         displayName: String? = nil,
         command: String,
+        enabled: Bool = true,
         arguments: [String] = [],
         environment: [String: String] = [:],
         icon: String? = nil,
@@ -140,6 +142,7 @@ public struct YCodeAgentProfile: Equatable, Sendable, Identifiable {
         self.id = id
         self.displayName = displayName
         self.command = command
+        self.enabled = enabled
         self.arguments = arguments
         self.environment = environment
         self.icon = icon

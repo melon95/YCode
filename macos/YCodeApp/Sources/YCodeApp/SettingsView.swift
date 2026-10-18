@@ -18,9 +18,11 @@ final class BasicSettingsModel: ObservableObject {
 
     let dataRoot: URL
     private let configurationStore: YCodeConfigurationStore
+    private let commandProbe: @Sendable (String) -> Bool
 
-    init() {
-        dataRoot = YCodeDataRootResolver.resolve()
+    init(dataRoot: URL = YCodeDataRootResolver.resolve(), commandProbe: @escaping @Sendable (String) -> Bool = { YCodeAgentLauncher.probe(command: $0) }) {
+        self.dataRoot = dataRoot
+        self.commandProbe = commandProbe
         configurationStore = YCodeConfigurationStore(configurationURL: dataRoot.appendingPathComponent("config.json"))
         do {
             let settings = try configurationStore.loadBasicSettings()
@@ -32,7 +34,7 @@ final class BasicSettingsModel: ObservableObject {
             agents = agentSettings.agents
             proxy = agentSettings.proxy
             persistedAgentSettings = agentSettings
-            let state = try NativeWorkspaceStateStore(databaseURL: dataRoot.appendingPathComponent("ycode.db"))
+            _ = try NativeWorkspaceStateStore(databaseURL: dataRoot.appendingPathComponent("ycode.db"))
             refreshAvailability()
             systemProxy = YCodeSystemProxyDetector.detect()
         } catch {
@@ -55,6 +57,11 @@ final class BasicSettingsModel: ObservableObject {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    func setAgentEnabled(id: String, enabled: Bool) {
+        guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        agents[index].enabled = enabled
     }
 
     func removeAgent(id: String) {
@@ -81,6 +88,7 @@ final class BasicSettingsModel: ObservableObject {
     func addSuggestion(_ suggestion: YCodeAgentProfile) {
         guard !agents.contains(where: { $0.command == suggestion.command }) else { return }
         var agent = suggestion
+        agent.enabled = true
         let base = suggestion.id
         var candidate = base
         var suffix = 2
@@ -94,10 +102,13 @@ final class BasicSettingsModel: ObservableObject {
     }
 
     func refreshAvailability() {
-        let commands = Set((agents + YCodeAgentCatalog.suggestions).map(\.command))
-        Task.detached {
-            let statuses = Dictionary(uniqueKeysWithValues: commands.map { ($0, YCodeAgentLauncher.probe(command: $0)) })
-            await MainActor.run { self.commandAvailability = statuses }
+        let commands = Set((agents + YCodeAgentCatalog.defaults + YCodeAgentCatalog.suggestions).map(\.command))
+        let probe = commandProbe
+        Task { [weak self] in
+            let statuses = await Task.detached {
+                Dictionary(uniqueKeysWithValues: commands.map { ($0, probe($0)) })
+            }.value
+            self?.commandAvailability = statuses
         }
     }
 }
@@ -312,70 +323,11 @@ struct BasicSettingsView: View {
             AgentCustomizationSettingsView(model: customizationModel, agents: model.agents, page: selectedSection == .skills ? .skills : .mcp)
                 .id(selectedSection)
         case .agents:
-            Form {
-                Section(l10n.text("configured")) {
-                    if model.agents.isEmpty {
-                        // 空状态是新用户看到的第一屏。原先是一行灰字「未配置 Agent」——
-                        // 它只陈述现状，不说下一步。
-                        YCodeInspectorEmptyState(
-                            title: l10n.text("noAgentsConfigured"),
-                            message: l10n.text("noAgentsHint"),
-                            symbol: "cpu"
-                        )
-                        .frame(minHeight: 130)
-                    }
-                    ForEach(model.agents) { agent in
-                        HStack(spacing: 10) {
-                            AgentBadge(profile: agent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(agent.resolvedDisplayName)
-                                Text(agent.command)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            availabilityLabel(for: agent.command)
-                            Button {
-                                editingAgent = AgentEditorState(profile: agent)
-                            } label: {
-                                Image(systemName: "pencil")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("\(l10n.text("editor")) \(agent.resolvedDisplayName)")
-                            Button(role: .destructive) { model.removeAgent(id: agent.id) } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("\(l10n.text("delete")) \(agent.resolvedDisplayName)")
-                        }
-                    }
-                }
-                let suggestions = YCodeAgentCatalog.suggestions.filter { suggestion in
-                    !model.agents.contains(where: { $0.command == suggestion.command })
-                        && model.commandAvailability[suggestion.command] == true
-                }
-                if !suggestions.isEmpty {
-                    Section(l10n.text("detected")) {
-                        ForEach(suggestions) { suggestion in
-                            HStack {
-                                AgentBadge(profile: suggestion)
-                                Text(suggestion.resolvedDisplayName)
-                                Spacer()
-                                Text(suggestion.command).foregroundStyle(.secondary)
-                                Button(l10n.text("add")) { model.addSuggestion(suggestion) }
-                            }
-                        }
-                    }
-                }
-                Section {
-                    Button(l10n.text("addCustomAgent")) {
-                        editingAgent = AgentEditorState(profile: nil)
-                    }
-                } footer: {
-                    Text(l10n.text("agentHelp"))
-                }
-            }
-            .formStyle(.grouped)
+            AgentSettingsView(model: model, onEdit: { profile in
+                editingAgent = AgentEditorState(profile: profile)
+            }, onAddCustom: {
+                editingAgent = AgentEditorState(profile: nil)
+            })
         case .terminal:
             // 曾经这里还有一组「启动环境」：一行 Shell、一行写死的「256 色 / True Color」。
             // 后者是硬编码常量，任何机器上都显示同一句，不回答任何问题；
@@ -626,24 +578,110 @@ struct BasicSettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func availabilityLabel(for command: String) -> some View {
-        if let available = model.commandAvailability[command] {
-            Label(available ? l10n.text("available") : l10n.text("notFound"), systemImage: available ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(available ? .green : .orange)
-        } else {
-            ProgressView().controlSize(.small)
-        }
-    }
-
     private func proxySummary(_ proxy: YCodeSystemProxy, l10n: YCodeLocalization) -> String {
         if let pac = proxy.pacURL { return "PAC: \(pac) (\(l10n.text("notFound")))" }
         return proxy.https ?? proxy.http ?? proxy.socks ?? l10n.text("notFound")
     }
 }
 
-private struct AgentBadge: View {
+/// Agent controls share the icon buttons and switches used throughout settings.
+struct AgentSettingsView: View {
+    @ObservedObject var model: BasicSettingsModel
+    let onEdit: (YCodeAgentProfile) -> Void
+    let onAddCustom: () -> Void
+    @Environment(\.ycodeL10n) private var l10n
+
+    private var suggestions: [YCodeAgentProfile] {
+        (YCodeAgentCatalog.defaults + YCodeAgentCatalog.suggestions).filter { suggestion in
+            !model.agents.contains(where: { $0.command == suggestion.command })
+                && model.commandAvailability[suggestion.command] == true
+        }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                if model.agents.isEmpty {
+                    YCodeInspectorEmptyState(title: l10n.text("noAgentsConfigured"), message: l10n.text("noAgentsHint"), symbol: "cpu")
+                        .frame(minHeight: 130)
+                }
+                ForEach(model.agents) { agent in
+                    HStack(spacing: 10) {
+                        agentIdentity(agent)
+                        Spacer(minLength: 8)
+                        if model.commandAvailability[agent.command] == false {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Color.ycodeWarn)
+                                .help(l10n.text("notFound"))
+                                .accessibilityLabel(l10n.text("notFound"))
+                        } else if model.commandAvailability[agent.command] == nil {
+                            ProgressView().controlSize(.mini)
+                        }
+                        Button { onEdit(agent) } label: { Image(systemName: "pencil") }
+                            .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                            .help(l10n.text("editAgent") + " · " + agent.resolvedDisplayName)
+                            .accessibilityLabel(l10n.text("editAgent") + " · " + agent.resolvedDisplayName)
+                        Button(role: .destructive) { model.removeAgent(id: agent.id) } label: { Image(systemName: "trash") }
+                            .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                            .help(l10n.text("delete") + " " + agent.resolvedDisplayName)
+                            .accessibilityLabel(l10n.text("delete") + " " + agent.resolvedDisplayName)
+                        Toggle(l10n.text("enabled"), isOn: Binding(
+                            get: { agent.enabled },
+                            set: { model.setAgentEnabled(id: agent.id, enabled: $0) }
+                        ))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        .help(l10n.text("agentEnablementHelp"))
+                        .accessibilityLabel(agent.resolvedDisplayName)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text(l10n.text("configured"))
+                    Spacer()
+                    Button(action: onAddCustom) { Image(systemName: "plus") }
+                        .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                        .help(l10n.text("addCustomAgent"))
+                        .accessibilityLabel(l10n.text("addCustomAgent"))
+                }
+            } footer: {
+                Text(l10n.text("agentEnablementHelp"))
+            }
+            if !suggestions.isEmpty {
+                Section(l10n.text("detected")) {
+                    ForEach(suggestions) { suggestion in
+                        HStack(spacing: 10) {
+                            agentIdentity(suggestion)
+                            Spacer(minLength: 8)
+                            Toggle(l10n.text("enabled"), isOn: Binding(
+                                get: { false },
+                                set: { enabled in if enabled { model.addSuggestion(suggestion) } }
+                            ))
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                            .help(l10n.text("agentEnableDetectedHelp", suggestion.resolvedDisplayName))
+                            .accessibilityLabel(suggestion.resolvedDisplayName)
+                        }
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func agentIdentity(_ agent: YCodeAgentProfile) -> some View {
+        HStack(spacing: 10) {
+            AgentBadge(profile: agent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(agent.resolvedDisplayName).lineLimit(1).help(agent.resolvedDisplayName)
+                Text(agent.command)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).help(agent.command)
+            }
+        }
+    }
+}
+
+struct AgentBadge: View {
     let profile: YCodeAgentProfile
 
     private var tint: Color {

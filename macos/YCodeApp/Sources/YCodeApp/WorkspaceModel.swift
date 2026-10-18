@@ -481,8 +481,9 @@ final class WorkspaceModel: ObservableObject {
 
     /// PATH 上找得到的 agent —— 装不上的不进选择器（设计稿 §06）。
     var availableAgentProfiles: [YCodeAgentProfile] {
-        let usable = agentProfiles.filter { availableAgentProfileIDs.contains($0.id) }
-        return usable.isEmpty ? agentProfiles : usable
+        let enabled = agentProfiles.filter(\.enabled)
+        let usable = enabled.filter { availableAgentProfileIDs.contains($0.id) }
+        return usable.isEmpty ? enabled : usable
     }
 
     func sessions(in projectID: String) -> [SessionMetadata] {
@@ -631,22 +632,26 @@ final class WorkspaceModel: ObservableObject {
     /// 不做的话，用户开窗后第一次点 agent 要现付 rc 的冷启动成本（~0.5s+），
     /// 而那一刻主线程正卡在 `createSession` 里。
     private func prewarmAgentLaunchPath() {
-        let commands = agentProfiles.map(\.command)
+        let commands = agentProfiles.filter(\.enabled).map(\.command)
         Task.detached(priority: .utility) {
             YCodeAgentLauncher.prewarm(commands: commands)
         }
     }
 
-    func refreshAgentAvailability() {
-        let profiles = agentProfiles
-        Task {
+    @discardableResult
+    func refreshAgentAvailability(
+        probe: @escaping @Sendable (String) -> Bool = { YCodeAgentLauncher.probe(command: $0) }
+    ) -> Task<Void, Never> {
+        let profiles = agentProfiles.filter(\.enabled)
+        return Task {
             let ids = await Task.detached(priority: .utility) { () -> Set<String> in
                 var found: Set<String> = []
-                for profile in profiles where YCodeAgentLauncher.probe(command: profile.command) {
+                for profile in profiles where probe(profile.command) {
                     found.insert(profile.id)
                 }
                 return found
             }.value
+            guard profiles == agentProfiles.filter(\.enabled) else { return }
             availableAgentProfileIDs = ids
         }
     }
@@ -696,10 +701,12 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func reloadAgentProfiles() {
+    func reloadAgentProfiles(ifChangedOnly: Bool = false) {
         do {
-            agentProfiles = try YCodeConfigurationStore(configurationURL: dataRoot.appendingPathComponent("config.json"))
+            let profiles = try YCodeConfigurationStore(configurationURL: dataRoot.appendingPathComponent("config.json"))
                 .loadAgentSettings().agents
+            if ifChangedOnly && profiles == agentProfiles { return }
+            agentProfiles = profiles
             refreshAgentAvailability()
         } catch {
             errorMessage = error.localizedDescription

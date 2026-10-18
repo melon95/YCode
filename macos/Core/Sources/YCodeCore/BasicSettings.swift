@@ -278,7 +278,7 @@ public final class YCodeConfigurationStore {
     }
 
     private static let knownAgentKeys: Set<String> = [
-        "id", "display_name", "command", "args", "env", "icon", "icon_variant", "color", "introspect"
+        "id", "display_name", "command", "enabled", "args", "env", "icon", "icon_variant", "color", "introspect"
     ]
 
     private static func agent(from value: JSONValue) throws -> YCodeAgentProfile {
@@ -291,6 +291,7 @@ public final class YCodeConfigurationStore {
             id: id,
             displayName: string(fields["display_name"]),
             command: command,
+            enabled: fields["enabled"] != .bool(false),
             arguments: stringArray(fields["args"]),
             environment: stringDictionary(fields["env"]),
             icon: string(fields["icon"]),
@@ -306,6 +307,7 @@ public final class YCodeConfigurationStore {
         fields["id"] = .string(agent.id)
         fields["display_name"] = agent.displayName.map(JSONValue.string) ?? .null
         fields["command"] = .string(agent.command)
+        fields["enabled"] = .bool(agent.enabled)
         fields["args"] = .array(agent.arguments.map(JSONValue.string))
         fields["env"] = .object(agent.environment.mapValues(JSONValue.string))
         fields["icon"] = agent.icon.map(JSONValue.string) ?? .null

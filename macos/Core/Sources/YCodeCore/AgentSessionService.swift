@@ -7,11 +7,13 @@ public enum YCodeAgentLaunchMode: Sendable {
 
 public enum YCodeAgentSessionServiceError: LocalizedError, Equatable {
     case unknownAgent(String)
+    case disabledAgent(String)
     case unsupportedWorktreeProject(String)
 
     public var errorDescription: String? {
         switch self {
         case let .unknownAgent(id): "未知 Agent 配置：\(id)"
+        case let .disabledAgent(name): "Agent 已停用，请在设置中启用：\(name)"
         case let .unsupportedWorktreeProject(name): "“\(name)”已启用隔离会话；原生 worktree 将在后续阶段接入"
         }
     }
@@ -60,6 +62,9 @@ public final class YCodeAgentSessionService {
         let settings = try configurationStore.loadAgentSettings()
         guard let profile = settings.agents.first(where: { $0.id == agentProfileID }) else {
             throw YCodeAgentSessionServiceError.unknownAgent(agentProfileID)
+        }
+        guard profile.enabled || resumeAgentSessionID?.isEmpty == false else {
+            throw YCodeAgentSessionServiceError.disabledAgent(profile.resolvedDisplayName)
         }
         let sessionID = UUID().uuidString.lowercased()
         let mode: YCodeAgentLaunchMode = resumeAgentSessionID?.isEmpty == false ? .resume : .create

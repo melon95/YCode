@@ -374,6 +374,7 @@ private struct NativeRootView: View {
             let target = note.userInfo?["windowToken"] as? String
             guard target == nil || target == windowToken else { return }
             model.reloadAppearanceSettings()
+            model.reloadAgentProfiles(ifChangedOnly: true)
         }
         .onAppear {
             if lockedProjectID == nil {
@@ -592,7 +593,7 @@ private struct NativeRootView: View {
     private var environmentProbe: some View {
         let l10n = YCodeLocalization(locale: model.locale)
         return HStack(spacing: 8) {
-            ForEach(model.agentProfiles.prefix(3)) { profile in
+            ForEach(model.agentProfiles.filter(\.enabled).prefix(3)) { profile in
                 probeChip(
                     title: profile.resolvedDisplayName,
                     ready: model.availableAgentProfileIDs.contains(profile.id)
