@@ -29,14 +29,19 @@ struct YCodeLocalization {
     static let zh = YCodeLocalization(locale: .zh)
 
     static let translations: [String: [YCodeLocale: String]] = [
+        "customizationSkillList": [.zh: "本地技能", .en: "Local skills"],
+        "customizationMCPList": [.zh: "MCP 服务", .en: "MCP servers"],
+        "customizationSharedSource": [.zh: "共享", .en: "Shared"],
         "customizationScope": [.zh: "范围", .en: "Scope"],
         "customizationClearSearch": [.zh: "清空搜索", .en: "Clear search"],
+        "customizationDisabledCount": [.zh: "%d 项停用", .en: "%d disabled"],
+        "customizationClaudeGlobalMCPReadOnly": [.zh: "Claude Code 的 MCP 开关按项目保存；这里只展示全局配置。", .en: "Claude Code stores MCP switches per project. Global configuration is shown here for reference."],
         "customizationItemCount": [.zh: "%d 项", .en: "%d entries"],
         "customizationOverridden": [.zh: "被其他范围覆盖", .en: "Overridden by another scope"],
         "customizationApprovalRequired": [.zh: "需在 CLI 中批准", .en: "Approval required in CLI"],
-        "customizationGlobal": [.zh: "全局", .en: "All projects"],
-        "customizationSkillsHelp": [.zh: "查看 CLI 的本地技能，按需要启用或停用。", .en: "Browse local CLI skills and choose which ones to enable."],
-        "customizationMCPHelp": [.zh: "查看 CLI 的 MCP 配置，控制后续会话是否加载。", .en: "Choose which configured MCP servers future CLI sessions can load."],
+        "customizationGlobal": [.zh: "全局", .en: "Global"],
+        "customizationSkillsHelp": [.zh: "查看 CLI 的全局技能，按需要启用或停用。", .en: "Browse global CLI skills and choose which ones to enable."],
+        "customizationMCPHelp": [.zh: "查看 CLI 的全局 MCP 配置。", .en: "Browse the CLI’s global MCP configuration."],
         "customizationSearchSkills": [.zh: "搜索名称或用途", .en: "Search names or descriptions"],
         "customizationSearchMCP": [.zh: "搜索名称或服务地址", .en: "Search names or server addresses"],
         "customizationRefresh": [.zh: "重新读取配置", .en: "Refresh configuration"],

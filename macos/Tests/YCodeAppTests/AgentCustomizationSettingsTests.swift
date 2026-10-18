@@ -12,16 +12,22 @@ struct AgentCustomizationSettingsTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-customization-ui-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let home = root.appendingPathComponent("home")
-        let dataRoot = root.appendingPathComponent("data")
+        let project = root.appendingPathComponent("project")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: dataRoot, withIntermediateDirectories: true)
+        let projectSkill = project.appendingPathComponent(".agents/skills/project-only")
+        let projectConfig = project.appendingPathComponent(".codex/config.toml")
+        try FileManager.default.createDirectory(at: projectSkill, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: projectConfig.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "---\nname: project-only\ndescription: Never shown in global settings\n---\n".write(to: projectSkill.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        let projectConfigText = "[mcp_servers.documentation]\ncommand = 'project-only-server'\n"
+        try projectConfigText.write(to: projectConfig, atomically: true, encoding: .utf8)
         let names = [
-            ("review-changes", "检查修改和测试结果，在提交前列出需要处理的问题。"),
-            ("design-taste-frontend", "Design interface components with deliberate hierarchy, clear type and useful interactions."),
-            ("project-notes", "读取项目约定，把实施依据与验证结果整理为清晰的笔记。")
+            ("review-changes", "review-changes", "检查修改和测试结果，在提交前列出需要处理的问题。"),
+            ("design-taste-frontend", "design-taste-frontend", "Design interface components with deliberate hierarchy, clear type and useful interactions, while retaining all project conventions and accessibility requirements."),
+            ("synced/8f8b492c-ff60-4fb8-967f-4f6b13fa0793/design-taste-frontend", "design-taste-frontend", "A separate source with the same skill name; its path remains visible and its complete description is available on hover.")
         ]
-        for (name, description) in names {
-            let folder = home.appendingPathComponent(".agents/skills/\(name)")
+        for (path, name, description) in names {
+            let folder = home.appendingPathComponent(".agents/skills/\(path)")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try "---\nname: \(name)\ndescription: \(description)\n---\n# Instructions\n".write(to: folder.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
         }
@@ -29,12 +35,15 @@ struct AgentCustomizationSettingsTests {
         try FileManager.default.createDirectory(at: codexDir, withIntermediateDirectories: true)
         try "[mcp_servers.documentation]\nurl = 'https://docs.example.com/mcp'\n\n[mcp_servers.local-files]\ncommand = 'file-server'\nenabled = false\n\n[mcp_servers.project-todos]\ncommand = 'ycode-mcp'\n".write(to: codexDir.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
         let service = YCodeAgentCustomizationService(homeDirectory: home)
-        let model = AgentCustomizationSettingsModel(dataRoot: dataRoot, service: service, displayHome: home)
+        let model = AgentCustomizationSettingsModel(service: service)
         model.selectedAgentID = "codex"
         let profile = try #require(YCodeAgentCatalog.defaults.first { $0.id == "codex" })
         await model.refresh(profile: profile)
         #expect(model.snapshot?.skills.count == 3)
         #expect(model.snapshot?.servers.count == 3)
+        #expect(model.snapshot?.skills.allSatisfy { $0.scope == .user || $0.scope == .shared } == true)
+        #expect(model.snapshot?.servers.allSatisfy { $0.scope == .user } == true)
+        #expect(model.snapshot?.skills.contains { $0.name == "project-only" } == false)
         let skill = try #require(model.snapshot?.skills.first)
         await model.setSkill(skill, enabled: false, profile: profile)
         #expect(model.snapshot?.skills.first { $0.id == skill.id }?.enabled == false)
@@ -42,6 +51,7 @@ struct AgentCustomizationSettingsTests {
         let server = try #require(model.snapshot?.servers.first { $0.name == "documentation" })
         await model.setMCP(server, enabled: false, profile: profile)
         #expect(model.snapshot?.servers.first { $0.name == server.name }?.enabled == false)
+        #expect(try String(contentsOf: projectConfig, encoding: .utf8) == projectConfigText)
         // A click delivered from a stale row after switching CLI must not write
         // that skill's name into the newly selected CLI's configuration.
         model.selectedAgentID = "claude-code"

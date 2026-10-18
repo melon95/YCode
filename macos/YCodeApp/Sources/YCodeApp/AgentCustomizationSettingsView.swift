@@ -7,8 +7,6 @@ enum YCodeCustomizationPage { case skills, mcp }
 @MainActor
 final class AgentCustomizationSettingsModel: ObservableObject {
     @Published var selectedAgentID = "" { didSet { if selectedAgentID != oldValue { clearContext() } } }
-    @Published var selectedProjectID = "" { didSet { if selectedProjectID != oldValue { clearContext() } } }
-    @Published private(set) var projects: [ProjectRecord] = []
     @Published private(set) var snapshot: YCodeCustomizationSnapshot?
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
@@ -16,23 +14,13 @@ final class AgentCustomizationSettingsModel: ObservableObject {
     private var generation = 0
     private var loadedContext: String?
     private let service: YCodeAgentCustomizationService
-    let displayHome: URL
-    private let databaseURL: URL
 
-    init(dataRoot: URL = YCodeDataRootResolver.resolve(), service: YCodeAgentCustomizationService = .init(), displayHome: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    init(service: YCodeAgentCustomizationService = .init()) {
         self.service = service
-        self.displayHome = displayHome
-        databaseURL = dataRoot.appendingPathComponent("ycode.db")
-        if FileManager.default.fileExists(atPath: databaseURL.path) {
-            do { projects = try ProjectWorkspaceRepository(databaseURL: databaseURL).listProjects() }
-            catch { errorMessage = error.localizedDescription }
-        }
     }
 
-    var projectURL: URL? { projects.first { $0.id == selectedProjectID }?.repositoryURL }
-
     private func context(_ profile: YCodeAgentProfile) -> String {
-        profile.id + ":" + profile.command + ":" + String(profile.environment.hashValue) + ":" + selectedProjectID
+        profile.id + ":" + profile.command + ":" + String(profile.environment.hashValue)
     }
 
     private func clearContext() {
@@ -42,12 +30,6 @@ final class AgentCustomizationSettingsModel: ObservableObject {
     }
 
     func refresh(profile: YCodeAgentProfile?) async {
-        if FileManager.default.fileExists(atPath: databaseURL.path) {
-            do {
-                projects = try ProjectWorkspaceRepository(databaseURL: databaseURL).listProjects()
-                if !selectedProjectID.isEmpty && !projects.contains(where: { $0.id == selectedProjectID }) { selectedProjectID = "" }
-            } catch { errorMessage = error.localizedDescription }
-        }
         generation += 1
         let request = generation
         guard let profile, let agent = YCodeCustomizationAgent.resolve(profile) else {
@@ -56,7 +38,7 @@ final class AgentCustomizationSettingsModel: ObservableObject {
             return
         }
         isLoading = true
-        let result = await service.snapshot(agent: agent, project: projectURL, environment: profile.environment)
+        let result = await service.snapshot(agent: agent, project: nil, environment: profile.environment)
         guard request == generation else { return }
         snapshot = result
         loadedContext = context(profile)
@@ -68,7 +50,7 @@ final class AgentCustomizationSettingsModel: ObservableObject {
         guard loadedContext == context(profile) else { await refresh(profile: profile); return }
         isSaving = true
         defer { isSaving = false }
-        do { try await service.setSkillEnabled(enabled, record: record, agent: agent, project: projectURL, environment: profile.environment) }
+        do { try await service.setSkillEnabled(enabled, record: record, agent: agent, project: nil, environment: profile.environment) }
         catch { errorMessage = error.localizedDescription }
         await refresh(profile: profile)
     }
@@ -78,14 +60,13 @@ final class AgentCustomizationSettingsModel: ObservableObject {
         guard loadedContext == context(profile) else { await refresh(profile: profile); return }
         isSaving = true
         defer { isSaving = false }
-        do { try await service.setMCPEnabled(enabled, record: record, agent: agent, project: projectURL, environment: profile.environment) }
+        do { try await service.setMCPEnabled(enabled, record: record, agent: agent, project: nil, environment: profile.environment) }
         catch { errorMessage = error.localizedDescription }
         await refresh(profile: profile)
     }
 }
 
-/// A settings list, using the existing system type and accent. Resource names,
-/// descriptions and sources carry the hierarchy; no decorative cards or stats.
+/// Uses the same grouped form and trailing controls as the other settings pages.
 struct AgentCustomizationSettingsView: View {
     @ObservedObject var model: AgentCustomizationSettingsModel
     let agents: [YCodeAgentProfile]
@@ -95,7 +76,6 @@ struct AgentCustomizationSettingsView: View {
 
     private var profile: YCodeAgentProfile? { agents.first { $0.id == model.selectedAgentID } ?? agents.first }
     private var agent: YCodeCustomizationAgent? { profile.flatMap(YCodeCustomizationAgent.resolve) }
-    private var projectSkillsUnsupported: Bool { agent == .grok && model.projectURL != nil }
     private var skills: [YCodeSkillRecord] {
         (model.snapshot?.skills ?? []).filter { matches($0.name, $0.summary, $0.directory.path) }
     }
@@ -104,24 +84,37 @@ struct AgentCustomizationSettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            controls
-            if model.isLoading && model.snapshot == nil {
-                Spacer()
-                ProgressView().controlSize(.small)
-                Spacer()
-            } else if profile == nil {
-                empty("noAgentsConfigured", "noAgentsHint", symbol: "cpu")
-            } else if agent == nil {
-                empty("customizationUnsupported", "customizationSupportedAgents", symbol: "terminal")
-            } else if page == .mcp && agent?.supportsMCP == false {
-                empty("customizationNoNativeMCP", "customizationPiMCPHelp", symbol: "powerplug")
-            } else {
-                resourceList
+        Form {
+            configurationSection
+            Section {
+                if model.isLoading && model.snapshot == nil {
+                    ProgressView().controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else if profile == nil {
+                    empty("noAgentsConfigured", "noAgentsHint", symbol: "cpu")
+                } else if agent == nil {
+                    empty("customizationUnsupported", "customizationSupportedAgents", symbol: "terminal")
+                } else if page == .mcp && agent?.supportsMCP == false {
+                    empty("customizationNoNativeMCP", "customizationPiMCPHelp", symbol: "powerplug")
+                } else {
+                    searchRow
+                    resourceRows
+                }
+            } header: {
+                HStack {
+                    Text(l10n.text(page == .skills ? "customizationSkillList" : "customizationMCPList"))
+                    Spacer()
+                    if model.snapshot != nil {
+                        Text(l10n.text("customizationItemCount", page == .skills ? skills.count : servers.count)
+                             + " · " + l10n.text("customizationDisabledCount", disabledCount))
+                            .monospacedDigit()
+                    }
+                }
+            } footer: {
+                Text(footerMessage)
             }
-            footer
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .formStyle(.grouped)
         .task(id: requestID) { await model.refresh(profile: profile) }
         .alert(l10n.text("settingsSaveFailed"), isPresented: Binding(
             get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } }
@@ -131,88 +124,106 @@ struct AgentCustomizationSettingsView: View {
     }
 
     private var requestID: String {
-        (profile?.id ?? "") + ":" + (profile?.command ?? "") + ":" + model.selectedProjectID
+        (profile?.id ?? "") + ":" + (profile?.command ?? "")
             + ":" + String(profile?.environment.hashValue ?? 0)
     }
 
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(l10n.text(page == .skills ? "customizationSkillsHelp" : "customizationMCPHelp"))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 14) {
+    private var configurationSection: some View {
+        Section {
+            YCodeFormRow(label: "Agent", trailing: true) {
                 Picker("Agent", selection: Binding(
                     get: { profile?.id ?? "" }, set: { model.selectedAgentID = $0 }
                 )) {
                     ForEach(agents) { Text($0.resolvedDisplayName).tag($0.id) }
                 }
-                Picker(l10n.text("customizationScope"), selection: $model.selectedProjectID) {
-                    Text(l10n.text("customizationGlobal")).tag("")
-                    ForEach(model.projects) { Text($0.name).tag($0.id) }
+                .labelsHidden()
+                .frame(maxWidth: 220, alignment: .trailing)
+            }
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(l10n.text(page == .skills ? "customizationSkillsHelp" : "customizationMCPHelp"))
+                ForEach(configurationSources, id: \.path) { source in
+                    Label(source.path, systemImage: page == .skills ? "folder" : "doc.text")
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(source.path)
                 }
             }
-            .disabled(model.isSaving)
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(l10n.text(page == .skills ? "customizationSearchSkills" : "customizationSearchMCP"), text: $query)
-                    .textFieldStyle(.plain)
-                    .accessibilityLabel(l10n.text("search"))
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .accessibilityLabel(l10n.text("customizationClearSearch"))
-                }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .disabled(model.isSaving)
+    }
+
+    private var searchRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(l10n.text(page == .skills ? "customizationSearchSkills" : "customizationSearchMCP"), text: $query)
+                .textFieldStyle(.plain)
+                .accessibilityLabel(l10n.text("search"))
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                    .help(l10n.text("customizationClearSearch"))
+                    .accessibilityLabel(l10n.text("customizationClearSearch"))
+            }
+            if model.isSaving || model.isLoading {
+                ProgressView().controlSize(.mini)
+            } else {
                 Button { Task { await model.refresh(profile: profile) } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
                 .help(l10n.text("customizationRefresh"))
-                .disabled(model.isLoading || model.isSaving)
+                .accessibilityLabel(l10n.text("customizationRefresh"))
             }
-            .padding(10)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }
-        .padding(20)
+        .padding(.vertical, 2)
     }
 
-    private var resourceList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if let issues = model.snapshot?.issues, !issues.isEmpty {
-                    Label(issues.joined(separator: "\n"), systemImage: "exclamationmark.triangle")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                        .textSelection(.enabled)
-                        .padding(14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if page == .skills {
-                    ForEach(skills) { skill in skillRow(skill) }
-                } else {
-                    ForEach(servers) { server in serverRow(server) }
-                }
-                if (page == .skills ? skills.isEmpty : servers.isEmpty) {
-                    empty(query.isEmpty ? "customizationEmpty" : "customizationNoResults",
-                          query.isEmpty ? "customizationEmptyHelp" : "customizationSearchHelp",
-                          symbol: query.isEmpty ? (page == .skills ? "doc.text" : "powerplug") : "magnifyingglass")
-                        .frame(minHeight: 160)
-                }
-            }
-            .padding(.horizontal, 20)
+    @ViewBuilder
+    private var resourceRows: some View {
+        if let issues = model.snapshot?.issues, !issues.isEmpty {
+            Label(issues.joined(separator: "\n"), systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(Color.ycodeWarn)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if page == .skills {
+            ForEach(skills) { skill in skillRow(skill) }
+        } else {
+            ForEach(servers) { server in serverRow(server) }
+        }
+        if page == .skills ? skills.isEmpty : servers.isEmpty {
+            empty(query.isEmpty ? "customizationEmpty" : "customizationNoResults",
+                  query.isEmpty ? "customizationEmptyHelp" : "customizationSearchHelp",
+                  symbol: query.isEmpty ? (page == .skills ? "doc.text" : "powerplug") : "magnifyingglass")
         }
     }
 
     private func skillRow(_ skill: YCodeSkillRecord) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(skill.name).font(.body.weight(.semibold)).textSelection(.enabled)
-                Text(skill.summary).font(.callout).foregroundStyle(.secondary)
-                    .lineLimit(2).help(skill.summary)
-                sourceLabel(scope: skill.scope, url: skill.directory)
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(skill.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                    .help(skill.name)
+                    .textSelection(.enabled)
+                if !skill.summary.isEmpty {
+                    Text(skill.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(skill.summary)
+                }
+                sourceLabel(scope: skill.scope, url: skill.directory.appendingPathComponent("SKILL.md"))
                 if !skill.stateDetail.isEmpty {
                     Text(l10n.text(skill.stateDetail == "user-invocable-only" ? "customizationManualOnly" : "customizationNameOnly"))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -224,23 +235,35 @@ struct AgentCustomizationSettingsView: View {
             ))
             .labelsHidden().toggleStyle(.switch).controlSize(.small)
             .accessibilityLabel(skill.name)
-            .disabled(model.isSaving || model.isLoading || skill.enabled == nil || projectSkillsUnsupported)
-            .help(l10n.text(projectSkillsUnsupported ? "customizationGrokProjectSkills" : "customizationNewSession"))
-            .padding(.top, 1)
+            .disabled(model.isSaving || model.isLoading || skill.enabled == nil)
+            .help(l10n.text("customizationNewSession"))
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, 4)
     }
 
     private func serverRow(_ server: YCodeMCPRecord) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    Text(server.name).font(.body.weight(.semibold)).textSelection(.enabled)
-                    Text(l10n.text(server.isShadowed ? "customizationOverridden" : server.requiresApproval ? "customizationApprovalRequired" : server.isDisabledByGlobalConfiguration ? "customizationGloballyDisabled" : server.enabled ? "customizationEnabled" : "customizationDisabled"))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Text(server.endpoint).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(server.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                    .help(server.name)
+                    .textSelection(.enabled)
+                Text(server.endpoint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(server.endpoint)
+                    .textSelection(.enabled)
                 sourceLabel(scope: server.scope, url: server.source)
+                if server.isShadowed || server.requiresApproval || server.isDisabledByGlobalConfiguration {
+                    Label(l10n.text(server.isShadowed ? "customizationOverridden" : server.requiresApproval ? "customizationApprovalRequired" : "customizationGloballyDisabled"),
+                          systemImage: server.requiresApproval ? "lock" : "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Toggle(l10n.text("customizationEnabled"), isOn: Binding(
@@ -251,49 +274,57 @@ struct AgentCustomizationSettingsView: View {
             ))
             .labelsHidden().toggleStyle(.switch).controlSize(.small)
             .accessibilityLabel(server.name)
-            .disabled(model.isSaving || model.isLoading || server.requiresApproval || server.isShadowed || server.isDisabledByGlobalConfiguration || (agent == .claude && model.projectURL == nil))
-            .help(l10n.text(server.isDisabledByGlobalConfiguration ? "customizationGrokGlobalMCP" : agent == .claude && model.projectURL == nil ? "customizationClaudeProjectToggle" : "customizationNewSession"))
-            .padding(.top, 1)
+            .disabled(model.isSaving || model.isLoading || server.requiresApproval || server.isShadowed || server.isDisabledByGlobalConfiguration || agent == .claude)
+            .help(l10n.text(server.isDisabledByGlobalConfiguration ? "customizationGrokGlobalMCP" : agent == .claude ? "customizationClaudeGlobalMCPReadOnly" : "customizationNewSession"))
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, 4)
     }
 
     private func sourceLabel(scope: YCodeCustomizationScope, url: URL) -> some View {
-        HStack(spacing: 6) {
-            Text(l10n.text(scope == .project ? "customizationProjectSource" : scope == .local ? "customizationLocalSource" : "customizationUserSource"))
+        let key: String = switch scope {
+        case .project: "customizationProjectSource"
+        case .local: "customizationLocalSource"
+        case .shared: "customizationSharedSource"
+        case .user: "customizationGlobal"
+        }
+        return HStack(spacing: 5) {
+            Text(l10n.text(key))
+                .fixedSize()
             Text("·")
-            Text(displayPath(url))
-                .lineLimit(1).truncationMode(.middle).help(url.path)
+            Text(url.path)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(url.path)
+                .textSelection(.enabled)
         }
-        .font(.caption).foregroundStyle(.secondary)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
     }
 
-    private func displayPath(_ url: URL) -> String {
-        for (path, home) in [(url.path, model.displayHome.path),
-                             (url.resolvingSymlinksInPath().path, model.displayHome.resolvingSymlinksInPath().path)] {
-            if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
-        }
-        return url.path
+    private var configurationSources: [URL] {
+        guard let snapshot = model.snapshot, agent != nil,
+              !(page == .mcp && agent?.supportsMCP == false) else { return [] }
+        // On a failed read, individual rows still expose their known sources;
+        // avoid presenting a fallback directory as the active config location.
+        guard snapshot.issues.isEmpty else { return [] }
+        let sources = page == .skills
+            ? [snapshot.skillDestination] + snapshot.skills.map(\.root)
+            : [snapshot.mcpDestination] + snapshot.servers.map(\.source)
+        var seen: Set<String> = []
+        return sources.filter { seen.insert($0.path).inserted }
     }
 
-    private var footer: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if model.isSaving { ProgressView().controlSize(.mini) }
-            Text(l10n.text(page == .skills && projectSkillsUnsupported ? "customizationGrokProjectSkills" : page == .mcp && agent == .claude && model.projectURL == nil ? "customizationClaudeProjectToggle" : "customizationNewSession"))
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-            if model.snapshot != nil {
-                Text(l10n.text("customizationItemCount", page == .skills ? skills.count : servers.count))
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 20).padding(.vertical, 12)
+    private var disabledCount: Int {
+        page == .skills ? skills.filter { $0.enabled == false }.count : servers.filter { !$0.enabled }.count
+    }
+
+    private var footerMessage: String {
+        l10n.text(page == .mcp && agent == .claude ? "customizationClaudeGlobalMCPReadOnly" : "customizationNewSession")
     }
 
     private func empty(_ title: String, _ message: String, symbol: String) -> some View {
         YCodeInspectorEmptyState(title: l10n.text(title), message: l10n.text(message), symbol: symbol)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 120)
     }
 
     private func matches(_ values: String...) -> Bool {
