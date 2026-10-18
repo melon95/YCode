@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCode 更新窗口</title>
+<style>
+/* 文档外壳 doc-，窗口模拟 u-。色板沿用「方向 B 纸面浮卡」。 */
+:root {
+  --doc-bg: #f6f5f9; --doc-ink: #16133a; --doc-muted: #5a5873; --doc-line: #dedce8; --doc-card: #fff;
+  --coral: #ff5a4e; --coral-text: #c3301f; --ok: #1a8a54; --warn: #b67707; --err: #d2382f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--doc-bg); color: var(--doc-ink);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; }
+.doc-wrap { max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+.doc-kicker { font-size: 12px; letter-spacing: .08em; color: var(--coral-text); font-weight: 600; }
+h1 { font-size: 32px; line-height: 1.2; margin: 6px 0 12px; }
+h2 { font-size: 22px; margin: 52px 0 6px; }
+h2 small { font-size: 13px; color: var(--doc-muted); font-weight: 400; margin-left: 8px; }
+.doc-lede, .doc-sub { color: var(--doc-muted); max-width: 800px; margin: 0 0 18px; }
+.doc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.doc-card { background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; padding: 16px 20px; }
+.doc-card h3 { margin: 0 0 6px; font-size: 15px; }
+.doc-card ul { margin: 0; padding-left: 18px; color: var(--doc-muted); }
+.doc-card li { margin: 3px 0; }
+code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5; padding: 1px 5px; border-radius: 4px; }
+table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; overflow: hidden; font-size: 13px; }
+.doc-table th, .doc-table td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--doc-line); vertical-align: top; }
+.doc-table th { background: #faf9fc; color: var(--doc-muted); font-size: 12px; }
+.doc-table tr:last-child td { border-bottom: 0; }
+
+.stage { background: #e4e2ee; border-radius: 16px; padding: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 24px; justify-items: center; }
+.stage.dark { background: #0b0a1c; }
+.cell { width: 100%; max-width: 460px; }
+.cell > .cap { font-size: 12px; color: var(--doc-muted); margin: 0 0 8px 4px; }
+.cell > .cap b { color: var(--doc-ink); }
+.dark .cell > .cap { color: #a9a6c8; } .dark .cell > .cap b { color: #fff; }
+
+/* 更新窗口：标题栏用系统样式，内容区是一张浮卡落在 chrome 底上 */
+.u-win { --bg: #efeef4; --card: #fcfcfe; --text: #16133a; --soft: #5a5873; --muted: #7a7893; --track: rgba(22,19,58,.1); --field: rgba(22,19,58,.06); --edge: rgba(22,19,58,.12);
+  background: var(--bg); color: var(--text); border-radius: 12px; overflow: hidden; width: 100%;
+  box-shadow: 0 24px 50px -20px rgba(22,19,58,.4), 0 0 0 1px var(--edge); font-size: 13px; }
+.dark .u-win { --bg: #110f28; --card: #1b1840; --text: #f1f0fb; --soft: #b8b5d6; --muted: #8d8aae; --track: rgba(255,255,255,.12); --field: rgba(255,255,255,.07); --edge: rgba(255,255,255,.1); }
+.u-bar { height: 36px; display: flex; align-items: center; padding: 0 12px; gap: 7px; }
+.u-bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.u-bar i:nth-child(1) { background: #ff5f57; } .u-bar i:nth-child(2) { background: #febc2e; } .u-bar i:nth-child(3) { background: #28c840; }
+.u-bar span { position: absolute; left: 0; right: 0; text-align: center; font-weight: 600; font-size: 12.5px; color: var(--soft); pointer-events: none; }
+.u-bar { position: relative; }
+.u-body { margin: 0 10px 10px; background: var(--card); border-radius: 11px; padding: 18px 20px 16px; box-shadow: 0 2px 8px rgba(22,19,58,.12); }
+.dark .u-body { box-shadow: 0 0 0 1px var(--edge); }
+.u-row { display: flex; gap: 16px; align-items: flex-start; }
+.u-icon { width: 56px; height: 56px; border-radius: 13px; flex: none; background: #ff5a4e; display: grid; place-items: center; box-shadow: 0 4px 10px rgba(255,90,78,.35); position: relative; }
+.u-icon svg { width: 34px; height: 34px; }
+.u-icon .badge { position: absolute; right: -6px; bottom: -6px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--card); display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; }
+.u-main { flex: 1; min-width: 0; }
+.u-title { font-size: 15px; font-weight: 650; letter-spacing: -.005em; margin: 1px 0 3px; }
+.u-sub { color: var(--soft); font-size: 12.5px; margin: 0 0 12px; }
+.u-sub b { color: var(--text); font-weight: 600; }
+.u-bar-track { height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; margin: 2px 0 6px; }
+.u-bar-fill { height: 100%; background: var(--coral); border-radius: 999px; }
+.u-bar-fill.ind { width: 36%; background: linear-gradient(90deg, transparent, var(--coral), transparent); }
+.u-meta { display: flex; justify-content: space-between; color: var(--muted); font: 11.5px ui-monospace, Menlo, monospace; margin-bottom: 12px; }
+.u-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 4px; }
+.u-actions .left { margin-right: auto; }
+.btn { height: 28px; padding: 0 14px; border-radius: 8px; border: 0; font: 600 12.5px -apple-system, "PingFang SC", sans-serif; display: inline-flex; align-items: center; background: var(--field); color: var(--text); }
+.btn.primary { background: var(--coral); color: #fff; box-shadow: 0 1px 2px rgba(255,90,78,.5); }
+.btn.link { background: none; padding: 0 4px; color: var(--coral-text); font-weight: 500; }
+.dark .btn.link { color: #ff8f85; }
+.btn.focus { outline: 2px solid rgba(255,90,78,.45); outline-offset: 2px; }
+.u-err { display: flex; gap: 8px; align-items: flex-start; background: rgba(210,56,47,.08); color: var(--err); border-radius: 8px; padding: 8px 10px; font-size: 12px; margin: 0 0 12px; }
+.dark .u-err { color: #f0655a; background: rgba(240,101,90,.12); }
+.u-ver { display: inline-flex; align-items: center; gap: 6px; font: 600 11.5px ui-monospace, Menlo, monospace; color: var(--soft); background: var(--field); border-radius: 6px; padding: 1px 7px; }
+.u-ver em { font-style: normal; color: var(--coral-text); }
+.dark .u-ver em { color: #ff8f85; }
+.legend { display: grid; gap: 8px; margin-top: 16px; }
+.legend div { display: grid; grid-template-columns: 24px 1fr; gap: 8px; color: var(--doc-muted); }
+.legend b.n { width: 18px; height: 18px; border-radius: 50%; background: var(--doc-ink); color: #fff; display: grid; place-items: center; font-size: 10px; margin-top: 3px; }
+.legend strong { color: var(--doc-ink); }
+@media (max-width: 900px) { .doc-grid2, .stage { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="doc-wrap">
+
+<div class="doc-kicker">设计稿 · 更新窗口</div>
+<h1>自绘更新窗口</h1>
+<p class="doc-lede">现在的更新窗口是 Sparkle 自带的标准界面：英文、系统蓝按钮、图标是 bundle 里的图标，和应用的纸面浮卡风格以及应用内的语言设置都不一致。改成自绘：用 Sparkle 提供的自定义用户界面接口（<code>SPUUserDriver</code>）接管全部状态，更新的检查、校验和安装逻辑仍然是 Sparkle 的，只换界面。</p>
+
+<div class="doc-grid2" style="margin-top:20px">
+  <div class="doc-card"><h3>要解决的问题</h3>
+    <ul><li>文案是英文，且跟系统语言走，不跟应用里的语言设置走。</li>
+    <li>主按钮是系统蓝，和珊瑚强调色冲突。</li>
+    <li>标准窗口没有版本号对照，不知道是从哪个版本升到哪个。</li></ul></div>
+  <div class="doc-card"><h3>成功标准</h3>
+    <ul><li>所有状态的文案都跟应用内语言设置走（中 / 英）。</li>
+    <li>配色、圆角、阴影与主窗口一致，亮暗两套都成立。</li>
+    <li>全程键盘可操作；进度对读屏可读；出错时给得出原因和下一步。</li></ul></div>
+</div>
+
+<h2>1　流程与状态<small>亮色</small></h2>
+<p class="doc-sub">窗口固定宽 440pt，高度随内容变，位置居中偏上。图标用当前应用图标（棱角 Y），状态用图标右下角的小角标表达，不再靠换整张图。一个窗口走完全程，不会在状态之间弹出第二个窗口。</p>
+
+<div class="stage">
+
+  <div class="cell"><p class="cap"><b>A · 正在检查</b>　手动「检查更新…」后立刻出现</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg></div>
+        <div class="u-main"><div class="u-title">正在检查更新…</div><p class="u-sub">当前版本 <b>0.7.0</b></p>
+          <div class="u-bar-track"><div class="u-bar-fill ind"></div></div>
+          <div class="u-actions"><span class="btn">取消</span></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>B · 发现新版本</b>　唯一需要用户做决定的一步</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">↑</span></div>
+        <div class="u-main"><div class="u-title">YCode 有新版本</div>
+          <p class="u-sub"><span class="u-ver">0.7.0 <em>→</em> 0.8.0</span>　34 MB</p>
+          <div class="u-actions"><span class="btn link left">查看更新内容</span><span class="btn">跳过此版本</span><span class="btn">稍后提醒</span><span class="btn primary focus">下载并安装</span></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>C · 下载中</b>　确定进度；总大小未知时退回不确定进度</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">↓</span></div>
+        <div class="u-main"><div class="u-title">正在下载 0.8.0</div><p class="u-sub">下载完成后会先校验签名，再提示安装。</p>
+          <div class="u-bar-track"><div class="u-bar-fill" style="width:62%"></div></div>
+          <div class="u-meta"><span>21.1 MB / 34 MB</span><span>62%</span></div>
+          <div class="u-actions"><span class="btn">取消</span></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>D · 解压与校验</b>　不可取消，按钮隐藏</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">…</span></div>
+        <div class="u-main"><div class="u-title">正在准备更新…</div><p class="u-sub">解压并校验签名，通常几秒钟。</p>
+          <div class="u-bar-track"><div class="u-bar-fill" style="width:78%"></div></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>E · 可以安装</b>　就是截图里的那一步</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--ok)">✓</span></div>
+        <div class="u-main"><div class="u-title">0.8.0 已准备好</div><p class="u-sub">重启后完成安装。<b>正在运行的 agent 会话会被中断</b>，已保存的会话下次打开时可恢复。</p>
+          <div class="u-actions"><span class="btn left link">稍后</span><span class="btn primary focus">安装并重新启动</span></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>F · 正在安装</b>　应用退出、替换文件的短暂过程</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">…</span></div>
+        <div class="u-main"><div class="u-title">正在安装…</div><p class="u-sub">完成后会自动重新打开 YCode。</p>
+          <div class="u-bar-track"><div class="u-bar-fill ind"></div></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>G · 已是最新版本</b>　手动检查后的结果</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--ok)">✓</span></div>
+        <div class="u-main"><div class="u-title">已是最新版本</div><p class="u-sub">YCode <b>0.8.0</b> 是目前最新的版本。</p>
+          <div class="u-actions"><span class="btn primary focus">好</span></div></div></div></div></div></div>
+
+  <div class="cell"><p class="cap"><b>H · 出错</b>　给原因，并给下一步</p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--err)">!</span></div>
+        <div class="u-main"><div class="u-title">无法检查更新</div>
+          <div class="u-err">⚠ 无法连接到更新服务器，请检查网络或代理设置。</div>
+          <div class="u-actions"><span class="btn link left">复制错误详情</span><span class="btn">关闭</span><span class="btn primary focus">重试</span></div></div></div></div></div></div>
+
+</div>
+
+<div class="doc-card" style="margin-top:20px"><h3>Sparkle 行为兼容</h3>
+  <ul><li>版本、大小与更新说明链接，以及操作按钮按完整文字宽度自动换行；英文按钮不压缩、不裁切。</li>
+  <li>每个阶段的选择只回复一次；进入下一阶段或关闭流程后，旧按钮回调失效。</li>
+  <li>错误页的「重试」先确认错误，等 Sparkle 完整结束旧周期、允许重新检查后，再开始新检查。</li>
+  <li>没有适合当前 macOS 或硬件的更新时，显示不可更新的原因；只有确认为已最新时才显示「已是最新版本」。</li>
+  <li>仅提示信息的更新显示「了解详情」并打开发布者的信息页，不提供下载或安装操作。</li>
+  <li>准备安装时选择「稍后」保留 Sparkle 的待安装状态；应用之后退出时，更新仍可能自动完成。</li></ul>
+</div>
+<div class="legend">
+  <div><b class="n">1</b><span><strong>标题栏沿用系统样式</strong>，内容区是一张落在 chrome 底上的浮卡（11px 圆角、柔和阴影），和主窗口的卡片一致。</span></div>
+  <div><b class="n">2</b><span><strong>主按钮用珊瑚色</strong>，按钮文字白色。珊瑚色在白底上只有 3:1，所以文字类的链接用更深的 <code>#c3301f</code>（5.6:1）。</span></div>
+  <div><b class="n">3</b><span><strong>图标右下角的角标</strong>表达状态：↑ 有更新、↓ 下载、… 处理中、✓ 成功、! 出错。角标不是唯一信号，标题文字永远在说同一件事。</span></div>
+  <div><b class="n">4</b><span><strong>版本对照</strong> <code>0.7.0 → 0.8.0</code> 放在「发现新版本」里，用等宽字，一眼看出跨了几个版本。</span></div>
+</div>
+
+<h2>2　暗色<small>跟随系统外观</small></h2>
+<p class="doc-sub">底色和卡片取暗色 token（<code>#110f28</code> / <code>#1b1840</code>），卡片靠 1px 描边表达层次，阴影在深色下看不见。进度条轨道改为白色 12% 透明度。</p>
+<div class="stage dark">
+  <div class="cell"><p class="cap"><b>B · 发现新版本</b></p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">↑</span></div>
+        <div class="u-main"><div class="u-title">YCode 有新版本</div>
+          <p class="u-sub"><span class="u-ver">0.7.0 <em>→</em> 0.8.0</span>　34 MB</p>
+          <div class="u-actions"><span class="btn link left">查看更新内容</span><span class="btn">跳过此版本</span><span class="btn">稍后提醒</span><span class="btn primary focus">下载并安装</span></div></div></div></div></div></div>
+  <div class="cell"><p class="cap"><b>C · 下载中</b></p>
+    <div class="u-win"><div class="u-bar"><i></i><i></i><i></i><span>软件更新</span></div>
+      <div class="u-body"><div class="u-row"><div class="u-icon"><svg viewBox="0 0 34 34" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M7 7l10 11 10-11M17 18v10"/></svg><span class="badge" style="background:var(--coral)">↓</span></div>
+        <div class="u-main"><div class="u-title">正在下载 0.8.0</div><p class="u-sub">下载完成后会先校验签名，再提示安装。</p>
+          <div class="u-bar-track"><div class="u-bar-fill" style="width:62%"></div></div>
+          <div class="u-meta"><span>21.1 MB / 34 MB</span><span>62%</span></div>
+          <div class="u-actions"><span class="btn">取消</span></div></div></div></div></div></div>
+</div>
+
+<h2>3　行为与取舍</h2>
+<table class="doc-table">
+  <tr><th style="width:24%">主题</th><th style="width:40%">设计</th><th>理由</th></tr>
+  <tr><td>语言</td><td>文案走应用内语言设置（中 / 英），随设置即时切换，不再看系统语言</td><td>应用本身的文案就是这么管的；标准 Sparkle 窗口按系统语言，会出现应用是中文、更新窗口是英文</td></tr>
+  <tr><td>「下载并安装」</td><td>发现新版本时一步到位，下载完成后停在 E「可以安装」，由用户决定何时重启</td><td>重启会中断正在运行的 agent，不能替用户做这个决定</td></tr>
+  <tr><td>E 页的警告</td><td>明确写出「正在运行的 agent 会话会被中断」，并给出「稍后」</td><td>这是更新唯一有代价的一步，要在按下去之前说清</td></tr>
+  <tr><td>「查看更新内容」</td><td>打开该版本的 GitHub Release 页，不在窗口里内嵌网页</td><td>当前 appcast 里没有内嵌的更新说明；内嵌 WebView 会增加攻击面，也拖慢窗口</td></tr>
+  <tr><td>自动检查</td><td>保持现状：启动后在后台静默检查，只在发现新版本时弹出窗口 B</td><td>不改变更新策略，只换界面</td></tr>
+  <tr><td>出错</td><td>文案区分网络错误、签名校验失败、磁盘权限三类；其余给通用提示并提供「复制错误详情」</td><td>用户能照着做，也方便贴到 issue 里</td></tr>
+  <tr><td>签名与安装</td><td>不变：下载、EdDSA 校验、替换、重启仍由 Sparkle 完成</td><td>只自绘界面，不碰更新的安全边界</td></tr>
+</table>
+
+<h2>4　无障碍与键盘</h2>
+<div class="doc-grid2">
+  <div class="doc-card"><h3>键盘</h3>
+    <ul><li>↩ 触发珊瑚色主按钮（图中带焦点环的那个），⎋ 触发「取消 / 稍后 / 关闭」。</li>
+    <li>Tab 在按钮之间循环；窗口出现时焦点默认落在主按钮上。</li>
+    <li>下载阶段的 ⎋ / ⌘W 取消下载；解压与安装阶段的 ⌘W 只收起窗口，更新继续。</li></ul></div>
+  <div class="doc-card"><h3>读屏与对比度</h3>
+    <ul><li>进度条作为进度指示暴露数值，每 10% 播报一次，避免刷屏。</li>
+    <li>状态变化（出现错误、可以安装）时播报标题。</li>
+    <li>珊瑚主按钮白字对比度约 3:1，低于 4.5:1：按钮文字加粗到 600 并保持 12.5px 以上；如需严格达标，主按钮底色改用 <code>#d93a2e</code>（4.57:1），实现时以验证器为准。</li></ul></div>
+</div>
+
+<h2>5　待确认</h2>
+<table class="doc-table">
+  <tr><th style="width:30%">问题</th><th style="width:40%">建议</th><th>理由</th></tr>
+  <tr><td>「下载并安装」是一步还是两步</td><td>一步：按下即下载，下载完成后停在 E</td><td>减少一次点击；真正有代价的重启仍由用户确认</td></tr>
+  <tr><td>是否保留「跳过此版本」</td><td>保留</td><td>Sparkle 原有能力，去掉会让想拒绝某版本的人只能一直被打扰</td></tr>
+  <tr><td>珊瑚按钮的对比度</td><td>先用 <code>#ff5a4e</code> 与主窗口保持一致；验证后若不达标再整体加深</td><td>品牌色一致比单个按钮的对比度更重要，但要有验证再定</td></tr>
+  <tr><td>窗口层级</td><td>普通窗口，不置顶、不模态</td><td>用户可以继续用应用，不被更新窗口挡住</td></tr>
+</table>
+
+</div>
+</body>
+</html>
