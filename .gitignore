@@ -17,3 +17,7 @@ Thumbs.db
 # Local config
 .env
 .env.local
+**/node_modules/
+.codex/
+.taste-skill/
+website/.openai/
