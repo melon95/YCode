@@ -113,6 +113,8 @@ final class WorkspaceModel: ObservableObject {
     /// 当前目录等终端标题覆盖到用户起的名字上。
     @Published private(set) var pendingTitleSessionIDs: Set<String> = []
     @Published private(set) var liveTitles: [String: String] = [:]
+    private var pendingLiveTitles: [String: String] = [:]
+    private var liveTitleRefreshTask: Task<Void, Never>?
     /// 面板区每列的宽度，拖画布与面板区之间那条分隔条来改。
     @Published private(set) var panelColumnWidth: CGFloat = YCodeMetrics.panelColumnWidth
 
@@ -443,12 +445,27 @@ final class WorkspaceModel: ObservableObject {
     }
     var l10n: YCodeLocalization { YCodeLocalization(locale: locale) }
 
-    /// 终端吐出的标题。空的、跟上一条一样的都直接丢掉，免得每帧都发通知。
+    /// Show the first title immediately, then publish the latest titles together
+    /// at most four times a second. CLI spinner titles must not drive layout.
     func recordLiveTitle(sessionID: String, title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard liveTitles[sessionID] != trimmed else { return }
-        liveTitles[sessionID] = trimmed
+        guard (pendingLiveTitles[sessionID] ?? liveTitles[sessionID]) != trimmed else { return }
+        guard liveTitles[sessionID] != nil else {
+            liveTitles[sessionID] = trimmed
+            return
+        }
+        pendingLiveTitles[sessionID] = trimmed
+        guard liveTitleRefreshTask == nil else { return }
+        liveTitleRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+            var updated = self.liveTitles
+            updated.merge(self.pendingLiveTitles) { _, latest in latest }
+            self.pendingLiveTitles.removeAll(keepingCapacity: true)
+            self.liveTitleRefreshTask = nil
+            if updated != self.liveTitles { self.liveTitles = updated }
+        }
     }
 
     /// 界面上这条会话叫什么：用户起的名字 > CLI 报的 live title > 斜体的「新会话」。
@@ -853,6 +870,7 @@ final class WorkspaceModel: ObservableObject {
             do {
                 let removed = try await sessionService?.deleteSession(id: id, fallbackJsonlPath: fallback)
                 if selectedSessionID == id { selectedSessionID = nil }
+                pendingLiveTitles[id] = nil
                 liveTitles[id] = nil
                 reloadSessions()
                 // 没删到文件多数时候是正常的：刚建的会话还没跟 CLI 说过话，磁盘上本来就没有 jsonl；
@@ -1721,10 +1739,16 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func clearAttention(_ sessionID: String) {
-        attentionEvents.removeValue(forKey: sessionID)
-        if Date().timeIntervalSince(lastIdentityProbe) > 2,
-           let row = try? repository?.session(id: sessionID), row.agentSessionID == nil,
-           agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex" {
+        // Even removing a missing key from a @Published dictionary emits a
+        // change. Plain terminal bytes must not rebuild the whole workspace.
+        if attentionEvents[sessionID] != nil {
+            attentionEvents.removeValue(forKey: sessionID)
+        }
+        // Metadata is already kept current by reloadSessions. Avoid a database
+        // read for every PTY chunk, including output from other windows.
+        if let row = session(id: sessionID), row.agentSessionID == nil,
+           agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex",
+           Date().timeIntervalSince(lastIdentityProbe) > 2 {
             lastIdentityProbe = Date()
             enqueueTitleRefresh(["__rescan__"])
         }
@@ -1827,7 +1851,8 @@ final class WorkspaceModel: ObservableObject {
 
     private func refreshSessionsByProject() {
         guard let repository else { return }
-        pinnedSessionIDs = (try? repository.pinnedSessionIDs()) ?? []
+        let pinned = (try? repository.pinnedSessionIDs()) ?? []
+        if pinnedSessionIDs != pinned { pinnedSessionIDs = pinned }
         var map: [String: [SessionMetadata]] = [:]
         var archived: [String: [SessionMetadata]] = [:]
         var pending: Set<String> = []
@@ -1837,15 +1862,17 @@ final class WorkspaceModel: ObservableObject {
             map[project.id] = all.filter { $0.archivedAtMilliseconds == nil }
             archived[project.id] = all.filter { $0.archivedAtMilliseconds != nil }
         }
-        sessionsByProject = map
-        archivedSessionsByProject = archived
-        pendingTitleSessionIDs = pending
+        if sessionsByProject != map { sessionsByProject = map }
+        if archivedSessionsByProject != archived { archivedSessionsByProject = archived }
+        if pendingTitleSessionIDs != pending { pendingTitleSessionIDs = pending }
     }
 
     private func reloadSessions() {
         do {
-            projects = try repository?.listProjects() ?? projects
-            sessions = try selectedProjectID.map { try cliSessions(projectID: $0) } ?? []
+            let updatedProjects = try repository?.listProjects() ?? projects
+            let updatedSessions = try selectedProjectID.map { try cliSessions(projectID: $0) } ?? []
+            if projects != updatedProjects { projects = updatedProjects }
+            if sessions != updatedSessions { sessions = updatedSessions }
             refreshSessionsByProject()
             reconcileCanvas()
         } catch {
@@ -1869,19 +1896,24 @@ final class WorkspaceModel: ObservableObject {
             + tabSessionIDs.filter { !pinnedSessionIDs.contains($0) }
         guard terminalLayout == .tabs else { return }
         let focusedID = focusedCanvasSessionID
-        visibleSessionIDs = visibleSessionIDs.filter { pinnedSessionIDs.contains($0) }
+        let visible = visibleSessionIDs.filter { pinnedSessionIDs.contains($0) }
             + visibleSessionIDs.filter { !pinnedSessionIDs.contains($0) }
-        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
+        if visibleSessionIDs != visible { visibleSessionIDs = visible }
+        let slot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) } ?? 0
+        if focusedCanvasSlot != slot { focusedCanvasSlot = slot }
     }
 
     private func reconcileCanvas() {
         let focusedID = focusedCanvasSessionID
         let known = Set(sessionsByProject.values.flatMap { $0.map(\.id) })
-        visibleSessionIDs = visibleSessionIDs.filter(known.contains)
+        let visible = visibleSessionIDs.filter(known.contains)
+        if visibleSessionIDs != visible { visibleSessionIDs = visible }
         tabSessionIDs = tabSessionIDs.filter(known.contains)
-        focusedCanvasSlot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) }
+        let slot = focusedID.flatMap { visibleSessionIDs.firstIndex(of: $0) }
             ?? (visibleSessionIDs.isEmpty ? 0 : min(focusedCanvasSlot, visibleSessionIDs.count - 1))
-        terminalLayout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
+        if focusedCanvasSlot != slot { focusedCanvasSlot = slot }
+        let layout = YCodeTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
+        if terminalLayout != layout { terminalLayout = layout }
         orderPinnedTabsFirst()
         if let selectedSessionID, !known.contains(selectedSessionID) { self.selectedSessionID = focusedCanvasSessionID }
     }
@@ -2100,6 +2132,7 @@ final class WorkspaceModel: ObservableObject {
 
     private func bindPiSessionIdentities() {
         guard let repository else { return }
+        var changed = false
         for project in projects {
             for row in (try? repository.listSessions(projectID: project.id)) ?? [] {
                 guard agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "pi",
@@ -2107,20 +2140,23 @@ final class WorkspaceModel: ObservableObject {
                       let state = YCodePiTitleBridge.state(dataRoot: dataRoot, terminalID: row.id),
                       state.terminalID == row.id, !state.sessionID.isEmpty else { continue }
                 if row.agentSessionID != state.sessionID {
-                    try? repository.setAgentSessionID(id: row.id, agentSessionID: state.sessionID)
+                    if (try? repository.setAgentSessionID(id: row.id, agentSessionID: state.sessionID)) != nil {
+                        changed = true
+                    }
                 }
                 if let path = state.path {
                     let timestamp = ((try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date)
                         .map { Int64($0.timeIntervalSince1970 * 1_000) } ?? row.updatedAtMilliseconds
-                    _ = try? repository.syncDiscoveredSessions([.init(projectID: project.id,
+                    let touched = try? repository.syncDiscoveredSessions([.init(projectID: project.id,
                         title: state.name ?? row.title, agentProfile: row.agentProfile,
                         agentSessionID: state.sessionID, jsonlPath: path,
                         updatedAtMilliseconds: timestamp, archivedAtMilliseconds: nil)])
+                    if touched?.isEmpty == false { changed = true }
                 }
                 sessionService?.retryPendingTitle(id: row.id)
             }
         }
-        reloadSessions()
+        if changed { reloadSessions() }
     }
 
     private func enqueueTitleRefresh(_ paths: [String]) {
