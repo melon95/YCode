@@ -1,9 +1,11 @@
 # 原生 UI 升级实施记录
 
-设计稿：`docs/ui-native-redesign.html`（09 节「控件去向对照」与「实施顺序建议」是验收清单）
+> 历史记录：状态、版本、路径和验收结果对应当时环境，未在本次文档整理中重验。当前范围与替代关系见[记录索引](README.md)。
+
+设计参考：[原生 UI 初稿](../ui-native-redesign.html)；以下为当时实施过程，当前验收见[验收清单](../bdd-iteration-plan.md)。
 实施日期：2026-09-20 · 分支 `feat/macos-native`
 
-全部改动都在 `macos/YCodeApp`，没有动 `YCodeCore`、没有改数据模型，与后续 pi 形态迁移不冲突。
+初始工作集中在 `macos/YCodeApp`；后续补充涉及的 Core 变更见正文。此前提及的 Pi 形态迁移已取消当前实施计划。
 
 ## 按稿子的八步
 

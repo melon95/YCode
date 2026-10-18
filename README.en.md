@@ -21,12 +21,13 @@ YCode is a native macOS workspace for coding agents. Run Claude Code, Codex, Pi,
 
 ## Features
 
-- **Projects and sessions**: Organize sessions by project, with search, filters, archiving, and resume. Open projects in separate windows when needed.
+- **Projects and sessions**: Organize sessions by project, with search, filters, pinning, archiving, and resume. Open projects in separate windows when needed. Enable or disable agent profiles while keeping their settings and existing sessions.
 - **Multiple sessions**: Use browser-style tabs or display up to four sessions in split panes. Switch layouts and focus while keeping each terminal process running independently.
 - **Flexible panels**: Open files, changes, todos, and project terminals together. Adjust their arrangement and width.
 - **Files and editing**: Browse the file tree, use preview and pinned tabs, edit and save with basic syntax highlighting, preview Markdown, SVG, and images, and handle conflicts from external file changes.
 - **Git review**: Read inline diffs, navigate a directory tree, stage individual hunks, commit, switch branches, and fetch, pull, or push. Inspect session checkpoints as well.
 - **Todos and integrations**: Organize tasks into queued, in progress, and completed groups. Connect MCP todo tools, agent hooks, and system notifications. History search and usage statistics depend on the corresponding agent's local records.
+- **Skills and MCP**: Inspect global configuration, source paths, and disabled counts by CLI, and toggle entries where the CLI supports it. Project configuration is outside this page; global Claude MCP entries are read-only.
 - **Native appearance**: Light, dark, or system appearance; English and Chinese interfaces; separate font sizes for the interface, editor, and terminal.
 
 ### Files and code
@@ -46,7 +47,7 @@ Review diffs by file, then stage and commit from the working tree changes view. 
 ## Getting started
 
 1. Download the native macOS ZIP from [GitHub Releases](https://github.com/melon95/YCode/releases/latest), extract it, and drag `YCode.app` into Applications. Release builds are universal binaries for Apple Silicon and Intel Macs.
-2. Install and sign in to the agent CLI you want to use. YCode includes default profiles for Claude Code and Codex. Add Pi or other CLIs in Settings → Agents, with the command, arguments, and environment variables required by each tool.
+2. Install and sign in to the agent CLI you want to use. YCode includes default profiles for Claude Code and Codex. Add Pi or other CLIs, or enable detected profiles, in Settings → Agents, with the command, arguments, and environment variables required by each tool.
 3. Press `⌘O` to add a local project folder. Choose a Git repository to review changes and create commits.
 4. Press `⌘N` and select an agent to start a session. Use the buttons at the top to open files, changes, todos, or a project terminal.
 5. Press `⌘K` to search sessions, todos, history, and available actions. Official release builds can receive later versions through Check for Updates in the YCode menu.
@@ -96,7 +97,7 @@ The app is written to `macos/dist/YCode.app`, with build logs at `macos/dist/bui
 
 By default, the build uses the machine's sole Apple Development certificate. It falls back to ad-hoc signing if no certificate is available. If several certificates are installed, select one with `DEV_SIGNING_IDENTITY`. Development signing is distinct from Developer ID distribution signing and notarization. See [macos/README.md](macos/README.md) for more development notes (in Chinese).
 
-Swift Package Manager manages SwiftTerm, swift-markdown, and Sparkle. No Node frontend dependencies are required. External agents still need their own runtime environments.
+Swift Package Manager manages SwiftTerm, swift-markdown, Sparkle, and TOMLKit. No Node frontend dependencies are required. External agents still need their own runtime environments.
 
 ## Project structure and documentation
 
@@ -113,12 +114,13 @@ Swift Package Manager manages SwiftTerm, swift-markdown, and Sparkle. No Node fr
 
 Additional documentation is currently in Chinese:
 
+- [Documentation index](docs/README.md): Current scope, acceptance checks, implementation references, and historical records.
 - [GitHub builds and update releases](docs/macos-native/github-release.md): CI, signing, notarization, Releases, and Sparkle update configuration.
 - [File viewing and manual editing](docs/macos-native/manual-editor-scope.md): The editor's current scope.
 - [Native UI implementation notes](docs/macos-native/ui-redesign-implementation.md): Workspace layout and interaction changes.
 - [Legacy implementation removal](docs/macos-native/M5.5-legacy-removal.md): Historical Tauri / React / Rust code and backup notes.
 
-Historical migration documents retain the paths and validation records from their time. Refer to this README and the current implementation for the features available today.
+Migration records and HTML designs are marked as historical references. Their paths, test results, and unfinished items describe their original environment. See the [product scope](docs/ycode-feature-spec.md) for current features; deferred proposals are outside the active main-branch backlog.
 
 ## License
 

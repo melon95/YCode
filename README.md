@@ -21,12 +21,13 @@ YCode 是 macOS 原生多 Agent 工作台。通过独立 PTY 运行 Claude Code�
 
 ## 工作台里有什么
 
-- **项目与会话**：按项目组织会话，搜索、过滤、归档与恢复；项目也可在独立窗口中打开。
+- **项目与会话**：按项目组织会话，搜索、过滤、置顶、归档与恢复；项目也可在独立窗口中打开。Agent 可单独启停，停用保留配置和已有会话。
 - **多会话画布**：支持浏览器式顶部标签页，也可最多同时显示 4 个分屏会话；切换布局和焦点时保留终端进程。
 - **可组合面板**：文件、变更、待办和项目终端可同时打开，调整排列与宽度。
 - **文件与编辑**：文件树、预览与固定标签、基础语法高亮、手动编辑和保存，支持 Markdown、SVG 与图片预览，处理外部文件修改冲突。
 - **Git 审阅**：内联 diff、目录树视图、逐块暂存、提交、分支切换及 Fetch / Pull / Push，也可查看会话检查点。
 - **待办与集成**：按队列、进行中和已完成管理任务；提供 MCP 待办工具、Agent hook 与系统通知。历史搜索和用量统计依赖对应 Agent 的本地记录。
+- **Skills 与 MCP**：按 CLI 查看全局配置、来源路径和停用数量，在 CLI 支持的范围内启停；项目配置不在此页管理，Claude 全局 MCP 只读展示。
 - **原生外观**：浅色、深色与跟随系统，中英文界面，独立调整界面、编辑器和终端字号。
 
 ### 文件与代码
@@ -46,7 +47,7 @@ YCode 是 macOS 原生多 Agent 工作台。通过独立 PTY 运行 Claude Code�
 ## 快速开始
 
 1. 从 [GitHub Releases](https://github.com/melon95/YCode/releases/latest) 下载原生 macOS ZIP，解压后将 `YCode.app` 拖入「应用程序」。发布包为 Apple Silicon / Intel 通用版本。
-2. 安装并登录需要使用的 Agent CLI。YCode 默认提供 Claude Code 和 Codex 配置；Pi 和其他 CLI 可在「设置 → Agent」中添加，命令、参数和环境变量按工具要求配置。
+2. 安装并登录需要使用的 Agent CLI。YCode 默认提供 Claude Code 和 Codex 配置；Pi 和其他 CLI 可在「设置 → Agent」中添加或启用检测到的配置，命令、参数和环境变量按工具要求配置。
 3. 按 `⌘O` 添加本地项目目录。需要查看变更和提交时，选择 Git 仓库。
 4. 按 `⌘N`，选择 Agent 开始会话；用顶部按钮打开文件、变更、待办或项目终端。
 5. 按 `⌘K` 搜索会话、待办、历史内容和可用动作。正式发行版可通过 YCode 菜单中的「检查更新」获取后续版本。
@@ -96,7 +97,7 @@ scripts/build_and_run.sh run
 
 默认使用本机唯一的 Apple Development 证书；没有证书时回退到 ad-hoc 签名，多个证书时需通过 `DEV_SIGNING_IDENTITY` 指定。开发签名不等于 Developer ID 分发签名或公证。更多开发说明见 [macos/README.md](macos/README.md)。
 
-应用使用 Swift Package 管理 SwiftTerm、swift-markdown 和 Sparkle，不需要 Node 前端依赖。外部 Agent 仍需要各自的运行环境。
+应用使用 Swift Package 管理 SwiftTerm、swift-markdown、Sparkle 和 TOMLKit，不需要 Node 前端依赖。外部 Agent 仍需要各自的运行环境。
 
 ## 工程与文档
 
@@ -111,12 +112,13 @@ scripts/build_and_run.sh run
 | `macos/scripts/` | 构建、打包、迁移与回归脚本 |
 | `docs/` | 功能说明、设计资料和迁移记录 |
 
+- [文档索引](docs/README.md)：当前范围、验收清单、实现参考与历史档案。
 - [GitHub 构建与更新发布](docs/macos-native/github-release.md)：CI、签名、公证、Releases 与 Sparkle 更新配置。
 - [文件查看与手动编辑](docs/macos-native/manual-editor-scope.md)：编辑器的当前功能范围。
 - [原生 UI 实施记录](docs/macos-native/ui-redesign-implementation.md)：工作台布局与交互演进。
 - [旧实现清理记录](docs/macos-native/M5.5-legacy-removal.md)：Tauri / React / Rust 历史代码与备份说明。
 
-历史迁移文档保留当时的路径与验收记录，当前功能以本 README 和现有实现为准。
+历史迁移文档和 HTML 设计稿已标明参考状态；其中的旧路径、测试结果与未完成项仅对应当时环境。当前范围见[产品说明](docs/ycode-feature-spec.md)，暂缓方案不作为主线待办。
 
 ## License
 

@@ -10,7 +10,7 @@ python3 -m http.server 4173 --bind 127.0.0.1 --directory public
 
 Open http://127.0.0.1:4173. Source content is based on the repository's Chinese and English README files. Images are the original native-app screenshots with sample data. The screenshot interface and sample content are English; website copy supports English and Chinese.
 
-Design: cool aluminium palette with the icon's amber as the only accent, Schibsted Grotesk for text and JetBrains Mono for terminal content, light and dark modes. The hero is an interactive YCode window: four terminals type in on load and the Grid / Columns / Main and side buttons rearrange them with a FLIP animation. Other sections: supported CLIs, the overview film with chapter links, a panels dock (Files / Changes / Todos with the app's shortcuts), a three-step start, FAQ with copyable build commands. Language choice persists in localStorage and swaps the film. Motion respects the system's reduced-motion preference.
+Design: pale lavender surfaces and ink-purple terminals, with the icon's coral accent and yellow sparkle, Schibsted Grotesk for text and JetBrains Mono for terminal content, light and dark modes. The hero is an interactive YCode window: four terminals type in on load and the Grid / Columns / Main and side buttons rearrange them with a FLIP animation. Other sections: supported CLIs, the overview film with chapter links, a panels dock (Files / Changes / Todos with the app's shortcuts), a three-step start, FAQ with copyable build commands. Language choice persists in localStorage and swaps the film. Motion respects the system's reduced-motion preference.
 
 ## Cloudflare deployment
 
@@ -23,7 +23,7 @@ python3 build.py
 npx wrangler@4.132.0 deploy
 ```
 
-The product film is the first main section below navigation. It plays the language-matched overview film (`ycode-overview.en.mp4` or `ycode-overview.zh.mp4`), switching source, poster, and download link with the page language. Product screenshots follow it. Video playback starts on user interaction.
+The overview film follows the interactive hero and supported-CLI section. It plays the language-matched overview film (`ycode-overview.en.mp4` or `ycode-overview.zh.mp4`), switching source, poster, and download link with the page language. The panels dock and getting-started section follow it. Video playback starts on user interaction.
 
 Local environment files and hosting account bindings are excluded from source control.
 
@@ -41,3 +41,5 @@ python3 scripts/render_overview.py --lang zh
 ```
 
 Chrome needs HTTP Range support to seek video; `python3 -m http.server` lacks it, so use `npx http-server public` when testing chapter jumps locally.
+
+Product scope and historical design references are indexed in [docs/README.md](../docs/README.md). Website mock terminal content and the rendered overview film are illustrative examples, not runtime acceptance evidence.

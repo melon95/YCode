@@ -34,10 +34,10 @@ YCode 是 macOS 原生多项目 Agent 工作台。用户使用已经安装并登
 ## 实现边界
 
 - 会话使用原 CLI 的恢复标识和历史，不在不同引擎之间冒充无损恢复。
-- 普通分支操作与检查点保留；Worktree 的创建、隔离与自动清理不在当前实现范围，已有目录和元数据保留。
-- Computer Use 尚未立项，见[研究状态](computer-use-integration-plan.md)。独立分支中的会话界面与输入实验另行处理，不作为当前发布门槛。
+- 普通分支操作与检查点保留；worktree 的创建、隔离、合并与自动清理不在当前实现范围，已有目录和元数据保留；不自动恢复旧隔离会话，也不将其改为主目录会话。
+- Computer Use 尚未立项，见[研究状态](computer-use-integration-plan.md)。会话界面与统一输入实验暂缓在 `codex/unified-session-entry`，不作为主线待办或发布门槛。
 - 不新增模型服务、API 节点管理、订阅登录、账号池或内置反向代理。
 - 模型回复结束不等于用户任务已经验收；文档、原型、构建、实际 CLI 行为和发布状态分别记录。
 - Skills/MCP 开关写入各 CLI 自身配置，在新建或重启会话时生效，不表示服务已连接。覆盖 Claude Code、Codex、Grok 的本地 MCP，以及上述 CLI 和 Pi 的本地技能；不管理插件市场、云端连接器或组织策略。Claude MCP 开关按项目保存，因此本页只读展示其全局配置，批准仍由 CLI 处理。Grok 全局禁用名单中的 MCP 只读；Pi 的独立全局技能来源分别展示。显式配置根使用绝对路径，无法确定路径含义时保持只读。无法安全修改的内联 TOML 保持不变并报告错误。
 
-现有入口说明见 [README](../README.md)，界面边界见 [CLI 界面规则](cli-ui-policy.md)，检查场景见[验收清单](bdd-iteration-plan.md)。原生迁移的已完成过程与证据继续保留在 `docs/macos-native/`。
+现有入口说明见 [README](../README.md)，界面边界见 [CLI 界面规则](cli-ui-policy.md)，检查场景见[验收清单](bdd-iteration-plan.md)。原生迁移的过程与证据见[历史记录索引](macos-native/README.md)，完整入口见[文档索引](README.md)。

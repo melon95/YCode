@@ -1,5 +1,7 @@
 # GitHub 构建与更新发布
 
+核对日期：2026-10-18。流程依据仓库工作流与脚本；本文不报告当前远端发版、凭据或真实升级状态。历史 M5.3 / M5.4 的阻塞记录不替代本指南。
+
 ## 当前流程
 
 - `macOS CI`：分支推送、PR、手动触发，执行 Swift 测试、发布元数据测试、图标一致性检查，构建并验证 arm64 + x86_64 通用候选包，再以一次性密钥验证更新清单与篡改拒绝。产物在 Actions Artifacts；无更新配置、ad-hoc 签名，不当作正式发行版。
@@ -28,26 +30,28 @@ Xcode → Settings → Accounts → 选择团队 → Manage Certificates → 创
 
 这些值只放 GitHub Secrets，勿贴到聊天、README 或工作流明文。GitHub runner 上使用随机密码临时钥匙串；任务无论成功失败都清理临时证书、钥匙串和 Sparkle 密钥文件。旧 `TAURI_SIGNING_PRIVATE_KEY` 不参与新流程。
 
-本机 YCode 专用 Sparkle 密钥保存在钥匙串账户 `ycode-sparkle`。如需备份，用官方 `generate_keys --account ycode-sparkle -x <安全路径>` 导出到安全位置；私钥文件不应留在工作树。
+本机曾使用钥匙串账户 `ycode-sparkle` 保存专用 Sparkle 密钥，使用前确认当前机器仍有对应条目。需要备份时用 `generate_keys --account ycode-sparkle -x <安全路径>` 导出到安全位置；私钥文件不应留在工作树。
 
 ## 发版
 
-1. 修改 `macos/VERSION`，例如下一版 `0.7.0`，合并经过 CI 的原生代码。
-2. 推送相同版本标签，例如 `v0.7.0`。仅创建标签会启动发布，不能拿测试标签试发正式版本。
+1. 将 `macos/VERSION` 设置为高于已发布稳定版本的目标版本，合并经过 CI 的原生代码；不要把旧文档中的示例版本当作下一版。
+2. 推送与该文件一致的 `vX.Y.Z` 标签。仅推送标签会启动发布，不能拿测试标签试发正式版本。
 3. 在 Actions 查看 `macOS Release`；成功后 GitHub Releases 出现 ZIP、appcast 与校验文件。
 4. 首次原生发行版需手动安装一次。旧 Tauri 使用不同更新协议；本地开发包使用不同 bundle ID 且未启用更新，都不会自动升级到此原生发行版。
 5. 在首个正式原生包中点击“检查更新”，下一次正式发版后验证提示、下载、安装、重启及数据保留。
 
-本机正式发布（已安装 Developer ID 证书并配置公证 profile）：
+本机正式打包与生成清单（在仓库根目录执行，已安装 Developer ID 证书并配置公证 profile）。先设置 `RELEASE_BUILD_NUMBER`，必须高于已分发包的构建号；以下命令不上传附件：
 
 ```sh
-VERSION=0.7.0 BUILD_NUMBER=100001 \
+RELEASE_VERSION="$(cat macos/VERSION)"
+: "${RELEASE_BUILD_NUMBER:?请先设置高于已分发包的构建号}"
+VERSION="$RELEASE_VERSION" BUILD_NUMBER="$RELEASE_BUILD_NUMBER" \
 SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
 NOTARY_PROFILE=ycode-notary bash macos/scripts/package_release.sh release
 
 SPARKLE_PRIVATE_KEY_FILE=/secure/path/ycode-sparkle.key \
 bash macos/scripts/generate_appcast.sh \
-  macos/dist/release/YCode.app macos/dist/release/YCode-0.7.0.zip melon95/YCode
+  macos/dist/release/YCode.app "macos/dist/release/YCode-$RELEASE_VERSION.zip" melon95/YCode
 ```
 
 公证、签名或更新签名验证失败时禁止发布；普通 CI 可以在没有任何 Apple 凭据的情况下独立通过。
