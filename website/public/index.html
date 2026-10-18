@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YCode — Run your coding agents side by side</title>
+<meta name="description" content="YCode is a native Mac workspace for Claude Code, Codex, Pi, or any CLI. Each agent gets a real terminal, with files, Git changes, and todos one keystroke away. Free and open source.">
+<meta name="theme-color" content="#efeef4" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#110f28" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="YCode — Run your coding agents side by side"><meta property="og:description" content="A native Mac workspace where every agent gets its own terminal."><meta property="og:type" content="website"><meta property="og:url" content="https://ycode.agentscience.com.cn"><meta property="og:image" content="https://ycode.agentscience.com.cn/assets/ycode-overview-poster.en.jpg"><link rel="canonical" href="https://ycode.agentscience.com.cn">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap"> <!-- taste-skill-ignore: JetBrains Mono is used only for code. -->
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main" data-i="skip">Skip to content</a>
+
+<header class="nav wrap">
+  <a class="brand" href="#" aria-label="YCode home"><img src="assets/icon.svg" width="30" height="30" alt=""><span>YCode</span></a>
+  <nav aria-label="Main navigation"><a href="#tour" data-i="navTour">Tour</a><a href="#panels" data-i="navPanels">Panels</a><a href="#start" data-i="navStart">Get started</a><a href="#questions" data-i="navFaq">FAQ</a></nav>
+  <div class="nav-actions"><button id="language" type="button" aria-label="切换到中文">中文</button><a class="nav-git" href="https://github.com/melon95/YCode" target="_blank" rel="noopener">GitHub</a></div>
+</header>
+
+<main id="main">
+  <section class="hero wrap" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title" data-i="heroTitle">Coding agents,<br>side by side.</h1>
+      <div class="hero-side">
+        <p data-i="heroBody">YCode is a native Mac workspace for Claude Code, Codex, Pi, or any CLI. Each agent gets a real terminal, with your files, Git changes, and todos one keystroke away.</p>
+        <div class="cta-row">
+          <a class="button primary" href="https://github.com/melon95/YCode/releases/latest"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19h14"/></svg><span data-i="download">Download for macOS</span></a>
+          <a class="button ghost" href="https://github.com/melon95/YCode" target="_blank" rel="noopener" data-i="viewSource">View source</a>
+        </div>
+        <p class="fineprint" data-i="compat">macOS 14 or later, Apple Silicon and Intel. Free and open source under MIT.</p>
+      </div>
+    </div>
+
+    <figure class="stage">
+      <div class="app-window" id="demo" data-ui aria-label="Interactive preview of the YCode workspace">
+        <div class="titlebar">
+          <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="title">Welcome <span class="branch">feature/welcome</span></span>
+          <div class="layouts" role="group" aria-label="Layout" data-i-aria="layoutGroup">
+            <button type="button" data-layout="grid" aria-label="Grid" aria-pressed="true"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1"/><rect x="9" y="9" width="5.5" height="5.5" rx="1"/></svg><span data-i="layoutGrid">Grid</span></button>
+            <button type="button" data-layout="columns" aria-label="Columns" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1.5" width="2.8" height="13" rx=".8"/><rect x="4.8" y="1.5" width="2.8" height="13" rx=".8"/><rect x="8.5" y="1.5" width="2.8" height="13" rx=".8"/><rect x="12.2" y="1.5" width="2.8" height="13" rx=".8"/></svg><span data-i="layoutColumns">Columns</span></button>
+            <button type="button" data-layout="main" aria-label="Main and side" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="8" height="13" rx="1"/><rect x="10.5" y="1.5" width="4" height="3.7" rx=".8"/><rect x="10.5" y="6.15" width="4" height="3.7" rx=".8"/><rect x="10.5" y="10.8" width="4" height="3.7" rx=".8"/></svg><span data-i="layoutMain">Main and side</span></button>
+          </div>
+        </div>
+        <div class="app-body">
+          <aside class="sessions" aria-label="Sessions">
+            <span class="search" data-i="demoSearch">Search sessions</span>
+            <span class="project">Welcome</span>
+            <ul>
+              <li class="current"><i style="--agent:#d97757">C</i><span data-i="s1">Welcome spacing</span></li> <!-- taste-skill-ignore: native Claude Code brand colour in the interface preview. -->
+              <li><i style="--agent:#7b6cf6">X</i><span data-i="s2">Update plan.md</span></li>
+              <li><i style="--agent:#2f6fed">P</i><span data-i="s3">Run tests</span></li>
+              <li><i style="--agent:#d97757">C</i><span data-i="s4">Review changes</span></li> <!-- taste-skill-ignore: native Claude Code brand colour in the interface preview. -->
+            </ul>
+          </aside>
+          <div class="canvas layout-grid" id="canvas">
+            <section class="pane" data-agent="claude" style="--agent:#d97757"><header>Claude Code</header><pre>› Ready for a task</pre></section> <!-- taste-skill-ignore: native Claude Code brand colour in the interface preview. -->
+            <section class="pane" data-agent="codex" style="--agent:#7b6cf6"><header>Codex</header><pre>› Ready for a task</pre></section>
+            <section class="pane" data-agent="pi" style="--agent:#2f6fed"><header>Pi</header><pre>› Ready for a task</pre></section>
+            <section class="pane" data-agent="review" style="--agent:#d97757"><header>Claude Code</header><pre>› Ready for a task</pre></section> <!-- taste-skill-ignore: native Claude Code brand colour in the interface preview. -->
+          </div>
+        </div>
+      </div>
+      <figcaption data-i="stageCaption">Four independent sessions, each in its own PTY. Switch the layout to see how YCode arranges them.</figcaption>
+    </figure>
+  </section>
+
+  <section id="agents" class="agents wrap" aria-labelledby="agents-title">
+    <h2 id="agents-title" data-i="agentsTitle">Bring the CLI you already use</h2>
+    <ul class="commands">
+      <li><code>claude</code><span>Claude Code</span></li>
+      <li><code>codex</code><span>Codex</span></li>
+      <li><code>pi</code><span>Pi</span></li>
+      <li class="custom"><code>your-cli</code><span data-i="customCli">Add any command in Settings</span></li>
+    </ul>
+    <p data-i="agentsNote">YCode doesn't bundle a model or a subscription. Install and sign in to each CLI the way you normally would.</p>
+  </section>
+
+  <section id="tour" class="tour wrap" aria-labelledby="film-title">
+    <div class="tour-head">
+      <h2 id="film-title" data-i="filmTitle">The whole workspace in 53 seconds</h2>
+      <p data-i="filmMeta">Launching agents, arranging sessions, reading code, reviewing changes, sharing todos, and the keyboard shortcuts that tie it together.</p>
+    </div>
+    <div class="tour-body">
+      <div class="player">
+        <video id="intro-video" controls playsinline preload="none" poster="assets/ycode-overview-poster.en.jpg" width="1920" height="1080" aria-label="YCode product overview film">
+          <source src="assets/ycode-overview.en.mp4" type="video/mp4">
+          <track kind="captions" src="assets/ycode-overview.en.vtt" srclang="en" label="English">
+          <track kind="captions" src="assets/ycode-overview.zh.vtt" srclang="zh" label="简体中文">
+          <p><a id="film-download" href="assets/ycode-overview.en.mp4" data-i="filmFallback">Download the video</a></p>
+        </video>
+      </div>
+      <ol class="chapters" id="chapters" aria-label="Chapters"></ol>
+    </div>
+  </section>
+
+  <section id="panels" class="panels wrap" aria-labelledby="panels-title">
+    <div class="panels-head">
+      <h2 id="panels-title" data-i="panelsTitle">Context without leaving the terminal</h2>
+      <p data-i="panelsIntro">Open a panel beside your sessions, use it, and close it again. The same shortcuts work in the app.</p>
+    </div>
+    <div class="dock">
+      <div class="dock-tabs" role="tablist" aria-label="Panels">
+        <button role="tab" id="tab-files" aria-controls="panel-view" aria-selected="true" tabindex="0" data-view="files"><span data-i="tabFiles">Files</span><kbd>⌘1</kbd></button>
+        <button role="tab" id="tab-changes" aria-controls="panel-view" aria-selected="false" tabindex="-1" data-view="changes"><span data-i="tabChanges">Changes</span><kbd>⌘2</kbd></button>
+        <button role="tab" id="tab-todos" aria-controls="panel-view" aria-selected="false" tabindex="-1" data-view="overview"><span data-i="tabTodos">Todos</span><kbd>⌘3</kbd></button>
+      </div>
+      <div class="dock-view" id="panel-view" role="tabpanel" aria-labelledby="tab-files">
+        <div class="dock-text">
+          <h3 id="panel-title">Read the code your agent is touching.</h3>
+          <p id="panel-body">Browse the file tree, preview Markdown, SVG, and images, and save small edits with ⌘S.</p>
+          <p class="panel-limit" id="panel-limit">Built for reading and light edits. There's no LSP or go-to-definition.</p>
+        </div>
+        <div class="shot" data-ui><img id="panel-shot" src="assets/files.png" alt="YCode file tree and a Swift file with syntax highlighting" width="3420" height="1958" loading="lazy" decoding="async"></div>
+      </div>
+    </div>
+    <figure class="workspace-shot">
+      <img src="assets/overview.png" alt="YCode workspace with an agent terminal, project todos and file preview" width="3420" height="1958" loading="lazy" decoding="async">
+      <figcaption data-i="workspaceShot">The native workspace, with sample project content.</figcaption>
+    </figure>
+  </section>
+
+  <section id="start" class="start wrap" aria-labelledby="start-title">
+    <h2 id="start-title" data-i="startTitle">From folder to first session</h2>
+    <ol class="steps">
+      <li><kbd>⌘O</kbd><h3 data-i="s1Title">Open a project</h3><p data-i="s1Body">Pick any local folder. Choose a Git repository to review and commit changes.</p></li>
+      <li><kbd>⌘N</kbd><h3 data-i="s2Title">Start a session</h3><p data-i="s2Body">Choose Claude Code, Codex, Pi, or a custom CLI. Add Pi and others in Settings → Agents.</p></li>
+      <li><kbd>⌘K</kbd><h3 data-i="s3Title">Find anything</h3><p data-i="s3Body">Search sessions, todos, history, and actions from one palette.</p></li>
+    </ol>
+  </section>
+
+  <section id="questions" class="faq wrap" aria-labelledby="faq-title">
+    <h2 id="faq-title" data-i="faqTitle">Questions before you download</h2>
+    <div class="faq-list">
+      <details><summary data-i="q1">Which Macs are supported?</summary><p data-i="a1">YCode runs on macOS 14 or later. Release builds support both Apple Silicon and Intel Macs. Download the ZIP, unzip it, and drag YCode into Applications.</p></details>
+      <details><summary data-i="q2">Does YCode include an AI subscription?</summary><p data-i="a2">No. YCode is free and open source under the MIT license. Install and sign in to your own agent CLI; model access and charges are handled by that provider.</p></details>
+      <details><summary data-i="q3">Is this a full code editor?</summary><p data-i="a3">The editor is for viewing files, basic syntax highlighting, and small manual edits. It also previews Markdown, SVG, and images. LSP, semantic diagnostics, and go-to-definition are not included.</p></details>
+      <details><summary data-i="q4">Can I isolate sessions with worktrees?</summary><p data-i="a4">Worktree isolation is not connected in the native app yet, even though the session picker shows the option. Use regular project sessions for now.</p></details>
+      <details><summary data-i="q5">Does it support dark mode and Chinese?</summary><p data-i="a5">Yes. The app has English and Chinese interfaces, plus light, dark, and system appearance. Screenshots on this page show the English interface with sample project data.</p></details>
+      <details><summary data-i="q6">Can I build it myself?</summary><p data-i="a6">Yes. You'll need Xcode with a Swift 6 toolchain, macOS 14 or later, and Git. Clone the repository, then run:</p><div class="code-block"><pre><code>cd YCode/macos
+swift test
+scripts/build_and_run.sh run</code></pre><button id="copy" type="button" data-i="copy">Copy</button></div><p class="copy-status" role="status" id="copy-status"></p></details>
+    </div>
+  </section>
+
+  <section class="closing wrap" aria-labelledby="closing-title">
+    <img src="assets/icon.svg" width="72" height="72" alt="">
+    <h2 id="closing-title" data-i="closingTitle">Give your agents a proper workspace.</h2>
+    <a class="button primary" href="https://github.com/melon95/YCode/releases/latest"><span data-i="download">Download for macOS</span></a>
+    <p class="fineprint" data-i="closingMeta">macOS 14 or later. Free and open source.</p>
+  </section>
+</main>
+
+<footer class="footer wrap">
+  <a class="brand" href="#"><img src="assets/icon.svg" width="24" height="24" alt=""><span>YCode</span></a>
+  <p data-i="footer">A native home for your coding agents.</p>
+  <div><a href="https://github.com/melon95/YCode" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/melon95/YCode/blob/main/LICENSE" target="_blank" rel="noopener" data-i="license">MIT License</a></div>
+</footer>
+</body>
+</html>
