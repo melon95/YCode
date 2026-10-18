@@ -485,6 +485,9 @@ private struct ProjectShellWorkspaceView: View {
                 onTitle: { _ in },
                 onSearchResult: { _, _ in }
             )
+            // A different process needs a fresh view and coordinator, including
+            // tab/project switches and restarts that keep the same pane ID.
+            .id(ObjectIdentifier(runtime))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 8) {

@@ -1,10 +1,13 @@
+import AppKit
 import Foundation
+import SwiftUI
+import SwiftTerm
 import Testing
 @testable import YCodeApp
 import YCodeCore
 
 /// 跨项目画布（docs/canvas-cross-project.html）：画布是全局的，右侧面板跟随焦点窗格的项目。
-/// 只经过 `openSessionInCanvas` 之类的画布入口，不走 `activateSession`——后者会真的拉起 agent 进程。
+/// 画布测试不拉起 agent 进程；Shell 视图回归只启动临时项目的普通 Shell。
 @Suite("Cross-project canvas", .serialized)
 @MainActor
 struct CrossProjectCanvasTests {
@@ -39,6 +42,87 @@ struct CrossProjectCanvasTests {
 
         let model = WorkspaceModel(initialProjectID: alpha.id, dataRootOverride: dataRoot)
         return Fixture(model: model, alpha: alpha, beta: beta, alphaSessions: alphaSessions, betaSessions: betaSessions)
+    }
+
+    @Test("shell views follow the selected project and tab without retaining another process")
+    func shellViewFollowsProjectAndTab() async throws {
+        let f = try fixture()
+        let model = f.model
+        var paneIDs: [String] = []
+        defer {
+            YCodeProjectShellPool.shared.terminateProjectImmediately(paneIDs: paneIDs)
+            try? FileManager.default.removeItem(at: model.dataRoot.deletingLastPathComponent())
+        }
+        for panel in model.openPanels { model.togglePanel(panel) }
+        model.showPanel(.terminal)
+        let alphaPane = try #require(model.selectedShellPaneID)
+        paneIDs.append(alphaPane)
+        let alpha = try #require(model.shellRuntime(paneID: alphaPane))
+
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let host = NSHostingView(rootView: WorkspaceInspectorView(model: model))
+        window.contentView = host
+        defer { window.close() }
+
+        func terminals(in view: NSView) -> [TerminalView] {
+            if let terminal = view as? TerminalView { return [terminal] }
+            return view.subviews.flatMap { terminals(in: $0) }
+        }
+        func visibleText() -> String {
+            terminals(in: host).map { String(decoding: $0.getTerminal().getBufferAsData(), as: UTF8.self) }
+                .joined().replacingOccurrences(of: "\n", with: "")
+                .replacingOccurrences(of: "/private/var/", with: "/var/")
+        }
+        func eventually(_ condition: () -> Bool) async -> Bool {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while ContinuousClock.now < deadline {
+                host.layoutSubtreeIfNeeded()
+                if condition() { return true }
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            return condition()
+        }
+        func directoryReport(_ project: ProjectRecord) -> String {
+            "__CWD__" + project.repositoryURL.path.replacingOccurrences(of: "/private/var/", with: "/var/")
+        }
+        func reportDirectory(_ runtime: YCodeAgentRuntime) {
+            runtime.send("printf '\\n__CWD__'; /bin/pwd; printf '__END__\\n'\n")
+        }
+        reportDirectory(alpha)
+        #expect(await eventually { alpha.attachedViewCount == 1 && visibleText().contains(directoryReport(f.alpha)) })
+
+        model.selectProject(f.beta.id)
+        let betaPane = try #require(model.selectedShellPaneID)
+        paneIDs.append(betaPane)
+        let beta = try #require(model.shellRuntime(paneID: betaPane))
+        reportDirectory(beta)
+        // The launch directory is correct even before the view-binding fix.
+        #expect(await eventually { String(decoding: beta.backlog.bytes, as: UTF8.self).replacingOccurrences(of: "/private/var/", with: "/var/").contains(directoryReport(f.beta)) })
+        #expect(await eventually { alpha.attachedViewCount == 0 && beta.attachedViewCount == 1 })
+        #expect(visibleText().contains(directoryReport(f.beta)))
+        #expect(!visibleText().contains(directoryReport(f.alpha)))
+        let betaView = try #require(terminals(in: host).first)
+        betaView.terminalDelegate?.send(source: betaView, data: ArraySlice("printf '\\n%s%s\\n' '__INPUT_' 'BETA__'\n".utf8))
+        #expect(await eventually { String(decoding: beta.backlog.bytes, as: UTF8.self).contains("__INPUT_BETA__") })
+        #expect(!String(decoding: alpha.backlog.bytes, as: UTF8.self).contains("__INPUT_BETA__"))
+
+        model.addShellPane()
+        let newPane = try #require(model.selectedShellPaneID)
+        paneIDs.append(newPane)
+        let newShell = try #require(model.shellRuntime(paneID: newPane))
+        #expect(newPane != betaPane)
+        reportDirectory(newShell)
+        #expect(await eventually { beta.attachedViewCount == 0 && newShell.attachedViewCount == 1 && visibleText().contains(directoryReport(f.beta)) })
+        model.selectShellPane(betaPane)
+        #expect(await eventually { newShell.attachedViewCount == 0 && beta.attachedViewCount == 1 })
+        model.selectProject(f.alpha.id)
+        #expect(await eventually { beta.attachedViewCount == 0 && alpha.attachedViewCount == 1 })
+        #expect(visibleText().contains(directoryReport(f.alpha)))
+        #expect(!visibleText().contains(directoryReport(f.beta)))
+        #expect(alpha.status.isLive && beta.status.isLive && newShell.status.isLive)
     }
 
     @Test("retired native Pi sessions stay on disk while Pi CLI remains available")
