@@ -33,13 +33,14 @@ struct HookRegistrationTests {
         #expect(remainingHooks["Notification"] == nil)
     }
 
-    @Test("Codex conflict is non-destructive and chain restores user notify")
-    func codexConflictChainRoundTrip() async throws {
+    @Test("Codex conflict is non-destructive and chain restores user notify", arguments: [false, true])
+    func codexConflictChainRoundTrip(hasUserTable: Bool) async throws {
         let fixture = try HookRegistrationFixture()
         defer { fixture.remove() }
         let path = fixture.root.appendingPathComponent(".codex/config.toml")
         try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let original = "notify = [\"user-notify\", \"--flag\"]\nmodel = \"gpt-6\"\n\n[provider.local]\nname = \"kept\"\n"
+        let original = "notify = [\"user-notify\", \"--flag\"]\nmodel = \"gpt-6\"\n"
+            + (hasUserTable ? "\n[provider.local]\nname = \"kept\"\n" : "")
         try Data(original.utf8).write(to: path)
 
         #expect(try await fixture.service.status(for: .codex) == .conflictUserNotify(existing: ["user-notify", "--flag"]))
@@ -53,13 +54,13 @@ struct HookRegistrationTests {
         #expect(chained.contains(YCodeHookRegistrationService.codexHooksStart))
         #expect(chained.contains("permission_request codex"))
         #expect(chained.contains("--next"))
-        #expect(chained.contains("name = \"kept\""))
+        if hasUserTable { #expect(chained.contains("name = \"kept\"")) }
 
         #expect(try await fixture.service.uninstall(for: .codex) == .notInstalled)
         let restored = try String(contentsOf: path, encoding: .utf8)
         #expect(restored.contains("notify = [\"user-notify\", \"--flag\"]"))
         #expect(restored.contains("model = \"gpt-6\""))
-        #expect(restored.contains("name = \"kept\""))
+        if hasUserTable { #expect(restored.contains("name = \"kept\"")) }
         #expect(!restored.contains("ycode-managed"))
     }
 

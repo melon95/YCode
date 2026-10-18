@@ -236,7 +236,9 @@ public actor YCodeHookRegistrationService {
         let firstTable = raw.range(of: #"(?m)^\s*\["#, options: .regularExpression)?.lowerBound ?? raw.endIndex
         let root = raw[..<firstTable]
         guard let range = root.range(
-            of: #"(?m)^\s*notify\s*=\s*(\[[^\n]*\])\s*(?:#.*)?(?:\n|$)"#,
+            // Whitespace after the array must not consume the managed-hooks
+            // marker on the next line; it would make the notify value unparseable.
+            of: #"(?m)^[ \t]*notify[ \t]*=[ \t]*(\[[^\r\n]*\])[ \t]*(?:#[^\r\n]*)?(?:\r?\n|$)"#,
             options: .regularExpression
         ) else { return nil }
         let line = String(raw[range])
