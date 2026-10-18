@@ -103,7 +103,7 @@ final class BasicSettingsModel: ObservableObject {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case agents, integrations, notifications, usage
+    case agents, skills, mcp, integrations, notifications, usage
     case terminal, appearance, keyboard, about
 
     var id: String { rawValue }
@@ -125,7 +125,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         var sections: [SettingsSection] {
             switch self {
             case .general: [.appearance, .keyboard]
-            case .agent: [.agents, .terminal, .integrations, .usage]
+            case .agent: [.agents, .skills, .mcp, .terminal, .integrations, .usage]
             case .system: [.notifications, .about]
             }
         }
@@ -134,6 +134,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     func localizedTitle(_ l10n: YCodeLocalization) -> String {
         switch self {
         case .agents: l10n.text("agents")
+        case .skills: "Skills"
+        case .mcp: "MCP"
         case .integrations: l10n.text("integrations")
         case .notifications: l10n.text("notifications")
         case .usage: l10n.text("usage")
@@ -147,6 +149,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .agents: "cpu"
+        case .skills: "doc.text"
+        case .mcp: "powerplug"
         case .integrations: "puzzlepiece.extension"
         case .notifications: "bell"
         case .usage: "chart.bar"
@@ -162,6 +166,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 struct BasicSettingsView: View {
     @StateObject private var model = BasicSettingsModel()
     @StateObject private var mcpIntegrationModel = MCPIntegrationSettingsModel()
+    @StateObject private var customizationModel = AgentCustomizationSettingsModel()
     @StateObject private var updateController = YCodeUpdateController.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.ycodeL10n) private var inheritedL10n
@@ -303,6 +308,9 @@ struct BasicSettingsView: View {
     @ViewBuilder
     private var settingsContent: some View {
         switch selectedSection {
+        case .skills, .mcp:
+            AgentCustomizationSettingsView(model: customizationModel, agents: model.agents, page: selectedSection == .skills ? .skills : .mcp)
+                .id(selectedSection)
         case .agents:
             Form {
                 Section(l10n.text("configured")) {

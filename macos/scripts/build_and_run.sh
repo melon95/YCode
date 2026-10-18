@@ -66,6 +66,7 @@ fi
 cp "$NATIVE_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 mkdir -p "$APP_CONTENTS/Resources/ThirdPartyNotices"
 cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
+cp "$NATIVE_DIR/Resources/ThirdPartyNotices/"*.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
 cp "$BIN_DIR/ycode" "$BIN_DIR/ycode-mcp" "$BIN_DIR/ycode-notify" "$BIN_DIR/ycode-migrate" "$APP_CONTENTS/Resources/"
 # Remove the retired native Pi bridge from reused development bundles.
 rm -rf "$APP_CONTENTS/Resources/Pi"

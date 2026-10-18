@@ -75,6 +75,7 @@ if [[ "$MODE" != "notarize" ]]; then
   cp "$NATIVE_DIR/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
   mkdir -p "$CONTENTS/Resources/ThirdPartyNotices"
   cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$CONTENTS/Resources/ThirdPartyNotices/"
+  cp "$NATIVE_DIR/Resources/ThirdPartyNotices/"*.txt "$CONTENTS/Resources/ThirdPartyNotices/"
   chmod +x "$CONTENTS/MacOS/YCodeApp" "$CONTENTS/Resources/ycode" "$CONTENTS/Resources/ycode-mcp" "$CONTENTS/Resources/ycode-notify" "$CONTENTS/Resources/ycode-migrate"
 
   SPARKLE_FRAMEWORK="$(find "$NATIVE_DIR/.build/artifacts" "$ARM_BUILD_ROOT" -path '*/Sparkle.framework' -type d -print -quit)"

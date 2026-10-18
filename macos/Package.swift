@@ -19,11 +19,12 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
         .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.8.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.0"),
+        .package(url: "https://github.com/LebJe/TOMLKit.git", exact: "0.6.0")
     ],
     targets: [
         .systemLibrary(name: "CSQLite", path: "Core/CSQLite"),
-        .target(name: "YCodeCore", dependencies: ["CSQLite", "SwiftTerm"], path: "Core/Sources/YCodeCore"),
+        .target(name: "YCodeCore", dependencies: ["CSQLite", "SwiftTerm", "TOMLKit"], path: "Core/Sources/YCodeCore"),
         .target(
             name: "YCodeEditorSupport",
             dependencies: [.product(name: "Markdown", package: "swift-markdown")],
