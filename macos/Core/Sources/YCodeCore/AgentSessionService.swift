@@ -109,6 +109,12 @@ public final class YCodeAgentSessionService {
     }
 
     public func stopSession(id: String) async throws {
+        // An exited session no longer needs a cached runtime. A late/double
+        // Stop action on an existing session remains harmless after eviction.
+        guard processPool.runtime(id: id) != nil else {
+            _ = try repository.session(id: id)
+            return
+        }
         try await processPool.stop(id: id)
         onSessionsChanged?()
     }
@@ -286,11 +292,12 @@ public final class YCodeAgentSessionService {
     }
 
     private func connect(_ runtime: YCodeAgentRuntime) {
+        let sessionID = runtime.id
         runtime.onStatusChange = { [weak self] status in
             guard let self else { return }
             switch status {
-            case let .exited(code): try? self.repository.setSessionExitCode(id: runtime.id, exitCode: code)
-            case let .signaled(signal): try? self.repository.setSessionExitCode(id: runtime.id, exitCode: 128 + signal)
+            case let .exited(code): try? self.repository.setSessionExitCode(id: sessionID, exitCode: code)
+            case let .signaled(signal): try? self.repository.setSessionExitCode(id: sessionID, exitCode: 128 + signal)
             case .starting, .running: break
             }
             self.onSessionsChanged?()

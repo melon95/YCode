@@ -68,6 +68,11 @@ public final class YCodeAgentRuntime: NSObject, @unchecked Sendable, LocalProces
 
     public var onOutput: (@Sendable @MainActor ([UInt8]) -> Void)?
     public var onStatusChange: (@Sendable @MainActor (YCodeSessionRuntimeStatus) -> Void)?
+    @MainActor fileprivate var onTermination: (() -> Void)?
+    @MainActor private var outputDrainTask: Task<Void, Never>?
+    @MainActor private var pendingOutput: [UInt8] = []
+    @MainActor private var outputFlushScheduled = false
+    private static let outputBatchLimit = 64 * 1024
 
     private let forwarder = RuntimeTerminalDelegateForwarder()
     private var process: LocalProcess!
@@ -143,24 +148,76 @@ public final class YCodeAgentRuntime: NSObject, @unchecked Sendable, LocalProces
     public func processTerminated(_ source: LocalProcess, exitCode rawStatus: Int32?) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            self.flushPendingOutput()
             self.status = Self.decode(rawStatus)
             self.onStatusChange?(self.status)
+            self.retireAfterDrainingOutput()
         }
     }
 
     public func dataReceived(slice: ArraySlice<UInt8>) {
         let bytes = Array(slice)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.bytesReceived += bytes.count
-            self.backlog.append(ArraySlice(bytes))
-            self.terminal.feed(buffer: ArraySlice(bytes))
-            self.attachedViews.removeAll { $0.value == nil }
-            for view in self.attachedViews.compactMap(\.value) {
-                view.feed(byteArray: ArraySlice(bytes))
+        // LocalProcess drains on the main queue with bounded pending bytes.
+        // Coalesce small chunks for one run-loop turn, but flush synchronously
+        // at the limit so output cannot escape into an unbounded async queue.
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { enqueueOutput(bytes) }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.enqueueOutput(bytes)
             }
-            NotificationCenter.default.post(name: .ycodeSessionOutput, object: self.id)
-            self.onOutput?(bytes)
+        }
+    }
+
+    @MainActor
+    private func enqueueOutput(_ bytes: [UInt8]) {
+        pendingOutput.append(contentsOf: bytes)
+        if pendingOutput.count >= Self.outputBatchLimit {
+            flushPendingOutput()
+        } else if !outputFlushScheduled {
+            outputFlushScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.outputFlushScheduled = false
+                self.flushPendingOutput()
+            }
+        }
+        if !status.isLive { retireAfterDrainingOutput() }
+    }
+
+    @MainActor
+    private func flushPendingOutput() {
+        guard !pendingOutput.isEmpty else { return }
+        let bytes = pendingOutput
+        pendingOutput = []
+        consume(bytes)
+    }
+
+    @MainActor
+    private func consume(_ bytes: [UInt8]) {
+        bytesReceived += bytes.count
+        backlog.append(ArraySlice(bytes))
+        terminal.feed(buffer: ArraySlice(bytes))
+        attachedViews.removeAll { $0.value == nil }
+        for view in attachedViews.compactMap(\.value) {
+            view.feed(byteArray: ArraySlice(bytes))
+        }
+        NotificationCenter.default.post(name: .ycodeSessionOutput, object: id)
+        onOutput?(bytes)
+        if !status.isLive { retireAfterDrainingOutput() }
+    }
+
+    @MainActor
+    private func retireAfterDrainingOutput() {
+        // The process exit source may run before LocalProcess's last buffered
+        // reads. Keep this runtime alive through a short quiet period so a
+        // fast exit cannot discard its output tail when the pool releases it.
+        outputDrainTask?.cancel()
+        outputDrainTask = Task { [self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            outputDrainTask = nil
+            onTermination?()
         }
     }
 
@@ -207,8 +264,12 @@ public final class YCodeSessionProcessPool {
 
     @discardableResult
     public func start(id: String, plan: YCodeAgentLaunchPlan) -> YCodeAgentRuntime {
-        if let existing = sessions[id] { return existing }
+        if let existing = sessions[id], existing.status.isLive { return existing }
         let runtime = YCodeAgentRuntime(id: id)
+        runtime.onTermination = { [weak self, weak runtime] in
+            guard let self, let runtime, self.sessions[id] === runtime else { return }
+            self.sessions.removeValue(forKey: id)
+        }
         sessions[id] = runtime
         runtime.start(plan)
         return runtime
@@ -219,25 +280,25 @@ public final class YCodeSessionProcessPool {
     public func stop(id: String, timeout: TimeInterval = 5) async throws {
         guard let runtime = sessions[id] else { throw YCodeSessionPoolError.sessionNotFound(id) }
         runtime.terminate()
-        guard await waitUntilStopped(runtime, timeout: timeout) else {
+        if !(await waitUntilStopped(runtime, timeout: timeout)) {
             runtime.forceTerminate()
             guard await waitUntilStopped(runtime, timeout: 2) else {
                 throw YCodeSessionPoolError.stopTimedOut(id)
             }
-            return
         }
+        if sessions[id] === runtime { sessions.removeValue(forKey: id) }
     }
 
     @discardableResult
     public func restart(id: String, plan: YCodeAgentLaunchPlan) async throws -> YCodeAgentRuntime {
         if sessions[id] != nil { try await stop(id: id) }
-        sessions.removeValue(forKey: id)
         return start(id: id, plan: plan)
     }
 
     public func remove(id: String) async throws {
-        if let runtime = sessions[id], runtime.status.isLive { try await stop(id: id) }
-        sessions.removeValue(forKey: id)
+        guard let runtime = sessions[id] else { return }
+        if runtime.status.isLive { try await stop(id: id) }
+        if sessions[id] === runtime { sessions.removeValue(forKey: id) }
     }
 
     public func shutdownAll() async {
