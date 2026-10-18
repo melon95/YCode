@@ -215,6 +215,46 @@ private struct NativeRootView: View {
     }
 
     private var baseWorkspace: some View {
+        Group {
+            if model.projects.isEmpty {
+                emptyWorkspace
+            } else {
+                projectWorkspace
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            applyAutoSidebarCollapse(windowWidth: width)
+        }
+        .onAppear {
+            // 窗口是从上次保存的尺寸恢复的，宽度一开始就可能偏窄，不会再触发尺寸变化。
+            DispatchQueue.main.async { applyAutoSidebarCollapse(windowWidth: windowWidthNow()) }
+        }
+        .background {
+            if lockedProjectID == nil { NativeWindowStateBridge(dataRoot: model.dataRoot) }
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .background(YCodeWindowTagBridge(
+            token: windowToken,
+            title: lockedProjectID == nil ? nil : YCodeLocalization(locale: model.locale).text("projectWindowTitleFormat", model.selectedProject?.displayTitle ?? YCodeLocalization(locale: model.locale).text("project"))
+        ))
+    }
+
+    private var emptyWorkspace: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("YCode")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.leading, YCodeMetrics.trafficLightWidth + 13)
+            .frame(height: YCodeMetrics.topBarHeight)
+            noProjectState
+        }
+        .ignoresSafeArea(.container, edges: .top)
+    }
+
+    private var projectWorkspace: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             WorkspaceSidebarView(
                 model: model,
@@ -269,22 +309,7 @@ private struct NativeRootView: View {
             // 两列各自的安全区不受影响，顶上会留一条标题栏高度的空带（画布顶栏因此被压到 44+28）。
             .ignoresSafeArea(.container, edges: .top)
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-            applyAutoSidebarCollapse(windowWidth: width)
-        }
-        .onAppear {
-            // 窗口是从上次保存的尺寸恢复的，宽度一开始就可能偏窄，不会再触发尺寸变化。
-            DispatchQueue.main.async { applyAutoSidebarCollapse(windowWidth: windowWidthNow()) }
-        }
-        .background {
-            if lockedProjectID == nil { NativeWindowStateBridge(dataRoot: model.dataRoot) }
-        }
-        .ignoresSafeArea(.container, edges: .top)
         .background(YCodeSidebarMinWidthBridge(minWidth: YCodeMetrics.sidebarMinWidth, fallbackWidth: YCodeMetrics.sidebarWidth))
-        .background(YCodeWindowTagBridge(
-            token: windowToken,
-            title: lockedProjectID == nil ? nil : YCodeLocalization(locale: model.locale).text("projectWindowTitleFormat", model.selectedProject?.displayTitle ?? YCodeLocalization(locale: model.locale).text("project"))
-        ))
     }
 
     private var projectCommandWorkspace: some View {
@@ -329,7 +354,7 @@ private struct NativeRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleYCodeWorkspacePanel)) { note in
             guard commandTargetsThisWindow(note) else { return }
-            guard let raw = note.object as? String, let panel = YCodeWorkspacePanel(rawValue: raw) else { return }
+            guard !model.projects.isEmpty, let raw = note.object as? String, let panel = YCodeWorkspacePanel(rawValue: raw) else { return }
             model.togglePanel(panel)
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusYCodeCanvasSlot)) { note in
@@ -355,6 +380,7 @@ private struct NativeRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleYCodeInspector)) { note in
             guard commandTargetsThisWindow(note) else { return }
+            guard !model.projects.isEmpty else { return }
             model.toggleInspector()
         }
         .onReceive(NotificationCenter.default.publisher(for: .showYCodeCommandPalette)) { note in
@@ -506,130 +532,17 @@ private struct NativeRootView: View {
         }
     }
 
-    /// 整份稿子只有这一个真正的空状态（设计稿 §07）。
-    /// 第一屏：该做什么（加项目）→ 有几种做法（选 / 拖 / 命令行）→ 环境齐了没有（设计稿 §12）。
+    /// 已确认的空状态：整个工作区承载打开项目入口，不显示空侧栏与项目工具。
     private var noProjectState: some View {
-        let l10n = YCodeLocalization(locale: model.locale)
-        return VStack(spacing: 0) {
-            ycodeLogo
-                .padding(.bottom, 12)
-            Text(l10n.text("addFirstProjectTitle")).font(.title3.weight(.semibold))
-            Text(l10n.text("addFirstProjectBody"))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, 5)
-
-            HStack(spacing: 9) {
-                Button(l10n.text("chooseFolderEllipsis"), action: openProjectPanel)
-                    .buttonStyle(.borderedProminent)
-                Text("⌘O")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.top, 16)
-
-            // 拖放区：拖着文件夹进窗口时整块高亮，松手后逐个入库并选中第一个。
-            VStack(spacing: 3) {
-                Text(l10n.text("dropFolderHere"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(l10n.text("dropFolderHint"))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 64)
-            .background(
-                RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
-                    .fill(isDropTargeted ? Color.ycodeAccent.opacity(0.10) : .clear)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard)
-                    .strokeBorder(
-                        isDropTargeted ? Color.ycodeAccent : Color.secondary.opacity(0.35),
-                        style: StrokeStyle(lineWidth: isDropTargeted ? 1.5 : 1, dash: isDropTargeted ? [] : [4, 3])
-                    )
-            }
-            .padding(.top, 14)
-
-            if let rejection = dropRejection {
-                Text(rejection)
-                    .font(.caption)
-                    .foregroundStyle(Color.ycodeWarn)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 8)
-            }
-
-            Divider().padding(.top, 16).padding(.bottom, 12)
-            environmentProbe
-        }
-        .padding(24)
-        .frame(width: 452)
-        .ycodeCard()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            adoptDroppedFolders(providers)
-            return true
-        }
+        NoProjectView(
+            isDropTargeted: $isDropTargeted,
+            dropRejection: dropRejection,
+            onOpenProject: openProjectPanel,
+            onDropFolders: adoptDroppedFolders
+        )
+        .padding(.top, 4)
+        .padding([.horizontal, .bottom], YCodeMetrics.panelCardGap)
         .onAppear { model.refreshAgentAvailability() }
-    }
-
-    @ViewBuilder
-    private var ycodeLogo: some View {
-        if let logo = YCodeAgentIconRenderer.ycodeLogo {
-            Image(nsImage: logo)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
-        } else {
-            Image(systemName: "terminal.fill").font(.system(size: 30)).foregroundStyle(.tint)
-        }
-    }
-
-    /// 环境自检是状态不是动作：绿 = 可用，灰 = 没装。第一次打开就能确认环境，不用进设置翻。
-    private var environmentProbe: some View {
-        let l10n = YCodeLocalization(locale: model.locale)
-        return HStack(spacing: 8) {
-            ForEach(model.agentProfiles.filter(\.enabled).prefix(3)) { profile in
-                probeChip(
-                    title: profile.resolvedDisplayName,
-                    ready: model.availableAgentProfileIDs.contains(profile.id)
-                )
-            }
-            probeChip(title: l10n.text("ycodeCommand"), ready: cliToolInstalled)
-            if !cliToolInstalled {
-                Button(l10n.text("install")) { openSettingsWindow() }
-                    .buttonStyle(.link)
-                    .font(.caption)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func probeChip(title: String, ready: Bool) -> some View {
-        HStack(spacing: 5) {
-            YCodeStatusDot(presence: ready ? .running : .idle, size: 5)
-            Text(title).font(.caption)
-        }
-        .padding(.horizontal, 8)
-        .frame(height: 20)
-        .background(Color.secondary.opacity(0.10), in: Capsule())
-    }
-
-    private var cliToolInstalled: Bool {
-        let path = "/usr/local/bin/ycode"
-        guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: path) else {
-            return FileManager.default.isExecutableFile(atPath: path)
-        }
-        return FileManager.default.isExecutableFile(atPath: destination)
-    }
-
-    private func openSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     /// 拖进来的若不是目录，落地后在卡片下方给一句具体原因，不弹窗。
@@ -662,6 +575,7 @@ private struct NativeRootView: View {
     /// 两列的 `NavigationSplitView` 里 `.doubleColumn` 就是「两列都显示」，跟 `.all` 同义 ——
     /// 原先在这两者之间来回切，等于没切。收起侧栏要用 `.detailOnly`。
     private func toggleSidebar() {
+        guard !model.projects.isEmpty else { return }
         sidebarAutoCollapsed = false
         withAnimation(YCodeMotion.panelArea) {
             columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
@@ -844,7 +758,7 @@ private struct NativeRootView: View {
 
     /// ⌘N 就地把选择器摆进画布，没有中间对话框（设计稿 §06 标注 1）。
     private func presentNewSession() {
-        guard !model.projects.isEmpty else { return }
+        guard !model.projects.isEmpty else { openProjectPanel(); return }
         model.reloadAgentProfiles()
         model.isPresentingNewSession = true
     }
