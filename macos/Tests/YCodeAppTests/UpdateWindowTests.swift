@@ -293,9 +293,17 @@ struct UpdateWindowTests {
                         capturedMeasurements.withLock { $0.append(measurement) }
                     }
                 ))
-                host.frame = NSRect(origin: .zero, size: host.fittingSize)
+                // Older SwiftUI versions place provisional layouts while computing
+                // fittingSize. Assert the settled card, after assigning its real frame.
+                let fittingSize = host.fittingSize
+                capturedMeasurements.withLock { $0.removeAll() }
+                host.frame = NSRect(origin: .zero, size: fittingSize)
+                host.needsLayout = true
                 host.layoutSubtreeIfNeeded()
-                let measurements = capturedMeasurements.withLock { $0 }
+                let placements = capturedMeasurements.withLock { $0 }
+                let measurements = [false, true].compactMap { trailing in
+                    placements.last { $0.isTrailing == trailing }
+                }
                 #expect(abs(host.bounds.width - 460) < 1)
                 #expect(measurements.count >= 2, "Both metadata and actions must be measured during actual layout")
                 for measurement in measurements {
