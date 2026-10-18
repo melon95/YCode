@@ -75,62 +75,41 @@ struct UsageSettingsView: View {
     }
 
     private var report: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(l10n.text("usageEstimateHelp"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
+        Form {
+            Section {
+                YCodeFormValueRow(label: l10n.text("estimatedCost"), value: currency(model.usage.totalCostUSD), trailing: true)
+                YCodeFormValueRow(label: l10n.text("totalTokens"), value: compact(model.usage.totals.total), trailing: true)
+                YCodeFormValueRow(label: l10n.text("sessions"), value: "\(model.usage.sessions.count)", trailing: true)
+            } header: {
+                HStack {
+                    Text(l10n.text("usage"))
+                    Spacer()
+                    if model.isLoading { ProgressView().controlSize(.mini) }
                     Button { Task { await model.load() } } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.borderless)
-                        .help(l10n.text("recalculate"))
+                        .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                        .help(l10n.text("recalculate")).accessibilityLabel(l10n.text("recalculate"))
                         .disabled(model.isLoading)
                 }
-
-                HStack(spacing: 10) {
-                    summaryCard(l10n.text("estimatedCost"), value: currency(model.usage.totalCostUSD), emphasized: true)
-                    summaryCard(l10n.text("totalTokens"), value: compact(model.usage.totals.total))
-                    summaryCard(l10n.text("sessions"), value: "\(model.usage.sessions.count)")
-                }
-
-                tokenBreakdown
-                if !model.usage.byProject.isEmpty { projectSection }
-                if !recentDays.isEmpty { daySection }
-                if !model.usage.byModel.isEmpty { modelSection }
-                sessionSection
+            } footer: {
+                Text(l10n.text("usageEstimateHelp"))
             }
-            .padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Section("Token") {
+                tokenRow(l10n.text("input"), model.usage.totals.input)
+                tokenRow(l10n.text("output"), model.usage.totals.output)
+                tokenRow(l10n.text("cacheWrite"), model.usage.totals.cacheCreation)
+                tokenRow(l10n.text("cacheRead"), model.usage.totals.cacheRead)
+                if model.usage.totals.reasoning > 0 { tokenRow(l10n.text("reasoning"), model.usage.totals.reasoning) }
+            }
+            if !model.usage.byProject.isEmpty { projectSection }
+            if !recentDays.isEmpty { daySection }
+            if !model.usage.byModel.isEmpty { modelSection }
+            sessionSection
         }
+        .formStyle(.grouped)
     }
 
-    private func summaryCard(_ label: String, value: String, emphasized: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.semibold)).foregroundStyle(emphasized ? Color.ycodeAccent : .primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
-    }
-
-    private var tokenBreakdown: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 105), spacing: 7)], alignment: .leading, spacing: 7) {
-            tokenChip(l10n.text("input"), model.usage.totals.input)
-            tokenChip(l10n.text("output"), model.usage.totals.output)
-            tokenChip(l10n.text("cacheWrite"), model.usage.totals.cacheCreation)
-            tokenChip(l10n.text("cacheRead"), model.usage.totals.cacheRead)
-            if model.usage.totals.reasoning > 0 { tokenChip(l10n.text("reasoning"), model.usage.totals.reasoning) }
-        }
-    }
-
-    private func tokenChip(_ label: String, _ value: UInt64) -> some View {
-        Text("\(label)  \(compact(value))")
-            .font(.caption)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.quaternary.opacity(0.65), in: Capsule())
+    private func tokenRow(_ label: String, _ value: UInt64) -> some View {
+        YCodeFormValueRow(label: label, value: compact(value), trailing: true)
     }
 
     private var projectSection: some View {
@@ -178,12 +157,7 @@ struct UsageSettingsView: View {
     }
 
     private func usageSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            VStack(spacing: 0) { content() }
-                .padding(.horizontal, 10)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: YCodeMetrics.radiusCard))
-        }
+        Section(title) { content() }
     }
 
     private func usageRow(
@@ -195,6 +169,7 @@ struct UsageSettingsView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
+                    .help(title)
                     .font(monospaced ? .system(.body, design: .monospaced) : .body)
                     .lineLimit(1)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -202,8 +177,6 @@ struct UsageSettingsView: View {
             Spacer()
             Text(value).monospacedDigit()
         }
-        .padding(.vertical, 8)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func compact(_ value: UInt64) -> String {

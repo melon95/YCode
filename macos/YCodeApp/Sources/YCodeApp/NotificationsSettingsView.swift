@@ -3,6 +3,9 @@ import YCodeCore
 
 struct NotificationsSettingsView: View {
     @Binding var settings: YCodeNotificationSettings
+    var permissionReader: @MainActor () async -> String = {
+        await YCodeSystemNotificationCoordinator.shared.permissionSummary()
+    }
     @Environment(\.ycodeL10n) private var l10n
     @State private var testError: String?
     @State private var testResult: String?
@@ -10,13 +13,12 @@ struct NotificationsSettingsView: View {
     @State private var permissionSummary = YCodeLocalization.zh.text("notificationLoading")
 
     private enum Delivery: String, CaseIterable, Identifiable {
-        case always, unfocused, off
+        case always, unfocused
         var id: String { rawValue }
         func title(_ l10n: YCodeLocalization) -> String {
             switch self {
             case .always: l10n.text("always")
             case .unfocused: l10n.text("onlyUnfocused")
-            case .off: l10n.text("off")
             }
         }
     }
@@ -24,17 +26,19 @@ struct NotificationsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                // 「选一个值」而不是模式开关 —— 切换它不改变这一页显示什么，
-                // 所以用弹出菜单。分段控件留给真正会换内容的地方（比如代理模式）。
+                Toggle(l10n.text("systemNotifications"), isOn: $settings.enabled)
+                    .toggleStyle(.switch).controlSize(.small)
                 YCodeFormRow(label: l10n.text("deliveryTiming"), trailing: true) {
                     Picker("", selection: delivery) {
                         ForEach(Delivery.allCases) { Text($0.title(l10n)).tag($0) }
                     }
                     .labelsHidden()
                     .fixedSize()
+                    .disabled(!settings.enabled)
                 }
                 YCodeFormRow(label: l10n.text("testNotification"), trailing: true) {
-                    Button(l10n.text("send")) {
+                    if sendingTest { ProgressView().controlSize(.mini) }
+                    Button {
                         sendingTest = true
                         testResult = nil
                         Task {
@@ -43,10 +47,13 @@ struct NotificationsSettingsView: View {
                                 testResult = l10n.text("notificationAccepted")
                             }
                             catch { testError = error.localizedDescription }
-                            permissionSummary = await YCodeSystemNotificationCoordinator.shared.permissionSummary()
+                            permissionSummary = await permissionReader()
                             sendingTest = false
                         }
-                    }
+                    } label: { Image(systemName: "paperplane") }
+                    .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                    .help(l10n.text("send"))
+                    .accessibilityLabel(l10n.text("testNotification"))
                     .disabled(!settings.enabled || sendingTest)
                 }
                 YCodeFormValueRow(label: l10n.text("systemPermission"), value: permissionSummary, trailing: true)
@@ -60,17 +67,18 @@ struct NotificationsSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Section(l10n.text("connectedEvents")) {
-                YCodeFormValueRow(label: l10n.text("agentTurnComplete"), value: l10n.text("enabled"), trailing: true)
-                YCodeFormValueRow(label: l10n.text("needsApprovalOrAttention"), value: l10n.text("enabled"), trailing: true)
+            Section {
+                eventRow(l10n.text("agentTurnComplete"))
+                eventRow(l10n.text("needsApprovalOrAttention"))
+            } header: {
+                Text(l10n.text("connectedEvents"))
+            } footer: {
                 Text(l10n.text("notificationApprovalHelp"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .task {
-            permissionSummary = await YCodeSystemNotificationCoordinator.shared.permissionSummary()
+            permissionSummary = await permissionReader()
         }
         .alert(l10n.text("notificationFailed"), isPresented: Binding(
             get: { testError != nil },
@@ -85,22 +93,20 @@ struct NotificationsSettingsView: View {
     private var delivery: Binding<Delivery> {
         Binding(
             get: {
-                if !settings.enabled { return .off }
-                return settings.onlyWhenUnfocused ? .unfocused : .always
+                settings.onlyWhenUnfocused ? .unfocused : .always
             },
             set: { value in
-                switch value {
-                case .always:
-                    settings = YCodeNotificationSettings(enabled: true, onlyWhenUnfocused: false)
-                case .unfocused:
-                    settings = YCodeNotificationSettings(enabled: true, onlyWhenUnfocused: true)
-                case .off:
-                    settings = YCodeNotificationSettings(
-                        enabled: false,
-                        onlyWhenUnfocused: settings.onlyWhenUnfocused
-                    )
-                }
+                settings.onlyWhenUnfocused = value == .unfocused
             }
         )
+    }
+
+    private func eventRow(_ title: String) -> some View {
+        YCodeFormRow(label: title, trailing: true) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.secondary)
+                .help(l10n.text("connectedEvents"))
+                .accessibilityLabel(l10n.text("connectedEvents"))
+        }
     }
 }

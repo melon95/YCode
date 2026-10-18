@@ -335,7 +335,7 @@ struct BasicSettingsView: View {
             // **PATH**（`probe()` 跑的就是 `$SHELL -l -i -c "command -v ..."`），
             // 知道 shell 叫 /bin/zsh 帮不上忙。两行都删掉，这一页只留真正的设置：代理。
             Form {
-                Section(l10n.text("proxy")) {
+                Section {
                     // 这里本可以用分段控件（切换它确实会改变下面出现哪些字段，
                     // 是个真正的模式开关）。但设置窗里其余的三选一都已经是弹出菜单，
                     // 只剩它一个是分段的话，同一个窗口里就有了两套「选一个」的说法。
@@ -372,9 +372,10 @@ struct BasicSettingsView: View {
                                 .font(.system(.body, design: .monospaced))
                         }
                     }
+                } header: {
+                    Text(l10n.text("proxy"))
+                } footer: {
                     Text(l10n.text("proxyHelp"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
@@ -394,7 +395,7 @@ struct BasicSettingsView: View {
                 // 下面三项都只是「选一个值」，切换后页面其余部分不变，
                 // 所以用弹出菜单而不是分段控件 —— 这也是 macOS 系统设置的做法。
                 // 三个分段控件叠在一起时，三块实心强调色会把整页的重心全抢走。
-                Section(l10n.text("theme")) {
+                Section {
                     YCodeFormRow(label: l10n.text("theme"), trailing: true) {
                         Picker("", selection: $model.appearance.theme) {
                             Text(l10n.text("followSystem")).tag(YCodeThemeCatalog.systemID)
@@ -404,11 +405,12 @@ struct BasicSettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
+                } header: {
+                    Text(l10n.text("theme"))
+                } footer: {
                     Text(l10n.text("themeHelp"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                Section(l10n.text("language")) {
+                Section {
                     YCodeFormRow(label: l10n.text("interfaceLanguage"), trailing: true) {
                         Picker("", selection: $model.appearance.locale) {
                             Text("中文").tag(YCodeLocale.zh)
@@ -417,11 +419,12 @@ struct BasicSettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
+                } header: {
+                    Text(l10n.text("language"))
+                } footer: {
                     Text(l10n.text("languageHelp"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                Section(l10n.text("uiScale")) {
+                Section {
                     // 三档按系统字阶整体缩放，不再整棵视图树覆盖一个绝对字号（设计稿问题 07）。
                     YCodeFormRow(label: l10n.text("uiScale"), trailing: true) {
                         Picker("", selection: uiScaleBinding) {
@@ -432,11 +435,12 @@ struct BasicSettingsView: View {
                         .labelsHidden()
                         .fixedSize()
                     }
+                } header: {
+                    Text(l10n.text("uiScale"))
+                } footer: {
                     Text(l10n.text("uiScaleHint"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                Section(l10n.text("fontSize")) {
+                Section {
                     // 之前是 Stepper 包着整行：标签和数字被撑到行两端，中间空一大段，
                     // 数字还顶在加减箭头左边几十个点的地方，看不出它俩是一回事。
                     // 现在和这一页其余的行一样走 YCodeFormRow —— 标签一列，控件一列，
@@ -444,15 +448,16 @@ struct BasicSettingsView: View {
                     // 只显示数字：单位在分组脚注里说一次就够，不必每行重复。
                     fontRow(l10n.text("editor"), keyPath: \.editor)
                     fontRow(l10n.text("terminal"), keyPath: \.terminal)
+                } header: {
+                    Text(l10n.text("fontSize"))
+                } footer: {
                     Text(l10n.text("fontHelp"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
         case .keyboard:
             Form {
-                Section(l10n.text("currentShortcuts")) {
+                Section {
                     keyboardRow(l10n.text("addProject"), "⌘O")
                     keyboardRow(l10n.text("newSession"), "⌘N")
                     keyboardRow(l10n.text("commandPalette"), "⌘K")
@@ -463,11 +468,10 @@ struct BasicSettingsView: View {
                     keyboardRow(l10n.text("inspectorTabFormat", "1–4"), "⌘1–⌘4")
                     keyboardRow(l10n.text("focusCanvasFormat", 1) + "–4", "⇧⌘1–⇧⌘4")
                     keyboardRow(l10n.text("refreshHistory"), "⇧⌘R")
-                }
-                Section {
+                } header: {
+                    Text(l10n.text("currentShortcuts"))
+                } footer: {
                     Text(l10n.text("shortcutsReadOnly"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
@@ -493,17 +497,19 @@ struct BasicSettingsView: View {
                 // 为什么不能用的说明文字 —— 五个元素加起来不产生任何一个可执行的动作，
                 // 却把唯一真能用的「检查更新…」压在了最底下。占位符不是功能：
                 // 想不起来自己没实现什么的时候，界面不该替用户记着。做出来时再加回来。
-                Section(l10n.text("updates")) {
-                    Button(l10n.text("checkForUpdatesEllipsis")) {
-                        updateController.checkForUpdates()
+                Section {
+                    YCodeFormRow(label: l10n.text("checkForUpdatesEllipsis"), trailing: true) {
+                        Button { updateController.checkForUpdates() } label: { Image(systemName: "arrow.clockwise") }
+                            .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+                            .help(l10n.text("checkForUpdatesEllipsis"))
+                            .accessibilityLabel(l10n.text("checkForUpdatesEllipsis"))
+                            .disabled(!updateController.isConfigured)
                     }
-                    .disabled(!updateController.isConfigured)
-                    // 唯一留下的说明：它解释的是那个按钮**此刻为什么灰着**，
-                    // 而且只在真的灰着时出现 —— 这是状态反馈，不是道歉。
+                } header: {
+                    Text(l10n.text("updates"))
+                } footer: {
                     if !updateController.isConfigured {
                         Text(l10n.text("updatesReleaseOnly"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                 }
 

@@ -42,12 +42,14 @@ final class MCPIntegrationSettingsModel: ObservableObject {
     }
 
     func refresh(_ agents: [YCodeMCPAgent]) async {
-        for agent in agents where !busyAgents.contains(agent) {
-            do {
-                statuses[agent] = try await service.status(for: agent)
-                hookStatuses[agent] = try await hookService.status(for: agent)
-            } catch {
-                errorMessage = error.localizedDescription
+        for agent in agents {
+            if !busyAgents.contains(agent) {
+                do { statuses[agent] = try await service.status(for: agent) }
+                catch { errorMessage = error.localizedDescription }
+            }
+            if !hookBusyAgents.contains(agent) {
+                do { hookStatuses[agent] = try await hookService.status(for: agent) }
+                catch { errorMessage = error.localizedDescription }
             }
         }
         if !cliBusy { cliStatus = await cliService.status() }
@@ -68,6 +70,8 @@ final class MCPIntegrationSettingsModel: ObservableObject {
 
     func refreshCLIStatus() async {
         guard !cliBusy else { return }
+        cliBusy = true
+        defer { cliBusy = false }
         cliStatus = await cliService.status()
     }
 
@@ -76,9 +80,13 @@ final class MCPIntegrationSettingsModel: ObservableObject {
         hookBusyAgents.insert(agent)
         defer { hookBusyAgents.remove(agent) }
         do {
-            hookStatuses[agent] = installed
-                ? try await hookService.install(for: agent, chainExistingCodexNotify: chainExisting)
-                : try await hookService.uninstall(for: agent)
+            if installed {
+                hookStatuses[agent] = try await hookService.install(for: agent, chainExistingCodexNotify: chainExisting)
+            } else {
+                _ = try await hookService.uninstall(for: agent)
+                // Removing a chained hook restores the user's notify command.
+                hookStatuses[agent] = try await hookService.status(for: agent)
+            }
         } catch {
             errorMessage = error.localizedDescription
             hookStatuses[agent] = try? await hookService.status(for: agent)
@@ -141,20 +149,14 @@ struct MCPIntegrationSettingsView: View {
         Form {
             Section {
                 if agents.isEmpty {
-                    Text(l10n.text("noClaudeOrCodex"))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(agents) { agent in
-                        LabeledContent {
-                            hookControls(for: agent)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(agent.displayName)
-                                Text(agent == .claude ? "Stop / permission_prompt" : "turn_complete / PermissionRequest")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                    Text(l10n.text("noClaudeOrCodex")).foregroundStyle(.secondary)
+                }
+                ForEach(agents.map { IntegrationRow(id: "hook-" + $0.id, agent: $0) }) { row in
+                    let agent = row.agent
+                    HStack(spacing: 10) {
+                        agentLabel(agent, subtitle: agent == .claude ? "Stop / permission_prompt" : "turn_complete / PermissionRequest")
+                        Spacer(minLength: 8)
+                        hookControls(for: agent)
                     }
                 }
             } header: {
@@ -165,24 +167,23 @@ struct MCPIntegrationSettingsView: View {
 
             Section {
                 if agents.isEmpty {
-                    Text(l10n.text("noClaudeOrCodex"))
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(agents) { agent in
-                        LabeledContent {
-                            statusControls(for: agent)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(agent.displayName)
-                                Text(l10n.text("todoMCPPermission"))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                    Text(l10n.text("noClaudeOrCodex")).foregroundStyle(.secondary)
+                }
+                ForEach(agents.map { IntegrationRow(id: "mcp-" + $0.id, agent: $0) }) { row in
+                    let agent = row.agent
+                    HStack(spacing: 10) {
+                        agentLabel(agent, subtitle: l10n.text("todoMCPPermission"))
+                        Spacer(minLength: 8)
+                        integrationSwitch(
+                            agent.displayName + " · Todo MCP",
+                            isOn: model.statuses[agent] == .installed,
+                            busy: model.busyAgents.contains(agent) || model.statuses[agent] == nil,
+                            available: model.statuses[agent] != nil
+                        ) { await model.setInstalled($0, for: agent) }
                     }
                 }
-                YCodeFormValueRow(label: l10n.text("transport"), value: "ycode-mcp · stdio", mono: true)
-                YCodeFormValueRow(label: l10n.text("dataRouting"), value: l10n.text("terminalIDProjectDirectory"))
+                YCodeFormValueRow(label: l10n.text("transport"), value: "ycode-mcp · stdio", mono: true, trailing: true)
+                YCodeFormValueRow(label: l10n.text("dataRouting"), value: l10n.text("terminalIDProjectDirectory"), trailing: true)
             } header: {
                 Text("Todo MCP")
             } footer: {
@@ -190,27 +191,23 @@ struct MCPIntegrationSettingsView: View {
             }
 
             Section {
-                LabeledContent {
-                    cliControls
-                } label: {
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(l10n.text("ycodeCommand"))
-                        Text(l10n.text("ycodeCommandHelp"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text(l10n.text("ycodeCommandHelp")).font(.caption).foregroundStyle(.secondary)
+                        if let path = cliPath {
+                            Text(path).font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                                .textSelection(.enabled).help(path)
+                        }
                     }
+                    Spacer(minLength: 8)
+                    cliControls
                 }
-                LabeledContent {
-                    Label(deepLinkStatusText, systemImage: model.deepLinkIsDefault ? "checkmark.circle.fill" : "exclamationmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(model.deepLinkIsDefault ? .green : .orange)
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(l10n.text("deepLink"))
-                        Text(l10n.text("deepLinkHelp"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                YCodeFormRow(label: l10n.text("deepLink"), hint: l10n.text("deepLinkHelp"), trailing: true) {
+                    Image(systemName: model.deepLinkIsDefault ? "checkmark.circle.fill" : "exclamationmark.triangle")
+                        .foregroundStyle(model.deepLinkIsDefault ? Color.green : Color.ycodeWarn)
+                        .help(deepLinkStatusText).accessibilityLabel(deepLinkStatusText)
                 }
             } header: {
                 Text(l10n.text("systemIntegration"))
@@ -230,92 +227,108 @@ struct MCPIntegrationSettingsView: View {
         }
     }
 
+    private func agentLabel(_ agent: YCodeMCPAgent, subtitle: String) -> some View {
+        HStack(spacing: 10) {
+            if let profile = YCodeAgentCatalog.defaults.first(where: { $0.introspect == agent.rawValue }) {
+                AgentBadge(profile: profile)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(agent.displayName)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // Form flattens row identities across sections; the hook and MCP rows
+    // must not share the same agent ID or their group surfaces get misplaced.
+    private struct IntegrationRow: Identifiable {
+        let id: String
+        let agent: YCodeMCPAgent
+    }
+
     private var deepLinkStatusText: String {
         if !model.deepLinkRegistered { return l10n.text("notDeclared") }
-        return model.deepLinkIsDefault ? l10n.text("defaultHandler") : l10n.text("declaredOtherDefault")
+        return l10n.text(model.deepLinkIsDefault ? "defaultHandler" : "declaredOtherDefault")
+    }
+
+    private var cliPath: String? {
+        switch model.cliStatus {
+        case let .installed(path, _), let .stale(path, _), let .conflict(path, _): path
+        default: nil
+        }
     }
 
     @ViewBuilder
     private var cliControls: some View {
-        if model.cliBusy {
-            ProgressView().controlSize(.small)
-        } else if let status = model.cliStatus {
-            switch status {
-            case let .installed(path, _):
-                HStack(spacing: 10) {
-                    Label(path, systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                    Button(l10n.text("remove")) { Task { await model.setCLIInstalled(false) } }
-                }
-            case .notInstalled:
-                HStack(spacing: 10) {
-                    Text(l10n.text("notInstalled")).font(.caption).foregroundStyle(.secondary)
-                    Button(l10n.text("install")) { Task { await model.setCLIInstalled(true) } }
-                }
-            case .stale:
-                HStack(spacing: 10) {
-                    Text(l10n.text("needsRepair")).font(.caption).foregroundStyle(.orange)
-                    Button(l10n.text("repair")) { Task { await model.setCLIInstalled(true) } }
-                }
-            case .conflict:
-                HStack(spacing: 10) {
-                    Text(l10n.text("pathOccupied")).font(.caption).foregroundStyle(.orange)
-                    Button(l10n.text("recheck")) { Task { await model.refreshCLIStatus() } }
-                }
+        switch model.cliStatus {
+        case .installed:
+            integrationSwitch(l10n.text("ycodeCommand"), isOn: true, busy: model.cliBusy) {
+                await model.setCLIInstalled($0)
             }
-        } else {
-            ProgressView().controlSize(.small)
+        case .notInstalled:
+            integrationSwitch(l10n.text("ycodeCommand"), isOn: false, busy: model.cliBusy) {
+                await model.setCLIInstalled($0)
+            }
+        case .stale:
+            warning(l10n.text("needsRepair"))
+            iconButton("wrench", help: l10n.text("repair"), disabled: model.cliBusy) {
+                await model.setCLIInstalled(true)
+            }
+            integrationSwitch(l10n.text("ycodeCommand"), isOn: true, busy: model.cliBusy) {
+                await model.setCLIInstalled($0)
+            }
+        case let .conflict(_, detail):
+            warning(l10n.text("pathOccupied") + " · " + detail)
+            iconButton("arrow.clockwise", help: l10n.text("recheck"), disabled: model.cliBusy) {
+                await model.refreshCLIStatus()
+            }
+            integrationSwitch(l10n.text("ycodeCommand"), isOn: false, available: false) { _ in }
+        case nil:
+            integrationSwitch(l10n.text("ycodeCommand"), isOn: false, busy: true, available: false) { _ in }
         }
     }
 
     @ViewBuilder
     private func hookControls(for agent: YCodeMCPAgent) -> some View {
-        if model.hookBusyAgents.contains(agent) {
-            ProgressView().controlSize(.small)
-        } else if let status = model.hookStatuses[agent] {
-            switch status {
-            case .installed:
-                HStack(spacing: 10) {
-                    Label(l10n.text("connected"), systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                    Button(l10n.text("remove")) { Task { await model.setHookInstalled(false, for: agent) } }
-                }
-            case .notInstalled:
-                HStack(spacing: 10) {
-                    Text(l10n.text("notConnected")).font(.caption).foregroundStyle(.secondary)
-                    Button(l10n.text("install")) { Task { await model.setHookInstalled(true, for: agent) } }
-                }
-            case .conflictUserNotify:
-                HStack(spacing: 10) {
-                    Text(l10n.text("existingNotify")).font(.caption).foregroundStyle(.orange)
-                    Button(l10n.text("chainHook")) {
-                        Task { await model.setHookInstalled(true, for: agent, chainExisting: true) }
-                    }
-                }
+        let status = model.hookStatuses[agent]
+        let busy = model.hookBusyAgents.contains(agent)
+        let conflict: Bool = if case .conflictUserNotify = status { true } else { false }
+        if conflict {
+            warning(l10n.text("existingNotify"))
+            iconButton("link", help: l10n.text("chainHook"), disabled: busy) {
+                await model.setHookInstalled(true, for: agent, chainExisting: true)
             }
-        } else {
-            ProgressView().controlSize(.small)
+        }
+        integrationSwitch(
+            agent.displayName + " · " + l10n.text("agentNotificationHooks"),
+            isOn: status == .installed,
+            busy: busy || status == nil,
+            available: status != nil && !conflict
+        ) { await model.setHookInstalled($0, for: agent) }
+    }
+
+    private func integrationSwitch(
+        _ title: String, isOn: Bool, busy: Bool = false, available: Bool = true,
+        action: @escaping (Bool) async -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            if busy { ProgressView().controlSize(.mini) }
+            Toggle(title, isOn: Binding(get: { isOn }, set: { value in Task { await action(value) } }))
+                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                .disabled(busy || !available)
+                .help(title).accessibilityLabel(title)
         }
     }
 
-    @ViewBuilder
-    private func statusControls(for agent: YCodeMCPAgent) -> some View {
-        if model.busyAgents.contains(agent) {
-            ProgressView().controlSize(.small)
-        } else if let status = model.statuses[agent] {
-            let installed = status == .installed
-            HStack(spacing: 10) {
-                Label(installed ? l10n.text("registered") : l10n.text("notRegistered"), systemImage: installed ? "checkmark.circle.fill" : "circle")
-                    .font(.caption)
-                    .foregroundStyle(installed ? .green : .secondary)
-                Button(installed ? l10n.text("unregister") : l10n.text("register")) {
-                    Task { await model.setInstalled(!installed, for: agent) }
-                }
-            }
-        } else {
-            ProgressView().controlSize(.small)
-        }
+    private func warning(_ message: String) -> some View {
+        Image(systemName: "exclamationmark.triangle")
+            .foregroundStyle(Color.ycodeWarn).help(message).accessibilityLabel(message)
+    }
+
+    private func iconButton(_ symbol: String, help: String, disabled: Bool, action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: { Image(systemName: symbol) }
+            .buttonStyle(YCodeIconButtonStyle(width: 22, height: 22, fontSize: 12))
+            .help(help).accessibilityLabel(help).disabled(disabled)
     }
 }
