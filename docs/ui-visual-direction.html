@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YCode 视觉方向</title>
+<title>Tandock 视觉方向</title>
 <style>
 /* 文档外壳：doc- 前缀；窗口模拟：m- 前缀。两套类名不交叉，避免样式互相污染。 */
 :root {
@@ -158,11 +158,11 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 </style>
 </head>
 <body>
-<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：视觉决策参考；方向 B 已采用，其他方向是候选。具体颜色、尺寸和交互以当前实现为准。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="ycode-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
+<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：视觉决策参考；方向 B 已采用，其他方向是候选。具体颜色、尺寸和交互以当前实现为准。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="tandock-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
 
 <div class="doc-wrap">
 
-<div class="doc-kicker">YCode · 视觉方向稿 · 2026-09-29</div>
+<div class="doc-kicker">Tandock · 视觉方向稿 · 2026-09-29</div>
 <h1 class="doc-title">让界面配得上新图标</h1>
 <p class="doc-lede">这份稿子只定「视觉气质」：配色、层次、窗格形态、焦点表达。布局结构与交互沿用 <code>docs/ui-native-spec.html</code>，不改功能。选定方向后，我会把结论并进 spec 的统一性规约，再改代码。</p>
 
@@ -266,7 +266,7 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
     <div class="m-ns ns-now">
       <svg class="m-ns-logo" viewBox="100 100 824 824"><rect x="100" y="100" width="824" height="824" rx="186" fill="#ff5a4e"/><path d="M334 278 L512 462 L690 278" fill="none" stroke="#fff" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/><rect x="472" y="552" width="80" height="260" rx="40" fill="#16133a"/><path d="M764 554C777 633 777 633 856 646C777 659 777 659 764 738C751 659 751 659 672 646C751 633 751 633 764 554Z" fill="#ffc83d"/></svg>
       <h4>新会话</h4>
-      <p>选一个 agent，在 ycode 里开始。</p>
+      <p>选一个 agent，在 tandock 里开始。</p>
       <div class="m-ns-grid">
         <div class="m-ns-tile"><div class="m-ico cc">C</div>Claude Code</div>
         <div class="m-ns-tile"><div class="m-ico cx">X</div>Codex</div>
@@ -281,7 +281,7 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
     <div class="m-ns ns-new">
       <svg class="m-ns-logo" viewBox="100 100 824 824"><rect x="100" y="100" width="824" height="824" rx="186" fill="#ff5a4e"/><path d="M334 278 L512 462 L690 278" fill="none" stroke="#fff" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/><rect x="472" y="552" width="80" height="260" rx="40" fill="#16133a"/><path d="M764 554C777 633 777 633 856 646C777 659 777 659 764 738C751 659 751 659 672 646C751 633 751 633 764 554Z" fill="#ffc83d"/></svg>
       <h4>新会话</h4>
-      <p>选一个 agent，在 ycode 里开始。</p>
+      <p>选一个 agent，在 tandock 里开始。</p>
       <div class="m-ns-grid">
         <div class="m-ns-tile hover"><div class="m-ico cc">C</div>Claude Code<small><span class="m-kbd">⌘1</span></small></div>
         <div class="m-ns-tile"><div class="m-ico cx">X</div>Codex<small><span class="m-kbd">⌘2</span></small></div>
@@ -309,7 +309,7 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 <div class="doc-card">
   <h3>与稿子不同的地方及原因</h3>
   <ul>
-    <li><b>强调色不用 <code>Color.accentColor</code></b>：macOS 上它读系统强调色，不跟随 <code>.tint</code>。新增 <code>Color.ycodeAccent</code> / <code>ycodeAccentText</code>，全 App 替换。</li>
+    <li><b>强调色不用 <code>Color.accentColor</code></b>：macOS 上它读系统强调色，不跟随 <code>.tint</code>。新增 <code>Color.tandockAccent</code> / <code>tandockAccentText</code>，全 App 替换。</li>
     <li><b>侧栏保留品牌底色</b>：macOS 26 把侧栏放进系统玻璃面板，玻璃是偏冷的灰，和紫调底色对不上，所以仍铺 <code>#efeef4</code>。侧栏右缘那条细影是系统玻璃自带的，未去掉。</li>
     <li><b>窗格描边画在 AppKit 裁切层上</b>：画在 SwiftUI 里会被拍进过渡快照，移动途中描边只围住一部分；图层 border 始终跟随动画中的边界。</li>
     <li><b>单色 agent 图标默认用官网的 agent 蓝 <code>#2f6fed</code></b>：原来跟随系统蓝，改成珊瑚后会和 Claude 的橙色撞色。</li>
@@ -367,7 +367,7 @@ const l3 = `<p class="d">Ran 1 shell command</p><div class="m-gap"></div>
   <p>已补 6 个测试，覆盖率</p><p><span class="g">71% → 84%</span></p>`;
 const main = `
   <div class="m-main">
-    <div class="m-top"><span class="m-title">ycode</span><span class="m-crumb">3 个会话</span>
+    <div class="m-top"><span class="m-title">tandock</span><span class="m-crumb">3 个会话</span>
       <div class="m-seg"><i></i><i class="m-on"></i><i></i><i></i></div>
       <div class="m-tools"><i></i><i></i><i></i></div></div>
     <div class="m-panes">${pane('重构登录模块','⌘1',false,l1)}${pane('修复同步任务重试','⌘2',true,l2)}${pane('补齐导出接口测试','⌘3',false,l3)}</div>

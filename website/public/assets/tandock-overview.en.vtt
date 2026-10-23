@@ -1,0 +1,28 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:05.000
+Your agents, code, and changes. One workspace.
+
+00:00:05.000 --> 00:00:10.000
+Start with the CLI you know. Claude Code, Codex, Pi, or your own CLI. Every session runs in its own PTY.
+
+00:00:10.000 --> 00:00:17.000
+Four sessions, side by side. Each agent keeps its own terminal process. No context switching.
+
+00:00:17.000 --> 00:00:24.000
+Layouts that follow your flow. Main and side, columns, or a grid. Refocus and rearrange in one step.
+
+00:00:24.000 --> 00:00:30.000
+Read code next to the terminal. File tree, syntax highlighting, Markdown and image preview. Save quick edits in place.
+
+00:00:30.000 --> 00:00:36.000
+Review every change an agent makes. Inline diffs, hunk staging, commits, and Fetch / Pull / Push.
+
+00:00:36.000 --> 00:00:42.000
+Todos, shared with your agents. Queue, doing, done. Agents read and write the same list through MCP tools.
+
+00:00:42.000 --> 00:00:48.000
+Drive the workspace from the keyboard. ⌘K finds sessions, todos, and actions. Every panel has a shortcut.
+
+00:00:48.000 --> 00:00:53.000
+Tandock. A native multi-agent workspace for macOS

@@ -3,14 +3,20 @@ set -euo pipefail
 
 MODE="${1:-run}"
 if [[ $# -gt 0 ]]; then shift; fi
-APP_NAME="YCodeApp"
+# Xcode installations without the optional Metal toolchain can use the native
+# builder for SwiftTerm's existing runtime-compiled shader path.
+SWIFT_BUILD_ARGS=()
+if [[ -n "${YCODE_SWIFT_BUILD_SYSTEM:-}" ]]; then
+  SWIFT_BUILD_ARGS+=(--build-system "$YCODE_SWIFT_BUILD_SYSTEM")
+fi
+APP_NAME="TandockApp"
 BUNDLE_ID="dev.ycode.native.dev"
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${YCODE_BUILD_DIST_DIR:-$NATIVE_DIR/dist}"
 SCRATCH_DIR="${YCODE_BUILD_SCRATCH_DIR:-$NATIVE_DIR/.build}"
 export CLANG_MODULE_CACHE_PATH="$SCRATCH_DIR/module-cache"
 export SWIFTPM_CACHE_PATH="$SCRATCH_DIR/cache"
-APP_BUNDLE="$DIST_DIR/YCode.app"
+APP_BUNDLE="$DIST_DIR/Tandock.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 BUILD_LOG="$DIST_DIR/build.log"
 
@@ -41,17 +47,17 @@ echo "Development signing identity: $DEV_SIGNING_IDENTITY"
 
 mkdir -p "$APP_CONTENTS/MacOS" "$APP_CONTENTS/Resources"
 cd "$NATIVE_DIR"
-swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --product YCodeApp 2>&1 | tee "$BUILD_LOG"
-for product in YCodeApp ycode ycode-mcp ycode-notify ycode-migrate; do
-  if [[ "$product" != "YCodeApp" ]]; then
-    swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --product "$product" 2>&1 | tee -a "$BUILD_LOG"
+swift build "${SWIFT_BUILD_ARGS[@]}" --disable-sandbox --scratch-path "$SCRATCH_DIR" --product TandockApp 2>&1 | tee "$BUILD_LOG"
+for product in TandockApp tandock tandock-mcp tandock-notify tandock-migrate; do
+  if [[ "$product" != "TandockApp" ]]; then
+    swift build "${SWIFT_BUILD_ARGS[@]}" --disable-sandbox --scratch-path "$SCRATCH_DIR" --product "$product" 2>&1 | tee -a "$BUILD_LOG"
   fi
 done
 
-BIN_DIR="$(swift build --disable-sandbox --scratch-path "$SCRATCH_DIR" --show-bin-path)"
-cp "$BIN_DIR/YCodeApp" "$APP_CONTENTS/MacOS/YCodeApp"
-/usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$APP_CONTENTS/MacOS/YCodeApp" 2>/dev/null || true
-cp "$NATIVE_DIR/Resources/YCodeApp-Info.plist" "$APP_CONTENTS/Info.plist"
+BIN_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --disable-sandbox --scratch-path "$SCRATCH_DIR" --show-bin-path)"
+cp "$BIN_DIR/TandockApp" "$APP_CONTENTS/MacOS/TandockApp"
+/usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$APP_CONTENTS/MacOS/TandockApp" 2>/dev/null || true
+cp "$NATIVE_DIR/Resources/TandockApp-Info.plist" "$APP_CONTENTS/Info.plist"
 # Info.plist 里写死的 0.1.0/1 只是占位：发布包由 package_release.sh 戳真值，
 # 开发包以前就一直顶着 0.1.0，「关于」页因此报的是一个不存在的版本。
 # 这里用仓库版本 + 当前 commit 戳上去，开发包的「关于」页才说得清
@@ -67,7 +73,11 @@ cp "$NATIVE_DIR/Resources/AppIcon.icns" "$APP_CONTENTS/Resources/AppIcon.icns"
 mkdir -p "$APP_CONTENTS/Resources/ThirdPartyNotices"
 cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
 cp "$NATIVE_DIR/Resources/ThirdPartyNotices/"*.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
-cp "$BIN_DIR/ycode" "$BIN_DIR/ycode-mcp" "$BIN_DIR/ycode-notify" "$BIN_DIR/ycode-migrate" "$APP_CONTENTS/Resources/"
+cp "$BIN_DIR/tandock" "$BIN_DIR/tandock-mcp" "$BIN_DIR/tandock-notify" "$BIN_DIR/tandock-migrate" "$APP_CONTENTS/Resources/"
+# Keep previously registered helper paths usable when an existing app is updated.
+for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
+  ln -sfn "$helper" "$APP_CONTENTS/Resources/${helper/tandock/ycode}"
+done
 # Remove the retired native Pi bridge from reused development bundles.
 rm -rf "$APP_CONTENTS/Resources/Pi"
 mkdir -p "$APP_CONTENTS/Frameworks"
@@ -80,7 +90,7 @@ if [[ -d "$BIN_DIR/SwiftTerm_SwiftTerm.bundle" ]]; then
   rm -rf "$APP_CONTENTS/Resources/SwiftTerm_SwiftTerm.bundle" "$APP_BUNDLE/SwiftTerm_SwiftTerm.bundle"
   cp -R "$BIN_DIR/SwiftTerm_SwiftTerm.bundle" "$APP_CONTENTS/Resources/"
 fi
-chmod +x "$APP_CONTENTS/MacOS/YCodeApp" "$APP_CONTENTS/Resources/ycode" "$APP_CONTENTS/Resources/ycode-mcp" "$APP_CONTENTS/Resources/ycode-notify" "$APP_CONTENTS/Resources/ycode-migrate"
+chmod +x "$APP_CONTENTS/MacOS/TandockApp" "$APP_CONTENTS/Resources/tandock" "$APP_CONTENTS/Resources/tandock-mcp" "$APP_CONTENTS/Resources/tandock-notify" "$APP_CONTENTS/Resources/tandock-migrate"
 SIGN=(/usr/bin/codesign --force --timestamp=none --sign "$DEV_SIGNING_IDENTITY")
 # Sign nested code first, including helpers stored outside Contents/MacOS.
 # Keep Sparkle Downloader's sandbox entitlements when replacing its signature.
@@ -92,7 +102,7 @@ if [[ -d "$FRAMEWORK" ]]; then
   "${SIGN[@]}" "$FRAMEWORK/Updater.app"
   "${SIGN[@]}" "$APP_CONTENTS/Frameworks/Sparkle.framework"
 fi
-for helper in ycode ycode-mcp ycode-notify ycode-migrate; do
+for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
   "${SIGN[@]}" "$APP_CONTENTS/Resources/$helper"
 done
 "${SIGN[@]}" "$APP_BUNDLE"
@@ -105,7 +115,7 @@ case "$MODE" in
     /usr/bin/open -n "$APP_BUNDLE" --args "$@"
     ;;
   --debug|debug)
-    lldb -- "$APP_CONTENTS/MacOS/YCodeApp" "$@"
+    lldb -- "$APP_CONTENTS/MacOS/TandockApp" "$@"
     ;;
   --logs|logs)
     /usr/bin/open -n "$APP_BUNDLE" --args "$@"
@@ -116,7 +126,7 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
-    "$APP_CONTENTS/MacOS/YCodeApp" "$@" &
+    "$APP_CONTENTS/MacOS/TandockApp" "$@" &
     owned_pid=$!
     sleep 1
     kill -0 "$owned_pid"

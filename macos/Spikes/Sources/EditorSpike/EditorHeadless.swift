@@ -37,7 +37,7 @@ func runEditorHeadless() -> Int32 {
     editor.undoManager?.undo()
     check("撤销可用", editor.string == "中文")
 
-    let saveURL = FileManager.default.temporaryDirectory.appendingPathComponent("ycode-m04-save-\(UUID().uuidString).txt")
+    let saveURL = FileManager.default.temporaryDirectory.appendingPathComponent("tandock-m04-save-\(UUID().uuidString).txt")
     defer { try? FileManager.default.removeItem(at: saveURL) }
     do {
         try saveUTF8(editor.string + " 🎉", to: saveURL)
@@ -56,7 +56,7 @@ func runEditorHeadless() -> Int32 {
 
     do {
         let preview = try makeMarkdownPreview(markdownFixture)
-        check("Markdown 原生预览", preview.string.contains("YCode 原生预览") && preview.string.contains("第二项 🎉"))
+        check("Markdown 原生预览", preview.string.contains("Tandock 原生预览") && preview.string.contains("第二项 🎉"))
     } catch {
         check("Markdown 原生预览", false, detail: error.localizedDescription)
     }

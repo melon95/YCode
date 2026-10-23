@@ -1,4 +1,4 @@
-# YCode UI 设计稿
+# Tandock UI 设计稿
 
 UI 更新流程：先修改本目录的 HTML 设计稿，经用户确认后，再修改真实应用 UI。
 

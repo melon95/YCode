@@ -27,7 +27,7 @@ if grep -Eiq '(^|[^[:alpha:]])(error|fatal|crash)([^[:alpha:]]|$)' "$REPORT"; th
   exit 1
 fi
 
-JSON_RECORDS="$(mktemp /tmp/ycode-soak-records.XXXXXX)"
+JSON_RECORDS="$(mktemp /tmp/tandock-soak-records.XXXXXX)"
 trap 'rm -f "$JSON_RECORDS"' EXIT
 awk '/^[{].*[}]$/ { print }' "$REPORT" > "$JSON_RECORDS"
 [[ -s "$JSON_RECORDS" ]] || {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ycode 原生版 · 界面设计稿 v1</title>
+<title>tandock 原生版 · 界面设计稿 v1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -683,13 +683,13 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 </style>
 </head>
 <body>
-<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：原生 UI 早期设计档案；布局已在后续迭代演进，旧控件与实施顺序不再作为当前待办。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="ycode-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
+<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：原生 UI 早期设计档案；布局已在后续迭代演进，旧控件与实施顺序不再作为当前待办。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="tandock-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
 
 
-<!-- 图标雪碧图：agent 品牌标来自 @lobehub/icons，ycode 标来自 src/assets/ycode-logo.svg。
+<!-- 图标雪碧图：agent 品牌标来自 @lobehub/icons，tandock 标来自 src/assets/tandock-logo.svg。
      一处定义，侧栏行 / 选择器 / 任何地方都用 <use> 引，渐变 id 不会互相打架。 -->
 <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-  <symbol id="ic-ycode" viewBox="0 0 1024 1024">
+  <symbol id="ic-tandock" viewBox="0 0 1024 1024">
     <linearGradient id="yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient>
     <linearGradient id="yc-top" x1="300" y1="275" x2="742" y2="516" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0c68a"/><stop offset=".48" stop-color="#a97947"/><stop offset="1" stop-color="#423225"/></linearGradient>
     <linearGradient id="yc-left" x1="278" y1="432" x2="534" y2="732" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#5c3126"/></linearGradient>
@@ -725,7 +725,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 
 <!-- ══════════════ 页眉 ══════════════ -->
 <header class="masthead">
-  <div class="eyebrow">ycode · macOS 原生版 · 界面设计稿 v1</div>
+  <div class="eyebrow">tandock · macOS 原生版 · 界面设计稿 v1</div>
   <h1>把终端<br>还给<em>主位</em>。</h1>
   <p class="dek">
     原生版 0.2.3 的功能是齐的，界面不是。这份稿子不新增任何功能 ——
@@ -733,9 +733,9 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </p>
   <div class="meta">
     <span><b>日期</b> 2026-09-20</span>
-    <span><b>基线</b> 原生 0.2.3 (203) · <code>macos/YCodeApp</code></span>
+    <span><b>基线</b> 原生 0.2.3 (203) · <code>macos/TandockApp</code></span>
     <span><b>形态</b> 终端画布（PTY）</span>
-    <span><b>参考</b> docs/ycode-feature-spec.md · docs/README.md</span>
+    <span><b>参考</b> docs/tandock-feature-spec.md · docs/README.md</span>
     <span><b>窗口</b> 1240 × 780</span>
   </div>
 
@@ -769,7 +769,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <p>终端是 <code>projectDetail</code> 里 <code>VStack</code> 的最后一项。它上面压着会话标题、
         <code>agentProfile</code>、<code>PID</code>、Agent 会话 ID，和「停止 / 恢复重启 / 重命名 / 归档」四个按钮。
         终端只拿到剩下的空间。</p>
-      <span class="src">YCodeNativeApp.swift:511-544</span>
+      <span class="src">TandockNativeApp.swift:511-544</span>
       <div class="fix"><b>对策</b> 终端占满整个内容区。上面那些全部移出主区：进程信息→状态栏，
         会话动作→窗格头右键菜单，会话 ID→「会话信息」浮层。</div>
     </div>
@@ -779,7 +779,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <h4>两列侧栏，一棵两层树</h4>
       <p><code>NavigationSplitView</code> 三列：项目一列（min 210）、会话一列、详情一列。
         近 460 px 的横向空间只承载了「项目 → 会话」这一层父子关系，而项目通常只有个位数。</p>
-      <span class="src">YCodeNativeApp.swift:219-225, 422-486</span>
+      <span class="src">TandockNativeApp.swift:219-225, 422-486</span>
       <div class="fix"><b>对策</b> 合成一列 238 px：项目是可折叠的组标题，会话是组里的行。
         省出的 220 px 给终端。</div>
     </div>
@@ -790,7 +790,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <p>七个按钮：加项目、新会话、独立窗口、删项目、上移、下移、注意力。
         「上移项目 / 下移项目 / 删除项目」是侧栏的右键菜单内容，把它们放进窗口工具栏，
         是最典型的 demo 症状 —— 有个功能就给个按钮。</p>
-      <span class="src">YCodeNativeApp.swift:591-633</span>
+      <span class="src">TandockNativeApp.swift:591-633</span>
       <div class="fix"><b>对策</b> 工具栏只留<b>跨会话</b>的东西：布局、检查器、注意力、⌘K。
         项目管理整体进侧栏右键菜单。</div>
     </div>
@@ -813,7 +813,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <p>项目页上直接铺着「File Tree Width 180 px (active since M4.1)」「隔离开关记录：保留未启用」
         和数据目录绝对路径；菜单栏还挂着一个 <code>Migration</code> 菜单。
         M4.1 是迁移计划的步骤编号，用户没有上下文。</p>
-      <span class="src">YCodeNativeApp.swift:562, 569 · 已记为 L-04</span>
+      <span class="src">TandockNativeApp.swift:562, 569 · 已记为 L-04</span>
       <div class="fix"><b>对策</b> 这些是诊断信息，不是产品信息。
         统一收进「设置 › 关于 › 诊断」，一键复制给 issue。<code>Migration</code> 菜单不进正式包。</div>
     </div>
@@ -836,7 +836,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <p><code>.font(.system(size: model.uiFontSize))</code> 挂在根视图上，
         把整棵视图树的字号统一覆盖。<code>.title2</code> / <code>.caption</code> 这些语义字阶失去相对关系，
         界面因此没有层次 —— 这是「看起来平」的直接原因。</p>
-      <span class="src">YCodeNativeApp.swift:212</span>
+      <span class="src">TandockNativeApp.swift:212</span>
       <div class="fix"><b>对策</b> 改用 <code>.dynamicTypeSize</code> 三档（紧凑 / 标准 / 宽松），
         让系统按比例缩放整个字阶。终端字号独立，不走这条。</div>
     </div>
@@ -952,7 +952,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg>
         </button>
         <div class="crumb">
-          <span class="proj">ycode</span>
+          <span class="proj">tandock</span>
           <span class="caret">▾</span>
         </div>
         <span class="grow"></span>
@@ -994,7 +994,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <div class="side-scroll">
             <div class="grp">
               <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg>
-              <span class="nm">ycode</span><span class="n">4</span>
+              <span class="nm">tandock</span><span class="n">4</span>
               <button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button>
             </div>
             <div class="srow on">
@@ -1045,7 +1045,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <div class="side-foot">
             <button class="sfbtn">
               <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>
-              新建会话 · ycode
+              新建会话 · tandock
             </button>
           </div>
         </div>
@@ -1064,7 +1064,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
                 </span>
               </div>
               <div class="term">
-<span class="dim2">claude 0.9.4 · opus-5 · ~/learning/ycode · 输入 /help 查看命令</span>
+<span class="dim2">claude 0.9.4 · opus-5 · ~/learning/tandock · 输入 /help 查看命令</span>
 
 <span class="u">&gt;</span> 给 <span class="y">UnifiedEvent::ToolUse</span> 加 call id。<span class="y">claude.rs:265</span> 已经读到
   <span class="y">tool_use_id</span> 了，是我们自己扔的。
@@ -1072,16 +1072,16 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 <span class="g">●</span> 两侧都缺。<span class="y">ToolUse</span> 只有 tool / input_json / status，
   同一回合调用两次同名工具就配不上对。先看一眼定义。
 
-<span class="g">●</span> <span class="b">Read</span>(crates/ycode-introspect/src/unified.rs)
+<span class="g">●</span> <span class="b">Read</span>(crates/tandock-introspect/src/unified.rs)
   <span class="dim">⎿  读了 54 行</span>
 
-<span class="g">●</span> <span class="b">Edit</span>(crates/ycode-introspect/src/unified.rs)
+<span class="g">●</span> <span class="b">Edit</span>(crates/tandock-introspect/src/unified.rs)
   <span class="dim">⎿  改了 1 处 · +1 −0</span>
 
 <span class="g">●</span> 加好了。<span class="y">ToolResult</span> 那侧也要同一个字段，否则配对还是
-  断的 —— 我接着改，改完跑一遍 <span class="y">cargo test -p ycode-introspect</span>。
+  断的 —— 我接着改，改完跑一遍 <span class="y">cargo test -p tandock-introspect</span>。
 
-<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p tandock-introspect)
   <span class="dim">⎿  running 12 tests</span>
   <span class="dim">   test unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
   <span class="dim">   test unified::pairs_two_same_named_calls ... </span><span class="g">ok</span>
@@ -1143,14 +1143,14 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 
             <!-- 文件 -->
             <div class="ipane" data-pane="files" data-win="w1">
-              <div class="isec"><span>ycode</span><span class="sp"></span><button class="ilink">在 Finder 中显示</button></div>
+              <div class="isec"><span>tandock</span><span class="sp"></span><button class="ilink">在 Finder 中显示</button></div>
               <div class="iscroll">
                 <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">crates</span></div>
-                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">ycode-introspect</span></div>
+                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">tandock-introspect</span></div>
                 <div class="tnode on" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">unified.rs</span><span class="tg m">M</span></div>
                 <div class="tnode" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">claude.rs</span><span class="tg m">M</span></div>
                 <div class="tnode" style="padding-left:40px"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">codex.rs</span></div>
-                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">ycode-ipc</span></div>
+                <div class="tnode" style="padding-left:20px"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">tandock-ipc</span></div>
                 <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">macos</span></div>
                 <div class="tnode"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M1.8 4.4a1.4 1.4 0 0 1 1.4-1.4h2.6l1.4 1.6h5.6a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4H3.2a1.4 1.4 0 0 1-1.4-1.4z"/></svg><span class="nm">docs</span></div>
                 <div class="tnode"><span class="tri"></span><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg><span class="nm">Cargo.toml</span></div>
@@ -1468,7 +1468,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 <section id="parallel">
   <div class="sec-head"><span class="sec-num">04</span><h2>多会话并排</h2></div>
   <p class="sec-dek">
-    四宫格，深色。并排是 ycode 的核心差异 —— 所以这一屏要回答的是：
+    四宫格，深色。并排是 tandock 的核心差异 —— 所以这一屏要回答的是：
     四块终端同时在跑，眼睛怎么知道该看哪一块。
   </p>
 
@@ -1484,7 +1484,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         <div class="lights"><i></i><i></i><i></i></div>
         <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
         <div class="crumb">
-          <span class="proj">ycode</span><span class="caret">▾</span>
+          <span class="proj">tandock</span><span class="caret">▾</span>
         </div>
         <span class="grow"></span>
         <div class="seg">
@@ -1514,7 +1514,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
             <button class="fchip alert">等你 <span class="c">2</span></button>
           </div>
           <div class="side-scroll">
-            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">4</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
+            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">tandock</span><span class="n">4</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
             <div class="srow on"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span><span class="st">⌘⇧1</span></div>
             <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span><span class="st">⌘⇧2</span></div>
             <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-codex"/></svg><span class="s1">FTS5 迁移脚本</span><span class="st">⌘⇧3</span></div>
@@ -1525,7 +1525,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
             <div class="hrow2"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">历史会话</span><span class="n">31</span></div>
           </div>
           <div class="side-foot">
-            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · tandock</button>
           </div>
         </div>
 
@@ -1539,7 +1539,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
                   <span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span>
                 </div>
                 <div class="term small">
-<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p tandock-introspect)
   <span class="dim">⎿  running 12 tests</span>
   <span class="dim">   unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
   <span class="dim">   unified::pairs_two_same_named ...     </span><span class="g">ok</span>
@@ -1552,7 +1552,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
                 <div class="term small">
 <span class="g">●</span> 我要把 <span class="y">spawn_pty</span> 换成 RPC 那条路径。
 
-  <span class="y">Edit</span> crates/ycode-ipc/src/service.rs
+  <span class="y">Edit</span> crates/tandock-ipc/src/service.rs
   <span class="r">-  .spawn_pty(&amp;id, &amp;profile, &amp;row, cwd, mode)</span>
   <span class="g">+  .spawn_pi_rpc(&amp;id, &amp;profile, cwd, mode)</span>
 
@@ -1577,7 +1577,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
                 <div class="pane-hd"><span class="dot" style="box-shadow:inset 0 0 0 1.5px var(--canvas-ink-3)"></span><span class="nm" style="opacity:.7">第 4 格空着</span><span class="k">⌘⇧4</span><span class="tools"><button class="ctool"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2"/></svg></button></span></div>
                 <div class="picker-host">
                   <div class="picker">
-                    <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-ycode"/></svg></span>
+                    <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-tandock"/></svg></span>
                     <h3>新会话</h3>
                     <div class="sub">选一个 agent 填进这一格。</div>
                     <div class="agents">
@@ -1657,7 +1657,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       四块终端里哪块在等你，扫一眼就够。</span></div>
     <div class="note"><span class="b">3</span><span class="x"><b>空着的窗格就是 agent 选择器。</b>和 ⌘N、和「项目无会话」看到的<b>是同一个组件</b>，
       按容器宽度自动收缩（<code>@container</code>，不是第二套小号版）。点一下这个窗格就有 agent 在跑，
-      不用先回侧栏。<br>另外：审批问题本来就印在终端里，ycode 只负责把这个状态<b>抬出来</b> ——
+      不用先回侧栏。<br>另外：审批问题本来就印在终端里，tandock 只负责把这个状态<b>抬出来</b> ——
       窗格头亮琥珀点、侧栏那行写清在等什么、收件箱收一条，面板看不见时才不会静默挂死。</span></div>
     <div class="note"><span class="b">4</span><span class="x"><b>侧栏行右侧只在上了画布时显示格位快捷键。</b><code>⌘⇧1–4</code>，
       没上画布的行右侧就是空的 —— 「哪个会话在第几格」不用去数，也不用为了对齐硬塞个时间进去。</span></div>
@@ -1683,7 +1683,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <div class="tb">
         <div class="lights"><i></i><i></i><i></i></div>
         <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
-        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <div class="crumb"><span class="proj">tandock</span><span class="caret">▾</span></div>
         <span class="grow"></span>
         <div class="seg">
           <button class="on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25"><rect x="2" y="3" width="12" height="10" rx="1.6"/></svg></button>
@@ -1712,7 +1712,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           </div>
           <div class="side-scroll">
             <div class="grp" style="background:var(--sel-soft);border-radius:6px;margin:5px 8px 0;height:24px;padding:0 6px">
-              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">4</span>
+              <svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">tandock</span><span class="n">4</span>
             </div>
             <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span></div>
             <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span></div>
@@ -1721,7 +1721,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
             <div class="hrow2"><svg class="tri" viewBox="0 0 10 10" fill="currentColor" style="transform:rotate(-90deg)"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">历史会话</span><span class="n">192</span></div>
           </div>
           <div class="side-foot">
-            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · tandock</button>
           </div>
         </div>
 
@@ -1736,7 +1736,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
                 </span>
               </div>
               <div class="term">
-<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p tandock-introspect)
   <span class="dim">⎿  running 12 tests</span>
   <span class="dim">   test unified::tool_use_carries_call_id ... </span><span class="g">ok</span>
   <span class="dim">   </span><span class="g">test result: ok. 12 passed; 0 failed</span>
@@ -1786,7 +1786,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <span class="dot d-attn"></span>
           <span class="mid">
             <span class="a1">权限扩展骨架</span>
-            <span class="a2">要修改 crates/ycode-ipc/src/service.rs — 等确认</span>
+            <span class="a2">要修改 crates/tandock-ipc/src/service.rs — 等确认</span>
           </span>
           <span class="a3">2 分钟</span>
         </div>
@@ -1802,7 +1802,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <span class="dot d-attn"></span>
           <span class="mid">
             <span class="a1">RPC 分帧单测</span>
-            <span class="a2">要跑 cargo test -p ycode-pi codec — 等确认</span>
+            <span class="a2">要跑 cargo test -p tandock-pi codec — 等确认</span>
           </span>
           <span class="a3">4 分钟</span>
         </div>
@@ -1851,7 +1851,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           <div style="display:flex;gap:10px"><span class="k2">进程</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">PID 48213</span></div>
           <div style="display:flex;gap:10px"><span class="k2">会话 ID</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">0193f2c1-8a4e-7b3d</span></div>
           <div style="display:flex;gap:10px"><span class="k2">分支</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">main</span></div>
-          <div style="display:flex;gap:10px"><span class="k2">工作目录</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">~/learning/ycode</span></div>
+          <div style="display:flex;gap:10px"><span class="k2">工作目录</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">~/learning/tandock</span></div>
           <div style="display:flex;gap:10px"><span class="k2">worktree</span><span style="color:var(--label-3)">未隔离 · 直接在主仓</span></div>
         </div>
       </div>
@@ -1864,7 +1864,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       每条写清<b>在等什么</b>，而不是只报一个会话名 —— 现在的 <code>AttentionInboxView</code> 只有 98 行，
       内容量是够的，缺的是「为什么」这一句。</span></div>
     <div class="note"><span class="b">2</span><span class="x"><b>项目菜单接住工具栏瘦身的部分。</b>上移 / 下移 / 独立窗口原本是工具栏按钮，
-      外加 Finder、终端、重命名。<b>没有「从 ycode 移除」</b> —— 移除项目是低频且不可逆的，
+      外加 Finder、终端、重命名。<b>没有「从 tandock 移除」</b> —— 移除项目是低频且不可逆的，
       放在随手就能点到的右键菜单里不合适，它归设置页。工具栏因此从 7 个按钮降到 4 个。</span></div>
     <div class="note"><span class="b">3</span><span class="x"><b>会话的全部动作在会话右键菜单里。</b>放到画布、独立窗口、重命名、归档、删除。
       归档的会话不消失，收进项目组下的历史区，菜单变成<b>重新打开 / 重命名… / 删除…</b> ——
@@ -1894,14 +1894,14 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <div class="tb">
         <div class="lights"><i></i><i></i><i></i></div>
         <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
-        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <div class="crumb"><span class="proj">tandock</span><span class="caret">▾</span></div>
         <span class="grow"></span>
         <button class="tbtn on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
       </div>
       <div class="body">
         <div class="side" style="opacity:.55"></div>
         <div class="center"><div class="canvas"><div class="pane"><div class="term" style="opacity:.5">
-<span class="g">●</span> <span class="b">Bash</span>(cargo test -p ycode-introspect)
+<span class="g">●</span> <span class="b">Bash</span>(cargo test -p tandock-introspect)
   <span class="dim">⎿  running 12 tests</span></div></div></div></div>
         <div class="insp" style="opacity:.55"></div>
       </div>
@@ -1919,19 +1919,19 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         <div class="pi_ on">
           <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4 6.8 8.2 4.6 10"/><path d="M8.4 10.4h3"/></svg>
           <span class="nm"><b>ToolUse 加 call_id</b></span>
-          <span class="hint">ycode · 运行中</span>
+          <span class="hint">tandock · 运行中</span>
         </div>
         <div class="pi_">
           <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4 6.8 8.2 4.6 10"/><path d="M8.4 10.4h3"/></svg>
           <span class="nm"><b>RPC 分帧单测</b></span>
-          <span class="hint">ycode · 等你</span>
+          <span class="hint">tandock · 等你</span>
         </div>
 
         <div class="pg">待办</div>
         <div class="pi_">
           <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6"/><path d="M5.4 8.2 7.2 10l3.4-3.6"/></svg>
           <span class="nm">ToolResult 同步加字段（<b>call_id</b>）</span>
-          <span class="hint">ycode · 未完成</span>
+          <span class="hint">tandock · 未完成</span>
         </div>
 
         <div class="pg">历史全文</div>
@@ -1957,7 +1957,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
         <div class="pi_">
           <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.4 1.8h5.2l3.8 3.8v8.6H3.4z"/><path d="M8.6 1.8v3.8h3.8"/></svg>
-          <span class="nm">打开文件 › crates/ycode-introspect/src/unified.rs</span><span class="hint">⌘P</span>
+          <span class="nm">打开文件 › crates/tandock-introspect/src/unified.rs</span><span class="hint">⌘P</span>
         </div>
 
         <div class="pfoot">
@@ -1985,7 +1985,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       <div class="tb">
         <div class="lights"><i></i><i></i><i></i></div>
         <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M6.2 2.8v10.4"/></svg></button>
-        <div class="crumb"><span class="proj">ycode</span><span class="caret">▾</span></div>
+        <div class="crumb"><span class="proj">tandock</span><span class="caret">▾</span></div>
         <span class="grow"></span>
         <button class="tbtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.2" cy="7.2" r="4.6"/><path d="M10.7 10.7 14 14"/></svg></button>
         <button class="tbtn on"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M9.8 2.8v10.4"/></svg></button>
@@ -2000,13 +2000,13 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
             <button class="fchip alert">等你 <span class="c">3</span></button>
           </div>
           <div class="side-scroll">
-            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">ycode</span><span class="n">5</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
+            <div class="grp"><svg class="tri" viewBox="0 0 10 10" fill="currentColor"><path d="M1 3.2h8L5 7.8z"/></svg><span class="nm">tandock</span><span class="n">5</span><button class="add"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 2.6v8.8M2.6 7h8.8"/></svg></button></div>
             <div class="srow on"><span class="dot d-attn"></span><span class="ai"></span><span class="s1" style="font-style:italic;opacity:.85">新会话</span></div>
             <div class="srow"><span class="dot d-run"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">ToolUse 加 call_id</span></div>
             <div class="srow"><span class="dot d-attn"></span><svg class="ai"><use href="#ic-claude"/></svg><span class="s1">权限扩展骨架</span></div>
           </div>
           <div class="side-foot">
-            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · ycode</button>
+            <button class="sfbtn"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 2.4v9.2M2.4 7h9.2"/></svg>新建会话 · tandock</button>
           </div>
         </div>
 
@@ -2023,9 +2023,9 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
               </div>
               <div class="picker-host">
                 <div class="picker">
-                  <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-ycode"/></svg></span>
+                  <span class="logo"><svg viewBox="0 0 1024 1024"><use href="#ic-tandock"/></svg></span>
                   <h3>新会话</h3>
-                  <div class="sub">选一个 agent，在 <b style="color:var(--canvas-ink)">ycode</b> 里开始。</div>
+                  <div class="sub">选一个 agent，在 <b style="color:var(--canvas-ink)">tandock</b> 里开始。</div>
                   <div class="agents">
                     <button class="pagent">
                       <span class="av"><svg viewBox="0 0 24 24"><use href="#ic-claude"/></svg></span>
@@ -2106,7 +2106,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       这是非原生版就定下的规矩（<code>unavailable agents are noise in the picker</code>）。</span></div>
     <div class="note"><span class="b">3</span><span class="x"><b>名字来自 CLI。</b>选完 agent 后 <code>title</code> 传空串，
       侧栏先显示斜体的「新会话」，CLI 报出自己的 live title 后自动改名。要手动改，窗格头右键「重命名」。</span></div>
-    <div class="note"><span class="b">·</span><span class="x"><b>建到哪个项目，说清楚。</b>侧栏是多项目平铺的，所以按钮写成「新建会话 · ycode」，
+    <div class="note"><span class="b">·</span><span class="x"><b>建到哪个项目，说清楚。</b>侧栏是多项目平铺的，所以按钮写成「新建会话 · tandock」，
       项目组标题行 hover 也出 <code>＋</code>。⌘N 跟随当前项目，⇧⌘N 则是「在别的项目里新建…」走 ⌘K 选项目。</span></div>
   </div>
 </section>
@@ -2125,7 +2125,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
     <div class="win" id="w6" style="width:760px;height:490px">
       <div class="tb">
         <div class="lights"><i></i><i></i><i></i></div>
-        <div class="crumb"><span class="proj">ycode</span></div>
+        <div class="crumb"><span class="proj">tandock</span></div>
         <span class="grow"></span>
       </div>
       <div class="body">
@@ -2149,7 +2149,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
             <div class="d">项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。</div>
             <div class="acts">
               <button class="btn pri">选择文件夹…</button>
-              <button class="btn" style="background:var(--canvas-fill);color:var(--canvas-ink);box-shadow:none">或在终端里 <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">ycode .</span></button>
+              <button class="btn" style="background:var(--canvas-fill);color:var(--canvas-ink);box-shadow:none">或在终端里 <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px">tandock .</span></button>
             </div>
           </div>
         </div>
@@ -2172,13 +2172,13 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   真正需要写文案的只剩五处。</p>
   <table>
     <tr><th>位置</th><th>标题</th><th>说明 + 动作</th></tr>
-    <tr><td>无项目</td><td>先加一个项目</td><td>项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。<br>［选择文件夹…］［或在终端里 <code>ycode .</code>］</td></tr>
+    <tr><td>无项目</td><td>先加一个项目</td><td>项目就是一个 git 仓库的目录。加进来之后，你在这里开的每个 agent 都跑在它里面。<br>［选择文件夹…］［或在终端里 <code>tandock .</code>］</td></tr>
     <tr><td>项目无会话</td><td colspan="2"><b>不做空状态 —— 直接就是屏 05 的 agent 选择器</b>，与 ⌘N 看到的完全同一个。</td></tr>
     <tr><td>画布无会话</td><td colspan="2"><b>同上，还是那个 agent 选择器。</b>空着的窗格里就摆它，点一下就有 agent 在跑，
       不必先回侧栏再决定。<b>一个组件覆盖三种「这里还没有东西」</b>，用户只学一次。</td></tr>
     <tr><td>无变更</td><td>工作区是干净的</td><td>agent 改了文件之后，这里会出现逐块可暂存的 diff。</td></tr>
     <tr><td>无待办</td><td>还没有待办</td><td>你可以在这里加，agent 也能通过 <code>ycode-todos</code> 自己加。两边是同一份清单。</td></tr>
-    <tr><td>历史为空<br><span style="font-size:11.5px;color:var(--doc-ink-3)">（侧栏折叠区内）</span></td><td>这个项目还没有历史记录</td><td>ycode 会读 <code>~/.claude</code> 和 <code>~/.codex</code> 里属于这个目录的会话。第一次扫描要几秒。<br>［重新扫描］</td></tr>
+    <tr><td>历史为空<br><span style="font-size:11.5px;color:var(--doc-ink-3)">（侧栏折叠区内）</span></td><td>这个项目还没有历史记录</td><td>tandock 会读 <code>~/.claude</code> 和 <code>~/.codex</code> 里属于这个目录的会话。第一次扫描要几秒。<br>［重新扫描］</td></tr>
     <tr><td>搜索无结果</td><td>没有匹配「call_id」的结果</td><td>搜索覆盖会话名和历史全文。换个词，或者 ⌘⇧R 重新扫描历史。</td></tr>
   </table>
 </section>
@@ -2302,11 +2302,11 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   <p>按「改动小、收益大」排，前三步做完界面就不像 demo 了，都不需要动 Core：</p>
   <table>
     <tr><th>步骤</th><th>动什么</th><th>规模</th></tr>
-    <tr><td>1 · 侧栏合一</td><td><code>NavigationSplitView</code> 三列改两列，项目变 <code>Section</code> + <code>DisclosureGroup</code></td><td><code>YCodeNativeApp.swift</code> :219-486</td></tr>
+    <tr><td>1 · 侧栏合一</td><td><code>NavigationSplitView</code> 三列改两列，项目变 <code>Section</code> + <code>DisclosureGroup</code></td><td><code>TandockNativeApp.swift</code> :219-486</td></tr>
     <tr><td>2 · 清空详情页</td><td>删掉 :511-541 的元数据块与按钮行，<code>TerminalWorkspaceView</code> 直接占满 detail</td><td>净删代码</td></tr>
     <tr><td>3 · 工具栏瘦身</td><td>:591-633 七按钮减到四个，其余进右键菜单</td><td>移动为主</td></tr>
     <tr><td>4 · 状态 token</td><td>把 <code>sessionStatusBadge</code> 与 <code>terminalPane</code> 的圆点抽成一个 <code>SessionStatusDot</code></td><td>新增约 60 行，三处复用</td></tr>
-    <tr><td>5 · 检查器</td><td><code>openPanels: Set</code> 改成 <code>focusedPanel</code> 单值 + <code>isInspectorVisible</code>；<code>YCodeWorkspacePanel</code> 从 5 个枚举减到 3 个，<code>.terminal</code> 与 <code>.history</code> 移出</td><td>模型简化，UI 跟着简化</td></tr>
+    <tr><td>5 · 检查器</td><td><code>openPanels: Set</code> 改成 <code>focusedPanel</code> 单值 + <code>isInspectorVisible</code>；<code>TandockWorkspacePanel</code> 从 5 个枚举减到 3 个，<code>.terminal</code> 与 <code>.history</code> 移出</td><td>模型简化，UI 跟着简化</td></tr>
     <tr><td>5b · 历史归位</td><td><code>HistoryPanelView</code> 的列表改成侧栏项目组下的 <code>DisclosureGroup</code>，复用 <code>historySessions</code></td><td>数据不动，只换挂载点</td></tr>
     <tr><td>5c · 新建会话</td><td>删 <code>showingNewSession</code> sheet 与 <code>NewAgentSessionView</code>；照 <code>src/components/NewSessionPicker.tsx</code> 重建一个 SwiftUI 版，同时用作空状态</td><td>形式已有验证，只是重制</td></tr>
     <tr><td>6 · 状态栏</td><td>新增一条 26 px 的 <code>StatusBar</code>，接 <code>GitService</code> 与 runtime</td><td>新文件约 120 行</td></tr>
@@ -2315,7 +2315,7 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </table>
 
   <div class="callout" style="margin-top:40px">
-    <p><b>本稿只讨论现有 CLI 工作台的界面外壳。</b>终端会话、文件、Git 和待办的实际能力以当前代码与 <a href="ycode-feature-spec.md">产品范围</a> 为准；本稿不安排后续引擎迁移。</p>
+    <p><b>本稿只讨论现有 CLI 工作台的界面外壳。</b>终端会话、文件、Git 和待办的实际能力以当前代码与 <a href="tandock-feature-spec.md">产品范围</a> 为准；本稿不安排后续引擎迁移。</p>
   </div>
 </section>
 

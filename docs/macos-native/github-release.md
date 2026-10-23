@@ -7,7 +7,7 @@
 - `macOS CI`：分支推送、PR、手动触发，执行 Swift 测试、发布元数据测试、图标一致性检查，构建并验证 arm64 + x86_64 通用候选包，再以一次性密钥验证更新清单与篡改拒绝。产物在 Actions Artifacts；无更新配置、ad-hoc 签名，不当作正式发行版。
 - `macOS Release`：推送 `vX.Y.Z` 标签或手动选择已有稳定标签。标签必须与 `macos/VERSION` 一致，高于已发布稳定版本，且不得覆盖公开 Release。
 - 发布任务依次完成测试、导入临时签名钥匙串、通用架构构建、Developer ID 签名、安全时间戳、Apple 公证与装订、包级验收、生成 appcast、使用工程内公钥独立验证 Ed25519 签名，最后上传到 draft 并发布。
-- 正式附件为 `YCode-X.Y.Z.zip`、`appcast.xml`、`SHA256SUMS`。Release 在附件全部上传成功前保持 draft；失败重试仅允许覆盖同标签 draft 附件。
+- 正式附件为 `Tandock-X.Y.Z.zip`、`appcast.xml`、`SHA256SUMS`。Release 在附件全部上传成功前保持 draft；失败重试仅允许覆盖同标签 draft 附件。
 - 发布构建号为 `100000 + github.run_number`，同一次运行重试保持一致；不要删除重建该工作流后沿用旧计数。应用显示版本来自稳定标签。
 - 公钥固定在 `macos/Resources/SparklePublicKey.txt`；私钥不能提交到 Git，也不能每次发布重新生成。轮换密钥需要单独设计旧客户端迁移。
 
@@ -30,7 +30,7 @@ Xcode → Settings → Accounts → 选择团队 → Manage Certificates → 创
 
 这些值只放 GitHub Secrets，勿贴到聊天、README 或工作流明文。GitHub runner 上使用随机密码临时钥匙串；任务无论成功失败都清理临时证书、钥匙串和 Sparkle 密钥文件。旧 `TAURI_SIGNING_PRIVATE_KEY` 不参与新流程。
 
-本机曾使用钥匙串账户 `ycode-sparkle` 保存专用 Sparkle 密钥，使用前确认当前机器仍有对应条目。需要备份时用 `generate_keys --account ycode-sparkle -x <安全路径>` 导出到安全位置；私钥文件不应留在工作树。
+本机曾使用钥匙串账户 `tandock-sparkle` 保存专用 Sparkle 密钥，使用前确认当前机器仍有对应条目。需要备份时用 `generate_keys --account tandock-sparkle -x <安全路径>` 导出到安全位置；私钥文件不应留在工作树。
 
 ## 发版
 
@@ -47,11 +47,11 @@ RELEASE_VERSION="$(cat macos/VERSION)"
 : "${RELEASE_BUILD_NUMBER:?请先设置高于已分发包的构建号}"
 VERSION="$RELEASE_VERSION" BUILD_NUMBER="$RELEASE_BUILD_NUMBER" \
 SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
-NOTARY_PROFILE=ycode-notary bash macos/scripts/package_release.sh release
+NOTARY_PROFILE=tandock-notary bash macos/scripts/package_release.sh release
 
-SPARKLE_PRIVATE_KEY_FILE=/secure/path/ycode-sparkle.key \
+SPARKLE_PRIVATE_KEY_FILE=/secure/path/tandock-sparkle.key \
 bash macos/scripts/generate_appcast.sh \
-  macos/dist/release/YCode.app "macos/dist/release/YCode-$RELEASE_VERSION.zip" melon95/YCode
+  macos/dist/release/Tandock.app "macos/dist/release/Tandock-$RELEASE_VERSION.zip" melon95/YCode
 ```
 
 公证、签名或更新签名验证失败时禁止发布；普通 CI 可以在没有任何 Apple 凭据的情况下独立通过。

@@ -1,6 +1,6 @@
 # 原生迁移与实现记录
 
-更新：2026-10-18。M0–M5 是历史验收编号，迁移总结见[上一级](../macos-native-refactor-plan.md)；当前功能以[产品范围](../ycode-feature-spec.md)为准。
+更新：2026-10-18。M0–M5 是历史验收编号，迁移总结见[上一级](../macos-native-refactor-plan.md)；当前功能以[产品范围](../tandock-feature-spec.md)为准。
 
 ## 当前维护参考
 

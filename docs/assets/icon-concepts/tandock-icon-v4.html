@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tandock Icon v4</title>
+<style>
+  :root { --bg: #f4f1ec; --fg: #121826; --muted: #6b6f80; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111318; --fg: #eef0f6; --muted: #9298ab; --card: #1c1f27; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 24px; }
+  .hero { display: flex; justify-content: center; margin-bottom: 24px; }
+  #icon { width: min(420px, 100%); height: auto; }
+  .sizes { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: center;
+           padding: 20px; border-radius: 14px; background: var(--card); margin-bottom: 16px; }
+  .sizes figure { margin: 0; text-align: center; color: var(--muted); font-size: 12px; }
+  .sizes.light { background: #ffffff; }
+  .sizes.dark { background: #1d1d22; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--muted);
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button:focus-visible { outline: 2px solid #7c8cff; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tandock · 方案 v4</h1>
+  <p>沿用 v2 配色。一前一后两个终端提示符 › （tandem），驶进右边米白色的方括号 ]（dock）——合起来读作 »]。</p>
+  <div class="hero"><canvas id="icon" width="1024" height="1024" aria-label="Tandock 应用图标 v4"></canvas></div>
+  <div class="sizes light" id="light"></div>
+  <div class="sizes dark" id="dark"></div>
+  <div class="actions">
+    <button id="dl1024">下载 1024 PNG</button>
+    <button id="dlset">下载 iconset 全部尺寸</button>
+  </div>
+</main>
+<script>
+const COLORS = {
+  skyTop: '#2a3256',
+  skyBottom: '#0f1424',
+  cradle: '#f4f1e8',
+  cradleShade: '#d9d4c6',
+  blueTop: '#7d93ff',
+  blueBottom: '#4b63f0',
+  limeTop: '#e2ff8a',
+  limeBottom: '#a9e84a',
+};
+
+// Continuous-curvature rounded rect on the macOS icon grid (824pt body inside 1024).
+function squircle(ctx, x, y, w, h, r) {
+  const q = r * (1 - 0.62);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.bezierCurveTo(x + w - q, y, x + w, y + q, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.bezierCurveTo(x + w, y + h - q, x + w - q, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.bezierCurveTo(x + q, y + h, x, y + h - q, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.bezierCurveTo(x, y + q, x + q, y, x + r, y);
+  ctx.closePath();
+}
+
+function vgrad(ctx, y0, y1, top, bottom) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  return g;
+}
+
+// Thick rounded stroke with a drop shadow, the building block for every glyph in this concept.
+function stroke(ctx, points, width, style, shadow = true) {
+  ctx.save();
+  if (shadow) {
+    ctx.shadowColor = 'rgba(5, 8, 20, 0.5)';
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 14;
+  }
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = style;
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (const [x, y] of points.slice(1)) ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Chevron pointing right with its tip at (tipX, 512).
+function chevron(tipX, reach, half) {
+  return [[tipX - reach, 512 - half], [tipX, 512], [tipX - reach, 512 + half]];
+}
+
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width / 1024;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.clearRect(0, 0, 1024, 1024);
+
+  // Body.
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  squircle(ctx, 100, 100, 824, 824, 186);
+  ctx.fillStyle = vgrad(ctx, 100, 924, COLORS.skyTop, COLORS.skyBottom);
+  ctx.fill();
+  ctx.restore();
+
+  // Glow pooled inside the dock, where the chevrons are heading.
+  ctx.save();
+  squircle(ctx, 100, 100, 824, 824, 186);
+  ctx.clip();
+  const halo = ctx.createRadialGradient(640, 512, 30, 640, 512, 400);
+  halo.addColorStop(0, 'rgba(170, 230, 120, 0.22)');
+  halo.addColorStop(1, 'rgba(140, 160, 255, 0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(100, 100, 824, 824);
+  ctx.restore();
+
+  // Dock: a cream bracket open to the left, like a "]" that receives the prompt.
+  const dock = [[652, 318], [744, 318], [744, 706], [652, 706]];
+  stroke(ctx, dock, 66, vgrad(ctx, 318, 706, COLORS.cradle, COLORS.cradleShade));
+
+  // Tandem: two prompt chevrons, one behind the other, riding into the dock.
+  stroke(ctx, chevron(436, 136, 156), 86, vgrad(ctx, 356, 668, COLORS.blueTop, COLORS.blueBottom));
+  stroke(ctx, chevron(590, 136, 156), 86, vgrad(ctx, 356, 668, COLORS.limeTop, COLORS.limeBottom));
+}
+
+function makeCanvas(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  drawIcon(c);
+  return c;
+}
+
+function download(canvas, name) {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+
+drawIcon(document.getElementById('icon'));
+
+for (const id of ['light', 'dark']) {
+  const row = document.getElementById(id);
+  for (const size of [16, 32, 64, 128, 256]) {
+    const fig = document.createElement('figure');
+    const c = makeCanvas(size * devicePixelRatio);
+    c.style.width = c.style.height = size + 'px';
+    fig.append(c, Object.assign(document.createElement('figcaption'), { textContent: size + 'px' }));
+    row.append(fig);
+  }
+}
+
+document.getElementById('dl1024').onclick = () => download(makeCanvas(1024), 'tandock-v4-1024.png');
+document.getElementById('dlset').onclick = () => {
+  for (const base of [16, 32, 128, 256, 512]) {
+    download(makeCanvas(base), `icon_${base}x${base}.png`);
+    download(makeCanvas(base * 2), `icon_${base}x${base}@2x.png`);
+  }
+};
+</script>
+</body>
+</html>

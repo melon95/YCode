@@ -1,0 +1,520 @@
+import Foundation
+
+public enum TandockHookRegistrationStatus: Equatable, Sendable {
+    case installed
+    case notInstalled
+    case conflictUserNotify(existing: [String])
+    /// Installed, but a managed entry still runs a helper other than this
+    /// bundle's (an older install location or the pre-rename `ycode-notify`).
+    case stale(registered: String)
+
+    public var isStale: Bool {
+        if case .stale = self { true } else { false }
+    }
+}
+
+public enum TandockHookRegistrationError: LocalizedError, Equatable {
+    case helperMissing(String)
+    case invalidClaudeDocument
+    case invalidClaudeHooks
+    case invalidClaudeEvent(String)
+    case invalidCodexNotify
+
+    public var errorDescription: String? {
+        switch self {
+        case let .helperMissing(path): "找不到可执行的 tandock-notify：\(path)"
+        case .invalidClaudeDocument: "Claude settings.json 顶层必须是对象。"
+        case .invalidClaudeHooks: "Claude settings.json 的 hooks 必须是对象。"
+        case let .invalidClaudeEvent(event): "Claude hooks.\(event) 必须是数组。"
+        case .invalidCodexNotify: "Codex 的 notify 必须是字符串参数数组。"
+        }
+    }
+}
+
+/// Additive config patcher for Claude hooks and ownership-marked Codex
+/// notify/PermissionRequest hooks. Uninstall removes only Tandock's entries;
+/// chained Codex notify commands are restored byte-for-value.
+public actor TandockHookRegistrationService {
+    public static let claudeMarkerKey = "_ycode_managed"
+    public static let codexNotifyMarker = "# ycode-managed (do not edit this line or the one below)"
+    public static let codexHooksStart = "# ycode-managed-hooks (do not edit between this line and the matching end marker)"
+    public static let codexHooksEnd = "# ycode-managed-hooks-end"
+
+    private let claudeSettingsURL: URL
+    private let codexConfigURL: URL
+    private let helperURL: URL
+    private let fileManager: FileManager
+
+    public init(homeDirectory: URL, helperURL: URL, fileManager: FileManager = .default) {
+        claudeSettingsURL = homeDirectory.appendingPathComponent(".claude/settings.json")
+        codexConfigURL = homeDirectory.appendingPathComponent(".codex/config.toml")
+        self.helperURL = helperURL
+        self.fileManager = fileManager
+    }
+
+    public func status(for agent: TandockMCPAgent) throws -> TandockHookRegistrationStatus {
+        switch agent {
+        case .claude: try claudeStatus()
+        case .codex: try codexStatus()
+        }
+    }
+
+    @discardableResult
+    public func install(for agent: TandockMCPAgent, chainExistingCodexNotify: Bool = false) throws -> TandockHookRegistrationStatus {
+        guard fileManager.isExecutableFile(atPath: helperURL.path) else {
+            throw TandockHookRegistrationError.helperMissing(helperURL.path)
+        }
+        switch agent {
+        case .claude:
+            try installClaude()
+            return .installed
+        case .codex:
+            return try installCodex(chainExisting: chainExistingCodexNotify)
+        }
+    }
+
+    /// Rewrites only the helper path inside Tandock's managed entries. Unlike a
+    /// reinstall this keeps whatever the agent added around them, such as a
+    /// wrapper that chains Codex `notify` or Codex's hook trust state.
+    /// Returns whether a change was written.
+    @discardableResult
+    public func repairStaleHelperPath(for agent: TandockMCPAgent) throws -> Bool {
+        guard case .stale = try status(for: agent) else { return false }
+        guard fileManager.isExecutableFile(atPath: helperURL.path) else {
+            throw TandockHookRegistrationError.helperMissing(helperURL.path)
+        }
+        switch agent {
+        case .claude: try repairClaude()
+        case .codex: try repairCodex()
+        }
+        return true
+    }
+
+    @discardableResult
+    public func uninstall(for agent: TandockMCPAgent) throws -> TandockHookRegistrationStatus {
+        switch agent {
+        case .claude: try uninstallClaude()
+        case .codex: try uninstallCodex()
+        }
+        return .notInstalled
+    }
+
+    private func claudeStatus() throws -> TandockHookRegistrationStatus {
+        guard fileManager.fileExists(atPath: claudeSettingsURL.path) else { return .notInstalled }
+        let root = try claudeRoot()
+        guard hasClaudeEntry(root, event: "Stop") && hasClaudeEntry(root, event: "Notification") else {
+            return .notInstalled
+        }
+        let registered = claudeManagedCommands(root).compactMap { HelperPathText.leadingPath(ofCommand: $0)?.path }
+        if let other = registered.first(where: { $0 != helperURL.path }) { return .stale(registered: other) }
+        return .installed
+    }
+
+    private func claudeManagedCommands(_ root: [String: Any]) -> [String] {
+        let hooks = root["hooks"] as? [String: Any]
+        return ["Stop", "Notification"].flatMap { event in
+            (hooks?[event] as? [[String: Any]] ?? [])
+                .filter { $0[Self.claudeMarkerKey] as? Bool == true }
+                .flatMap { ($0["hooks"] as? [[String: Any]] ?? []).compactMap { $0["command"] as? String } }
+        }
+    }
+
+    private func repairClaude() throws {
+        try backupOnce(claudeSettingsURL)
+        var root = try claudeRoot()
+        guard var hooks = root["hooks"] as? [String: Any] else { return }
+        let quotedHelper = shellQuote(helperURL.path)
+        for event in ["Stop", "Notification"] {
+            guard let entries = hooks[event] as? [[String: Any]] else { continue }
+            hooks[event] = entries.map { entry in
+                guard entry[Self.claudeMarkerKey] as? Bool == true else { return entry }
+                var entry = entry
+                entry["hooks"] = (entry["hooks"] as? [[String: Any]] ?? []).map { hook in
+                    guard let command = hook["command"] as? String,
+                          let parsed = HelperPathText.leadingPath(ofCommand: command) else { return hook }
+                    var hook = hook
+                    hook["command"] = quotedHelper + parsed.rest
+                    return hook
+                }
+                return entry
+            }
+        }
+        root["hooks"] = hooks
+        try writeJSON(root, to: claudeSettingsURL)
+    }
+
+    private func installClaude() throws {
+        try backupOnce(claudeSettingsURL)
+        var root = try claudeRoot()
+        let quotedHelper = shellQuote(helperURL.path)
+        for (event, command, matcher) in [
+            ("Stop", "\(quotedHelper) stop claude", ""),
+            ("Notification", "\(quotedHelper) notification claude", "permission_prompt")
+        ] {
+            try removeClaudeEntries(&root, event: event)
+            try appendClaudeEntry(&root, event: event, command: command, matcher: matcher)
+        }
+        try writeJSON(root, to: claudeSettingsURL)
+    }
+
+    private func uninstallClaude() throws {
+        guard fileManager.fileExists(atPath: claudeSettingsURL.path) else { return }
+        var root = try claudeRoot()
+        try removeClaudeEntries(&root, event: "Stop")
+        try removeClaudeEntries(&root, event: "Notification")
+        if var hooks = root["hooks"] as? [String: Any] {
+            hooks = hooks.filter { !($0.value as? [Any] ?? []).isEmpty }
+            if hooks.isEmpty { root.removeValue(forKey: "hooks") } else { root["hooks"] = hooks }
+        }
+        try writeJSON(root, to: claudeSettingsURL)
+    }
+
+    private func claudeRoot() throws -> [String: Any] {
+        guard fileManager.fileExists(atPath: claudeSettingsURL.path) else { return [:] }
+        let data = try Data(contentsOf: claudeSettingsURL)
+        guard !data.isEmpty else { return [:] }
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TandockHookRegistrationError.invalidClaudeDocument
+        }
+        if let hooks = root["hooks"], !(hooks is [String: Any]) {
+            throw TandockHookRegistrationError.invalidClaudeHooks
+        }
+        return root
+    }
+
+    private func hasClaudeEntry(_ root: [String: Any], event: String) -> Bool {
+        let hooks = root["hooks"] as? [String: Any]
+        let entries = hooks?[event] as? [[String: Any]]
+        return entries?.contains { $0[Self.claudeMarkerKey] as? Bool == true } == true
+    }
+
+    private func removeClaudeEntries(_ root: inout [String: Any], event: String) throws {
+        guard var hooks = root["hooks"] as? [String: Any] else { return }
+        guard let value = hooks[event] else { return }
+        guard var entries = value as? [[String: Any]] else {
+            throw TandockHookRegistrationError.invalidClaudeEvent(event)
+        }
+        entries.removeAll { $0[Self.claudeMarkerKey] as? Bool == true }
+        hooks[event] = entries
+        root["hooks"] = hooks
+    }
+
+    private func appendClaudeEntry(
+        _ root: inout [String: Any],
+        event: String,
+        command: String,
+        matcher: String
+    ) throws {
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        if root["hooks"] != nil, !(root["hooks"] is [String: Any]) {
+            throw TandockHookRegistrationError.invalidClaudeHooks
+        }
+        var entries: [[String: Any]]
+        if let value = hooks[event] {
+            guard let existing = value as? [[String: Any]] else {
+                throw TandockHookRegistrationError.invalidClaudeEvent(event)
+            }
+            entries = existing
+        } else {
+            entries = []
+        }
+        entries.append([
+            Self.claudeMarkerKey: true,
+            "matcher": matcher,
+            "hooks": [["type": "command", "command": command]]
+        ])
+        hooks[event] = entries
+        root["hooks"] = hooks
+    }
+
+    private func codexStatus() throws -> TandockHookRegistrationStatus {
+        guard fileManager.fileExists(atPath: codexConfigURL.path) else { return .notInstalled }
+        let raw = try String(contentsOf: codexConfigURL, encoding: .utf8)
+        guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .notInstalled }
+        let ownsNotify = raw.contains(Self.codexNotifyMarker)
+        let ownsHooks = raw.contains(Self.codexHooksStart) && raw.contains(Self.codexHooksEnd)
+        if let (_, value) = topLevelNotify(in: raw) {
+            if !ownsNotify {
+                guard let existing = parseTOMLStringArray(value) else {
+                    throw TandockHookRegistrationError.invalidCodexNotify
+                }
+                return .conflictUserNotify(existing: existing)
+            }
+            guard ownsHooks else { return .notInstalled }
+            if let other = codexRegisteredHelpers(in: raw).first(where: { $0 != helperURL.path }) {
+                return .stale(registered: other)
+            }
+            return .installed
+        }
+        return .notInstalled
+    }
+
+    /// Helper paths referenced by the managed notify line and hooks block.
+    private func codexRegisteredHelpers(in raw: String) -> [String] {
+        var paths: [String] = []
+        if let (_, value) = topLevelNotify(in: raw),
+           let arguments = parseTOMLStringArray(value),
+           let path = notifyHelperPath(in: arguments) {
+            paths.append(path)
+        }
+        if let block = codexHooksRange(in: raw) {
+            let pattern = #"(?m)^[ \t]*command[ \t]*=[ \t]*([^\r\n]+)$"#
+            let regex = try? NSRegularExpression(pattern: pattern)
+            let text = String(raw[block])
+            for match in regex?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? [] {
+                guard let range = Range(match.range(at: 1), in: text),
+                      let command = HelperPathText.parseTOMLString(String(text[range])),
+                      let path = HelperPathText.leadingPath(ofCommand: command)?.path else { continue }
+                paths.append(path)
+            }
+        }
+        return paths
+    }
+
+    /// Finds Tandock's `<helper> turn_complete codex` invocation, either as the
+    /// notify command itself or JSON-encoded inside a wrapper's argument (Codex
+    /// Computer Use chains the previous notify that way).
+    private func notifyHelperPath(in arguments: [String]) -> String? {
+        if arguments.count >= 3, arguments[1] == "turn_complete", arguments[2] == "codex" {
+            return arguments[0]
+        }
+        for argument in arguments where argument.hasPrefix("[") {
+            if let data = argument.data(using: .utf8),
+               let nested = try? JSONSerialization.jsonObject(with: data) as? [String],
+               let path = notifyHelperPath(in: nested) {
+                return path
+            }
+        }
+        return nil
+    }
+
+    private func codexHooksRange(in raw: String) -> Range<String.Index>? {
+        guard let start = raw.range(of: Self.codexHooksStart),
+              let end = raw.range(of: Self.codexHooksEnd, range: start.upperBound..<raw.endIndex) else { return nil }
+        return start.lowerBound..<end.upperBound
+    }
+
+    private func repairCodex() throws {
+        try backupOnce(codexConfigURL)
+        var raw = try String(contentsOf: codexConfigURL, encoding: .utf8)
+        let stale = Set(codexRegisteredHelpers(in: raw).filter { $0 != helperURL.path })
+        for old in stale {
+            // Ranges shift after each rewrite, so look each region up again.
+            if let (range, _) = topLevelNotify(in: raw) {
+                raw.replaceSubrange(range, with: HelperPathText.replacingTOMLSpellings(
+                    of: old, with: helperURL.path, in: String(raw[range])))
+            }
+            if let range = codexHooksRange(in: raw) {
+                raw.replaceSubrange(range, with: HelperPathText.replacingTOMLSpellings(
+                    of: old, with: helperURL.path, in: String(raw[range])))
+            }
+        }
+        try writeText(raw, to: codexConfigURL)
+    }
+
+    private func installCodex(chainExisting: Bool) throws -> TandockHookRegistrationStatus {
+        let current = try codexStatus()
+        if case let .conflictUserNotify(existing) = current {
+            guard chainExisting else { return current }
+            try writeCodex(existingChain: existing)
+            return .installed
+        }
+        try writeCodex(existingChain: nil)
+        return .installed
+    }
+
+    private func writeCodex(existingChain: [String]?) throws {
+        try backupOnce(codexConfigURL)
+        var raw = fileManager.fileExists(atPath: codexConfigURL.path)
+            ? try String(contentsOf: codexConfigURL, encoding: .utf8) : ""
+        raw = stripCodexManagedNotify(raw)
+        raw = stripCodexHooks(raw)
+        if existingChain != nil, let (range, _) = topLevelNotify(in: raw) { raw.removeSubrange(range) }
+
+        var arguments = [helperURL.path, "turn_complete", "codex"]
+        if let existingChain {
+            let data = try JSONSerialization.data(withJSONObject: existingChain)
+            arguments += ["--next", String(decoding: data, as: UTF8.self)]
+        }
+        let notify = "\n\(Self.codexNotifyMarker)\nnotify = \(tomlArray(arguments))\n"
+        raw = insertBeforeFirstTable(notify, in: raw)
+        raw = appendCodexHooks(to: raw)
+        try writeText(raw, to: codexConfigURL)
+    }
+
+    private func uninstallCodex() throws {
+        guard fileManager.fileExists(atPath: codexConfigURL.path) else { return }
+        var raw = try String(contentsOf: codexConfigURL, encoding: .utf8)
+        guard raw.contains(Self.codexNotifyMarker) || raw.contains(Self.codexHooksStart) else { return }
+        var restored: [String]?
+        if let (_, value) = topLevelNotify(in: raw),
+           let arguments = parseTOMLStringArray(value),
+           let nextIndex = arguments.firstIndex(of: "--next"),
+           arguments.indices.contains(nextIndex + 1),
+           let data = arguments[nextIndex + 1].data(using: .utf8) {
+            restored = try? JSONSerialization.jsonObject(with: data) as? [String]
+        }
+        raw = stripCodexManagedNotify(raw)
+        raw = stripCodexHooks(raw)
+        if let restored { raw = insertBeforeFirstTable("notify = \(tomlArray(restored))\n", in: raw) }
+        try writeText(raw, to: codexConfigURL)
+    }
+
+    private func topLevelNotify(in raw: String) -> (Range<String.Index>, String)? {
+        let firstTable = raw.range(of: #"(?m)^\s*\["#, options: .regularExpression)?.lowerBound ?? raw.endIndex
+        let root = raw[..<firstTable]
+        guard let range = root.range(
+            // Whitespace after the array must not consume the managed-hooks
+            // marker on the next line; it would make the notify value unparseable.
+            of: #"(?m)^[ \t]*notify[ \t]*=[ \t]*(\[[^\r\n]*\])[ \t]*(?:#[^\r\n]*)?(?:\r?\n|$)"#,
+            options: .regularExpression
+        ) else { return nil }
+        let line = String(raw[range])
+        guard let equals = line.firstIndex(of: "=") else { return nil }
+        return (range, String(line[line.index(after: equals)...]).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func parseTOMLStringArray(_ raw: String) -> [String]? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = value.data(using: .utf8),
+           let decoded = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return decoded
+        }
+        guard value.first == "[", let close = value.lastIndex(of: "]") else { return nil }
+        var index = value.index(after: value.startIndex)
+        var result: [String] = []
+        while index < close {
+            while index < close, value[index].isWhitespace || value[index] == "," { index = value.index(after: index) }
+            guard index < close else { break }
+            let quote = value[index]
+            guard quote == "\"" || quote == "'" else { return nil }
+            let start = index
+            index = value.index(after: index)
+            var escaped = false
+            while index < close {
+                let character = value[index]
+                if quote == "\"", character == "\\", !escaped {
+                    escaped = true
+                    index = value.index(after: index)
+                    continue
+                }
+                if character == quote, !escaped { break }
+                escaped = false
+                index = value.index(after: index)
+            }
+            guard index < close else { return nil }
+            let token = String(value[start...index])
+            if quote == "'" {
+                result.append(String(token.dropFirst().dropLast()))
+            } else {
+                guard let data = token.data(using: .utf8),
+                      let decoded = try? JSONSerialization.jsonObject(with: data) as? String else { return nil }
+                result.append(decoded)
+            }
+            index = value.index(after: index)
+        }
+        return result
+    }
+
+    private func stripCodexManagedNotify(_ raw: String) -> String {
+        var output = ""
+        var skipNext = false
+        for line in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.trimmingCharacters(in: .whitespaces) == Self.codexNotifyMarker {
+                skipNext = true
+                continue
+            }
+            if skipNext, !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                skipNext = false
+                continue
+            }
+            output += line + "\n"
+        }
+        return output
+    }
+
+    private func stripCodexHooks(_ raw: String) -> String {
+        var output = ""
+        var inside = false
+        for line in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed == Self.codexHooksStart { inside = true; continue }
+            if inside {
+                if trimmed == Self.codexHooksEnd { inside = false }
+                continue
+            }
+            output += line + "\n"
+        }
+        return output
+    }
+
+    private func insertBeforeFirstTable(_ block: String, in raw: String) -> String {
+        if let table = raw.range(of: #"(?m)^\s*\["#, options: .regularExpression) {
+            var output = String(raw[..<table.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !output.isEmpty { output += "\n" }
+            output += block.trimmingCharacters(in: .newlines) + "\n\n"
+            output += raw[table.lowerBound...]
+            return output
+        }
+        var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !output.isEmpty { output += "\n" }
+        output += block.trimmingCharacters(in: .newlines) + "\n"
+        return output
+    }
+
+    private func appendCodexHooks(to raw: String) -> String {
+        let command = "\(shellQuote(helperURL.path)) permission_request codex"
+        let block = """
+        \(Self.codexHooksStart)
+        [[hooks.PermissionRequest]]
+        matcher = ".*"
+
+        [[hooks.PermissionRequest.hooks]]
+        type = "command"
+        command = \(tomlString(command))
+        timeout = 5
+        \(Self.codexHooksEnd)
+        """
+        var output = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !output.isEmpty { output += "\n\n" }
+        return output + block + "\n"
+    }
+
+    private func tomlArray(_ values: [String]) -> String { "[\(values.map(tomlString).joined(separator: ", "))]" }
+
+    private func tomlString(_ value: String) -> String {
+        var escaped = ""
+        for character in value {
+            switch character {
+            case "\\": escaped += "\\\\"
+            case "\"": escaped += "\\\""
+            case "\n": escaped += "\\n"
+            case "\r": escaped += "\\r"
+            case "\t": escaped += "\\t"
+            default: escaped.append(character)
+            }
+        }
+        return "\"\(escaped)\""
+    }
+
+    private func shellQuote(_ value: String) -> String { "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'" }
+
+    private func backupOnce(_ url: URL) throws {
+        let backup = URL(fileURLWithPath: url.path + ".ycode.bak")
+        if fileManager.fileExists(atPath: url.path), !fileManager.fileExists(atPath: backup.path) {
+            try fileManager.copyItem(at: url, to: backup)
+        }
+    }
+
+    private func writeJSON(_ root: [String: Any], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) + Data("\n".utf8)
+        try write(data, to: url)
+    }
+
+    private func writeText(_ value: String, to url: URL) throws { try write(Data(value.utf8), to: url) }
+
+    private func write(_ data: Data, to url: URL) throws {
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
+}

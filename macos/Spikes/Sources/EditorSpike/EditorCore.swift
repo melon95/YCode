@@ -137,7 +137,7 @@ func makeLongFileFixture(lineCount: Int = 20_000) -> String {
 }
 
 let markdownFixture = """
-    # YCode 原生预览
+    # Tandock 原生预览
 
     中文段落与 **粗体**、`inline code`。
 
@@ -149,6 +149,6 @@ let svgFixture = """
     <svg xmlns="http://www.w3.org/2000/svg" width="640" height="240" viewBox="0 0 640 240">
       <rect width="640" height="240" rx="28" fill="#111827"/>
       <circle cx="96" cy="120" r="48" fill="#22c55e"/>
-      <text x="170" y="135" font-family="-apple-system" font-size="44" fill="white">YCode 原生 SVG</text>
+      <text x="170" y="135" font-family="-apple-system" font-size="44" fill="white">Tandock 原生 SVG</text>
     </svg>
     """

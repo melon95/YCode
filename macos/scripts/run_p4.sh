@@ -20,10 +20,10 @@ done
 mkdir -p "$REPORT_DIR" "$NATIVE_DIR/.build/module-cache"
 cd "$NATIVE_DIR"
 env CLANG_MODULE_CACHE_PATH="$NATIVE_DIR/.build/module-cache" \
-  swift build -c release --product YCodeHistoryProbe
+  swift build -c release --product TandockHistoryProbe
 BIN_DIR="$(env CLANG_MODULE_CACHE_PATH="$NATIVE_DIR/.build/module-cache" \
   swift build -c release --show-bin-path)"
-PROBE="$BIN_DIR/YCodeHistoryProbe"
+PROBE="$BIN_DIR/TandockHistoryProbe"
 
 run_sample() {
   local label="$1"

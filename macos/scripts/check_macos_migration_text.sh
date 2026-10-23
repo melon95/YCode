@@ -2,14 +2,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHECK_LIST="$(mktemp /tmp/ycode-macos-text-files.XXXXXX)"
+CHECK_LIST="$(mktemp /tmp/tandock-macos-text-files.XXXXXX)"
 trap 'rm -f "$CHECK_LIST"' EXIT
 
 cd "$REPO_ROOT"
 git diff --check
 
 find macos \
-  \( -type d -name '.build' -o -path 'macos/dist' \) -prune -o \
+  \( -type d \( -name '.build' -o -name 'node_modules' -o -name '.swiftpm' \) -o -path 'macos/dist' \) -prune -o \
   -type f \( -name '*.swift' -o -name '*.sh' -o -name '*.md' -o -name '*.plist' -o -name 'Package.swift' \) \
   -print > "$CHECK_LIST"
 find docs/macos-native -type f -name '*.md' -print >> "$CHECK_LIST"

@@ -114,7 +114,7 @@ final class SpikeWindowController: NSWindowController {
 
     @objc func printFixtures() {
         session.send("printf '\\033[31mRED\\033[0m \\033[32mGREEN\\033[0m 中文输入 🎉\\n'\n")
-        session.send("printf '\\033]0;YCode M0.3 OSC title\\007'\n")
+        session.send("printf '\\033]0;Tandock M0.3 OSC title\\007'\n")
         session.send("printf 'link: https://example.com · paste with ⌘V · interrupt with ⌃C\\n'\n")
     }
 
@@ -125,7 +125,7 @@ final class SpikeWindowController: NSWindowController {
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
 
         evidenceSequence += 1
-        let path = String(format: "/tmp/ycode-m03-terminal-%02d.png", evidenceSequence)
+        let path = String(format: "/tmp/tandock-m03-terminal-%02d.png", evidenceSequence)
         do {
             try png.write(to: URL(fileURLWithPath: path), options: .atomic)
             statusLabel.stringValue = "已保存界面证据：\(path) · pid=\(session.pid)"

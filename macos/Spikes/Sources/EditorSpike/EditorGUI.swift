@@ -16,7 +16,7 @@ final class EditorSpikeWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "YCode M0.4 — 原生编辑器 / 预览"
+        window.title = "Tandock M0.4 — 原生编辑器 / 预览"
         window.center()
         self.init(window: window)
         configureUI()
@@ -124,7 +124,7 @@ final class EditorSpikeWindowController: NSWindowController {
     }
 
     @objc func saveFixture() {
-        let url = URL(fileURLWithPath: "/tmp/ycode-m04-editor-save.swift")
+        let url = URL(fileURLWithPath: "/tmp/tandock-m04-editor-save.swift")
         do {
             try saveUTF8(editor.string, to: url)
             status.stringValue = "已原子保存：\(url.path)"
@@ -139,7 +139,7 @@ final class EditorSpikeWindowController: NSWindowController {
         view.cacheDisplay(in: view.bounds, to: bitmap)
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
         evidenceSequence += 1
-        let path = String(format: "/tmp/ycode-m04-editor-%02d.png", evidenceSequence)
+        let path = String(format: "/tmp/tandock-m04-editor-%02d.png", evidenceSequence)
         do {
             try png.write(to: URL(fileURLWithPath: path), options: .atomic)
             status.stringValue = "已保存界面证据：\(path)"

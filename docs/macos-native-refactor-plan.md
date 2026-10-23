@@ -2,16 +2,16 @@
 
 更新：2026-10-18。原生替换与旧源码清理已完成，项目进入原生版本维护；本文替代原迁移排期，不再把 M0–M5 当作当前待办。
 
-当前功能以[产品范围](ycode-feature-spec.md)为准，日常检查见[验收清单](bdd-iteration-plan.md)，各阶段原始证据见[迁移记录索引](macos-native/README.md)。
+当前功能以[产品范围](tandock-feature-spec.md)为准，日常检查见[验收清单](bdd-iteration-plan.md)，各阶段原始证据见[迁移记录索引](macos-native/README.md)。
 
 ## 当前工程
 
 | 层次 | 当前实现 |
 | --- | --- |
-| 应用与窗口 | `macos/YCodeApp/`，SwiftUI / AppKit |
+| 应用与窗口 | `macos/TandockApp/`，SwiftUI / AppKit |
 | 核心服务 | `macos/Core/`，项目、会话、PTY、SQLite、配置、历史、Git 与集成 |
 | 文件编辑与预览 | `macos/EditorSupport/`，原生文本编辑、基础语法高亮、Markdown / SVG / 图片预览 |
-| 辅助程序 | `macos/Helpers/`，`ycode`、`ycode-mcp`、`ycode-notify`；迁移探针位于 `macos/Tests/Tools/` |
+| 辅助程序 | `macos/Helpers/`，`tandock`、`tandock-mcp`、`tandock-notify`；迁移探针位于 `macos/Tests/Tools/` |
 | 依赖 | Swift Package Manager；SwiftTerm、swift-markdown、Sparkle、TOMLKit |
 | 构建与分发 | `macos/scripts/` 和 `.github/workflows/`；最低系统 macOS 14，分发脚本构建 arm64 / x86_64 通用包 |
 

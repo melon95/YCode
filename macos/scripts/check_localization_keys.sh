@@ -4,7 +4,7 @@
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TABLE="$NATIVE_DIR/YCodeApp/Sources/YCodeApp/YCodeAppearanceSupport.swift"
+TABLE="$NATIVE_DIR/TandockApp/Sources/TandockApp/TandockAppearanceSupport.swift"
 
 duplicates="$(grep -oE '^\s{8}"[A-Za-z0-9_]+": \[\.zh' "$TABLE" \
   | sed -E 's/^\s*"([A-Za-z0-9_]+)".*/\1/' \

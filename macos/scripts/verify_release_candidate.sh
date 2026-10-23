@@ -2,8 +2,8 @@
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_BUNDLE="${1:-$NATIVE_DIR/dist/release/YCode.app}"
-ARCHIVE="${2:-$NATIVE_DIR/dist/release/YCode-0.2.3.zip}"
+APP_BUNDLE="${1:-$NATIVE_DIR/dist/release/Tandock.app}"
+ARCHIVE="${2:-$NATIVE_DIR/dist/release/Tandock-0.2.3.zip}"
 MODE="${3:-prepare}"
 EXPECTED_VERSION="${YCODE_EXPECTED_VERSION:-0.2.3}"
 EXPECTED_BUILD="${YCODE_EXPECTED_BUILD:-203}"
@@ -75,18 +75,23 @@ validate_bundle() {
   local bundle="$1"
   local contents="$bundle/Contents"
   local plist="$contents/Info.plist"
-  local executable="$contents/MacOS/YCodeApp"
+  local executable="$contents/MacOS/TandockApp"
   local helper
 
   [[ "$(plist_value "$plist" CFBundleIdentifier)" == "dev.ycode.app" ]]
+  [[ "$(plist_value "$plist" CFBundleName)" == "Tandock" ]]
+  [[ "$(plist_value "$plist" CFBundleDisplayName)" == "Tandock" ]]
+  [[ "$(plist_value "$plist" CFBundleExecutable)" == "TandockApp" ]]
   [[ "$(plist_value "$plist" CFBundleShortVersionString)" == "$EXPECTED_VERSION" ]]
   [[ "$(plist_value "$plist" CFBundleVersion)" == "$EXPECTED_BUILD" ]]
   [[ "$(plist_value "$plist" LSMinimumSystemVersion)" == "14.0" ]]
-  [[ "$(plist_value "$plist" CFBundleURLTypes:0:CFBundleURLSchemes:0)" == "ycode" ]]
+  [[ "$(plist_value "$plist" CFBundleURLTypes:0:CFBundleURLSchemes:0)" == "tandock" ]]
+  [[ "$(plist_value "$plist" CFBundleURLTypes:0:CFBundleURLSchemes:1)" == "ycode" ]]
 
   require_universal2 "$executable"
-  for helper in ycode ycode-mcp ycode-notify ycode-migrate; do
+  for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
     require_universal2 "$contents/Resources/$helper"
+    [[ "$(readlink "$contents/Resources/${helper/tandock/ycode}")" == "$helper" ]]
   done
   require_universal2 "$contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$bundle"
@@ -109,10 +114,10 @@ validate_bundle() {
     }
     for signed_item in \
       "$bundle" \
-      "$contents/Resources/ycode" \
-      "$contents/Resources/ycode-mcp" \
-      "$contents/Resources/ycode-notify" \
-      "$contents/Resources/ycode-migrate" \
+      "$contents/Resources/tandock" \
+      "$contents/Resources/tandock-mcp" \
+      "$contents/Resources/tandock-notify" \
+      "$contents/Resources/tandock-migrate" \
       "$contents/Frameworks/Sparkle.framework" \
       "$contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" \
       "$contents/Frameworks/Sparkle.framework/Versions/B/Updater.app" \
@@ -130,24 +135,24 @@ validate_bundle() {
 validate_bundle "$APP_BUNDLE"
 /usr/bin/unzip -tqq "$ARCHIVE"
 
-EXTRACT_ROOT="$(mktemp -d /tmp/ycode-release-verify.XXXXXX)"
+EXTRACT_ROOT="$(mktemp -d /tmp/tandock-release-verify.XXXXXX)"
 trap 'rm -rf "$EXTRACT_ROOT"' EXIT
 /usr/bin/ditto -x -k "$ARCHIVE" "$EXTRACT_ROOT"
-EXTRACTED_APPS="$(find "$EXTRACT_ROOT" -maxdepth 2 -type d -name 'YCode.app' -print)"
+EXTRACTED_APPS="$(find "$EXTRACT_ROOT" -maxdepth 2 -type d -name 'Tandock.app' -print)"
 EXTRACTED_APP_COUNT="$(printf '%s\n' "$EXTRACTED_APPS" | /usr/bin/sed '/^$/d' | /usr/bin/wc -l | /usr/bin/tr -d ' ')"
 [[ "$EXTRACTED_APP_COUNT" == "1" ]] || {
-  echo "archive must contain exactly one YCode.app" >&2
+  echo "archive must contain exactly one Tandock.app" >&2
   exit 1
 }
 EXTRACTED_APP="$EXTRACTED_APPS"
 validate_bundle "$EXTRACTED_APP"
 
 for relative_binary in \
-  Contents/MacOS/YCodeApp \
-  Contents/Resources/ycode \
-  Contents/Resources/ycode-mcp \
-  Contents/Resources/ycode-notify \
-  Contents/Resources/ycode-migrate \
+  Contents/MacOS/TandockApp \
+  Contents/Resources/tandock \
+  Contents/Resources/tandock-mcp \
+  Contents/Resources/tandock-notify \
+  Contents/Resources/tandock-migrate \
   Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle; do
   /usr/bin/cmp "$APP_BUNDLE/$relative_binary" "$EXTRACTED_APP/$relative_binary"
 done

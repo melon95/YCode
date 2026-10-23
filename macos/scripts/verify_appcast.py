@@ -37,7 +37,7 @@ def validate(feed, archive, info, repository, public_key):
     if len(enclosures) != 1 or item.find(NAMESPACE + 'deltas') is not None:
         raise ValueError('Expected a single full archive without deltas')
     enclosure = enclosures[0]
-    expected_name = f'YCode-{version}.zip'
+    expected_name = f'Tandock-{version}.zip'
     expected_url = f'https://github.com/{repository}/releases/download/v{version}/{expected_name}'
     if archive.name != expected_name or enclosure.get('url') != expected_url:
         raise ValueError('Archive URL/name must point to this exact versioned release')

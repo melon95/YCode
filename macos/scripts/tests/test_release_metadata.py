@@ -15,7 +15,7 @@ class AppcastTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.archive = self.root / 'YCode-0.7.0.zip'
+        self.archive = self.root / 'Tandock-0.7.0.zip'
         self.archive.write_bytes(b'test archive')
         self.feed = self.root / 'appcast.xml'
         self.key = base64.b64encode(bytes(32)).decode()
@@ -28,7 +28,7 @@ class AppcastTests(unittest.TestCase):
         for name, key in [('version', 'CFBundleVersion'), ('shortVersionString', 'CFBundleShortVersionString'), ('minimumSystemVersion', 'LSMinimumSystemVersion')]:
             ET.SubElement(self.item, NAMESPACE + name).text = self.info[key]
         self.enclosure = ET.SubElement(self.item, 'enclosure', {
-            'url': 'https://github.com/melon95/YCode/releases/download/v0.7.0/YCode-0.7.0.zip',
+            'url': 'https://github.com/melon95/YCode/releases/download/v0.7.0/Tandock-0.7.0.zip',
             'length': str(self.archive.stat().st_size), NAMESPACE + 'edSignature': base64.b64encode(bytes(64)).decode()})
 
     def run_validation(self):
@@ -43,7 +43,7 @@ class AppcastTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'length'): self.run_validation()
 
     def test_wrong_version_or_destination(self):
-        for value in ['https://example.com/YCode-0.7.0.zip', 'https://github.com/melon95/YCode/releases/download/v0.6.0/YCode-0.7.0.zip']:
+        for value in ['https://example.com/Tandock-0.7.0.zip', 'https://github.com/melon95/YCode/releases/download/v0.6.0/Tandock-0.7.0.zip']:
             self.enclosure.set('url', value)
             with self.assertRaisesRegex(ValueError, 'URL/name'): self.run_validation()
 

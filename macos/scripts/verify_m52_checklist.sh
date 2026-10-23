@@ -13,10 +13,10 @@ fi
 [[ -f "$INVENTORY" ]] || { echo "missing inventory: $INVENTORY" >&2; exit 1; }
 [[ -f "$CHECKLIST" ]] || { echo "missing checklist: $CHECKLIST" >&2; exit 1; }
 
-EXPECTED="$(mktemp /tmp/ycode-m52-expected.XXXXXX)"
-TOKENS="$(mktemp /tmp/ycode-m52-tokens.XXXXXX)"
-ACTUAL_RAW="$(mktemp /tmp/ycode-m52-actual-raw.XXXXXX)"
-ACTUAL="$(mktemp /tmp/ycode-m52-actual.XXXXXX)"
+EXPECTED="$(mktemp /tmp/tandock-m52-expected.XXXXXX)"
+TOKENS="$(mktemp /tmp/tandock-m52-tokens.XXXXXX)"
+ACTUAL_RAW="$(mktemp /tmp/tandock-m52-actual-raw.XXXXXX)"
+ACTUAL="$(mktemp /tmp/tandock-m52-actual.XXXXXX)"
 trap 'rm -f "$EXPECTED" "$TOKENS" "$ACTUAL_RAW" "$ACTUAL"' EXIT
 
 /usr/bin/awk -F'|' '

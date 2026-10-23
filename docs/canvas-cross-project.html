@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YCode 跨项目画布</title>
+<title>Tandock 跨项目画布</title>
 <style>
 /* 文档外壳：doc- 前缀；窗口模拟：m- 前缀。沿用 ui-visual-direction.html 方向 B「纸面浮卡」的色板。 */
 :root {
@@ -138,7 +138,7 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 </style>
 </head>
 <body>
-<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：跨项目画布设计参考；项目徽章、焦点和面板归属已有实现，文中 worktree 与待确认项不构成当前交付承诺。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="ycode-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
+<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：跨项目画布设计参考；项目徽章、焦点和面板归属已有实现，文中 worktree 与待确认项不构成当前交付承诺。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="tandock-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
 
 <div class="doc-wrap">
 
@@ -277,7 +277,7 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 </table>
 
 <h2>4　新建会话：增加项目下拉框<small>项目与分支并排，worktree 靠右</small></h2>
-<p class="doc-sub"><strong>历史设计边界：</strong>本节插图中的 Worktree 勾选、隔离选择及相关 Tab 顺序保留作历史参考，当前暂缓，不属于本轮实施。现有应用只使用普通项目会话；当前范围以 <a href="ycode-feature-spec.md">产品说明</a> 为准。</p>
+<p class="doc-sub"><strong>历史设计边界：</strong>本节插图中的 Worktree 勾选、隔离选择及相关 Tab 顺序保留作历史参考，当前暂缓，不属于本轮实施。现有应用只使用普通项目会话；当前范围以 <a href="tandock-feature-spec.md">产品说明</a> 为准。</p>
 <p class="doc-sub">画布混放后，「新会话属于哪个项目」不能再靠「当前选中的项目」隐式决定。在选择器底部那一行加<strong>项目下拉框，和分支下拉框并排挨在左边</strong>，worktree 勾选框单独靠右。分支是项目的下一级（换项目分支就跟着重读），所以两者放在一起；顺序即决策顺序：项目 → 分支 → 是否隔离。</p>
 
 <div class="stage"><div class="np-wrap m-win" style="background:#efeef4"><div class="np"><div class="np-t">新建会话</div><div class="np-s">选择 agent 开始</div><div class="np-ag"><i><b style="background:#d97757"></b>Claude</i><i><b style="background:#7b6cf6"></b>Codex</i><i><b style="background:#2f6fed"></b>Pi</i><i><b style="background:#16133a"></b>Shell</i></div><hr><div class="np-f"><span class="np-menu pj hl" style="--p:var(--pj-b)"><i></i>api-gateway</span><span class="np-menu">⎇ feat/rate-limit</span><span class="sp"></span><span class="np-chk">worktree</span></div></div></div></div>
@@ -340,7 +340,7 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
   <tr><td>只混放同项目会话时</td><td>徽章照常显示</td><td>避免「有时有、有时无」导致窗格头高度和布局跳动</td></tr>
 </table>
 
-<p class="doc-cap" style="margin-top:28px">定稿后再进入实现：按之前的约定，窗格阴影与描边在 AppKit 层（<code>YCodeCanvasShadow</code> / <code>YCodeCanvasPane</code>），徽章属于 SwiftUI 窗格头内容；强调色一律用 <code>ycodeAccent</code>。</p>
+<p class="doc-cap" style="margin-top:28px">定稿后再进入实现：按之前的约定，窗格阴影与描边在 AppKit 层（<code>TandockCanvasShadow</code> / <code>TandockCanvasPane</code>），徽章属于 SwiftUI 窗格头内容；强调色一律用 <code>tandockAccent</code>。</p>
 
 </div>
 </body>

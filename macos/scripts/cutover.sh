@@ -36,7 +36,7 @@ done
 REHEARSAL=0
 if [[ "$MODE" == "rehearsal" ]]; then REHEARSAL=1; fi
 
-ACTIVE_APP="$APPLICATIONS_DIR/YCode.app"
+ACTIVE_APP="$APPLICATIONS_DIR/Tandock.app"
 if [[ -z "$SNAPSHOT_ROOT" ]]; then
   SNAPSHOT_ROOT="$DATA_ROOT.cutover-snapshot"
 fi
@@ -44,8 +44,8 @@ MANIFEST="$SNAPSHOT_ROOT/cutover.env"
 VERIFY_CANDIDATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verify_release_candidate.sh"
 
 require_stopped() {
-  if pgrep -x YCode >/dev/null 2>&1 || pgrep -x YCodeApp >/dev/null 2>&1; then
-    echo "close both legacy and native YCode before cutover" >&2
+  if pgrep -x Tandock >/dev/null 2>&1 || pgrep -x TandockApp >/dev/null 2>&1; then
+    echo "close both legacy and native Tandock before cutover" >&2
     exit 1
   fi
 }
@@ -140,7 +140,7 @@ case "$ACTION" in
     /usr/bin/ditto "$DATA_ROOT" "$SNAPSHOT_ROOT/legacy-data"
     /usr/bin/sqlite3 "$DATA_ROOT/ycode.db" ".backup '$SNAPSHOT_ROOT/ycode.db'"
     /usr/bin/sqlite3 "$SNAPSHOT_ROOT/ycode.db" "PRAGMA integrity_check;"
-    if [[ -d "$ACTIVE_APP" ]]; then /usr/bin/ditto "$ACTIVE_APP" "$SNAPSHOT_ROOT/YCode Legacy.app"; fi
+    if [[ -d "$ACTIVE_APP" ]]; then /usr/bin/ditto "$ACTIVE_APP" "$SNAPSHOT_ROOT/Tandock Legacy.app"; fi
     {
       echo "state=prepared"
       echo "data_root=$DATA_ROOT"
@@ -156,10 +156,10 @@ case "$ACTION" in
     [[ -f "$MANIFEST" ]] || { echo "run prepare first" >&2; exit 1; }
     require_manifest_context
     if [[ "$REHEARSAL" == "1" ]]; then require_rehearsal_paths; fi
-    [[ -d "$NATIVE_APP" ]] || { echo "--native-app must point to YCode.app" >&2; exit 1; }
+    [[ -d "$NATIVE_APP" ]] || { echo "--native-app must point to Tandock.app" >&2; exit 1; }
     verify_native_candidate
-    MIGRATOR="$NATIVE_APP/Contents/Resources/ycode-migrate"
-    [[ -x "$MIGRATOR" ]] || { echo "release app is missing ycode-migrate" >&2; exit 1; }
+    MIGRATOR="$NATIVE_APP/Contents/Resources/tandock-migrate"
+    [[ -x "$MIGRATOR" ]] || { echo "release app is missing tandock-migrate" >&2; exit 1; }
     [[ -w "$APPLICATIONS_DIR" ]] || { echo "applications directory is not writable: $APPLICATIONS_DIR" >&2; exit 1; }
     [[ -f "$SNAPSHOT_ROOT/legacy-data/config.json" ]] || { echo "snapshot is missing config.json" >&2; exit 1; }
     [[ "$(/usr/bin/sqlite3 "$SNAPSHOT_ROOT/ycode.db" 'PRAGMA integrity_check;')" == "ok" ]] || {
@@ -172,18 +172,18 @@ case "$ACTION" in
       mv "$SNAPSHOT_ROOT/legacy-live-root" "$DATA_ROOT"
       exit 1
     fi
-    if [[ -d "$ACTIVE_APP" ]]; then mv "$ACTIVE_APP" "$SNAPSHOT_ROOT/YCode Legacy Live.app"; fi
+    if [[ -d "$ACTIVE_APP" ]]; then mv "$ACTIVE_APP" "$SNAPSHOT_ROOT/Tandock Legacy Live.app"; fi
     if ! /usr/bin/ditto "$NATIVE_APP" "$ACTIVE_APP"; then
       mv "$DATA_ROOT" "$SNAPSHOT_ROOT/native-failed-activation"
       mv "$SNAPSHOT_ROOT/legacy-live-root" "$DATA_ROOT"
-      if [[ -d "$SNAPSHOT_ROOT/YCode Legacy Live.app" ]]; then mv "$SNAPSHOT_ROOT/YCode Legacy Live.app" "$ACTIVE_APP"; fi
+      if [[ -d "$SNAPSHOT_ROOT/Tandock Legacy Live.app" ]]; then mv "$SNAPSHOT_ROOT/Tandock Legacy Live.app" "$ACTIVE_APP"; fi
       exit 1
     fi
     sed -i '' 's/^state=.*/state=active/' "$MANIFEST"
     ;;
   adopt)
     # Local self-use: the native app already owns the live data root. Do not re-run
-    # ycode-migrate over data the native app has been writing; capture a rollback
+    # tandock-migrate over data the native app has been writing; capture a rollback
     # anchor, archive the legacy app and install the candidate in its place.
     [[ "$MODE" == "local" ]] || { echo "adopt is only available with --local" >&2; exit 1; }
     require_stopped
@@ -191,9 +191,9 @@ case "$ACTION" in
     [[ -d "$DATA_ROOT" ]] || { echo "missing data root: $DATA_ROOT" >&2; exit 1; }
     [[ -f "$DATA_ROOT/ycode.db" ]] || { echo "missing database: $DATA_ROOT/ycode.db" >&2; exit 1; }
     [[ ! -e "$SNAPSHOT_ROOT" ]] || { echo "snapshot already exists: $SNAPSHOT_ROOT" >&2; exit 1; }
-    [[ -d "$NATIVE_APP" ]] || { echo "--native-app must point to YCode.app" >&2; exit 1; }
+    [[ -d "$NATIVE_APP" ]] || { echo "--native-app must point to Tandock.app" >&2; exit 1; }
     verify_native_candidate
-    [[ -x "$NATIVE_APP/Contents/Resources/ycode-migrate" ]] || { echo "candidate is missing ycode-migrate" >&2; exit 1; }
+    [[ -x "$NATIVE_APP/Contents/Resources/tandock-migrate" ]] || { echo "candidate is missing tandock-migrate" >&2; exit 1; }
     [[ -w "$APPLICATIONS_DIR" ]] || { echo "applications directory is not writable: $APPLICATIONS_DIR" >&2; exit 1; }
     mkdir -p "$SNAPSHOT_ROOT"
     /usr/bin/ditto "$DATA_ROOT" "$SNAPSHOT_ROOT/legacy-data"
@@ -202,15 +202,15 @@ case "$ACTION" in
       echo "adoption snapshot failed integrity_check" >&2
       exit 1
     }
-    if [[ -d "$ACTIVE_APP" ]]; then /usr/bin/ditto "$ACTIVE_APP" "$SNAPSHOT_ROOT/YCode Legacy Live.app"; fi
-    if ! /usr/bin/ditto "$NATIVE_APP" "$SNAPSHOT_ROOT/staged-YCode.app"; then
+    if [[ -d "$ACTIVE_APP" ]]; then /usr/bin/ditto "$ACTIVE_APP" "$SNAPSHOT_ROOT/Tandock Legacy Live.app"; fi
+    if ! /usr/bin/ditto "$NATIVE_APP" "$SNAPSHOT_ROOT/staged-Tandock.app"; then
       echo "failed to stage the native candidate" >&2
       exit 1
     fi
     if [[ -d "$ACTIVE_APP" ]]; then rm -rf "$ACTIVE_APP"; fi
-    if ! mv "$SNAPSHOT_ROOT/staged-YCode.app" "$ACTIVE_APP"; then
-      if [[ -d "$SNAPSHOT_ROOT/YCode Legacy Live.app" ]]; then
-        /usr/bin/ditto "$SNAPSHOT_ROOT/YCode Legacy Live.app" "$ACTIVE_APP"
+    if ! mv "$SNAPSHOT_ROOT/staged-Tandock.app" "$ACTIVE_APP"; then
+      if [[ -d "$SNAPSHOT_ROOT/Tandock Legacy Live.app" ]]; then
+        /usr/bin/ditto "$SNAPSHOT_ROOT/Tandock Legacy Live.app" "$ACTIVE_APP"
       fi
       exit 1
     fi
@@ -239,8 +239,8 @@ case "$ACTION" in
       mv "$DATA_ROOT" "$SNAPSHOT_ROOT/native-before-rollback"
       mv "$SNAPSHOT_ROOT/legacy-live-root" "$DATA_ROOT"
     fi
-    if [[ -d "$ACTIVE_APP" ]]; then mv "$ACTIVE_APP" "$SNAPSHOT_ROOT/YCode Native Rolled Back.app"; fi
-    if [[ -d "$SNAPSHOT_ROOT/YCode Legacy Live.app" ]]; then mv "$SNAPSHOT_ROOT/YCode Legacy Live.app" "$ACTIVE_APP"; fi
+    if [[ -d "$ACTIVE_APP" ]]; then mv "$ACTIVE_APP" "$SNAPSHOT_ROOT/Tandock Native Rolled Back.app"; fi
+    if [[ -d "$SNAPSHOT_ROOT/Tandock Legacy Live.app" ]]; then mv "$SNAPSHOT_ROOT/Tandock Legacy Live.app" "$ACTIVE_APP"; fi
     sed -i '' 's/^state=.*/state=rolled_back/' "$MANIFEST"
     ;;
   status)

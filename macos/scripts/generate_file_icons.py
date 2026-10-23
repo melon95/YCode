@@ -6,7 +6,7 @@ import pathlib
 
 NATIVE_DIR = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = NATIVE_DIR / "Resources" / "IconSources" / "file-icons.json"
-OUT = NATIVE_DIR / "YCodeApp" / "Sources" / "YCodeApp" / "YCodeFileIcons.swift"
+OUT = NATIVE_DIR / "TandockApp" / "Sources" / "TandockApp" / "TandockFileIcons.swift"
 
 
 def main() -> int:
@@ -35,7 +35,7 @@ def main() -> int:
         "// 由 macos/scripts/generate_file_icons.py 生成，请勿手改。",
         "// 图标来自 material-icon-theme（MIT），来源与许可证见 Resources/IconSources/README.md。",
         "",
-        "enum YCodeFileIconCatalog {",
+        "enum TandockFileIconCatalog {",
         f'    static let defaultFile = "{defaults["file"]}"',
         f'    static let defaultFolder = "{defaults["folder"]}"',
         f'    static let defaultFolderExpanded = "{defaults["folderExpanded"]}"',

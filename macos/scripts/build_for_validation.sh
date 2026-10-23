@@ -6,4 +6,4 @@ native_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "$root/bundle"
 YCODE_BUILD_DIST_DIR="$root/bundle" YCODE_BUILD_SCRATCH_DIR="$root/swift-build" DEV_SIGNING_IDENTITY=- \
   "$native_dir/scripts/build_and_run.sh" build > "$root/build.log" 2>&1
-printf '%s\n' "$root/bundle/YCode.app"
+printf '%s\n' "$root/bundle/Tandock.app"

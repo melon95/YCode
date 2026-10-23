@@ -16,4 +16,4 @@
 
 未来如恢复自定义界面工作，仍按各 CLI 自身的结构化接口逐个适配，不引入应用级互斥模式，也不自动转换已有终端会话。
 
-当前功能与检查场景分别见[产品范围](ycode-feature-spec.md)和[验收清单](bdd-iteration-plan.md)。
+当前功能与检查场景分别见[产品范围](tandock-feature-spec.md)和[验收清单](bdd-iteration-plan.md)。

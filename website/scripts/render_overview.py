@@ -1,10 +1,10 @@
-"""Render the YCode product overview film in English or Chinese, fully procedurally.
+"""Render the Tandock product overview film in English or Chinese, fully procedurally.
 
 Usage: python3 scripts/render_overview.py [--lang en|zh] [contact-sheet.jpg]
 Requires Pillow, NumPy, FFmpeg, rsvg-convert (librsvg) and macOS system fonts (PingFang SC or Hiragino Sans GB, Menlo).
-No screen recordings or screenshots are used: every frame of the YCode window,
+No screen recordings or screenshots are used: every frame of the Tandock window,
 terminals, panels and motion graphics is drawn here as an illustrative animation.
-Outputs ycode-overview.<lang>.mp4, ycode-overview-poster.<lang>.jpg and zh/en captions into public/assets.
+Outputs tandock-overview.<lang>.mp4, tandock-overview-poster.<lang>.jpg and zh/en captions into public/assets.
 """
 from pathlib import Path
 from functools import lru_cache
@@ -42,7 +42,7 @@ SCENES = [
  ('changes', 6, 'Review every change an agent makes', 'Inline diffs, hunk staging, commits, and Fetch / Pull / Push.'),
  ('todos', 6, 'Todos, shared with your agents', 'Queue, doing, done. Agents read and write the same list through MCP tools.'),
  ('palette', 6, 'Drive the workspace from the keyboard', '⌘K finds sessions, todos, and actions. Every panel has a shortcut.'),
- ('outro', 5, 'YCode', 'A native multi-agent workspace for macOS'),
+ ('outro', 5, 'Tandock', 'A native multi-agent workspace for macOS'),
 ]
 TOTAL = sum(s[1] for s in SCENES)
 
@@ -86,7 +86,7 @@ ZH_UI = {
  'Review changes and commit': '审阅变更并提交', 'Tidy up the project README': '整理项目 README',
  'Claude Code updated your todos': 'Claude Code 更新了待办', 'MCP · todo_update  →  1 marked done': 'MCP · todo_update  →  已完成 1 项',
  'NATIVE AGENT WORKSPACE · macOS': '原生多 Agent 工作台 · macOS',
- 'ILLUSTRATIVE ANIMATION · MODELED ON THE NATIVE YCODE UI': '示意动画 · 按 YCode 原生界面绘制',
+ 'ILLUSTRATIVE ANIMATION · MODELED ON THE NATIVE TANDOCK UI': '示意动画 · 按 Tandock 原生界面绘制',
  'Welcome spacing': '调整欢迎页间距', 'Update plan.md': '更新 plan.md', 'Run tests': '跑测试', 'Review changes': '审阅变更',
  'Terminals, files, Git, and todos in one native window.': '终端、文件、Git 和待办，一个窗口全部就位。',
  'NATIVE macOS · FREE & OPEN SOURCE': 'macOS 原生 · 免费开源',
@@ -626,12 +626,13 @@ def background(t):
     for i in range(3):
         x = 1550+int(math.sin(t*.19+i)*38); r = 300+i*75
         d.ellipse((x-r, 620-r, x+r, 620+r), outline=(205,210,198,100), width=1)
-    d.text((68, 39), 'YCode', font=font(28, 'bold'), fill=INK)
-    d.ellipse((164, 52, 172, 60), fill=ACCENT)
+    d.text((68, 39), 'Tandock', font=font(28, 'bold'), fill=INK)
+    brand_end = 68+int(text_width('Tandock', 28, 'bold'))+12
+    d.ellipse((brand_end, 52, brand_end+8, 60), fill=ACCENT)
     d.text((W-68, 46), tr('NATIVE AGENT WORKSPACE · macOS'), font=font(17), fill=(110,114,102), anchor='ra')
     d.line((68, 1019, W-68, 1019), fill=(215,217,207), width=2)
     d.line((68, 1019, 68+(W-136)*t/TOTAL, 1019), fill=ACCENT, width=3)
-    d.text((68, 1036), tr('ILLUSTRATIVE ANIMATION · MODELED ON THE NATIVE YCODE UI'), font=font(15), fill=(116,120,108))
+    d.text((68, 1036), tr('ILLUSTRATIVE ANIMATION · MODELED ON THE NATIVE TANDOCK UI'), font=font(15), fill=(116,120,108))
     return im
 
 def header(im, title, sub, local):
@@ -1146,7 +1147,7 @@ ZH = ['把 Agent、代码和变更放在同一个工作台。',
       '审阅 Agent 的每一处变更：内联 diff、逐块暂存、提交，以及 Fetch / Pull / Push。',
       '待办与 Agent 共享：队列、进行中、已完成，Agent 通过 MCP 工具读写同一份待办。',
       '键盘驱动整个工作台：⌘K 搜索会话、待办与动作，常用面板都有快捷键。',
-      'YCode，macOS 原生多 Agent 工作台。']
+      'Tandock，macOS 原生多 Agent 工作台。']
 
 def ts(s):
     return f'00:{s//60:02}:{s%60:02}.000'
@@ -1162,11 +1163,11 @@ def write_captions():
             else:
                 line = s[2]+'. '+s[3]
             cues.extend([f'{ts(start)} --> {ts(start+s[1])}', line, '']); start += s[1]
-        (A/f'ycode-overview.{lang}.vtt').write_text('\n'.join(cues), encoding='utf-8')
+        (A/f'tandock-overview.{lang}.vtt').write_text('\n'.join(cues), encoding='utf-8')
 
 if __name__ == '__main__':
     contact = Path(args[0]) if args else None
-    with tempfile.TemporaryDirectory(prefix='ycode-overview-') as td:
+    with tempfile.TemporaryDirectory(prefix='tandock-overview-') as td:
         temp = Path(td); silent = temp/'silent.mp4'; audio = temp/'sound.wav'
         # rsvg-convert keeps the transparent corners (Quick Look renders onto white).
         subprocess.run(['rsvg-convert', '-w', '512', '-h', '512', str(A/'icon.svg'), '-o', str(temp/'icon.png')], check=True)
@@ -1184,7 +1185,7 @@ if __name__ == '__main__':
                     if n == int(scene[1]*FPS*.75):
                         frame.save(temp/f'{scene[0]}.jpg', quality=88)
                     if scene[0] == 'intro' and n == 96:
-                        frame.save(A/f'ycode-overview-poster.{LANG}.jpg', quality=92)
+                        frame.save(A/f'tandock-overview-poster.{LANG}.jpg', quality=92)
                 prev = frame
                 elapsed += scene[1]
         finally:
@@ -1193,7 +1194,7 @@ if __name__ == '__main__':
             raise RuntimeError('Video encoder failed')
         soundtrack(audio)
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(silent), '-i', str(audio), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
-                        '-movflags', '+faststart', '-shortest', str(A/f'ycode-overview.{LANG}.mp4')], check=True)
+                        '-movflags', '+faststart', '-shortest', str(A/f'tandock-overview.{LANG}.mp4')], check=True)
         if contact:
             sheet = Image.new('RGB', (640*3, 360*3), '#f6f5f1')
             for i, s in enumerate(SCENES):

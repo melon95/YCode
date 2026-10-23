@@ -1,7 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- YCode icon: a chevron and a text caret drawn at one stroke weight form the Y; the sparkle marks the AI agent. -->
-  <rect x="100" y="100" width="824" height="824" rx="186" fill="#ff5a4e"/>
-  <path d="M334 278 L512 462 L690 278" fill="none" stroke="#ffffff" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="472" y="552" width="80" height="260" rx="40" fill="#16133a"/>
-  <path d="M764.0 554.0 C776.9 633.1 776.9 633.1 856.0 646.0 C776.9 658.9 776.9 658.9 764.0 738.0 C751.1 658.9 751.1 658.9 672.0 646.0 C751.1 633.1 751.1 633.1 764.0 554.0Z" fill="#ffc83d"/>
+  <!-- Tandock icon: two docked panes form the T's crossbar, the terminal caret is its stem, the sparkle marks the AI agent.
+       Source drawing: docs/assets/icon-concepts/tandock-icon.html -->
+  <defs>
+    <linearGradient id="body" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff6b5e"/><stop offset="1" stop-color="#f0473c"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="100" x2="0" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#16133a" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <path d="M286 100L738 100C853.3 100 924 170.7 924 286L924 738C924 853.3 853.3 924 738 924L286 924C170.7 924 100 853.3 100 738L100 286C100 170.7 170.7 100 286 100Z" fill="url(#body)" filter="url(#shadow)"/>
+  <path d="M286 100L738 100C853.3 100 924 170.7 924 286L924 738C924 853.3 853.3 924 738 924L286 924C170.7 924 100 853.3 100 738L100 286C100 170.7 170.7 100 286 100Z" fill="url(#gloss)"/>
+  <rect x="288" y="286" width="213" height="96" rx="48" fill="#ffffff"/><rect x="523" y="286" width="213" height="96" rx="48" fill="#ffe3df"/><rect x="468" y="430" width="88" height="330" rx="44" fill="#16133a"/><path d="M724 542C737.7 626.3 737.7 626.3 822 640C737.7 653.7 737.7 653.7 724 738C710.3 653.7 710.3 653.7 626 640C710.3 626.3 710.3 626.3 724 542Z" fill="#ffc83d"/>
 </svg>

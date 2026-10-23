@@ -16,9 +16,9 @@ BUILD_ROOT="$NATIVE_DIR/.build/release-universal"
 ARM_BUILD_ROOT="$BUILD_ROOT/arm64"
 INTEL_BUILD_ROOT="$BUILD_ROOT/x86_64"
 OUTPUT_ROOT="$NATIVE_DIR/dist/release"
-APP_BUNDLE="$OUTPUT_ROOT/YCode.app"
+APP_BUNDLE="$OUTPUT_ROOT/Tandock.app"
 CONTENTS="$APP_BUNDLE/Contents"
-ARCHIVE="$OUTPUT_ROOT/YCode-$VERSION.zip"
+ARCHIVE="$OUTPUT_ROOT/Tandock-$VERSION.zip"
 VERIFY_CANDIDATE="$NATIVE_DIR/scripts/verify_release_candidate.sh"
 
 if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
@@ -66,17 +66,19 @@ if [[ "$MODE" != "notarize" ]]; then
   ARM_BIN_DIR="$(swift build -c release --scratch-path "$ARM_BUILD_ROOT" --arch arm64 --show-bin-path)"
   INTEL_BIN_DIR="$(swift build -c release --scratch-path "$INTEL_BUILD_ROOT" --arch x86_64 --show-bin-path)"
 
-  /usr/bin/lipo -create "$ARM_BIN_DIR/YCodeApp" "$INTEL_BIN_DIR/YCodeApp" -output "$CONTENTS/MacOS/YCodeApp"
-  /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$CONTENTS/MacOS/YCodeApp"
-  for helper in ycode ycode-mcp ycode-notify ycode-migrate; do
+  /usr/bin/lipo -create "$ARM_BIN_DIR/TandockApp" "$INTEL_BIN_DIR/TandockApp" -output "$CONTENTS/MacOS/TandockApp"
+  /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$CONTENTS/MacOS/TandockApp"
+  for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
     /usr/bin/lipo -create "$ARM_BIN_DIR/$helper" "$INTEL_BIN_DIR/$helper" -output "$CONTENTS/Resources/$helper"
+    # Stable aliases for hooks/MCP registrations created before the rename.
+    ln -sfn "$helper" "$CONTENTS/Resources/${helper/tandock/ycode}"
   done
-  cp "$NATIVE_DIR/Resources/YCodeApp-Info.plist" "$CONTENTS/Info.plist"
+  cp "$NATIVE_DIR/Resources/TandockApp-Info.plist" "$CONTENTS/Info.plist"
   cp "$NATIVE_DIR/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
   mkdir -p "$CONTENTS/Resources/ThirdPartyNotices"
   cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$CONTENTS/Resources/ThirdPartyNotices/"
   cp "$NATIVE_DIR/Resources/ThirdPartyNotices/"*.txt "$CONTENTS/Resources/ThirdPartyNotices/"
-  chmod +x "$CONTENTS/MacOS/YCodeApp" "$CONTENTS/Resources/ycode" "$CONTENTS/Resources/ycode-mcp" "$CONTENTS/Resources/ycode-notify" "$CONTENTS/Resources/ycode-migrate"
+  chmod +x "$CONTENTS/MacOS/TandockApp" "$CONTENTS/Resources/tandock" "$CONTENTS/Resources/tandock-mcp" "$CONTENTS/Resources/tandock-notify" "$CONTENTS/Resources/tandock-migrate"
 
   SPARKLE_FRAMEWORK="$(find "$NATIVE_DIR/.build/artifacts" "$ARM_BUILD_ROOT" -path '*/Sparkle.framework' -type d -print -quit)"
   if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
@@ -90,7 +92,7 @@ if [[ "$MODE" != "notarize" ]]; then
 
   PLIST=/usr/libexec/PlistBuddy
   "$PLIST" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$CONTENTS/Info.plist"
-  "$PLIST" -c "Set :CFBundleDisplayName YCode" "$CONTENTS/Info.plist"
+  "$PLIST" -c "Set :CFBundleDisplayName Tandock" "$CONTENTS/Info.plist"
   "$PLIST" -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
   "$PLIST" -c "Set :CFBundleVersion $BUILD_NUMBER" "$CONTENTS/Info.plist"
   "$PLIST" -c "Add :LSApplicationCategoryType string public.app-category.developer-tools" "$CONTENTS/Info.plist"
@@ -108,15 +110,15 @@ if [[ "$MODE" != "notarize" ]]; then
     "${SIGN[@]}" "$FRAMEWORK/Autoupdate"
     "${SIGN[@]}" "$FRAMEWORK/Updater.app"
     "${SIGN[@]}" "$CONTENTS/Frameworks/Sparkle.framework"
-    for helper in ycode ycode-mcp ycode-notify ycode-migrate; do "${SIGN[@]}" "$CONTENTS/Resources/$helper"; done
+    for helper in tandock tandock-mcp tandock-notify tandock-migrate; do "${SIGN[@]}" "$CONTENTS/Resources/$helper"; done
     "${SIGN[@]}" "$APP_BUNDLE"
   else
     /usr/bin/codesign --force --deep --sign - "$APP_BUNDLE"
   fi
 
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
-  /usr/bin/lipo -archs "$CONTENTS/MacOS/YCodeApp" | tee "$OUTPUT_ROOT/architectures.txt"
-  /usr/bin/otool -L "$CONTENTS/MacOS/YCodeApp" | tee "$OUTPUT_ROOT/linkage.txt"
+  /usr/bin/lipo -archs "$CONTENTS/MacOS/TandockApp" | tee "$OUTPUT_ROOT/architectures.txt"
+  /usr/bin/otool -L "$CONTENTS/MacOS/TandockApp" | tee "$OUTPUT_ROOT/linkage.txt"
   /usr/bin/ditto -c -k --keepParent "$APP_BUNDLE" "$ARCHIVE"
   env YCODE_EXPECTED_VERSION="$VERSION" YCODE_EXPECTED_BUILD="$BUILD_NUMBER" \
     "$VERIFY_CANDIDATE" "$APP_BUNDLE" "$ARCHIVE" "$MODE"

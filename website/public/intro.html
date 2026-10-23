@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YCode Overview Film</title>
-<meta name="description" content="YCode in 53 seconds: a native macOS workspace that brings your agents, code, and changes together.">
+<title>Tandock Overview Film</title>
+<meta name="description" content="Tandock in 53 seconds: a native macOS workspace that brings your agents, code, and changes together.">
 <meta name="theme-color" content="#efeef4">
-<meta property="og:title" content="YCode Overview Film"><meta property="og:type" content="video.other">
-<meta property="og:image" content="assets/ycode-overview-poster.en.jpg">
+<meta property="og:title" content="Tandock Overview Film"><meta property="og:type" content="video.other">
+<meta property="og:image" content="assets/tandock-overview-poster.en.jpg">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;550;650&display=swap">
-<link rel="preload" as="image" href="assets/ycode-overview-poster.en.jpg" fetchpriority="high">
+<link rel="preload" as="image" href="assets/tandock-overview-poster.en.jpg" fetchpriority="high">
 <style>
 :root{--bg:#efeef4;--ink:#16133a;--muted:#5a5873;--line:#d3d1df;--accent:#d9392e;--paper:#fcfcfe;--chip:#e3e1ec}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#110f28;--ink:#f1f0f8;--muted:#a6a3c0;--line:#322e5c;--accent:#ff7d72;--paper:#1f1c47;--chip:#1a1740}}
@@ -63,7 +63,7 @@ footer{border-top:0;padding:24px 0 40px;font-size:13px;color:var(--muted)}
 </head>
 <body>
 <header class="wrap">
-  <a class="brand" href="index.html" aria-label="YCode home"><img src="assets/icon.svg" width="32" height="32" alt=""><span>YCode</span></a>
+  <a class="brand" href="index.html" aria-label="Tandock home"><img src="assets/icon.svg" width="32" height="32" alt=""><span>Tandock</span></a>
   <nav aria-label="Page navigation"><a href="index.html">Home</a><a href="https://github.com/melon95/YCode" target="_blank" rel="noopener">GitHub ↗</a></nav>
 </header>
 
@@ -77,11 +77,11 @@ footer{border-top:0;padding:24px 0 40px;font-size:13px;color:var(--muted)}
   </div>
 
   <div class="player">
-    <video id="film" controls playsinline preload="metadata" poster="assets/ycode-overview-poster.en.jpg" width="1920" height="1080" aria-describedby="film-guide">
-      <source src="assets/ycode-overview.en.mp4" type="video/mp4">
-      <track kind="captions" src="assets/ycode-overview.en.vtt" srclang="en" label="English">
-      <track kind="captions" src="assets/ycode-overview.zh.vtt" srclang="zh" label="中文">
-      <p>Your browser can't play this video. <a href="assets/ycode-overview.en.mp4">Download it instead</a>.</p>
+    <video id="film" controls playsinline preload="metadata" poster="assets/tandock-overview-poster.en.jpg" width="1920" height="1080" aria-describedby="film-guide">
+      <source src="assets/tandock-overview.en.mp4" type="video/mp4">
+      <track kind="captions" src="assets/tandock-overview.en.vtt" srclang="en" label="English">
+      <track kind="captions" src="assets/tandock-overview.zh.vtt" srclang="zh" label="中文">
+      <p>Your browser can't play this video. <a href="assets/tandock-overview.en.mp4">Download it instead</a>.</p>
     </video>
   </div>
 
@@ -90,10 +90,10 @@ footer{border-top:0;padding:24px 0 40px;font-size:13px;color:var(--muted)}
   <section class="notes">
     <div>
       <h2>What the film covers</h2>
-      <p id="film-guide">YCode runs Claude Code, Codex, Pi, or any custom CLI in its own PTY. Manage projects and sessions, browse files, review Git changes, and track todos in one window, while each agent keeps working in a real terminal.</p>
+      <p id="film-guide">Tandock runs Claude Code, Codex, Pi, or any custom CLI in its own PTY. Manage projects and sessions, browse files, review Git changes, and track todos in one window, while each agent keeps working in a real terminal.</p>
       <div class="actions">
-        <a class="btn primary" href="https://github.com/melon95/YCode/releases/latest" target="_blank" rel="noopener">Download YCode</a>
-        <a class="btn ghost" href="assets/ycode-overview.en.mp4" download>Download the film</a>
+        <a class="btn primary" href="https://github.com/melon95/YCode/releases/latest" target="_blank" rel="noopener">Download Tandock</a>
+        <a class="btn ghost" href="assets/tandock-overview.en.mp4" download>Download the film</a>
       </div>
     </div>
     <div>
@@ -101,12 +101,12 @@ footer{border-top:0;padding:24px 0 40px;font-size:13px;color:var(--muted)}
         <summary>Transcript</summary>
         <ol id="transcript"></ol>
       </details>
-      <p style="font-size:13px;margin-top:14px">This film is a procedurally generated illustration modeled on the native YCode interface. Terminal output and project content are sample data.</p>
+      <p style="font-size:13px;margin-top:14px">This film is a procedurally generated illustration modeled on the native Tandock interface. Terminal output and project content are sample data.</p>
     </div>
   </section>
 </main>
 
-<footer class="wrap">YCode · MIT License · macOS 14+ · Apple Silicon / Intel</footer>
+<footer class="wrap">Tandock · MIT License · macOS 14+ · Apple Silicon / Intel</footer>
 
 <script>
 // Chapter times mirror the scene timeline in scripts/render_overview.py.
@@ -119,7 +119,7 @@ const CHAPTERS = [
   [30, 'Git review', 'Inline diffs, hunk staging, commits, and Fetch / Pull / Push.'],
   [36, 'Todos & MCP', 'Queue, doing, done. Agents read and write the same list through MCP tools.'],
   [42, 'Shortcuts', '⌘K finds sessions, todos, and actions. Every panel has a shortcut.'],
-  [48, 'Closing', 'YCode. A native multi-agent workspace for macOS.'],
+  [48, 'Closing', 'Tandock. A native multi-agent workspace for macOS.'],
 ];
 const video = document.getElementById('film');
 const list = document.querySelector('.chapters');

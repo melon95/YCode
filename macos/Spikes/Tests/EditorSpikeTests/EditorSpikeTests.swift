@@ -20,7 +20,7 @@ final class EditorSpikeTests: XCTestCase {
 
     func testMarkdownAndSVGDecodeNatively() throws {
         let markdown = try makeMarkdownPreview(markdownFixture)
-        XCTAssertTrue(markdown.string.contains("YCode 原生预览\n\n"))
+        XCTAssertTrue(markdown.string.contains("Tandock 原生预览\n\n"))
         XCTAssertTrue(markdown.string.contains("• 第一项\n• 第二项 🎉"))
         XCTAssertFalse(markdown.string.contains("**粗体**"))
         XCTAssertNotNil(decodeNativeImage(Data(svgFixture.utf8)))

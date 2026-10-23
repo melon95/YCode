@@ -2,9 +2,9 @@
 
 ## 方案
 
-布局切换由一个 AppKit 容器（`YCodeCanvasHost`）管理，SwiftUI 只提供各窗格的实时内容，从不在中间尺寸上布局。
+布局切换由一个 AppKit 容器（`TandockCanvasHost`）管理，SwiftUI 只提供各窗格的实时内容，从不在中间尺寸上布局。
 
-每个窗格放在一个裁切槽位（`YCodeCanvasPane`，翻转坐标、`masksToBounds`）里：
+每个窗格放在一个裁切槽位（`TandockCanvasPane`，翻转坐标、`masksToBounds`）里：
 
 1. **先读屏幕**：在更新 SwiftUI 内容、终端尺寸之前，读取各槽位当前可见的 frame / 不透明度（进行中的过渡读 `presentation()`）。只有从静止状态开始的过渡才拍快照；每个窗格只做一次 `cacheDisplay`，再把 SwiftTerm 的图层背景色垫在下面。
 2. **实时内容一步到位**：宿主视图直接设为目标尺寸，每个终端只重排一次，不接收逐帧尺寸变化。

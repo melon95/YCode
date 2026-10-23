@@ -30,7 +30,7 @@ jobs:
         run: |
           python3 macos/scripts/generate_agent_icons.py
           python3 macos/scripts/generate_file_icons.py
-          git diff --exit-code -- macos/YCodeApp/Sources/YCodeApp/YCodeAgentIcons.swift macos/YCodeApp/Sources/YCodeApp/YCodeFileIcons.swift
+          git diff --exit-code -- macos/TandockApp/Sources/TandockApp/TandockAgentIcons.swift macos/TandockApp/Sources/TandockApp/TandockFileIcons.swift
       - name: Build and verify universal candidate
         env:
           BUILD_NUMBER: ${{ github.run_number }}
@@ -39,6 +39,6 @@ jobs:
         run: bash macos/scripts/test_update_feed.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: YCode-macOS-universal-candidate
-          path: macos/dist/release/YCode-*.zip
+          name: Tandock-macOS-universal-candidate
+          path: macos/dist/release/Tandock-*.zip
           if-no-files-found: error

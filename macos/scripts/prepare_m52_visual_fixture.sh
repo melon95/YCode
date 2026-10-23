@@ -14,7 +14,7 @@ if [[ $# -eq 1 ]]; then
   fi
   mkdir -p "$FIXTURE_ROOT"
 else
-  FIXTURE_ROOT="$(mktemp -d /tmp/ycode-m52-visual.XXXXXX)"
+  FIXTURE_ROOT="$(mktemp -d /tmp/tandock-m52-visual.XXXXXX)"
 fi
 
 DATA_ROOT="$FIXTURE_ROOT/data"
@@ -24,18 +24,18 @@ mkdir -p "$DATA_ROOT" "$PROJECT_ROOT/docs" "$PROJECT_ROOT/Sources"
 printf '%s\n' \
   '# M5.2 Visual Fixture' \
   '' \
-  'This repository is disposable and exists only for YCode visual regression.' \
+  'This repository is disposable and exists only for Tandock visual regression.' \
   > "$PROJECT_ROOT/README.md"
 printf '%s\n' 'base line' > "$PROJECT_ROOT/tracked.txt"
 printf '%s\n' '# 预览标题' '' '- 中文列表' '- Markdown preview' > "$PROJECT_ROOT/docs/preview.md"
 printf '%s\n' \
   '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120">' \
   '  <rect width="240" height="120" fill="#18212f"/>' \
-  '  <text x="20" y="68" fill="#70d6ff" font-size="24">YCode M5.2</text>' \
+  '  <text x="20" y="68" fill="#70d6ff" font-size="24">Tandock M5.2</text>' \
   '</svg>' \
   > "$PROJECT_ROOT/docs/preview.svg"
 printf '%s\n' '<svg><broken>' > "$PROJECT_ROOT/docs/broken.svg"
-printf '%s\n' 'plain text remains readable 中文' > "$PROJECT_ROOT/docs/unknown.ycode"
+printf '%s\n' 'plain text remains readable 中文' > "$PROJECT_ROOT/docs/unknown.tandock"
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
   | /usr/bin/base64 -D > "$PROJECT_ROOT/docs/pixel.png"
 awk 'BEGIN { for (i = 1; i <= 30000; i++) printf "line %05d 中文 large file payload\n", i }' \
@@ -52,8 +52,8 @@ printf '%s\n' \
 chmod +x "$FIXTURE_ROOT/agent-shim.sh"
 
 /usr/bin/git -C "$PROJECT_ROOT" init -b main >/dev/null
-/usr/bin/git -C "$PROJECT_ROOT" config user.name "YCode M5.2 Fixture"
-/usr/bin/git -C "$PROJECT_ROOT" config user.email "fixture@ycode.invalid"
+/usr/bin/git -C "$PROJECT_ROOT" config user.name "Tandock M5.2 Fixture"
+/usr/bin/git -C "$PROJECT_ROOT" config user.email "fixture@tandock.invalid"
 /usr/bin/git -C "$PROJECT_ROOT" add .
 /usr/bin/git -C "$PROJECT_ROOT" commit -m "initial visual fixture" >/dev/null
 /usr/bin/git -C "$PROJECT_ROOT" checkout -b feature/m52-visual >/dev/null

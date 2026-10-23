@@ -6,7 +6,7 @@ import pathlib
 
 NATIVE_DIR = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = NATIVE_DIR / "Resources" / "IconSources" / "agent-icons.json"
-OUT = NATIVE_DIR / "YCodeApp" / "Sources" / "YCodeApp" / "YCodeAgentIcons.swift"
+OUT = NATIVE_DIR / "TandockApp" / "Sources" / "TandockApp" / "TandockAgentIcons.swift"
 
 
 def main() -> int:
@@ -19,7 +19,7 @@ def main() -> int:
         "// 来源与许可证见 macos/Resources/IconSources/README.md。",
         "// 认识的品牌取彩色裸 glyph，其余取单色 Mono。",
         "",
-        "enum YCodeAgentIconCatalog {",
+        "enum TandockAgentIconCatalog {",
         "    /// 彩色图标（应用标志 + 认识的品牌），按原色渲染，不着色。",
         "    static let brand: [String: String] = [",
     ]

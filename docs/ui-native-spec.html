@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ycode 原生版 · 界面与交互规范（交付稿）</title>
+<title>tandock 原生版 · 界面与交互规范（交付稿）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -116,14 +116,14 @@ tr:hover td{background:rgba(255,255,255,.017)}
    B · app 组件系统 —— 所有屏幕共用这一套，改一处全稿一致
    ═══════════════════════════════════════════════════════════════ */
 .app{font-variant-emoji:text;
-  /* 浅色（YCodeThemeCatalog.light + YCodeDesignSystem） */
+  /* 浅色（TandockThemeCatalog.light + TandockDesignSystem） */
   --bg:#ffffff; --chrome:#f4f4f6; --panel:#fbfbfc; --field:#ffffff;
   --text:#1d1d1f; --soft:#5a5a5e; --faint:#8e8e93; --line:rgba(0,0,0,.10);
   --accent:#0b63e5; --accent-soft:rgba(11,99,229,.16);
   --ok:#1A8A54; --warn:#B67707; --err:#D2382F;
   --term-bg:#ffffff; --term-fg:#1d1d1f;
   --add-bg:rgba(26,138,84,.10); --del-bg:rgba(210,56,47,.10);
-  /* 尺寸（YCodeMetrics） */
+  /* 尺寸（TandockMetrics） */
   --sidebar:238px; --inspector:302px; --row:28px; --panehead:28px;
   --tabbar:38px; --head:30px; --ctrl:24px; --r:6px;
   font-family:-apple-system,"SF Pro Text","PingFang SC","IBM Plex Sans",sans-serif;
@@ -220,7 +220,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .split.v{flex-direction:column}
 .split.v>.pane+.pane{border-left:0;border-top:1px solid var(--line)}
 /* 图标占位 */
-/* agent 图标：内嵌 @lobehub/icons 的彩色裸 glyph，与 YCodeAgentIcons.swift 同源 */
+/* agent 图标：内嵌 @lobehub/icons 的彩色裸 glyph，与 TandockAgentIcons.swift 同源 */
 .ic{width:13px;height:13px;flex:none;display:block}
 /* 选中行上 agent 图标 tint 成白色 90%，彩色 glyph 不与蓝底打架 */
 .row.sel .ic{filter:brightness(0) invert(1);opacity:.9}
@@ -296,9 +296,9 @@ tr:hover td{background:rgba(255,255,255,.017)}
 </style>
 </head>
 <body>
-<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：2026-09 原生 UI 规格快照；LSP、收件箱与旧设置形态已调整或移除，不代表当前功能。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="ycode-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
+<aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：2026-09 原生 UI 规格快照；LSP、收件箱与旧设置形态已调整或移除，不代表当前功能。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="tandock-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
 
-<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><symbol id="ic-files" viewBox="0 0 16 16"><path d="M3.2 2.2h5.4l4.2 4.2v7.4H3.2z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><path d="M8.5 2.3v4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></symbol><symbol id="ic-changes" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M5.6 6.1h4.8M8 3.7v4.8M5.6 11.3h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></symbol><symbol id="ic-todos" viewBox="0 0 16 16"><path d="M2.4 4.6l1.4 1.4 2.4-2.6M2.4 11.3l1.4 1.4 2.4-2.6M8.8 4.4h4.8M8.8 11.9h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="ic-terminal" viewBox="0 0 16 16"><path d="M3.2 4.2l3.4 3.6-3.4 3.6M8.6 12h4.4" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="i-claude" viewBox="0 0 24 24"><path fill="#D97757" fill-rule="nonzero" clip-rule="nonzero" d="M 4.709 15.955 l 4.72 -2.647 l .08 -.23 l -.08 -.128 H 9.2 l -.79 -.048 l -2.698 -.073 l -2.339 -.097 l -2.266 -.122 l -.571 -.121 L 0 11.784 l .055 -.352 l .48 -.321 l .686 .06 l 1.52 .103 l 2.278 .158 l 1.652 .097 l 2.449 .255 h .389 l .055 -.157 l -.134 -.098 l -.103 -.097 l -2.358 -1.596 l -2.552 -1.688 l -1.336 -.972 l -.724 -.491 l -.364 -.462 l -.158 -1.008 l .656 -.722 l .881 .06 l .225 .061 l .893 .686 l 1.908 1.476 l 2.491 1.833 l .365 .304 l .145 -.103 l .019 -.073 l -.164 -.274 l -1.355 -2.446 l -1.446 -2.49 l -.644 -1.032 l -.17 -.619 a 2.97 2.97 0 0 1 -.104 -.729 L 6.283 .134 L 6.696 0 l .996 .134 l .42 .364 l .62 1.414 l 1.002 2.229 l 1.555 3.03 l .456 .898 l .243 .832 l .091 .255 h .158 V 9.01 l .128 -1.706 l .237 -2.095 l .23 -2.695 l .08 -.76 l .376 -.91 l .747 -.492 l .584 .28 l .48 .685 l -.067 .444 l -.286 1.851 l -.559 2.903 l -.364 1.942 h .212 l .243 -.242 l .985 -1.306 l 1.652 -2.064 l .73 -.82 l .85 -.904 l .547 -.431 h 1.033 l .76 1.129 l -.34 1.166 l -1.064 1.347 l -.881 1.142 l -1.264 1.7 l -.79 1.36 l .073 .11 l .188 -.02 l 2.856 -.606 l 1.543 -.28 l 1.841 -.315 l .833 .388 l .091 .395 l -.328 .807 l -1.969 .486 l -2.309 .462 l -3.439 .813 l -.042 .03 l .049 .061 l 1.549 .146 l .662 .036 h 1.622 l 3.02 .225 l .79 .522 l .474 .638 l -.079 .485 l -1.215 .62 l -1.64 -.389 l -3.829 -.91 l -1.312 -.329 h -.182 v .11 l 1.093 1.068 l 2.006 1.81 l 2.509 2.33 l .127 .578 l -.322 .455 l -.34 -.049 l -2.205 -1.657 l -.851 -.747 l -1.926 -1.62 h -.128 v .17 l .444 .649 l 2.345 3.521 l .122 1.08 l -.17 .353 l -.608 .213 l -.668 -.122 l -1.374 -1.925 l -1.415 -2.167 l -1.143 -1.943 l -.14 .08 l -.674 7.254 l -.316 .37 l -.729 .28 l -.607 -.461 l -.322 -.747 l .322 -1.476 l .389 -1.924 l .315 -1.53 l .286 -1.9 l .17 -.632 l -.012 -.042 l -.14 .018 l -1.434 1.967 l -2.18 2.945 l -1.726 1.845 l -.414 .164 l -.717 -.37 l .067 -.662 l .401 -.589 l 2.388 -3.036 l 1.44 -1.882 l .93 -1.086 l -.006 -.158 h -.055 L 4.132 18.56 l -1.13 .146 l -.487 -.456 l .061 -.746 l .231 -.243 l 1.908 -1.312 l -.006 .006 z"/></symbol><symbol id="i-codex" viewBox="0 0 24 24"><defs><linearGradient id="Codex-g" gradient-units="userSpaceOnUse" x1="12" x2="12" y1="0" y2="24"><stop stop-color="#B1A7FF"/><stop offset=".5" stop-color="#7A9DFF"/><stop offset="1" stop-color="#3941FF"/></linearGradient></defs><path fill="url(#Codex-g)" fill-rule="evenodd" clip-rule="evenodd" d="M 8.086 .457 a 6.105 6.105 0 0 1 3.046 -.415 c 1.333 .153 2.521 .72 3.564 1.7 a .117 .117 0 0 0 .107 .029 c 1.408 -.346 2.762 -.224 4.061 .366 l .063 .03 l .154 .076 c 1.357 .703 2.33 1.77 2.918 3.198 c .278 .679 .418 1.388 .421 2.126 a 5.655 5.655 0 0 1 -.18 1.631 a .167 .167 0 0 0 .04 .155 a 5.982 5.982 0 0 1 1.578 2.891 c .385 1.901 -.01 3.615 -1.183 5.14 l -.182 .22 a 6.063 6.063 0 0 1 -2.934 1.851 a .162 .162 0 0 0 -.108 .102 c -.255 .736 -.511 1.364 -.987 1.992 c -1.199 1.582 -2.962 2.462 -4.948 2.451 c -1.583 -.008 -2.986 -.587 -4.21 -1.736 a .145 .145 0 0 0 -.14 -.032 c -.518 .167 -1.04 .191 -1.604 .185 a 5.924 5.924 0 0 1 -2.595 -.622 a 6.058 6.058 0 0 1 -2.146 -1.781 c -.203 -.269 -.404 -.522 -.551 -.821 a 7.74 7.74 0 0 1 -.495 -1.283 a 6.11 6.11 0 0 1 -.017 -3.064 a .166 .166 0 0 0 .008 -.074 a .115 .115 0 0 0 -.037 -.064 a 5.958 5.958 0 0 1 -1.38 -2.202 a 5.196 5.196 0 0 1 -.333 -1.589 a 6.915 6.915 0 0 1 .188 -2.132 c .45 -1.484 1.309 -2.648 2.577 -3.493 c .282 -.188 .55 -.334 .802 -.438 c .286 -.12 .573 -.22 .861 -.304 a .129 .129 0 0 0 .087 -.087 A 6.016 6.016 0 0 1 5.635 2.31 C 6.315 1.464 7.132 .846 8.086 .457 z m -.804 7.85 a .848 .848 0 0 0 -1.473 .842 l 1.694 2.965 l -1.688 2.848 a .849 .849 0 0 0 1.46 .864 l 1.94 -3.272 a .849 .849 0 0 0 .007 -.854 l -1.94 -3.393 z m 5.446 6.24 a .849 .849 0 0 0 0 1.695 h 4.848 a .849 .849 0 0 0 0 -1.696 h -4.848 z"/></symbol><symbol id="i-gemini" viewBox="0 0 24 24"><defs><linearGradient id="Gemini-a" gradient-units="userSpaceOnUse" x1="7" x2="11" y1="15.5" y2="12"><stop stop-color="#08B962"/><stop offset="1" stop-color="#08B962" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-b" gradient-units="userSpaceOnUse" x1="8" x2="11.5" y1="5.5" y2="11"><stop stop-color="#F94543"/><stop offset="1" stop-color="#F94543" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-c" gradient-units="userSpaceOnUse" x1="3.5" x2="17.5" y1="13.5" y2="12"><stop stop-color="#FABC12"/><stop offset=".46" stop-color="#FABC12" stop-opacity="0"/></linearGradient></defs><path fill="#3186FF" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-a)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-b)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-c)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/></symbol><symbol id="i-ycode" viewBox="0 0 1024 1024"><linearGradient id="ycode-yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient> <linearGradient id="ycode-yc-top" x1="300" y1="275" x2="742" y2="516" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0c68a"/><stop offset=".48" stop-color="#a97947"/><stop offset="1" stop-color="#423225"/></linearGradient> <linearGradient id="ycode-yc-left" x1="278" y1="432" x2="534" y2="732" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#5c3126"/></linearGradient> <linearGradient id="ycode-yc-right" x1="538" y1="445" x2="767" y2="742" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f08f6c"/><stop offset="1" stop-color="#7b3f2d"/></linearGradient> <rect x="72" y="72" width="880" height="880" rx="214" fill="url(#ycode-yc-tile)"/> <rect x="104" y="104" width="816" height="816" rx="188" fill="none" stroke="#51483a" stroke-opacity=".42" stroke-width="8"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="url(#ycode-yc-top)"/> <path d="M 272 344 L 512 482 v 276 L 272 620 Z" fill="url(#ycode-yc-left)"/> <path d="M 752 344 L 512 482 v 276 l 240 -138 Z" fill="url(#ycode-yc-right)"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="none" stroke="#f0eee6" stroke-opacity=".34" stroke-width="10" stroke-linejoin="round"/> <path d="M 272 344 v 276 l 240 138 l 240 -138 V 344" fill="none" stroke="#1a130f" stroke-opacity=".5" stroke-width="10" stroke-linejoin="round"/> <path d="M 416 404 L 512 458 L 608 404" fill="none" stroke="#fff2d8" stroke-opacity=".72" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 512 458 v 116" fill="none" stroke="#fff2d8" stroke-opacity=".76" stroke-width="18" stroke-linecap="round"/> <path d="M 446 620 L 512 658 L 578 620" fill="none" stroke="#f0eee6" stroke-opacity=".9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 238 787 c 58 42 145 68 274 68 s 216 -26 274 -68" fill="none" stroke="#d97757" stroke-opacity=".22" stroke-width="18" stroke-linecap="round"/></symbol></svg>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><symbol id="ic-files" viewBox="0 0 16 16"><path d="M3.2 2.2h5.4l4.2 4.2v7.4H3.2z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><path d="M8.5 2.3v4.3h4.3" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></symbol><symbol id="ic-changes" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.35"/><path d="M5.6 6.1h4.8M8 3.7v4.8M5.6 11.3h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></symbol><symbol id="ic-todos" viewBox="0 0 16 16"><path d="M2.4 4.6l1.4 1.4 2.4-2.6M2.4 11.3l1.4 1.4 2.4-2.6M8.8 4.4h4.8M8.8 11.9h4.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="ic-terminal" viewBox="0 0 16 16"><path d="M3.2 4.2l3.4 3.6-3.4 3.6M8.6 12h4.4" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="i-claude" viewBox="0 0 24 24"><path fill="#D97757" fill-rule="nonzero" clip-rule="nonzero" d="M 4.709 15.955 l 4.72 -2.647 l .08 -.23 l -.08 -.128 H 9.2 l -.79 -.048 l -2.698 -.073 l -2.339 -.097 l -2.266 -.122 l -.571 -.121 L 0 11.784 l .055 -.352 l .48 -.321 l .686 .06 l 1.52 .103 l 2.278 .158 l 1.652 .097 l 2.449 .255 h .389 l .055 -.157 l -.134 -.098 l -.103 -.097 l -2.358 -1.596 l -2.552 -1.688 l -1.336 -.972 l -.724 -.491 l -.364 -.462 l -.158 -1.008 l .656 -.722 l .881 .06 l .225 .061 l .893 .686 l 1.908 1.476 l 2.491 1.833 l .365 .304 l .145 -.103 l .019 -.073 l -.164 -.274 l -1.355 -2.446 l -1.446 -2.49 l -.644 -1.032 l -.17 -.619 a 2.97 2.97 0 0 1 -.104 -.729 L 6.283 .134 L 6.696 0 l .996 .134 l .42 .364 l .62 1.414 l 1.002 2.229 l 1.555 3.03 l .456 .898 l .243 .832 l .091 .255 h .158 V 9.01 l .128 -1.706 l .237 -2.095 l .23 -2.695 l .08 -.76 l .376 -.91 l .747 -.492 l .584 .28 l .48 .685 l -.067 .444 l -.286 1.851 l -.559 2.903 l -.364 1.942 h .212 l .243 -.242 l .985 -1.306 l 1.652 -2.064 l .73 -.82 l .85 -.904 l .547 -.431 h 1.033 l .76 1.129 l -.34 1.166 l -1.064 1.347 l -.881 1.142 l -1.264 1.7 l -.79 1.36 l .073 .11 l .188 -.02 l 2.856 -.606 l 1.543 -.28 l 1.841 -.315 l .833 .388 l .091 .395 l -.328 .807 l -1.969 .486 l -2.309 .462 l -3.439 .813 l -.042 .03 l .049 .061 l 1.549 .146 l .662 .036 h 1.622 l 3.02 .225 l .79 .522 l .474 .638 l -.079 .485 l -1.215 .62 l -1.64 -.389 l -3.829 -.91 l -1.312 -.329 h -.182 v .11 l 1.093 1.068 l 2.006 1.81 l 2.509 2.33 l .127 .578 l -.322 .455 l -.34 -.049 l -2.205 -1.657 l -.851 -.747 l -1.926 -1.62 h -.128 v .17 l .444 .649 l 2.345 3.521 l .122 1.08 l -.17 .353 l -.608 .213 l -.668 -.122 l -1.374 -1.925 l -1.415 -2.167 l -1.143 -1.943 l -.14 .08 l -.674 7.254 l -.316 .37 l -.729 .28 l -.607 -.461 l -.322 -.747 l .322 -1.476 l .389 -1.924 l .315 -1.53 l .286 -1.9 l .17 -.632 l -.012 -.042 l -.14 .018 l -1.434 1.967 l -2.18 2.945 l -1.726 1.845 l -.414 .164 l -.717 -.37 l .067 -.662 l .401 -.589 l 2.388 -3.036 l 1.44 -1.882 l .93 -1.086 l -.006 -.158 h -.055 L 4.132 18.56 l -1.13 .146 l -.487 -.456 l .061 -.746 l .231 -.243 l 1.908 -1.312 l -.006 .006 z"/></symbol><symbol id="i-codex" viewBox="0 0 24 24"><defs><linearGradient id="Codex-g" gradient-units="userSpaceOnUse" x1="12" x2="12" y1="0" y2="24"><stop stop-color="#B1A7FF"/><stop offset=".5" stop-color="#7A9DFF"/><stop offset="1" stop-color="#3941FF"/></linearGradient></defs><path fill="url(#Codex-g)" fill-rule="evenodd" clip-rule="evenodd" d="M 8.086 .457 a 6.105 6.105 0 0 1 3.046 -.415 c 1.333 .153 2.521 .72 3.564 1.7 a .117 .117 0 0 0 .107 .029 c 1.408 -.346 2.762 -.224 4.061 .366 l .063 .03 l .154 .076 c 1.357 .703 2.33 1.77 2.918 3.198 c .278 .679 .418 1.388 .421 2.126 a 5.655 5.655 0 0 1 -.18 1.631 a .167 .167 0 0 0 .04 .155 a 5.982 5.982 0 0 1 1.578 2.891 c .385 1.901 -.01 3.615 -1.183 5.14 l -.182 .22 a 6.063 6.063 0 0 1 -2.934 1.851 a .162 .162 0 0 0 -.108 .102 c -.255 .736 -.511 1.364 -.987 1.992 c -1.199 1.582 -2.962 2.462 -4.948 2.451 c -1.583 -.008 -2.986 -.587 -4.21 -1.736 a .145 .145 0 0 0 -.14 -.032 c -.518 .167 -1.04 .191 -1.604 .185 a 5.924 5.924 0 0 1 -2.595 -.622 a 6.058 6.058 0 0 1 -2.146 -1.781 c -.203 -.269 -.404 -.522 -.551 -.821 a 7.74 7.74 0 0 1 -.495 -1.283 a 6.11 6.11 0 0 1 -.017 -3.064 a .166 .166 0 0 0 .008 -.074 a .115 .115 0 0 0 -.037 -.064 a 5.958 5.958 0 0 1 -1.38 -2.202 a 5.196 5.196 0 0 1 -.333 -1.589 a 6.915 6.915 0 0 1 .188 -2.132 c .45 -1.484 1.309 -2.648 2.577 -3.493 c .282 -.188 .55 -.334 .802 -.438 c .286 -.12 .573 -.22 .861 -.304 a .129 .129 0 0 0 .087 -.087 A 6.016 6.016 0 0 1 5.635 2.31 C 6.315 1.464 7.132 .846 8.086 .457 z m -.804 7.85 a .848 .848 0 0 0 -1.473 .842 l 1.694 2.965 l -1.688 2.848 a .849 .849 0 0 0 1.46 .864 l 1.94 -3.272 a .849 .849 0 0 0 .007 -.854 l -1.94 -3.393 z m 5.446 6.24 a .849 .849 0 0 0 0 1.695 h 4.848 a .849 .849 0 0 0 0 -1.696 h -4.848 z"/></symbol><symbol id="i-gemini" viewBox="0 0 24 24"><defs><linearGradient id="Gemini-a" gradient-units="userSpaceOnUse" x1="7" x2="11" y1="15.5" y2="12"><stop stop-color="#08B962"/><stop offset="1" stop-color="#08B962" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-b" gradient-units="userSpaceOnUse" x1="8" x2="11.5" y1="5.5" y2="11"><stop stop-color="#F94543"/><stop offset="1" stop-color="#F94543" stop-opacity="0"/></linearGradient><linearGradient id="Gemini-c" gradient-units="userSpaceOnUse" x1="3.5" x2="17.5" y1="13.5" y2="12"><stop stop-color="#FABC12"/><stop offset=".46" stop-color="#FABC12" stop-opacity="0"/></linearGradient></defs><path fill="#3186FF" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-a)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-b)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/><path fill="url(#Gemini-c)" fill-rule="nonzero" clip-rule="nonzero" d="M 20.616 10.835 a 14.147 14.147 0 0 1 -4.45 -3.001 a 14.111 14.111 0 0 1 -3.678 -6.452 a .503 .503 0 0 0 -.975 0 a 14.134 14.134 0 0 1 -3.679 6.452 a 14.155 14.155 0 0 1 -4.45 3.001 c -.65 .28 -1.318 .505 -2.002 .678 a .502 .502 0 0 0 0 .975 c .684 .172 1.35 .397 2.002 .677 a 14.147 14.147 0 0 1 4.45 3.001 a 14.112 14.112 0 0 1 3.679 6.453 a .502 .502 0 0 0 .975 0 c .172 -.685 .397 -1.351 .677 -2.003 a 14.145 14.145 0 0 1 3.001 -4.45 a 14.113 14.113 0 0 1 6.453 -3.678 a .503 .503 0 0 0 0 -.975 a 13.245 13.245 0 0 1 -2.003 -.678 z"/></symbol><symbol id="i-tandock" viewBox="0 0 1024 1024"><linearGradient id="tandock-yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient> <linearGradient id="tandock-yc-top" x1="300" y1="275" x2="742" y2="516" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f0c68a"/><stop offset=".48" stop-color="#a97947"/><stop offset="1" stop-color="#423225"/></linearGradient> <linearGradient id="tandock-yc-left" x1="278" y1="432" x2="534" y2="732" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#5c3126"/></linearGradient> <linearGradient id="tandock-yc-right" x1="538" y1="445" x2="767" y2="742" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f08f6c"/><stop offset="1" stop-color="#7b3f2d"/></linearGradient> <rect x="72" y="72" width="880" height="880" rx="214" fill="url(#tandock-yc-tile)"/> <rect x="104" y="104" width="816" height="816" rx="188" fill="none" stroke="#51483a" stroke-opacity=".42" stroke-width="8"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="url(#tandock-yc-top)"/> <path d="M 272 344 L 512 482 v 276 L 272 620 Z" fill="url(#tandock-yc-left)"/> <path d="M 752 344 L 512 482 v 276 l 240 -138 Z" fill="url(#tandock-yc-right)"/> <path d="M 512 206 L 752 344 L 512 482 L 272 344 Z" fill="none" stroke="#f0eee6" stroke-opacity=".34" stroke-width="10" stroke-linejoin="round"/> <path d="M 272 344 v 276 l 240 138 l 240 -138 V 344" fill="none" stroke="#1a130f" stroke-opacity=".5" stroke-width="10" stroke-linejoin="round"/> <path d="M 416 404 L 512 458 L 608 404" fill="none" stroke="#fff2d8" stroke-opacity=".72" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 512 458 v 116" fill="none" stroke="#fff2d8" stroke-opacity=".76" stroke-width="18" stroke-linecap="round"/> <path d="M 446 620 L 512 658 L 578 620" fill="none" stroke="#f0eee6" stroke-opacity=".9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/> <path d="M 238 787 c 58 42 145 68 274 68 s 216 -26 274 -68" fill="none" stroke="#d97757" stroke-opacity=".22" stroke-width="18" stroke-linecap="round"/></symbol></svg>
 
 <div class="themebar">
   <span>预览外观</span>
@@ -311,11 +311,11 @@ tr:hover td{background:rgba(255,255,255,.017)}
 <div class="wrap">
 
 <header class="masthead">
-  <div class="eyebrow">ycode · macOS 原生版 · 界面与交互规范</div>
+  <div class="eyebrow">tandock · macOS 原生版 · 界面与交互规范</div>
   <h1>照着<em>已经跑起来的</em>样子<br>把每一处定下来</h1>
   <p class="dek">
     这份稿子不是提案，是<b>对现有实现的规范化记录</b>：每一个尺寸、每一句文案、每一条交互规则都从
-    <code>macos/YCodeApp</code> 里当前跑着的代码取值，再统一成一套可复用的组件与约定。
+    <code>macos/TandockApp</code> 里当前跑着的代码取值，再统一成一套可复用的组件与约定。
     v1 设计稿（<code>ui-native-redesign.html</code>）留作决策档案，此后以本稿为准。
   </p>
   <div class="meta">
@@ -381,10 +381,10 @@ tr:hover td{background:rgba(255,255,255,.017)}
 <!-- ══════════════ 02 设计基础 ══════════════ -->
 <section id="tokens">
   <div class="sec-head"><span class="sec-num">02</span><h2>设计基础与 token</h2></div>
-  <p class="lede">代码里的对应物是 <code>YCodeDesignSystem.swift</code>（尺寸与状态色）与 <code>YCodeThemeCatalog</code>（主题色）。视图里不写颜色字面量，只取 token。</p>
+  <p class="lede">代码里的对应物是 <code>TandockDesignSystem.swift</code>（尺寸与状态色）与 <code>TandockThemeCatalog</code>（主题色）。视图里不写颜色字面量，只取 token。</p>
 
   <h3>颜色 · 两套，成对定义</h3>
-  <p>每个语义色都有浅／深两个值，用 <code>Color.ycodeDynamic(light:dark:)</code> 绑成一个动态色，随系统外观切换。侧栏与检查器共用 <code>ycodeChrome</code> 而不是系统材质——sidebar 的 vibrancy 偏亮、inspector 偏暗，摆在同一个窗口里能看出色差。</p>
+  <p>每个语义色都有浅／深两个值，用 <code>Color.tandockDynamic(light:dark:)</code> 绑成一个动态色，随系统外观切换。侧栏与检查器共用 <code>tandockChrome</code> 而不是系统材质——sidebar 的 vibrancy 偏亮、inspector 偏暗，摆在同一个窗口里能看出色差。</p>
   <div class="swatches">
     <div class="sw"><div class="chipc" style="background:#ffffff"></div><div class="nm">background</div><div class="hx">#ffffff · #1e1e20</div></div>
     <div class="sw"><div class="chipc" style="background:#f4f4f6"></div><div class="nm">chrome（侧栏/检查器）</div><div class="hx">#F4F4F6 · #242426</div></div>
@@ -392,9 +392,9 @@ tr:hover td{background:rgba(255,255,255,.017)}
     <div class="sw"><div class="chipc" style="background:#1d1d1f"></div><div class="nm">text</div><div class="hx">#1d1d1f · #f2f2f4</div></div>
     <div class="sw"><div class="chipc" style="background:#5a5a5e"></div><div class="nm">textSoft</div><div class="hx">#5a5a5e · #b4b4b8</div></div>
     <div class="sw"><div class="chipc" style="background:#0b63e5"></div><div class="nm">accent</div><div class="hx">#0b63e5 · #4c8dff</div></div>
-    <div class="sw"><div class="chipc" style="background:#1A8A54"></div><div class="nm">ycodeOK · 运行中</div><div class="hx">#1A8A54 · #38B87C</div></div>
-    <div class="sw"><div class="chipc" style="background:#B67707"></div><div class="nm">ycodeWarn · 等你</div><div class="hx">#B67707 · #E0A33A</div></div>
-    <div class="sw"><div class="chipc" style="background:#D2382F"></div><div class="nm">ycodeErr · 破坏性</div><div class="hx">#D2382F · #F0655A</div></div>
+    <div class="sw"><div class="chipc" style="background:#1A8A54"></div><div class="nm">tandockOK · 运行中</div><div class="hx">#1A8A54 · #38B87C</div></div>
+    <div class="sw"><div class="chipc" style="background:#B67707"></div><div class="nm">tandockWarn · 等你</div><div class="hx">#B67707 · #E0A33A</div></div>
+    <div class="sw"><div class="chipc" style="background:#D2382F"></div><div class="nm">tandockErr · 破坏性</div><div class="hx">#D2382F · #F0655A</div></div>
     <div class="sw"><div class="chipc" style="background:#16181d"></div><div class="nm">terminal bg</div><div class="hx">#ffffff · #16181d</div></div>
   </div>
   <div class="callout">
@@ -435,12 +435,12 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </table>
 
   <h3>状态语言 · 三个值，一个点</h3>
-  <p><code>YCodeSessionPresence</code> 是全稿唯一的会话状态源，<code>YCodeStatusDot</code> 是它唯一的呈现形式（7 px 实心圆）。</p>
+  <p><code>TandockSessionPresence</code> 是全稿唯一的会话状态源，<code>TandockStatusDot</code> 是它唯一的呈现形式（7 px 实心圆）。</p>
   <table>
     <thead><tr><th style="width:16%">状态</th><th style="width:10%">点</th><th style="width:30%">判定</th><th>含义与出现处</th></tr></thead>
     <tbody>
-      <tr><td><b>运行中</b></td><td><span class="dot run" style="display:inline-block"></span> ycodeOK</td><td>runtime = running / starting</td><td>agent 在干活，不需要你。侧栏行、窗格头</td></tr>
-      <tr><td><b>等你</b></td><td><span class="dot need" style="display:inline-block"></span> ycodeWarn</td><td>存在 hook attention 事件</td><td>在等输入或审批。唯一会亮过滤 chip、发系统通知的状态</td></tr>
+      <tr><td><b>运行中</b></td><td><span class="dot run" style="display:inline-block"></span> tandockOK</td><td>runtime = running / starting</td><td>agent 在干活，不需要你。侧栏行、窗格头</td></tr>
+      <tr><td><b>等你</b></td><td><span class="dot need" style="display:inline-block"></span> tandockWarn</td><td>存在 hook attention 事件</td><td>在等输入或审批。唯一会亮过滤 chip、发系统通知的状态</td></tr>
       <tr><td><b>未在运行</b></td><td><span class="dot idle" style="display:inline-block"></span> tertiary</td><td>其余全部</td><td>列表里不强调。点一下就接着跑，不是错误态</td></tr>
     </tbody>
   </table>
@@ -449,8 +449,8 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <table>
     <thead><tr><th style="width:18%">用途</th><th style="width:26%">来源</th><th>规则</th></tr></thead>
     <tbody>
-      <tr><td><b>文件图标</b></td><td>material-icon-theme 子集（182 个，122 KB，内嵌 <code>YCodeFileIcons.swift</code>）</td><td>与非原生版 <code>src/lib/fileIcons.ts</code> 同一套主题，同一个项目两边长得一样；认不出的类型回退默认 file / folder</td></tr>
-      <tr><td><b>Agent 图标</b></td><td><code>@lobehub/icons</code>（与 <code>AgentIcon.tsx</code> 同源，内嵌 <code>YCodeAgentIcons.swift</code>）</td><td>认识的品牌取<b>彩色裸 glyph</b>（Claude=Color、Codex=Inner、Gemini=Color），其余用 Mono 跟随前景色；侧栏 13、窗格头 12、选择器 24</td></tr>
+      <tr><td><b>文件图标</b></td><td>material-icon-theme 子集（182 个，122 KB，内嵌 <code>TandockFileIcons.swift</code>）</td><td>与非原生版 <code>src/lib/fileIcons.ts</code> 同一套主题，同一个项目两边长得一样；认不出的类型回退默认 file / folder</td></tr>
+      <tr><td><b>Agent 图标</b></td><td><code>@lobehub/icons</code>（与 <code>AgentIcon.tsx</code> 同源，内嵌 <code>TandockAgentIcons.swift</code>）</td><td>认识的品牌取<b>彩色裸 glyph</b>（Claude=Color、Codex=Inner、Gemini=Color），其余用 Mono 跟随前景色；侧栏 13、窗格头 12、选择器 24</td></tr>
       <tr><td><b>面板开关</b></td><td>SF Symbols：<code>doc.text</code> · <code>plus.forwardslash.minus</code> · <code>checklist</code> · <code>terminal</code></td><td>画布顶栏那四个（§07）。只用轮廓线版本，不用 <code>.fill</code>——填充版在 24 px 高的工具栏里太重</td></tr>
       <tr><td><b>系统符号</b></td><td>SF Symbols</td><td>chevron、xmark、ellipsis.circle、magnifyingglass、plus 等一律用系统符号，不自绘</td></tr>
     </tbody>
@@ -472,8 +472,8 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <tr><td class="tnum">02</td><td><b>低频动作一律进 ⋯ 菜单</b></td><td>302 px 放不下一排按钮。分支、Fetch/Pull/Push、刷新、检查点、显示已完成，全在 ⋯ 里</td></tr>
       <tr><td class="tnum">03</td><td><b>行动作只在 hover 时出现</b></td><td>常驻的是信息（+2 −0、副行），hover 时信息让位给动作（暂存／丢弃、⋯）。列表静止时可扫，不是一片按钮</td></tr>
       <tr><td class="tnum">04</td><td><b>右键菜单是完整菜单</b></td><td>行上能做的每件事都在右键里有一份，即使 hover 已经给了按钮。键盘/触控板用户不靠 hover</td></tr>
-      <tr><td class="tnum">05</td><td><b>破坏性动作红色 + 确认框</b></td><td><code>role: .destructive</code>，文案写清后果（「会停止正在运行的 Agent」「只删除 YCode 中的记录，不删除磁盘目录」）</td></tr>
-      <tr><td class="tnum">06</td><td><b>空状态两行：标题一句 + 说明一句</b></td><td>标题陈述事实（「工作区是干净的」），说明讲下一步或机制。检查器里用 <code>YCodeInspectorEmptyState</code>，不用 <code>ContentUnavailableView</code>（它的大图标会把一句话撑成一屏）</td></tr>
+      <tr><td class="tnum">05</td><td><b>破坏性动作红色 + 确认框</b></td><td><code>role: .destructive</code>，文案写清后果（「会停止正在运行的 Agent」「只删除 Tandock 中的记录，不删除磁盘目录」）</td></tr>
+      <tr><td class="tnum">06</td><td><b>空状态两行：标题一句 + 说明一句</b></td><td>标题陈述事实（「工作区是干净的」），说明讲下一步或机制。检查器里用 <code>TandockInspectorEmptyState</code>，不用 <code>ContentUnavailableView</code>（它的大图标会把一句话撑成一屏）</td></tr>
       <tr><td class="tnum">07</td><td><b>计数在分组标题上，不在面板顶部</b></td><td>「进行中 3」「队列 5」自带计数，顶部不再放三个巨型数字</td></tr>
       <tr><td class="tnum">08</td><td><b>徽标只回答「有没有」</b></td><td>工具栏的面板开关上是 4 px 圆点，不是数字——具体数字面板头里已经有了，带数字的胶囊会把第四个 tab 挤进 » 溢出菜单</td></tr>
       <tr><td class="tnum">09</td><td><b>选中态 = 强调色实底 + 白字</b></td><td>侧栏会话行、⌘K 结果行共用；hover 态是 6% 前景色，二者不叠加</td></tr>
@@ -490,7 +490,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <p>下面这些是显式复用的，不是长得像：改一处必须三处都对。</p>
   <div class="trio" style="grid-template-columns:repeat(3,1fr)">
     <div>
-      <div class="cap"><b>YCodeStatusDot</b></div>
+      <div class="cap"><b>TandockStatusDot</b></div>
       <div class="menu" style="min-width:200px">
         <div class="mi"><span class="dot run"></span><span>侧栏会话行</span></div>
         <div class="mi"><span class="dot need"></span><span>画布窗格头</span></div>
@@ -506,7 +506,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       </div>
     </div>
     <div>
-      <div class="cap"><b>YCodeAgentIconView</b></div>
+      <div class="cap"><b>TandockAgentIconView</b></div>
       <div class="menu" style="min-width:200px">
         <div class="mi"><svg class="ic"><use href="#i-claude"/></svg><span>侧栏行 13 px</span></div>
         <div class="mi"><svg class="ic"><use href="#i-codex"/></svg><span>窗格头 12 px</span></div>
@@ -533,7 +533,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 
       <div class="tbar">
         <div class="traffic"><i></i><i></i><i></i></div>
-        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span><span class="t2">重构三栏布局</span></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Tandock</span><span class="t2">重构三栏布局</span></div>
         <div class="sp"></div>
         <div class="sp"></div>
         <div class="tbtn">⌕</div>
@@ -550,7 +550,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
           <div style="height:1px;background:var(--line)"></div>
           <div style="flex:1;overflow:hidden;padding:6px 0">
-            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span class="cnt">3</span></div>
+            <div class="grp"><span class="chev">▾</span><span>tandock</span><span class="sp"></span><span class="cnt">3</span></div>
             <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
             <div class="row"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span></div>
             <div class="row"><span class="dot idle"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm ph">新会话</span><span class="sp"></span></div>
@@ -562,7 +562,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="grp"><span class="chev">▸</span><span>lessen-api</span><span class="sp"></span><span class="cnt">2</span></div>
           </div>
           <div style="height:1px;background:var(--line)"></div>
-          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · ycode</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
+          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · tandock</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
         </div>
 
         <!-- 画布 -->
@@ -580,7 +580,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             </div>
             <div class="pane">
               <div class="pane-h"><span class="dot need"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-codex"/></svg><span>补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span><span class="dim">✕</span></div>
-              <div class="term"><span class="c">⏺</span> 读取 YCodeUnifiedDiff.swift
+              <div class="term"><span class="c">⏺</span> 读取 TandockUnifiedDiff.swift
 <span class="y">?</span> 要把 fileHeader + hunk 拼成补丁
   走 git apply --cached 吗？
 
@@ -596,7 +596,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="fv-filter" style="margin:6px 8px"><span>⌕</span><span>筛选文件…（? 搜内容）</span></div>
             <div class="sc-body">
               <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>macos</div>
-              <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>YCodeApp</div>
+              <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>TandockApp</div>
               <div class="fv-row on" style="padding-left:40px"><span class="fic swift">S</span>WorkspaceSidebarView.swift</div>
               <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>TerminalWorkspaceView.swift</div>
               <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>ChangesPanelView.swift</div>
@@ -655,7 +655,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
           <div style="height:1px;background:var(--line)"></div>
           <div style="flex:1;padding:6px 0;overflow:hidden">
-            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span style="color:var(--soft)">＋</span></div>
+            <div class="grp"><span class="chev">▾</span><span>tandock</span><span class="sp"></span><span style="color:var(--soft)">＋</span></div>
             <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
             <div class="row hov"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span></div>
             <div class="row"><span class="dot idle"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm ph">新会话</span><span class="sp"></span></div>
@@ -666,7 +666,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="grp"><span class="chev">▾</span><span style="color:var(--warn)">old-prototype</span><span class="sp"></span><span class="cnt">0</span></div>
           </div>
           <div style="height:1px;background:var(--line)"></div>
-          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · ycode</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
+          <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · tandock</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
         </div>
       </div>
       <div class="cap">常态 · 项目组 hover 时计数换成 ＋ · 路径不存在的项目名转 warn 色</div>
@@ -699,7 +699,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="cap">右键菜单：会话（左）与项目（右）——工具栏瘦身后，项目管理动作全在这里</div>
       <ul style="max-width:40ch;font-size:13px">
         <li><b>会话菜单只剩两件事</b>：改名字、不要了。「放到画布」删掉——点这一行本来就是放上去，菜单里再来一遍是同义反复；「在独立窗口打开」也删掉——独立窗口的单位是项目，不是会话。</li>
-        <li><b>项目菜单末尾是「移除项目…」</b>，红色 + 确认框：「只删除 YCode 中的记录，不删除磁盘目录、worktree 或分支。」这是删项目的唯一入口。</li>
+        <li><b>项目菜单末尾是「移除项目…」</b>，红色 + 确认框：「只删除 Tandock 中的记录，不删除磁盘目录、worktree 或分支。」这是删项目的唯一入口。</li>
       </ul>
     </div>
   </div>
@@ -720,7 +720,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 
   <h3>点一行会发生什么</h3>
   <ol class="notes">
-    <li><b>并排，不是替换。</b> 已经在画布上就聚焦过去；还有空位就并排多开一格；<b>满 4 格才替换当前焦点格</b>。并排是 ycode 的核心差异，点第二个会话不该盖掉第一个。</li>
+    <li><b>并排，不是替换。</b> 已经在画布上就聚焦过去；还有空位就并排多开一格；<b>满 4 格才替换当前焦点格</b>。并排是 tandock 的核心差异，点第二个会话不该盖掉第一个。</li>
     <li><b>点一行就已经在跑了。</b> 进程不在就直接起（<code>restartSession</code>，<code>resumingSessionIDs</code> 防重复），过程发生在终端里——<b>不给过场屏，也不给「接着跑」按钮</b>。会话永远可以 resume，所以「没在跑」不值得占一屏。</li>
     <li><b>点历史 = 点会话。</b> 历史行走 <code>resumeHistorySession</code>，同样落到画布上；右键只有「重新打开」。</li>
     <li><b>过滤 chip 是二选一。</b>「全部 N」与「等你 N」，后者有值时带一个 warn 小点；计数与系统通知同源（<code>attentionEvents</code>）。</li>
@@ -734,7 +734,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <p class="lede">画布是格位模型：一格要么是一个会话，要么是 agent 选择器，最多 4 格。<code>TerminalWorkspaceView.swift</code>。</p>
 
   <h3>五种布局</h3>
-  <p>工具栏的分段控件切 <code>YCodeTerminalLayout</code>，画布为空时整组禁用。格数变化时 <code>reflow</code> 会自动降级（例如只剩一格时按 single 渲染）。</p>
+  <p>工具栏的分段控件切 <code>TandockTerminalLayout</code>，画布为空时整组禁用。格数变化时 <code>reflow</code> 会自动降级（例如只剩一格时按 single 渲染）。</p>
   <div class="stage tight">
     <div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center">
       <div style="text-align:center"><div class="app" style="width:150px"><div class="body" style="--h:96px;padding:6px"><div class="pane focus" style="border-color:var(--accent)"></div></div></div><div class="cap" style="margin-top:7px">single <span class="kbd">⌃⌘1</span></div></div>
@@ -758,7 +758,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
         <div class="term" style="height:150px"><span class="c">⏺</span> Update(WorkspaceSidebarView.swift)
   <span class="g">+142</span> <span class="m">−38</span>  侧栏两列骨架
 <span class="c">⏺</span> Bash(swift build)
-  <span class="m">Compiling YCodeApp…</span>
+  <span class="m">Compiling TandockApp…</span>
   <span class="g">Build complete! (18.4s)</span>
 
 <span class="m">› </span><span class="c">▊</span></div>
@@ -781,7 +781,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="app" style="width:280px">
         <div class="pane" style="border-radius:0">
           <div class="pane-h"><span class="dot run"></span><svg class="ic" style="width:12px;height:12px"><use href="#i-codex"/></svg><span>补 diff 逐块暂存</span><span class="sp"></span><span class="kb">⌘⇧2</span><span class="dim">✕</span></div>
-          <div class="term" style="height:120px"><span class="c">⏺</span> Read(YCodeUnifiedDiff.swift)
+          <div class="term" style="height:120px"><span class="c">⏺</span> Read(TandockUnifiedDiff.swift)
 <span class="g">✓</span> 117 lines
 <span class="c">⏺</span> 拼 fileHeader + hunk 走
   git apply --cached
@@ -837,7 +837,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
     <thead><tr><th style="width:24%">能力</th><th>行为</th></tr></thead>
     <tbody>
       <tr><td>查找 <span class="kbd">⌘F</span></td><td>窗格头下方压出 34 px 查找条：输入框 + <code>3/17</code> 计数 + ↑ ↓ ✕。无匹配时计数转 warn 色写「无匹配」</td></tr>
-      <tr><td>点击文件路径</td><td><code>YCodeTerminalLinkResolver</code> 解析：仓库内文件 → 在文件面板打开（支持 <code>:行号</code>）；http(s) → 交给系统浏览器</td></tr>
+      <tr><td>点击文件路径</td><td><code>TandockTerminalLinkResolver</code> 解析：仓库内文件 → 在文件面板打开（支持 <code>:行号</code>）；http(s) → 交给系统浏览器</td></tr>
       <tr><td>字号</td><td>设置 › 外观统一控制（8–32 pt），终端、编辑器、界面同一个来源；画布上没有加减按钮</td></tr>
       <tr><td>主题</td><td>终端前景/背景/光标/选区全部取当前主题 token，没有「不听系统话」的区域</td></tr>
       <tr><td>尺寸</td><td>窗格 resize → <code>sizeChanged</code> → PTY <code>resize(cols, rows)</code>，最小 2×1</td></tr>
@@ -869,7 +869,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 
   <div class="callout">
     <b>为什么从互斥 tab 改回并存：</b>agent 跑起来的时候，要看的从来不是一样东西——盯着变更看它改了什么、同时瞄一眼待办还剩几条、旁边留个 shell 跑测试。互斥 tab 逼着人来回切，切一次就丢一次滚动位置。
-    数据模型里本来就是一个集合（<code>openPanels: Set&lt;YCodeWorkspacePanel&gt;</code>、<code>showPanel</code> / <code>togglePanel</code>），非原生版也是这么用的；原生版把它收成 <code>selectInspectorTab</code> 的互斥单选，是实现上的简化，不是设计决定。这一版改回来。
+    数据模型里本来就是一个集合（<code>openPanels: Set&lt;TandockWorkspacePanel&gt;</code>、<code>showPanel</code> / <code>togglePanel</code>），非原生版也是这么用的；原生版把它收成 <code>selectInspectorTab</code> 的互斥单选，是实现上的简化，不是设计决定。这一版改回来。
   </div>
 
   <h3>开关贴在画布右边界，面板在它右边</h3>
@@ -881,7 +881,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="pin" style="left:390px;top:272px">4</div>
       <div class="tbar" style="height:44px">
         <div class="traffic"><i></i><i></i><i></i></div>
-        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Tandock</span></div>
         <div class="sp"></div>
         <div class="seg"><b class="on">▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
         <div class="tdiv"></div>
@@ -897,7 +897,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
           <div class="sc-body" style="padding-top:4px">
             <div class="fv-row"><span class="chev">▾</span><span class="fic dir"></span>macos</div>
-            <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>YCodeApp</div>
+            <div class="fv-row" style="padding-left:24px"><span class="chev">▾</span><span class="fic dir"></span>TandockApp</div>
             <div class="fv-row on" style="padding-left:40px"><span class="fic swift">S</span>ChangesPanelView.swift</div>
             <div class="fv-row" style="padding-left:40px"><span class="fic swift">S</span>TodoPanelView.swift</div>
             <div class="fv-row"><span class="chev">▸</span><span class="fic dir"></span>docs</div>
@@ -978,7 +978,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="pin" style="left:707px;top:240px">4</div>
       <div class="tbar">
         <div class="traffic"><i></i><i></i><i></i></div>
-        <div class="ttl" style="margin-left:6px"><span class="t1">Ycode</span><span class="t2">重构三栏布局</span></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Tandock</span><span class="t2">重构三栏布局</span></div>
         <div class="sp"></div>
         <div class="sp"></div>
         <div class="tbtn">⌕</div>
@@ -993,7 +993,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
           <div style="height:1px;background:var(--line)"></div>
           <div style="flex:1;padding:6px 0;overflow:hidden">
-            <div class="grp"><span class="chev">▾</span><span>ycode</span><span class="sp"></span><span class="cnt">3</span></div>
+            <div class="grp"><span class="chev">▾</span><span>tandock</span><span class="sp"></span><span class="cnt">3</span></div>
             <div class="row sel"><span class="dot run" style="background:#fff"></span><svg class="ic"><use href="#i-claude"/></svg><span class="nm">重构三栏布局</span><span class="sp"></span><span class="kb">⌘⇧1</span></div>
             <div class="row"><span class="dot need"></span><svg class="ic"><use href="#i-codex"/></svg><span class="nm">补 diff 逐块暂存</span></div>
             <div class="grp" style="padding-left:16px"><span class="chev">▸</span><span style="font-weight:400">历史会话</span></div>
@@ -1016,7 +1016,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="sc-body" style="padding:4px">
               <div class="pane" style="border:1px solid var(--line)">
                 <div class="pane-h"><span class="mono">&gt;_</span><span>Shell 1</span><span class="sp"></span><span class="dim">⊞</span></div>
-                <div class="term" style="height:110px">~/learning/ycode <span class="c">feat/macos-native</span>
+                <div class="term" style="height:110px">~/learning/tandock <span class="c">feat/macos-native</span>
 <span class="m">$</span> swift test
 <span class="g">✓ 81 tests, 18 suites</span>
 <span class="m">$</span> <span class="c">▊</span></div>
@@ -1028,7 +1028,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="sc-h"><span class="chev">▾</span><span>变更</span><span class="cnt">3</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
             <div class="sc-body">
               <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">WorkspaceInspectorView.swift</span><span class="cv-stat"><span class="p">+96</span><span class="m">−41</span></span></div>
-              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
+              <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">TandockDesignSystem.swift</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
               <div class="cv-fh" style="height:28px"><span class="chev">▸</span><span class="fic md">M</span><span class="nm">ui-native-spec.html</span><span class="cv-stat"><span class="p">+310</span><span class="m">−88</span></span></div>
             </div>
           </div>
@@ -1036,10 +1036,10 @@ tr:hover td{background:rgba(255,255,255,.017)}
         <div class="insp" style="width:302px">
           <div class="sc" style="flex:1">
             <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
-            <div class="fv-crumb" style="height:26px;padding:0 10px">YCodeDesignSystem.swift</div>
+            <div class="fv-crumb" style="height:26px;padding:0 10px">TandockDesignSystem.swift</div>
             <div class="sc-body">
               <div class="fv-code" style="font-size:11px;padding-top:2px">
-                <div class="cd cur"><span class="n" style="width:32px;padding-right:9px">18</span><span class="t"><span class="kw">enum</span> <span class="ty">YCodeMetrics</span> {</span></div>
+                <div class="cd cur"><span class="n" style="width:32px;padding-right:9px">18</span><span class="t"><span class="kw">enum</span> <span class="ty">TandockMetrics</span> {</span></div>
                 <div class="cd"><span class="n" style="width:32px;padding-right:9px">19</span><span class="t">  <span class="kw">static let</span> colWidth = <span class="ty">302</span></span></div>
                 <div class="cd"><span class="n" style="width:32px;padding-right:9px">20</span><span class="t">  <span class="kw">static let</span> colMin = <span class="ty">260</span></span></div>
                 <div class="cd"><span class="n" style="width:32px;padding-right:9px">21</span><span class="t">  <span class="kw">static let</span> canvasMin = <span class="ty">420</span></span></div>
@@ -1096,7 +1096,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="sc-body" style="padding:4px;display:flex;flex-direction:column;gap:4px">
               <div class="pane" style="border:1px solid var(--line)">
                 <div class="pane-h"><span class="mono">&gt;_</span><span>Shell 1</span><span class="sp"></span><span class="dim">⊞</span><span class="dim">✕</span></div>
-                <div class="term" style="height:62px">~/learning/ycode <span class="c">feat/macos-native</span>
+                <div class="term" style="height:62px">~/learning/tandock <span class="c">feat/macos-native</span>
 <span class="m">$</span> swift test
 <span class="g">✓ 81 tests, 18 suites</span>
 <span class="m">$</span> <span class="c">▊</span></div>
@@ -1234,7 +1234,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
               <div class="cd"><span class="n">3</span><span class="t">  <span class="jk">"configVersion"</span>: <span class="jn">0</span>,</span></div>
               <div class="cd"><span class="n">4</span><span class="t">  <span class="jk">"workspaces"</span>: {</span></div>
               <div class="cd"><span class="n">5</span><span class="t">    <span class="jk">""</span>: {</span></div>
-              <div class="cd"><span class="n">6</span><span class="t">      <span class="jk">"name"</span>: <span class="jv">"ycode-frontend"</span>,</span></div>
+              <div class="cd"><span class="n">6</span><span class="t">      <span class="jk">"name"</span>: <span class="jv">"tandock-frontend"</span>,</span></div>
               <div class="cd"><span class="n">7</span><span class="t">      <span class="jk">"dependencies"</span>: {</span></div>
               <div class="cd"><span class="n">8</span><span class="t">        <span class="jk">"@codemirror/lang-css"</span>: <span class="jv">"^6.3.1"</span>,</span></div>
               <div class="cd"><span class="n">9</span><span class="t">        <span class="jk">"@codemirror/lang-json"</span>: <span class="jv">"^6.0.2"</span>,</span></div>
@@ -1318,7 +1318,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
     </tbody>
   </table>
   <div class="callout warn">
-    <b>agent 和你会同时改同一个文件</b>——这是 ycode 独有的情况，不是编辑器的边角料。所以磁盘变化横幅保留：文件在磁盘上变了而你没有草稿时，<b>直接静默重载</b>（正在看的是最新内容）；有草稿时压一条横幅「文件在磁盘上已改变」＋［重新加载］［保留我的］。
+    <b>agent 和你会同时改同一个文件</b>——这是 tandock 独有的情况，不是编辑器的边角料。所以磁盘变化横幅保留：文件在磁盘上变了而你没有草稿时，<b>直接静默重载</b>（正在看的是最新内容）；有草稿时压一条横幅「文件在磁盘上已改变」＋［重新加载］［保留我的］。
   </div>
 
   <h3>树 · 行与动作</h3>
@@ -1376,7 +1376,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div class="phead" style="gap:6px"><span class="cv-ico" style="width:20px;height:20px">☰</span><span class="fv-tab on" style="margin:0;height:22px;font-size:12px"><span class="fic swift">S</span>TodoRepository.swift<span class="x">✕</span></span><span class="sp"></span><span class="ell">⋮</span></div>
           <div class="fv-crumb" style="height:26px;padding:0 10px">macos/Core/…/TodoRepository.swift</div>
           <div class="fv-code" style="font-size:11px">
-            <div class="cd cur"><span class="n" style="width:34px;padding-right:10px">41</span><span class="t"><span class="kw">func</span> <span class="fn">upsert</span>(_ t: <span class="ty">YCodeTodo</span>) {</span></div>
+            <div class="cd cur"><span class="n" style="width:34px;padding-right:10px">41</span><span class="t"><span class="kw">func</span> <span class="fn">upsert</span>(_ t: <span class="ty">TandockTodo</span>) {</span></div>
             <div class="cd"><span class="n" style="width:34px;padding-right:10px">42</span><span class="t">  <span class="kw">try</span> db.<span class="fn">execute</span>(sql)</span></div>
             <div class="cd"><span class="n" style="width:34px;padding-right:10px">43</span><span class="t">  <span class="cm">// MCP 与 UI 同一份</span></span></div>
             <div class="cd"><span class="n" style="width:34px;padding-right:10px">44</span><span class="t">}</span></div>
@@ -1510,13 +1510,13 @@ tr:hover td{background:rgba(255,255,255,.017)}
               <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">docs/macos-native</span></div>
               <div class="cv-trow" style="padding-left:26px"><span class="fic md">M</span><span class="nm">local-selfuse-log.md</span><span class="sp"></span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div>
               <div class="cv-trow" style="padding-left:26px"><span class="fic md">M</span><span class="nm">ui-redesign-implementation.md</span><span class="sp"></span><span class="cv-stat"><span class="p">+112</span><span class="m">−8</span></span></div>
-              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/YCodeApp/Sources/YCodeApp</span></div>
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/TandockApp/Sources/TandockApp</span></div>
               <div class="cv-trow hov" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span>
-                <div class="cv-tip"><b>ChangesPanelView.swift</b><span>macos/YCodeApp/Sources/YCodeApp</span></div>
+                <div class="cv-tip"><b>ChangesPanelView.swift</b><span>macos/TandockApp/Sources/TandockApp</span></div>
               </div>
               <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">WorkspaceSidebarView.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div>
-              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
-              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/Core/Sources/YCodeCore</span></div>
+              <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">TandockDesignSystem.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span></div>
+              <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/Core/Sources/TandockCore</span></div>
               <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div>
               <div class="cv-trow" style="padding-left:26px"><span class="fic swift">S</span><span class="nm">SyntaxHighlighting.swift</span><span class="sp"></span><span class="cv-stat"><span class="p">+30</span><span class="m">−1</span></span></div>
               <div class="cv-trow"><span class="chev">▾</span><span class="fic dir"></span><span class="nm">macos/scripts</span></div>
@@ -1533,8 +1533,8 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="cv-hint">大 diff 已折叠。选一个文件展开它。</div>
             <div class="cv-list">
               <div class="cv-file">
-                <div class="cv-fh"><span class="chev">▾</span><span class="fic swift">S</span><span class="nm">YCodeDesignSystem.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span><span class="sp"></span><span class="lnk">暂存</span><span class="lnk danger">丢弃</span><span class="dim">↗︎</span></div>
-                <div class="cv-hunkbar"><span>@@ -18,6 +18,14 @@ enum YCodeMetrics</span><span class="sp"></span><span class="lnk">暂存这一块</span></div>
+                <div class="cv-fh"><span class="chev">▾</span><span class="fic swift">S</span><span class="nm">TandockDesignSystem.swift</span><span class="pth">macos/TandockApp/Sources/TandockApp</span><span class="cv-stat"><span class="p">+63</span><span class="m">−4</span></span><span class="sp"></span><span class="lnk">暂存</span><span class="lnk danger">丢弃</span><span class="dim">↗︎</span></div>
+                <div class="cv-hunkbar"><span>@@ -18,6 +18,14 @@ enum TandockMetrics</span><span class="sp"></span><span class="lnk">暂存这一块</span></div>
                 <div class="cv-diff">
                   <div class="cv-dl"><span class="n">18</span><span class="s"></span><span class="t">    static let rowHeight: CGFloat = 28</span></div>
                   <div class="cv-dl add"><span class="n">19</span><span class="s">+</span><span class="t">    static let changesTreeWidth: CGFloat = 264</span></div>
@@ -1544,9 +1544,9 @@ tr:hover td{background:rgba(255,255,255,.017)}
                   <div class="cv-dl"><span class="n">23</span><span class="s"></span><span class="t">    static let cornerRadius: CGFloat = 6</span></div>
                 </div>
               </div>
-              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span></div></div>
-              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">WorkspaceSidebarView.swift</span><span class="pth">macos/YCodeApp/Sources/YCodeApp</span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div></div>
-              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="pth">macos/Core/Sources/YCodeCore</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">ChangesPanelView.swift</span><span class="pth">macos/TandockApp/Sources/TandockApp</span><span class="cv-stat"><span class="p">+286</span><span class="m">−141</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">WorkspaceSidebarView.swift</span><span class="pth">macos/TandockApp/Sources/TandockApp</span><span class="cv-stat"><span class="p">+142</span><span class="m">−38</span></span></div></div>
+              <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic swift">S</span><span class="nm">GitService.swift</span><span class="pth">macos/Core/Sources/TandockCore</span><span class="cv-stat"><span class="p">+98</span><span class="m">−2</span></span></div></div>
               <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic md">M</span><span class="nm">local-selfuse-log.md</span><span class="pth">docs/macos-native</span><span class="cv-stat"><span class="p">+44</span><span class="m">−0</span></span></div></div>
               <div class="cv-file col"><div class="cv-fh"><span class="chev">▸</span><span class="fic ts">py</span><span class="nm">generate_file_icons.py</span><span class="pth">macos/scripts</span><span class="cv-stat"><span class="p">+207</span><span class="m">−0</span></span></div></div>
             </div>
@@ -1592,7 +1592,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="mi"><span>feat/project-todos-mcp</span></div>
             <div class="mi"><span>perf/terminal-throughput</span></div>
             <div class="mi"><span>spike/gpui-ime-patch</span></div>
-            <div class="mi off"><span>ycode/01KWS64Z</span></div>
+            <div class="mi off"><span>tandock/01KWS64Z</span></div>
           </div>
         </div>
       </div>
@@ -1605,7 +1605,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <tr><td><b>全部变更</b><div class="dim">默认，vs 基准分支</div></td><td><code>git diff &lt;base&gt;...HEAD</code> 加上未提交改动：这条分支到目前为止做了什么。<b>只读</b>——不给暂存/丢弃</td></tr>
           <tr><td><b>未提交的改动</b></td><td><code>git status</code> + 工作区/暂存区 diff。<b>唯一允许暂存、取消暂存、丢弃、逐块暂存</b>的范围</td></tr>
           <tr><td><b>比较基准 ›</b></td><td>选一个分支当基准，默认分支标「默认」。选完回到「全部变更」，面包屑左半边跟着变</td></tr>
-          <tr><td><b>提交 ›</b></td><td>提交列表（含 ycode 的<b>检查点</b>：每轮 agent 自动落的那些 commit，标「#12 轮次检查点」）。选一条 = 看那条的 diff，只读；右键可「回到这个检查点」</td></tr>
+          <tr><td><b>提交 ›</b></td><td>提交列表（含 tandock 的<b>检查点</b>：每轮 agent 自动落的那些 commit，标「#12 轮次检查点」）。选一条 = 看那条的 diff，只读；右键可「回到这个检查点」</td></tr>
         </tbody>
       </table>
       <div class="callout warn" style="margin-top:14px"><b>一致性规则：写操作只在「未提交的改动」范围里出现。</b> 其它范围下，文件行 hover 不出暂存/丢弃、hunk 头不出「暂存这一块」——而不是显示成禁用态。</div>
@@ -1664,7 +1664,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div class="cv-diff">
             <div class="cv-dl add"><span class="n">1</span><span class="s">+</span><span class="t"><span class="cm"># THIS IS AUTOGENERATED. DO NOT EDIT MANUALLY</span></span></div>
             <div class="cv-dl add"><span class="n">2</span><span class="s">+</span><span class="t">version = <span class="ty">1</span></span></div>
-            <div class="cv-dl add"><span class="n">3</span><span class="s">+</span><span class="t">name = <span class="str">"ycode-native"</span></span></div>
+            <div class="cv-dl add"><span class="n">3</span><span class="s">+</span><span class="t">name = <span class="str">"tandock-native"</span></span></div>
             <div class="cv-dl add"><span class="n">4</span><span class="s">+</span><span class="t"></span></div>
             <div class="cv-dl add"><span class="n">5</span><span class="s">+</span><span class="t">[<span class="fn">setup</span>]</span></div>
             <div class="cv-dl add"><span class="n">6</span><span class="s">+</span><span class="t">script = <span class="str">""</span></span></div>
@@ -1735,7 +1735,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <table>
     <thead><tr><th style="width:22%">项</th><th style="width:12%">现状</th><th>要做什么</th></tr></thead>
     <tbody>
-      <tr><td>范围选择器</td><td class="mono">无</td><td>新增 <code>ChangesScope</code>（uncommitted / vsBase / commit）；<code>YCodeGitService</code> 补 <code>diff(range:)</code> 与 <code>mergeBase(base:)</code></td></tr>
+      <tr><td>范围选择器</td><td class="mono">无</td><td>新增 <code>ChangesScope</code>（uncommitted / vsBase / commit）；<code>TandockGitService</code> 补 <code>diff(range:)</code> 与 <code>mergeBase(base:)</code></td></tr>
       <tr><td>左侧变更文件树</td><td class="mono">无</td><td>由 <code>changes</code> 列表按目录聚合成树，不复用项目文件树（数据源不同）</td></tr>
       <tr><td>展开态窗口</td><td class="mono">无</td><td>新 scene 或全窗覆盖层；共用 <code>ChangesModel</code></td></tr>
       <tr><td>显示选项</td><td class="mono">部分</td><td>分组、分离生成文件、并排、换行、词级高亮、忽略空白都是新的；「刷新」已有</td></tr>
@@ -1766,7 +1766,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div class="trow"><span class="box todo"></span><div><div class="tt">大 diff 折叠阈值接进设置</div></div><span class="sp"></span></div>
             <div class="trow"><span class="box todo"></span><div><div class="tt">词级 diff 高亮</div></div><span class="sp"></span><span class="ell">⋯</span></div>
             <div class="trow"><span class="box todo"></span><div><div class="tt">检查点并进「提交 ›」二级菜单</div></div><span class="sp"></span></div>
-            <div class="trow"><span class="box todo"></span><div><div class="tt">修 /usr/local/bin/ycode 断链</div></div><span class="sp"></span></div>
+            <div class="trow"><span class="box todo"></span><div><div class="tt">修 /usr/local/bin/tandock 断链</div></div><span class="sp"></span></div>
             <div class="grp" style="padding:0 12px;margin-top:6px"><span class="chev">▸</span><span>已完成</span><span class="sp"></span><span class="cnt">12</span></div>
           </div>
         </div>
@@ -1815,7 +1815,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 
   <div class="callout">
     <b>MCP 改动会让一条待办在分组之间搬家。</b> 行的 <code>.id</code> 里带上 <code>updatedAt|title|status|sortOrder</code>，SwiftUI 才不会复用搬家前那一行的旧标题。
-    <br><b>已知缺口：</b>设计上副行应该写「谁动的」（agent 标为进行中 / 你添加），但 <code>YCodeTodo</code> 没有 actor 字段，动它要改 Core，所以现在只写状态与时间。
+    <br><b>已知缺口：</b>设计上副行应该写「谁动的」（agent 标为进行中 / 你添加），但 <code>TandockTodo</code> 没有 actor 字段，动它要改 Core，所以现在只写状态与时间。
   </div>
 </section>
 
@@ -1832,10 +1832,10 @@ tr:hover td{background:rgba(255,255,255,.017)}
         <div style="height:1px;background:var(--line)"></div>
         <div style="padding:6px 0 8px">
           <div class="grp" style="padding:0 14px;height:26px">会话</div>
-          <div class="row sel"><span class="nm">重构三栏布局</span><span class="sp"></span><span class="dim" style="color:rgba(255,255,255,.8)">ycode · 运行中</span></div>
-          <div class="row"><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="dim">ycode · 等你</span></div>
+          <div class="row sel"><span class="nm">重构三栏布局</span><span class="sp"></span><span class="dim" style="color:rgba(255,255,255,.8)">tandock · 运行中</span></div>
+          <div class="row"><span class="nm">补 diff 逐块暂存</span><span class="sp"></span><span class="dim">tandock · 等你</span></div>
           <div class="grp" style="padding:0 14px;height:26px">待办</div>
-          <div class="row"><span class="nm">把变更面板改成范围选择器 + 文件树</span><span class="sp"></span><span class="dim">ycode · doing</span></div>
+          <div class="row"><span class="nm">把变更面板改成范围选择器 + 文件树</span><span class="sp"></span><span class="dim">tandock · doing</span></div>
           <div class="grp" style="padding:0 14px;height:26px">历史全文</div>
           <div class="row"><span class="nm">…改成一列到底的内联 diff，hunk 头上带暂存…</span><span class="sp"></span><span class="dim">变更面板重做</span></div>
           <div class="grp" style="padding:0 14px;height:26px">动作</div>
@@ -1861,9 +1861,9 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="app" style="width:560px">
         <div class="canvas" style="height:300px;align-items:center;justify-content:center">
           <div style="width:480px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:22px;text-align:center">
-            <svg style="width:36px;height:36px;margin:0 auto 10px;display:block;border-radius:8px"><use href="#i-ycode"/></svg>
+            <svg style="width:36px;height:36px;margin:0 auto 10px;display:block;border-radius:8px"><use href="#i-tandock"/></svg>
             <div style="font-size:16px;font-weight:600">新会话</div>
-            <div style="font-size:12.5px;color:var(--soft);margin:2px 0 16px">选一个 agent，在 ycode 里开始。</div>
+            <div style="font-size:12.5px;color:var(--soft);margin:2px 0 16px">选一个 agent，在 tandock 里开始。</div>
             <div style="display:flex;gap:9px">
               <div style="flex:1;padding:12px 0;border-radius:10px;background:color-mix(in srgb,var(--text) 8%,transparent)"><svg class="ic" style="width:24px;height:24px;margin:0 auto 6px"><use href="#i-claude"/></svg><div style="font-size:12.5px;font-weight:600">Claude Code</div></div>
               <div style="flex:1;padding:12px 0;border-radius:10px;background:color-mix(in srgb,var(--text) 8%,transparent)"><svg class="ic" style="width:24px;height:24px;margin:0 auto 6px"><use href="#i-codex"/></svg><div style="font-size:12.5px;font-weight:600">Codex</div></div>
@@ -1918,7 +1918,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
     <tbody>
       <tr><td>重命名会话 / 待办</td><td>alert + TextField</td><td>取消 / 保存；空标题时保存禁用</td></tr>
       <tr><td>归档会话</td><td>confirmationDialog</td><td>「归档「X」？」+「会停止正在运行的 Agent 并隐藏该会话；项目文件不会被删除。」</td></tr>
-      <tr><td>移除项目</td><td>confirmationDialog</td><td>「从 YCode 移除「X」？」+「只删除 YCode 中的记录，不删除磁盘目录、worktree 或分支。之后仍可重新添加。」</td></tr>
+      <tr><td>移除项目</td><td>confirmationDialog</td><td>「从 Tandock 移除「X」？」+「只删除 Tandock 中的记录，不删除磁盘目录、worktree 或分支。之后仍可重新添加。」</td></tr>
       <tr><td>删除文件 / 文件夹</td><td>confirmationDialog</td><td>文件夹版明写「文件夹及其全部内容会被删除，此操作无法撤销。」</td></tr>
       <tr><td>删除待办</td><td>alert</td><td>标题「删除待办？」，正文是待办标题本身</td></tr>
       <tr><td>错误</td><td>alert</td><td>标题「发生错误」+ 具体信息；同时写进设置 › 关于与诊断的「最近一次错误」</td></tr>
@@ -1940,7 +1940,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="pin" style="left:162px;top:392px">3</div>
       <div class="tbar" style="height:44px">
         <div class="traffic"><i></i><i></i><i></i></div>
-        <div class="ttl" style="margin-left:6px"><span class="t1">YCode</span></div>
+        <div class="ttl" style="margin-left:6px"><span class="t1">Tandock</span></div>
         <div class="sp"></div>
         <div class="seg" style="opacity:.4"><b>▢</b><b>⊟</b><b>⊞</b><b>⊠</b><b>◫</b></div>
         <div class="tbtn">⌕</div>
@@ -1948,7 +1948,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <div class="body" style="--h:430px">
         <div class="canvas" style="align-items:center;justify-content:center">
           <div style="width:452px;border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:24px 24px 18px;text-align:center">
-            <svg style="width:40px;height:40px;margin:0 auto 12px;display:block;border-radius:9px"><use href="#i-ycode"/></svg>
+            <svg style="width:40px;height:40px;margin:0 auto 12px;display:block;border-radius:9px"><use href="#i-tandock"/></svg>
             <div style="font-size:17px;font-weight:600">先加一个项目</div>
             <div style="font-size:12.5px;color:var(--soft);margin-top:5px;line-height:1.6">项目就是一个 git 仓库的目录。<br>加进来之后，你在这里开的每个 agent 都跑在它里面。</div>
             <div style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:16px">
@@ -1963,7 +1963,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
             <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;flex-wrap:wrap;justify-content:center">
               <span class="chip"><span class="dot run"></span>Claude Code</span>
               <span class="chip"><span class="dot run"></span>Codex</span>
-              <span class="chip"><span class="dot idle"></span>ycode 命令</span>
+              <span class="chip"><span class="dot idle"></span>tandock 命令</span>
               <span class="lnk">安装</span>
             </div>
           </div>
@@ -1975,7 +1975,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <ol class="notes">
     <li><b>主按钮只有一个。</b>「选择文件夹…」= <span class="kbd">⌘O</span>，开系统目录选择面板（只能选目录）。旁边写快捷键，不写第二个按钮。</li>
     <li><b>拖放区是真的能落的。</b> 拖着文件夹进窗口时<b>整窗</b>高亮（不只是这个框），虚线转实线 + 强调色；松手后逐个入库并选中第一个。拖到的若不是目录或不是 git 仓库，落地后在卡片下方给一句具体原因，不弹窗。</li>
-    <li><b>环境自检是状态不是动作。</b> 三个 chip 复用 §02 的状态点：绿=可用，灰=没装。agent 用命令可用性探测（与设置 › Agent 同源）；<code>ycode</code> 命令未安装时只在这里给一个「安装」链接（需要系统授权框）。都齐了整行仍显示，只是全绿——第一次打开就能确认环境，不用进设置翻。</li>
+    <li><b>环境自检是状态不是动作。</b> 三个 chip 复用 §02 的状态点：绿=可用，灰=没装。agent 用命令可用性探测（与设置 › Agent 同源）；<code>tandock</code> 命令未安装时只在这里给一个「安装」链接（需要系统授权框）。都齐了整行仍显示，只是全绿——第一次打开就能确认环境，不用进设置翻。</li>
   </ol>
   <p><b>相邻状态：</b>项目全被移除后回到这一屏（不写「又空了」之类的话）；项目路径失效不算空状态——项目仍在侧栏，名字转 warn 色，画布里给「目录不在了：<span class="mono">~/work/foo</span>」＋［重新定位…］［移除项目］。</p>
 
@@ -1989,7 +1989,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <tr><td>变更 · 干净</td><td>工作区是干净的</td><td>agent 改了文件之后，这里会出现逐块可暂存的 diff。</td></tr>
       <tr><td>变更 · Git 不可用</td><td>Git 不可用</td><td>直接贴 <code>gitStatusMessage</code>（git 自己的输出），不要改写成「出错了」</td></tr>
       <tr><td>待办 · 空</td><td>还没有待办</td><td>你可以在这里加，agent 也能通过 ycode-todos 自己加。两边是同一份清单。</td></tr>
-      <tr><td>历史 · 空</td><td>这个项目还没有历史记录</td><td>ycode 会读 ~/.claude 和 ~/.codex 里属于这个目录的会话。第一次扫描要几秒。<span class="dim">＋「重新扫描」</span></td></tr>
+      <tr><td>历史 · 空</td><td>这个项目还没有历史记录</td><td>tandock 会读 ~/.claude 和 ~/.codex 里属于这个目录的会话。第一次扫描要几秒。<span class="dim">＋「重新扫描」</span></td></tr>
       <tr><td>⌘K · 无结果</td><td>没有匹配「X」的结果</td><td>搜索覆盖会话名和历史全文。换个词，或者 ⇧⌘R 重新扫描历史。</td></tr>
       <tr><td>会话启动失败</td><td>这个会话起不来</td><td>贴出 agent 报的具体错误（命令找不到、worktree 路径不存在…）<span class="dim">＋［重试］</span>。<b>不再有「这个会话没在跑」——会话总是自己起来</b></td></tr>
       <tr><td>文件树 · 空目录</td><td>项目中没有文件</td><td>可在此创建文件或文件夹</td></tr>
@@ -2005,7 +2005,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
     <li>标题<b>不带句号</b>，说明<b>带句号</b>。</li>
     <li>说明里可以出现机制（「会读 ~/.claude」「两边是同一份清单」），因为用户问的其实是「它为什么空」。</li>
     <li>不写「暂无数据」「敬请期待」；未实现就直说未实现，并说明在哪个阶段做。</li>
-    <li>检查器里的空状态用 <code>YCodeInspectorEmptyState</code>（小标题 + caption），不用 <code>ContentUnavailableView</code>。</li>
+    <li>检查器里的空状态用 <code>TandockInspectorEmptyState</code>（小标题 + caption），不用 <code>ContentUnavailableView</code>。</li>
   </ul>
 </section>
 
@@ -2086,7 +2086,7 @@ tr:hover td{background:rgba(255,255,255,.017)}
 <!-- ══════════════ 14 交付 ══════════════ -->
 <section id="deliver">
   <div class="sec-head"><span class="sec-num">14</span><h2>交付与落点</h2></div>
-  <p class="lede">这一节把稿子和仓库对上：哪条规则落在哪个文件、哪些还没做、以及这套界面是怎么打包成 <code>/Applications/YCode.app</code> 的。</p>
+  <p class="lede">这一节把稿子和仓库对上：哪条规则落在哪个文件、哪些还没做、以及这套界面是怎么打包成 <code>/Applications/Tandock.app</code> 的。</p>
 
   <h3>快捷键总表</h3>
   <table>
@@ -2116,17 +2116,17 @@ tr:hover td{background:rgba(255,255,255,.017)}
   <table>
     <thead><tr><th style="width:26%">稿子里的东西</th><th>文件</th></tr></thead>
     <tbody>
-      <tr><td>token（尺寸 / 状态色 / 状态点 / 空状态）</td><td><code>YCodeDesignSystem.swift</code></td></tr>
-      <tr><td>主题两套配色</td><td><code>Core/BasicSettings.swift</code> · <code>YCodeThemeCatalog</code></td></tr>
-      <tr><td>文案表（中/英）</td><td><code>YCodeAppearanceSupport.swift</code> · <code>YCodeLocalization</code></td></tr>
-      <tr><td>窗口骨架 / 工具栏 / 菜单 / 快捷键 / 对话框</td><td><code>YCodeNativeApp.swift</code></td></tr>
+      <tr><td>token（尺寸 / 状态色 / 状态点 / 空状态）</td><td><code>TandockDesignSystem.swift</code></td></tr>
+      <tr><td>主题两套配色</td><td><code>Core/BasicSettings.swift</code> · <code>TandockThemeCatalog</code></td></tr>
+      <tr><td>文案表（中/英）</td><td><code>TandockAppearanceSupport.swift</code> · <code>TandockLocalization</code></td></tr>
+      <tr><td>窗口骨架 / 工具栏 / 菜单 / 快捷键 / 对话框</td><td><code>TandockNativeApp.swift</code></td></tr>
       <tr><td>侧栏</td><td><code>WorkspaceSidebarView.swift</code></td></tr>
       <tr><td>画布 / 窗格 / 检查器外壳 / 项目 shell</td><td><code>TerminalWorkspaceView.swift</code></td></tr>
-      <tr><td>变更面板</td><td><code>ChangesPanelView.swift</code> + <code>YCodeUnifiedDiff.swift</code> + <code>Core/GitService.swift</code></td></tr>
-      <tr><td>待办面板</td><td><code>TodoPanelView.swift</code> + <code>Core/TodoRepository.swift</code>（MCP 侧 <code>Helpers/YCodeMCP</code>）</td></tr>
+      <tr><td>变更面板</td><td><code>ChangesPanelView.swift</code> + <code>TandockUnifiedDiff.swift</code> + <code>Core/GitService.swift</code></td></tr>
+      <tr><td>待办面板</td><td><code>TodoPanelView.swift</code> + <code>Core/TodoRepository.swift</code>（MCP 侧 <code>Helpers/TandockMCP</code>）</td></tr>
       <tr><td>文件树 / 编辑器</td><td><code>ProjectFileTreeView.swift</code> · <code>EditorWorkspaceView.swift</code> · <code>EditorWorkspaceModel.swift</code></td></tr>
       <tr><td>⌘K / 新建会话</td><td><code>CommandPaletteView.swift</code> · <code>NewSessionPickerView.swift</code></td></tr>
-      <tr><td>图标资源与生成脚本</td><td><code>YCodeFileIcons.swift</code> · <code>YCodeAgentIcons.swift</code> · <code>macos/scripts/generate_*_icons.py</code></td></tr>
+      <tr><td>图标资源与生成脚本</td><td><code>TandockFileIcons.swift</code> · <code>TandockAgentIcons.swift</code> · <code>macos/scripts/generate_*_icons.py</code></td></tr>
       <tr><td>设置</td><td><code>SettingsView.swift</code> + 各专项设置视图</td></tr>
     </tbody>
   </table>
@@ -2138,15 +2138,15 @@ tr:hover td{background:rgba(255,255,255,.017)}
       <tr><td><b>检查器改成面板区</b>（§07）</td><td><span class="tag on">已做</span></td><td>面板并存（<code>openPanels</code> 改成有序数组）、卡头（折叠／计数／关闭／上下移）、开关移到自绘的画布顶栏并图标化、⌘1–4 改 toggle、多列（每列 2 张）、8 的间距、列宽拖拽与持久化、画布最小宽 420。<span class="tag off">待做</span>卡头的 ⧉ / ⤢（要等 §08 §09 的展开态）、卡内高度拖拽</td></tr>
       <tr><td><b>文件区重做</b>（§08 全节）</td><td><span class="tag off">未做</span></td><td>顶栏与 tab 合一、树上过滤框、自动保存、显示选项菜单、行号槽的 ⊕、展开态窗口</td></tr>
       <tr><td><b>变更视图重做</b>（§09）</td><td><span class="tag">部分</span></td><td><span class="tag on">已做</span>范围选择器（全部变更／未提交／比较基准／提交+检查点）、折叠优先与阈值提示、只读汇总条（去掉提交）、写操作按范围收敛、忽略空白、全部折叠／展开。<span class="tag off">待做</span>左侧变更文件树、展开态窗口、按文件夹分组、分离生成文件、并排对比、词级高亮</td></tr><td><span class="tag off">未做</span></td><td>范围选择器、变更文件树、展开态窗口、显示选项、折叠优先——本稿新增的主要工作量</td></tr>
-      <tr><td>待办副行写「谁动的」</td><td><span class="tag off">未做</span></td><td><code>YCodeTodo</code> 缺 actor 字段，要改 Core 与 MCP 协议</td></tr>
+      <tr><td>待办副行写「谁动的」</td><td><span class="tag off">未做</span></td><td><code>TandockTodo</code> 缺 actor 字段，要改 Core 与 MCP 协议</td></tr>
       <tr><td>新建会话的 worktree</td><td><span class="tag off">占位</span></td><td>勾了会提示「原生版还没接入」；<code>AgentSessionService</code> 对隔离项目直接抛错</td></tr>
       <tr><td>项目「重命名…」</td><td><span class="tag off">未做</span></td><td><code>ProjectWorkspaceRepository</code> 没有 rename</td></tr>
       <tr><td>会话「删除…」</td><td><span class="tag">只有归档</span></td><td>Core 只有 <code>archiveSession</code></td></tr>
       <tr><td>设置 › 权限与信任</td><td><span class="tag off">未做</span></td><td>没有对应数据模型</td></tr>
       <tr><td>「侧栏显示所属 agent」「启动恢复布局」</td><td><span class="tag off">未做</span></td><td>需要新的持久化字段</td></tr>
       <tr><td>⌘K 的「打开文件 ›」</td><td><span class="tag off">未做</span></td><td>需要跨项目文件索引</td></tr>
-      <tr><td>会话信息浮层的残留</td><td><span class="tag on">已清理</span></td><td>删 <code>SessionInfoView.swift</code>、<code>sessionInfoSessionID</code>、工作区菜单与两处右键菜单里的入口、设置 › 键盘里的 ⌘I 一行、<code>showYCodeSessionInfo</code> 通知；设置 › 关于与诊断的［复制诊断信息］补上当前会话的 PID 与会话 ID</td></tr>
-      <tr><td><code>.history</code> 面板的残留</td><td><span class="tag on">已清理</span></td><td>历史早已回到侧栏，但 <code>YCodeWorkspacePanel</code> 里还留着 <code>.history</code>，<code>panelBody</code> 用一个空视图把它转回文件树，<code>showHistorySearch()</code> 也还在 <code>showPanel(.history)</code>（其通知 <code>showYCodeHistorySearch</code> 现在只被 ⌘K 复用）。枚举项、兜底分支、轮询开关一并删掉</td></tr>
+      <tr><td>会话信息浮层的残留</td><td><span class="tag on">已清理</span></td><td>删 <code>SessionInfoView.swift</code>、<code>sessionInfoSessionID</code>、工作区菜单与两处右键菜单里的入口、设置 › 键盘里的 ⌘I 一行、<code>showTandockSessionInfo</code> 通知；设置 › 关于与诊断的［复制诊断信息］补上当前会话的 PID 与会话 ID</td></tr>
+      <tr><td><code>.history</code> 面板的残留</td><td><span class="tag on">已清理</span></td><td>历史早已回到侧栏，但 <code>TandockWorkspacePanel</code> 里还留着 <code>.history</code>，<code>panelBody</code> 用一个空视图把它转回文件树，<code>showHistorySearch()</code> 也还在 <code>showPanel(.history)</code>（其通知 <code>showTandockHistorySearch</code> 现在只被 ⌘K 复用）。枚举项、兜底分支、轮询开关一并删掉</td></tr>
       <tr><td>界面里的里程碑编号（L-04）</td><td><span class="tag on">已修</span></td><td>设置未接入页的描述改成「这一页还没接入。现在不放无效开关，也不放伪功能。」；文件树宽度只写 px</td></tr>
     </tbody>
   </table>

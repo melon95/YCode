@@ -7,9 +7,11 @@
 | 文档 | 用途 |
 | --- | --- |
 | [项目说明](../README.md) / [English](../README.en.md) | 安装、使用、快捷键和源码构建 |
-| [产品范围](ycode-feature-spec.md) | 当前功能、限制与暂缓事项 |
+| [Tandock 更名](tandock-renaming.md) | 新名称、升级兼容标识与远端资源边界 |
+| [产品范围](tandock-feature-spec.md) | 当前功能、限制与暂缓事项 |
 | [验收清单](bdd-iteration-plan.md) | 日常迭代的场景与证据要求 |
 | [CLI 界面规则](cli-ui-policy.md) | PTY 交互与结构化界面的边界 |
+| [需关注面板](attention-panel-design.md) / [实施验证](attention-panel-validation.md) | 共享提醒、显式已读、会话定位、生命周期及验证边界 |
 | [Hook 对接](agent-hook-integration-spec.md) | 当前 Swift 通知链、配置归属与限制 |
 | [macOS 开发](../macos/README.md) | 开发构建、签名与隔离数据目录 |
 | [GitHub 构建与发布](macos-native/github-release.md) | CI、签名、公证、Sparkle 与发布操作 |

@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "YCodeNative",
+    name: "TandockNative",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "YCodeCore", targets: ["YCodeCore"]),
-        .library(name: "YCodeEditorSupport", targets: ["YCodeEditorSupport"]),
-        .executable(name: "YCodeApp", targets: ["YCodeApp"]),
-        .executable(name: "ycode", targets: ["YCodeCLI"]),
-        .executable(name: "ycode-mcp", targets: ["YCodeMCP"]),
-        .executable(name: "ycode-notify", targets: ["YCodeNotify"]),
-        .executable(name: "ycode-migrate", targets: ["YCodeMigrationProbe"]),
-        .executable(name: "YCodeStabilityProbe", targets: ["YCodeStabilityProbe"]),
-        .executable(name: "YCodeTerminalProbe", targets: ["YCodeTerminalProbe"]),
-        .executable(name: "YCodeLaunchProbe", targets: ["YCodeLaunchProbe"])
+        .library(name: "TandockCore", targets: ["TandockCore"]),
+        .library(name: "TandockEditorSupport", targets: ["TandockEditorSupport"]),
+        .executable(name: "TandockApp", targets: ["TandockApp"]),
+        .executable(name: "tandock", targets: ["TandockCLI"]),
+        .executable(name: "tandock-mcp", targets: ["TandockMCP"]),
+        .executable(name: "tandock-notify", targets: ["TandockNotify"]),
+        .executable(name: "tandock-migrate", targets: ["TandockMigrationProbe"]),
+        .executable(name: "TandockStabilityProbe", targets: ["TandockStabilityProbe"]),
+        .executable(name: "TandockTerminalProbe", targets: ["TandockTerminalProbe"]),
+        .executable(name: "TandockLaunchProbe", targets: ["TandockLaunchProbe"])
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.20.0"),
@@ -24,70 +24,70 @@ let package = Package(
     ],
     targets: [
         .systemLibrary(name: "CSQLite", path: "Core/CSQLite"),
-        .target(name: "YCodeCore", dependencies: ["CSQLite", "SwiftTerm", "TOMLKit"], path: "Core/Sources/YCodeCore"),
+        .target(name: "TandockCore", dependencies: ["CSQLite", "SwiftTerm", "TOMLKit"], path: "Core/Sources/TandockCore"),
         .target(
-            name: "YCodeEditorSupport",
+            name: "TandockEditorSupport",
             dependencies: [.product(name: "Markdown", package: "swift-markdown")],
-            path: "EditorSupport/Sources/YCodeEditorSupport"
+            path: "EditorSupport/Sources/TandockEditorSupport"
         ),
         .executableTarget(
-            name: "YCodeApp",
-            dependencies: ["YCodeCore", "YCodeEditorSupport", "SwiftTerm", "Sparkle"],
-            path: "YCodeApp/Sources/YCodeApp"
+            name: "TandockApp",
+            dependencies: ["TandockCore", "TandockEditorSupport", "SwiftTerm", "Sparkle"],
+            path: "TandockApp/Sources/TandockApp"
         ),
         .executableTarget(
-            name: "YCodeCLI",
-            dependencies: ["YCodeCore"],
-            path: "Helpers/Sources/YCodeCLI"
+            name: "TandockCLI",
+            dependencies: ["TandockCore"],
+            path: "Helpers/Sources/TandockCLI"
         ),
         .executableTarget(
-            name: "YCodeMCP",
-            dependencies: ["YCodeCore"],
-            path: "Helpers/Sources/YCodeMCP"
+            name: "TandockMCP",
+            dependencies: ["TandockCore"],
+            path: "Helpers/Sources/TandockMCP"
         ),
         .executableTarget(
-            name: "YCodeNotify",
-            dependencies: ["YCodeCore"],
-            path: "Helpers/Sources/YCodeNotify"
+            name: "TandockNotify",
+            dependencies: ["TandockCore"],
+            path: "Helpers/Sources/TandockNotify"
         ),
         .executableTarget(
-            name: "YCodeMigrationProbe",
-            dependencies: ["YCodeCore"],
-            path: "Tests/Tools/YCodeMigrationProbe"
+            name: "TandockMigrationProbe",
+            dependencies: ["TandockCore"],
+            path: "Tests/Tools/TandockMigrationProbe"
         ),
         .executableTarget(
-            name: "YCodeHistoryProbe",
-            dependencies: ["YCodeCore"],
-            path: "Tests/Tools/YCodeHistoryProbe"
+            name: "TandockHistoryProbe",
+            dependencies: ["TandockCore"],
+            path: "Tests/Tools/TandockHistoryProbe"
         ),
         .executableTarget(
-            name: "YCodeUsageProbe",
-            dependencies: ["YCodeCore"],
-            path: "Tests/Tools/YCodeUsageProbe"
+            name: "TandockUsageProbe",
+            dependencies: ["TandockCore"],
+            path: "Tests/Tools/TandockUsageProbe"
         ),
         .executableTarget(
-            name: "YCodeStabilityProbe",
-            dependencies: ["YCodeCore"],
-            path: "Tests/Tools/YCodeStabilityProbe"
+            name: "TandockStabilityProbe",
+            dependencies: ["TandockCore"],
+            path: "Tests/Tools/TandockStabilityProbe"
         ),
         .executableTarget(
-            name: "YCodeTerminalProbe",
-            dependencies: ["YCodeCore"],
-            path: "Tests/Tools/YCodeTerminalProbe"
+            name: "TandockTerminalProbe",
+            dependencies: ["TandockCore"],
+            path: "Tests/Tools/TandockTerminalProbe"
         ),
         .executableTarget(
-            name: "YCodeLaunchProbe",
-            path: "Tests/Tools/YCodeLaunchProbe"
+            name: "TandockLaunchProbe",
+            path: "Tests/Tools/TandockLaunchProbe"
         ),
         .testTarget(
-            name: "YCodeAppTests",
-            dependencies: ["YCodeApp"],
-            path: "Tests/YCodeAppTests"
+            name: "TandockAppTests",
+            dependencies: ["TandockApp"],
+            path: "Tests/TandockAppTests"
         ),
         .testTarget(
-            name: "YCodeCoreTests",
-            dependencies: ["YCodeCore", "YCodeEditorSupport", "SwiftTerm"],
-            path: "Tests/YCodeCoreTests"
+            name: "TandockCoreTests",
+            dependencies: ["TandockCore", "TandockEditorSupport", "SwiftTerm"],
+            path: "Tests/TandockCoreTests"
         )
     ]
 )

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tandock Icon</title>
+<style>
+  :root { --bg: #f4f1ec; --fg: #16133a; --muted: #6b6880; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15141c; --fg: #f1eff7; --muted: #9a97ab; --card: #1f1e28; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 24px; }
+  .hero { display: flex; justify-content: center; margin-bottom: 24px; }
+  #icon { width: min(420px, 100%); height: auto; }
+  .sizes { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: center;
+           padding: 20px; border-radius: 14px; background: var(--card); margin-bottom: 16px; }
+  .sizes figure { margin: 0; text-align: center; color: var(--muted); font-size: 12px; }
+  .sizes.dark { background: #1d1d22; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--muted);
+           background: var(--card); color: var(--fg); cursor: pointer; }
+  button:focus-visible { outline: 2px solid #ff5a4e; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tandock</h1>
+  <p>Two docked panes form the crossbar of a T; the terminal caret is its stem; the sparkle marks the agent.</p>
+  <div class="hero"><canvas id="icon" width="1024" height="1024" aria-label="Tandock app icon"></canvas></div>
+  <div class="sizes" id="light"></div>
+  <div class="sizes dark" id="dark"></div>
+  <div class="actions">
+    <button id="dl1024">Download 1024 PNG</button>
+    <button id="dlset">Download iconset sizes</button>
+  </div>
+</main>
+<script>
+// Brand palette carried over from the YCode icon so the rename keeps visual continuity.
+const COLORS = {
+  coralTop: '#ff6b5e',
+  coralBottom: '#f0473c',
+  paper: '#ffffff',
+  paperShade: '#ffe3df',
+  ink: '#16133a',
+  spark: '#ffc83d',
+};
+
+// Superellipse-ish rounded rect matching the macOS Big Sur+ icon grid (824pt body inside 1024).
+function squircle(ctx, x, y, w, h, r) {
+  const k = 0.62; // pulls control points outward for a continuous-curvature corner
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.bezierCurveTo(x + w - r * (1 - k), y, x + w, y + r * (1 - k), x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.bezierCurveTo(x + w, y + h - r * (1 - k), x + w - r * (1 - k), y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.bezierCurveTo(x + r * (1 - k), y + h, x, y + h - r * (1 - k), x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.bezierCurveTo(x, y + r * (1 - k), x + r * (1 - k), y, x + r, y);
+  ctx.closePath();
+}
+
+function pill(ctx, x, y, w, h) {
+  const r = Math.min(w, h) / 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+function sparkle(ctx, cx, cy, r) {
+  const c = r * 0.14; // how tight the waist of each arm is
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.bezierCurveTo(cx + c, cy - c, cx + c, cy - c, cx + r, cy);
+  ctx.bezierCurveTo(cx + c, cy + c, cx + c, cy + c, cx, cy + r);
+  ctx.bezierCurveTo(cx - c, cy + c, cx - c, cy + c, cx - r, cy);
+  ctx.bezierCurveTo(cx - c, cy - c, cx - c, cy - c, cx, cy - r);
+  ctx.closePath();
+}
+
+// Draws the icon in a 1024-unit coordinate space, scaled to the target canvas.
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width / 1024;
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.clearRect(0, 0, 1024, 1024);
+
+  // Body with the soft drop shadow macOS icons carry inside their canvas.
+  ctx.save();
+  ctx.shadowColor = 'rgba(22, 19, 58, 0.28)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  const body = ctx.createLinearGradient(0, 100, 0, 924);
+  body.addColorStop(0, COLORS.coralTop);
+  body.addColorStop(1, COLORS.coralBottom);
+  squircle(ctx, 100, 100, 824, 824, 186);
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.restore();
+
+  // Subtle top highlight for depth.
+  ctx.save();
+  squircle(ctx, 100, 100, 824, 824, 186);
+  ctx.clip();
+  const gloss = ctx.createLinearGradient(0, 100, 0, 520);
+  gloss.addColorStop(0, 'rgba(255,255,255,0.18)');
+  gloss.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gloss;
+  ctx.fillRect(100, 100, 824, 420);
+  ctx.restore();
+
+  // Crossbar: two panes docked side by side ("tandem"), split by a narrow seam.
+  const barY = 286, barH = 96, seam = 22, barX = 288, barW = 448;
+  const half = (barW - seam) / 2;
+  ctx.fillStyle = COLORS.paper;
+  pill(ctx, barX, barY, half, barH);
+  ctx.fill();
+  ctx.fillStyle = COLORS.paperShade; // second pane slightly tinted so the pair reads as two
+  pill(ctx, barX + half + seam, barY, half, barH);
+  ctx.fill();
+
+  // Stem: the terminal caret, detached from the bar like a blinking cursor.
+  ctx.fillStyle = COLORS.ink;
+  pill(ctx, 512 - 44, 430, 88, 330);
+  ctx.fill();
+
+  // Agent sparkle.
+  ctx.fillStyle = COLORS.spark;
+  sparkle(ctx, 724, 640, 98);
+  ctx.fill();
+}
+
+function makeCanvas(size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  drawIcon(c);
+  return c;
+}
+
+function download(canvas, name) {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+
+drawIcon(document.getElementById('icon'));
+
+// Preview at the sizes macOS actually renders (Dock, Finder, menu, Spotlight).
+const PREVIEW = [16, 32, 64, 128, 256];
+for (const id of ['light', 'dark']) {
+  const row = document.getElementById(id);
+  for (const size of PREVIEW) {
+    const fig = document.createElement('figure');
+    const c = makeCanvas(size * devicePixelRatio);
+    c.style.width = c.style.height = size + 'px';
+    fig.append(c, Object.assign(document.createElement('figcaption'), { textContent: size + 'px' }));
+    row.append(fig);
+  }
+}
+
+document.getElementById('dl1024').onclick = () => download(makeCanvas(1024), 'tandock-1024.png');
+// Standard .iconset names so `iconutil -c icns` can consume the downloads directly.
+document.getElementById('dlset').onclick = () => {
+  for (const base of [16, 32, 128, 256, 512]) {
+    download(makeCanvas(base), `icon_${base}x${base}.png`);
+    download(makeCanvas(base * 2), `icon_${base}x${base}@2x.png`);
+  }
+};
+</script>
+</body>
+</html>

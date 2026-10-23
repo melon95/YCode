@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ycode-stable-release
+  group: tandock-stable-release
   cancel-in-progress: false
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
           python3 -m unittest discover -s macos/scripts/tests -v
           python3 macos/scripts/generate_agent_icons.py
           python3 macos/scripts/generate_file_icons.py
-          git diff --exit-code -- macos/YCodeApp/Sources/YCodeApp/YCodeAgentIcons.swift macos/YCodeApp/Sources/YCodeApp/YCodeFileIcons.swift
+          git diff --exit-code -- macos/TandockApp/Sources/TandockApp/TandockAgentIcons.swift macos/TandockApp/Sources/TandockApp/TandockFileIcons.swift
       - name: Import signing certificate and notarization credentials
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
@@ -73,7 +73,7 @@ jobs:
         run: bash macos/scripts/ci_signing_setup.sh
       - name: Build, notarize and verify universal app
         env:
-          NOTARY_PROFILE: ycode-ci-notary
+          NOTARY_PROFILE: tandock-ci-notary
           UPDATE_FEED_URL: https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml
         run: bash macos/scripts/package_release.sh release
       - name: Generate and verify signed appcast
@@ -81,35 +81,35 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           umask 077
-          key_file="$RUNNER_TEMP/ycode-sparkle.key"
+          key_file="$RUNNER_TEMP/tandock-sparkle.key"
           trap 'rm -f "$key_file"' EXIT
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_file"
           SPARKLE_PRIVATE_KEY_FILE="$key_file" bash macos/scripts/generate_appcast.sh \
-            macos/dist/release/YCode.app "macos/dist/release/YCode-$VERSION.zip" "$GH_REPO"
+            macos/dist/release/Tandock.app "macos/dist/release/Tandock-$VERSION.zip" "$GH_REPO"
           cd macos/dist/release
-          shasum -a 256 "YCode-$VERSION.zip" appcast.xml > SHA256SUMS
+          shasum -a 256 "Tandock-$VERSION.zip" appcast.xml > SHA256SUMS
       - name: Upload verified assets to draft and publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Never replace assets of a public release; a retry may reuse only its draft.
           python3 macos/scripts/check_release_version.py "$RELEASE_TAG" "$GH_REPO"
-          if ! gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/ycode-release.json" 2>/dev/null; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "YCode $VERSION" --generate-notes
+          if ! gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/tandock-release.json" 2>/dev/null; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Tandock $VERSION" --generate-notes
           fi
           gh release upload "$RELEASE_TAG" \
-            "macos/dist/release/YCode-$VERSION.zip" macos/dist/release/appcast.xml macos/dist/release/SHA256SUMS --clobber
+            "macos/dist/release/Tandock-$VERSION.zip" macos/dist/release/appcast.xml macos/dist/release/SHA256SUMS --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: YCode-notarized-release
+          name: Tandock-notarized-release
           path: |
-            macos/dist/release/YCode-*.zip
+            macos/dist/release/Tandock-*.zip
             macos/dist/release/appcast.xml
             macos/dist/release/SHA256SUMS
       - name: Remove temporary credentials
         if: always()
         run: |
-          security delete-keychain "$RUNNER_TEMP/ycode-signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/ycode-certificate.p12" "$RUNNER_TEMP/ycode-sparkle.key"
+          security delete-keychain "$RUNNER_TEMP/tandock-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/tandock-certificate.p12" "$RUNNER_TEMP/tandock-sparkle.key"

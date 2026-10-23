@@ -5,7 +5,7 @@
 //
 // SwiftTerm 的 LocalProcessTerminalView 把 LocalProcess 塞在 view 里,直接用它
 // 就会把进程绑死在视图上 —— 视图销毁进程就没了,正是旧版 ManualTerminal 的毛病
-// (见 run-ycode skill: "ManualTerminal kills its PTY on React unmount")。
+// (见 run-tandock skill: "ManualTerminal kills its PTY on React unmount")。
 //
 // 所以这里把三件事拆开:
 //   LocalProcess  (进程 + PTY)     ← 归 SessionStore,长命
@@ -63,7 +63,7 @@ final class TerminalSession: NSObject, @unchecked Sendable, LocalProcessDelegate
     }
 
     func start(executable: String, args: [String], environment: [String: String], cwd: String) {
-        // 与旧版 ycode-terminal 同口径的终端能力变量(AG.6)。
+        // 与旧版 tandock-terminal 同口径的终端能力变量(AG.6)。
         let envArray = terminalEnvironment(from: environment)
             .map { "\($0.key)=\($0.value)" }
         process.startProcess(
