@@ -48,6 +48,41 @@ struct CheckpointServiceTests {
         #expect(try fixture.git("worktree", "list").split(separator: "\n").count == 1)
     }
 
+    @Test("queued checkpoints run off the caller and keep initial before turn")
+    func queuedCheckpointsKeepOrder() async throws {
+        let fixture = try CheckpointFixture()
+        defer { fixture.remove() }
+        try fixture.file("tracked.txt", "base\n")
+        try fixture.git("add", ".")
+        try fixture.git("commit", "-m", "base")
+        let project = try fixture.project()
+        let session = try fixture.repository.createSession(projectID: project.id, title: "Run", agentProfile: "codex")
+        let service = TandockCheckpointService(repository: fixture.checkpoints, keepLimit: 50)
+        let event = TandockAgentHookEvent(terminalID: session.id, source: "codex", eventKind: "turn_complete", bodyPreview: "queued")
+
+        let kinds = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String], Error>) in
+            // A failed initial shows up as a missing "initial" row below.
+            service.enqueueInitial(session: session, project: project) { _ in
+                #expect(!Thread.isMainThread)
+            }
+            service.enqueueTurn(session: session, project: project, event: event) { result in
+                continuation.resume(with: result.flatMap { _ in
+                    Result { try service.list(sessionID: session.id).map(\.kind) }
+                })
+            }
+        }
+        #expect(kinds == ["initial", "turn"])
+    }
+
+    @Test("git usability check and log reasons carry no paths")
+    func unusableGitAndReasons() throws {
+        #expect(TandockGitService().isUsable)
+        #expect(TandockGitService(executable: "/opt/custom/git").isUsable)
+        #expect(TandockSessionStartupTrace.reason(TandockCheckpointError.gitUnavailable) == "TandockCheckpointError.gitUnavailable")
+        let reason = TandockSessionStartupTrace.reason(TandockGitError.notRepository("/Users/someone/private"))
+        #expect(reason == "TandockGitError.notRepository")
+    }
+
     @Test("duplicate turn events are ignored and empty changes still create ordered snapshots")
     func duplicateAndEmptyEvents() throws {
         let fixture = try CheckpointFixture()

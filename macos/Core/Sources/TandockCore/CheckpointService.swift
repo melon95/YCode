@@ -43,11 +43,13 @@ public struct TandockCheckpointRecord: Identifiable, Equatable, Sendable {
 public enum TandockCheckpointError: LocalizedError, Equatable {
     case emptySnapshot
     case duplicateEvent
+    case gitUnavailable
 
     public var errorDescription: String? {
         switch self {
         case .emptySnapshot: "检查点没有可记录的文件状态"
         case .duplicateEvent: "重复的轮次事件已忽略"
+        case .gitUnavailable: "未安装 Git 命令行工具，已跳过检查点"
         }
     }
 }
@@ -223,6 +225,52 @@ public struct TandockCheckpointService: Sendable {
         try create(kind: "turn", session: session, project: project, event: event)
     }
 
+    /// 每个仓库一条串行队列：Git 不进主线程，同一会话的 initial 一定排在 turn 前面，
+    /// 同一仓库不会同时跑两个 `git add -A`；别的大仓库排着的快照也不会拖住这一个。
+    private static let queuesLock = NSLock()
+    private nonisolated(unsafe) static var queues: [String: DispatchQueue] = [:]
+
+    private static func queue(for project: ProjectRecord) -> DispatchQueue {
+        let key = project.repositoryURL.standardizedFileURL.path
+        queuesLock.lock()
+        defer { queuesLock.unlock() }
+        if let queue = queues[key] { return queue }
+        let queue = DispatchQueue(label: "dev.tandock.checkpoints", qos: .utility)
+        queues[key] = queue
+        return queue
+    }
+
+    /// 后台建 initial 快照，调用方不等。Agent 在用户第一次输入前不会改文件；
+    /// 用较高优先级跑，尽量赶在第一次输入之前完成。
+    public func enqueueInitial(
+        session: SessionMetadata,
+        project: ProjectRecord,
+        completion: (@Sendable (Result<TandockCheckpointRecord, Error>) -> Void)? = nil
+    ) {
+        enqueue(project, qos: .userInitiated, completion) { try createInitial(session: session, project: project) }
+    }
+
+    public func enqueueTurn(
+        session: SessionMetadata,
+        project: ProjectRecord,
+        event: TandockAgentHookEvent,
+        completion: (@Sendable (Result<TandockCheckpointRecord, Error>) -> Void)? = nil
+    ) {
+        enqueue(project, qos: .utility, completion) { try createTurn(session: session, project: project, event: event) }
+    }
+
+    private func enqueue(
+        _ project: ProjectRecord,
+        qos: DispatchQoS,
+        _ completion: (@Sendable (Result<TandockCheckpointRecord, Error>) -> Void)?,
+        _ work: @escaping @Sendable () throws -> TandockCheckpointRecord
+    ) {
+        Self.queue(for: project).async(qos: qos) {
+            let result = Result { try work() }
+            completion?(result)
+        }
+    }
+
     public func list(sessionID: String) throws -> [TandockCheckpointRecord] {
         try repository.list(sessionID: sessionID)
     }
@@ -232,6 +280,7 @@ public struct TandockCheckpointService: Sendable {
     }
 
     private func create(kind: String, session: SessionMetadata, project: ProjectRecord, event: TandockAgentHookEvent?) throws -> TandockCheckpointRecord {
+        guard git.isUsable else { throw TandockCheckpointError.gitUnavailable }
         let refName = "refs/tandock/checkpoints/\(session.id)/\(UUID().uuidString.lowercased())"
         let commit = try git.createSnapshotCommit(
             root: project.repositoryURL,

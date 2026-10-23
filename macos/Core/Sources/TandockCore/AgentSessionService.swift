@@ -51,14 +51,17 @@ public final class TandockAgentSessionService {
     private let notifySocket: URL?
     private let attention: TandockAttentionStore
     private let checkpointService: TandockCheckpointService?
+    private let shellEnvironmentStore: TandockShellEnvironmentStore?
 
     public init(
         repository: ProjectWorkspaceRepository,
         configurationStore: TandockConfigurationStore,
         notifySocket: URL? = nil,
         processPool: TandockSessionProcessPool = .shared,
-        checkpointService: TandockCheckpointService? = nil
+        checkpointService: TandockCheckpointService? = nil,
+        shellEnvironmentStore: TandockShellEnvironmentStore? = .shared
     ) {
+        self.shellEnvironmentStore = shellEnvironmentStore
         self.attention = .shared(dataRoot: configurationStore.configurationURL.deletingLastPathComponent())
         self.repository = repository
         self.configurationStore = configurationStore
@@ -103,8 +106,15 @@ public final class TandockAgentSessionService {
         return try await processPool.performLaunch(id: sessionID) { [self] in
             do {
                 if let checkpointService {
-                    _ = try? trace.measure("checkpoint") {
-                        try checkpointService.createInitial(session: row, project: project)
+                    trace.mark("checkpoint.queued")
+                    let queued = ContinuousClock.now
+                    checkpointService.enqueueInitial(session: row, project: project) { result in
+                        let duration = TandockSessionStartupTrace.format(queued.duration(to: .now))
+                        switch result {
+                        case .success: trace.mark("checkpoint.end duration_ms=\(duration)")
+                        case .failure(let error):
+                            trace.mark("checkpoint.failed duration_ms=\(duration) reason=\(TandockSessionStartupTrace.reason(error))")
+                        }
                     }
                 } else {
                     trace.mark("checkpoint.skipped")
@@ -398,7 +408,7 @@ public final class TandockAgentSessionService {
               let session = try? repository.session(id: event.terminalID),
               session.archivedAtMilliseconds == nil,
               let project = try? repository.listProjects().first(where: { $0.id == session.projectID }) else { return }
-        _ = try? checkpointService.createTurn(session: session, project: project, event: event)
+        checkpointService.enqueueTurn(session: session, project: project, event: event)
     }
 
     private func connect(_ runtime: TandockAgentRuntime) {
@@ -460,25 +470,84 @@ public final class TandockAgentSessionService {
         }
         let notifySocket = self.notifySocket
         let additionalArguments = arguments
-        startupTrace?.mark("launch_plan.background_queued")
-        let plan = try await Task.detached(priority: .userInitiated) {
-            startupTrace?.mark("launch_plan.background_begin")
-            defer { startupTrace?.mark("launch_plan.background_end") }
-            return try TandockAgentLauncher.makePlan(
-                profile: profile,
-                workingDirectory: project.repositoryURL,
-                terminalID: session.id,
-                notifySocket: notifySocket,
-                runID: runID,
-                dataRoot: root,
-                proxy: proxy,
-                additionalArguments: additionalArguments,
-                startupTrace: startupTrace
-            )
-        }.value
+        let shellEnvironment = await shellEnvironment(for: project.repositoryURL, startupTrace: startupTrace)
+        let build = { @Sendable (shellEnvironment: TandockShellEnvironment?) async throws -> TandockAgentLaunchPlan in
+            startupTrace?.mark("launch_plan.background_queued")
+            return try await Task.detached(priority: .userInitiated) {
+                startupTrace?.mark("launch_plan.background_begin")
+                defer { startupTrace?.mark("launch_plan.background_end") }
+                return try TandockAgentLauncher.makePlan(
+                    profile: profile,
+                    workingDirectory: project.repositoryURL,
+                    terminalID: session.id,
+                    notifySocket: notifySocket,
+                    runID: runID,
+                    dataRoot: root,
+                    proxy: proxy,
+                    additionalArguments: additionalArguments,
+                    shellEnvironment: shellEnvironment,
+                    startupTrace: startupTrace
+                )
+            }.value
+        }
+        let plan: TandockAgentLaunchPlan
+        do {
+            plan = try await build(shellEnvironment)
+        } catch TandockAgentSettingsError.missingProgram(let command) where shellEnvironment != nil {
+            // 快照可能早于用户刚装的工具（rc 里新加了 PATH）。重新解析一次再判，免得误报；
+            // 解析不出来就交给旧的登录 shell 路径做最后判断。
+            try Task.checkCancellation()
+            startupTrace?.mark("shell_env.retry_after_missing")
+            guard let store = shellEnvironmentStore,
+                  case .success(let fresh) = await store.resolveFresh(project.repositoryURL) else {
+                try Task.checkCancellation()
+                startupTrace?.mark("shell_env.fallback reason=retry_failed")
+                plan = try await build(nil)
+                try Task.checkCancellation()
+                return plan
+            }
+            try Task.checkCancellation()
+            guard fresh != shellEnvironment else { throw TandockAgentSettingsError.missingProgram(command) }
+            plan = try await build(fresh)
+        }
         try Task.checkCancellation()
         return plan
     }
+
+    /// 优先用缓存的快照（项目的，没有就 home 的），同时在后台刷新；改了 rc，刷新完成后的启动才生效。
+    /// 一份都没有时等一次解析；最近解析失败就别再干等超时，直接走旧的登录 shell 路径。
+    private func shellEnvironment(for directory: URL, startupTrace: TandockSessionStartupTrace?) async -> TandockShellEnvironment? {
+        guard let store = shellEnvironmentStore else { return nil }
+        defer { store.refresh(directory) }
+        if let cached = store.cached(for: directory) {
+            // home 的快照是在 `$HOME` 下求值的，rc 里按目录选 Node/Python 版本的逻辑不算数。
+            // 项目自己的快照多数几百毫秒内就能拿到，值得短暂等一下；等不到再用 home 的。
+            if cached.scope == .home, store.recentFailure(for: directory) == nil,
+               let project = await store.resolve(directory, waitingAtMost: Self.projectSnapshotBudget) {
+                startupTrace?.mark("shell_env.resolve scope=project waited_for_project=true")
+                return project
+            }
+            let age = Int(Date().timeIntervalSince(cached.snapshot.resolvedAt))
+            startupTrace?.mark("shell_env.hit scope=\(cached.scope.rawValue) age_s=\(age)")
+            return cached.snapshot
+        }
+        if let failure = store.recentFailure(for: directory) {
+            startupTrace?.mark("shell_env.fallback reason=\(failure)")
+            return nil
+        }
+        startupTrace?.mark("shell_env.miss")
+        let start = ContinuousClock.now
+        switch await store.resolve(directory) {
+        case .success(let snapshot):
+            startupTrace?.mark("shell_env.resolve duration_ms=\(TandockSessionStartupTrace.format(start.duration(to: .now)))")
+            return snapshot
+        case .failure(let error):
+            startupTrace?.mark("shell_env.fallback reason=\(error)")
+            return nil
+        }
+    }
+
+    private static let projectSnapshotBudget: TimeInterval = 0.5
 
     private func launchArguments(
         profile: TandockAgentProfile,

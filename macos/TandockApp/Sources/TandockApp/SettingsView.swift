@@ -20,7 +20,7 @@ final class BasicSettingsModel: ObservableObject {
     private let configurationStore: TandockConfigurationStore
     private let commandProbe: @Sendable (String) -> Bool
 
-    init(dataRoot: URL = TandockDataRootResolver.resolve(), commandProbe: @escaping @Sendable (String) -> Bool = { TandockAgentLauncher.probe(command: $0) }) {
+    init(dataRoot: URL = TandockDataRootResolver.resolve(), commandProbe: @escaping @Sendable (String) -> Bool = { TandockAgentLauncher.isAvailable(command: $0) }) {
         self.dataRoot = dataRoot
         self.commandProbe = commandProbe
         configurationStore = TandockConfigurationStore(configurationURL: dataRoot.appendingPathComponent("config.json"))

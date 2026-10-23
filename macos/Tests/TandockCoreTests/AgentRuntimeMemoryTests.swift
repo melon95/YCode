@@ -36,7 +36,7 @@ struct AgentRuntimeMemoryTests {
             let store = TandockConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
             try store.saveAgentSettings(.init(agents: [.init(id: "memory-probe", command: script.path)], proxy: .init(mode: .off)))
             pool = TandockSessionProcessPool()
-            service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+            service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: .testHost)
         }
     }
 

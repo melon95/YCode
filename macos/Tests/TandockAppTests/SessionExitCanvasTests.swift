@@ -37,7 +37,7 @@ struct SessionExitCanvasTests {
             try configuration.saveAgentSettings(.init(
                 agents: [.init(id: "exit-probe", command: script.path, introspect: "codex")],
                 proxy: .init(mode: .off)))
-            let service = TandockAgentSessionService(repository: repository, configurationStore: configuration)
+            let service = TandockAgentSessionService(repository: repository, configurationStore: configuration, shellEnvironmentStore: .testHost)
             self.service = service
             let projectID = project.id
             var created: [SessionMetadata] = []

@@ -50,7 +50,8 @@ final class TandockSessionStartupMonitor: @unchecked Sendable {
             self.directory = nil
             shellPrefix = ""
             try? FileManager.default.removeItem(at: directory)
-            trace.mark(captureShellBoundary ? "shell.marker_unavailable" : "shell.marker_unsupported")
+            // "skipped": direct exec from a shell environment snapshot, or a shell without POSIX builtins.
+            trace.mark(captureShellBoundary ? "shell.marker_unavailable" : "shell.marker_skipped")
         }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         self.timer = timer

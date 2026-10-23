@@ -239,9 +239,8 @@ public enum TandockAgentLauncher {
 
     /// `command -v` 的结果缓存。
     ///
-    /// 每次 `makePlan`（也就是每次新建/恢复会话）都会 probe 一次，而 probe 跑的是
-    /// `$SHELL -l -i -c` —— 一整套 rc（oh-my-zsh / fnm / 补全）要跑 0.2~1s，
-    /// 而且是在主线程上同步等。点 agent 卡一下，大半来自这里。
+    /// 只在没有 shell 环境快照（`TandockShellEnvironmentStore`）时才走到这里：probe 跑的是
+    /// `$SHELL -l -i -c` —— 一整套 rc（oh-my-zsh / fnm / 补全）要跑 0.2~1s。
     ///
     /// 命中就省掉整个登录 shell。命中失败的负缓存 TTL 短得多：用户刚 `npm i -g` 装完
     /// 一个 CLI，不该还要等五分钟才认。
@@ -309,40 +308,6 @@ public enum TandockAgentLauncher {
         probeCacheLock.unlock()
     }
 
-    /// 后台预热：把启动会话要用的那套东西先跑热，别等用户点下去才第一次跑。
-    ///
-    /// 做两件事：
-    /// 1. 跑一次 `$SHELL -l -i -c exit`，把 rc 链上的文件和 shell 自身刷进 page cache；
-    /// 2. 给每个 agent 命令填好 probe 缓存。
-    ///
-    /// 刻意**不缓存环境变量**——rc 每次仍然照常求值，direnv / `.nvmrc` / shell function
-    /// 这些行为一点不变。这里纯粹是 I/O 预热，最坏情况是白跑一趟。
-    ///
-    /// stdin 接 /dev/null：rc 里有读 stdin 的分支时看到 EOF 直接过，不会挂住。
-    public static func prewarm(
-        commands: [String],
-        shell: String? = nil,
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) {
-        let shellPath = resolvedShell(shell, hostEnvironment: environment)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shellPath)
-        process.arguments = ["-l", "-i", "-c", "exit 0"]
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        if (try? process.run()) != nil {
-            // rc 卡死不能拖住预热线程；超时就放弃，反正只是预热。
-            let deadline = Date().addingTimeInterval(20)
-            while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-            if process.isRunning { process.terminate() }
-        }
-        for command in commands {
-            _ = probe(command: command, shell: shell, environment: environment)
-        }
-    }
-
     /// 跑一条 agent 的子命令（不接 PTY，等它结束）。成功返回 nil，失败返回可读的原因。
     /// 走登录 shell 是为了跟启动 agent 用同一份 PATH —— 这些 CLI 常装在
     /// nvm / homebrew 的路径下，GUI 进程自己的 PATH 里没有。
@@ -358,15 +323,30 @@ public enum TandockAgentLauncher {
         guard !trimmed.isEmpty else { return "Agent 命令为空" }
         let line = ([trimmed] + arguments).map(shellQuote).joined(separator: " ")
         let process = Process()
+        let store = TandockShellEnvironmentStore.shared
         // 绝对路径不用借 shell 找 —— 少起一个登录 shell 就少等一秒。
         if trimmed.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: trimmed) {
             process.executableURL = URL(fileURLWithPath: trimmed)
             process.arguments = arguments
+            process.environment = environment
+        } else if shell == nil,
+                  let snapshot = store.cached(for: store.homeDirectory)?.snapshot,
+                  let executable = resolveExecutable(trimmed, environment: snapshot.variables) {
+            // 已有 shell 环境快照：用它的 PATH 直接跑，跟启动 agent 是同一份环境。
+            process.executableURL = executable
+            process.arguments = arguments
+            // 调用方显式传的环境优先；默认的宿主环境只用来补快照里没有的 key。
+            let callerWins = environment != ProcessInfo.processInfo.environment
+            var merged: [String: String] = snapshot.variables
+            for (key, value) in environment where callerWins || merged[key] == nil {
+                merged[key] = value
+            }
+            process.environment = merged
         } else {
             process.executableURL = URL(fileURLWithPath: resolvedShell(shell, hostEnvironment: environment))
             process.arguments = ["-l", "-c", line]
+            process.environment = environment
         }
-        process.environment = environment
         let errorPipe = Pipe()
         process.standardOutput = Pipe()
         process.standardError = errorPipe
@@ -405,21 +385,48 @@ public enum TandockAgentLauncher {
         hostEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         shell: String? = nil,
         additionalArguments: [String] = [],
+        shellEnvironment: TandockShellEnvironment? = nil,
         startupTrace: TandockSessionStartupTrace? = nil
     ) throws -> TandockAgentLaunchPlan {
         guard !profile.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TandockAgentSettingsError.invalidAgent("Agent 命令不能为空")
         }
-        var environment = hostEnvironment
-        for (key, value) in profile.environment {
-            environment[key] = expandPlaceholder(value, hostEnvironment: hostEnvironment)
-        }
-        for key in credentialKeysToStrip(for: profile) { environment.removeValue(forKey: key) }
-        startupTrace?.mark("probe.begin main_thread=\(Thread.isMainThread)")
-        let available = probe(command: profile.command, shell: shell, environment: environment, startupTrace: startupTrace)
-        startupTrace?.mark("probe.end available=\(available)")
-        guard available else {
-            throw TandockAgentSettingsError.missingProgram(profile.command)
+        var environment: [String: String]
+        var directExecutable: URL?
+        if let shellEnvironment {
+            // 快照已经是 rc 求值后的结果：在它上面叠 agent 配置，然后直接 spawn，不再经过 shell。
+            // 凭据与旧路径一致：先叠宿主环境和 agent 配置，再按 agent 去掉；旧路径里 rc 最后跑，
+            // 所以 rc 自己 export 的值仍然保留。
+            environment = shellEnvironment.variables
+            for key in credentialKeys where environment[key] == nil {
+                if let value = hostEnvironment[key] { environment[key] = value }
+            }
+            // `$变量` 占位符优先按 rc 之后的环境展开：只在 rc 里 export 的 key 以前也能拿到真值。
+            var placeholderSource: [String: String] = hostEnvironment
+            for (key, value) in shellEnvironment.variables { placeholderSource[key] = value }
+            for (key, value) in profile.environment {
+                environment[key] = expandPlaceholder(value, hostEnvironment: placeholderSource)
+            }
+            for key in credentialKeysToStrip(for: profile) {
+                environment[key] = shellEnvironment.variables[key]
+            }
+            guard let executable = resolveExecutable(profile.command, environment: environment, workingDirectory: workingDirectory) else {
+                startupTrace?.mark("exec.missing_on_path")
+                throw TandockAgentSettingsError.missingProgram(profile.command)
+            }
+            directExecutable = executable
+        } else {
+            environment = hostEnvironment
+            for (key, value) in profile.environment {
+                environment[key] = expandPlaceholder(value, hostEnvironment: hostEnvironment)
+            }
+            for key in credentialKeysToStrip(for: profile) { environment.removeValue(forKey: key) }
+            startupTrace?.mark("probe.begin main_thread=\(Thread.isMainThread)")
+            let available = probe(command: profile.command, shell: shell, environment: environment, startupTrace: startupTrace)
+            startupTrace?.mark("probe.end available=\(available)")
+            guard available else {
+                throw TandockAgentSettingsError.missingProgram(profile.command)
+            }
         }
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
@@ -438,6 +445,32 @@ public enum TandockAgentLauncher {
         if let mcpSocket { environment["YCODE_MCP_SOCK"] = mcpSocket.path }
         if let dataRoot { environment["YCODE_NATIVE_DATA_ROOT"] = dataRoot.path }
 
+        if let directExecutable {
+            let arguments = profile.arguments + additionalArguments
+            // 以前 agent 在 rc 跑过的 shell 里 exec，继承 rc 设的 `ulimit -n` / `umask`。
+            // 快照带不走进程属性，用不读任何 rc 的 /bin/sh 补上再 exec，额外开销约 1ms。
+            if let prelude = processAttributePrelude(shellEnvironment) {
+                startupTrace?.mark("exec.direct process_attributes=applied")
+                let script: String = prelude + #"exec "$0" "$@""#
+                var wrapped: [String] = ["-c", script, directExecutable.path]
+                wrapped.append(contentsOf: arguments)
+                return TandockAgentLaunchPlan(
+                    executableURL: URL(fileURLWithPath: "/bin/sh"),
+                    arguments: wrapped,
+                    environment: environment,
+                    workingDirectory: workingDirectory,
+                    startupTrace: startupTrace
+                )
+            }
+            startupTrace?.mark("exec.direct")
+            return TandockAgentLaunchPlan(
+                executableURL: directExecutable,
+                arguments: arguments,
+                environment: environment,
+                workingDirectory: workingDirectory,
+                startupTrace: startupTrace
+            )
+        }
         let shellPath = resolvedShell(shell, hostEnvironment: hostEnvironment)
         let supportsStartupMarker = ["sh", "bash", "zsh", "dash", "ksh"].contains(URL(fileURLWithPath: shellPath).lastPathComponent)
         let scriptArguments = profile.arguments + additionalArguments
@@ -488,6 +521,63 @@ public enum TandockAgentLauncher {
         let candidate = shell ?? hostEnvironment["SHELL"]
         return candidate?.isEmpty == false ? candidate! : "/bin/sh"
     }
+
+    static func resolvedShellPath(_ shell: String?, hostEnvironment: [String: String]) -> String {
+        resolvedShell(shell, hostEnvironment: hostEnvironment)
+    }
+
+    /// 在 PATH 里找可执行文件，代替 shell 的 `command -v`。alias / shell 函数在这里找不到，
+    /// 这是对的：`exec` 本来也执行不了它们，以前 probe 说「可用」、启动却 127。
+    public static func resolveExecutable(_ command: String, environment: [String: String], workingDirectory: URL? = nil) -> URL? {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let fileManager = FileManager.default
+        func executable(_ url: URL) -> URL? {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+                  fileManager.isExecutableFile(atPath: url.path) else { return nil }
+            return url
+        }
+        if trimmed.hasPrefix("/") { return executable(URL(fileURLWithPath: trimmed)) }
+        if trimmed.contains("/") {
+            guard let workingDirectory else { return nil }
+            return executable(workingDirectory.appendingPathComponent(trimmed).standardizedFileURL)
+        }
+        for entry in (environment["PATH"] ?? "").split(separator: ":", omittingEmptySubsequences: false) {
+            // 跟 shell 一样：空项和相对项（`.`、`node_modules/.bin`）相对工作目录解析。
+            let directory: URL
+            if entry.hasPrefix("/") {
+                directory = URL(fileURLWithPath: String(entry))
+            } else if let workingDirectory {
+                directory = workingDirectory.appendingPathComponent(entry.isEmpty ? "." : String(entry))
+            } else {
+                continue
+            }
+            if let found = executable(directory.appendingPathComponent(trimmed).standardizedFileURL) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    /// 值来自 `parseLimits` 的白名单校验（数字 / unlimited / 八进制），可以直接拼进脚本。
+    static func processAttributePrelude(_ snapshot: TandockShellEnvironment?) -> String? {
+        var prelude = ""
+        if let limit = snapshot?.fileDescriptorLimit { prelude += "ulimit -n \(limit) 2>/dev/null; " }
+        if let mask = snapshot?.fileCreationMask { prelude += "umask \(mask) 2>/dev/null; " }
+        return prelude.isEmpty ? nil : prelude
+    }
+
+    /// 已缓存了 home 快照就直接查 PATH（微秒级），否则退回跑登录 shell 的 probe。
+    public static func isAvailable(command: String, store: TandockShellEnvironmentStore = .shared) -> Bool {
+        if let snapshot = store.cached(for: store.homeDirectory)?.snapshot {
+            return resolveExecutable(command, environment: snapshot.variables) != nil
+        }
+        return probe(command: command)
+    }
+
+    /// 所有 agent 可能被去掉的凭据变量；解析 shell 环境时统一先拿掉，启动时再按 agent 补回。
+    static let credentialKeys = ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"]
 
     private static func expandPlaceholder(_ value: String, hostEnvironment: [String: String]) -> String {
         guard value.hasPrefix("$"), value.count > 1 else { return value }

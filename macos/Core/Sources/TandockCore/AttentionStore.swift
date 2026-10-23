@@ -109,7 +109,7 @@ public final class TandockAttentionStore: ObservableObject {
         runs[session.id] = run
         let item = upsert(session: session, runID: runID, kind: kind, summary: event.bodyPreview ?? "", event: event, date: event.occurredAt)
         if kind == .completion, let project = try? repository?.listProjects().first(where: { $0.id == session.projectID }) {
-            _ = try? checkpoints?.createTurn(session: session, project: project, event: event)
+            checkpoints?.enqueueTurn(session: session, project: project, event: event)
         }
         notify(item)
         return true

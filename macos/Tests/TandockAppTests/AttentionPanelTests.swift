@@ -136,7 +136,7 @@ struct AttentionPanelTests {
         let f = try Fixture(); defer { f.remove() }
         let model = f.model(), row = f.rows[0]
         let service = TandockAgentSessionService(repository: f.repository,
-            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
+            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")), shellEnvironmentStore: .testHost)
         f.emit(row, store: model.attentionStore, kind: "turn_complete")
         #expect(service.runtime(id: row.id) == nil)
         #expect(model.hasUnreadAttentionResults)
@@ -169,7 +169,7 @@ struct AttentionPanelTests {
         let f = try Fixture(); defer { f.remove() }
         let model = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
-            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
+            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")), shellEnvironmentStore: .testHost)
         var rows: [SessionMetadata] = []
         for index in 0..<4 {
             rows.append(try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Pane \(index)"))
@@ -222,7 +222,7 @@ struct AttentionPanelTests {
         let f = try Fixture(); defer { f.remove() }
         let model = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
-            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
+            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")), shellEnvironmentStore: .testHost)
         let row = try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Live")
         defer { model.attentionStore.willStop(sessionID: row.id); TandockSessionProcessPool.shared.runtime(id: row.id)?.terminate() }
         f.emit(row, store: model.attentionStore, kind: kind)
@@ -264,7 +264,7 @@ struct AttentionPanelTests {
         let f = try Fixture(); defer { f.remove() }
         let model = f.model(), otherWindow = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
-            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
+            configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")), shellEnvironmentStore: .testHost)
         let row = try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Continue")
         defer { model.attentionStore.willStop(sessionID: row.id); TandockSessionProcessPool.shared.runtime(id: row.id)?.terminate() }
         model.isPresentingNewSession = false

@@ -649,23 +649,22 @@ final class WorkspaceModel: ObservableObject {
 
     func isResuming(_ id: String) -> Bool { resumingSessionIDs.contains(id) }
 
-    /// 启动就把登录 shell 跑热一次（见 `TandockAgentLauncher.prewarm`）。
-    /// 不做的话，用户开窗后第一次点 agent 要现付 rc 的冷启动成本（~0.5s+），
-    /// 而那一刻主线程正卡在 `createSession` 里。
+    /// 启动就在后台解析一次 shell 环境（home 和当前项目），见 `TandockShellEnvironmentStore`。
+    /// 之后新建/恢复会话直接用快照 spawn agent，不再每次现跑一遍 rc。
     private func prewarmAgentLaunchPath() {
-        let commands = agentProfiles.filter(\.enabled).map(\.command)
-        Task.detached(priority: .utility) {
-            TandockAgentLauncher.prewarm(commands: commands)
-        }
+        let store = TandockShellEnvironmentStore.shared
+        store.refresh(store.homeDirectory)
+        if let project = selectedProject { store.refresh(project.repositoryURL) }
     }
 
     @discardableResult
     func refreshAgentAvailability(
-        probe: @escaping @Sendable (String) -> Bool = { TandockAgentLauncher.probe(command: $0) }
+        probe: (@Sendable (String) -> Bool)? = nil
     ) -> Task<Void, Never> {
         let profiles = agentProfiles.filter(\.enabled)
         return Task {
             let ids = await Task.detached(priority: .utility) { () -> Set<String> in
+                let probe = await Self.availabilityProbe(probe)
                 var found: Set<String> = []
                 for profile in profiles where probe(profile.command) {
                     found.insert(profile.id)
@@ -675,6 +674,14 @@ final class WorkspaceModel: ObservableObject {
             guard profiles == agentProfiles.filter(\.enabled) else { return }
             availableAgentProfileIDs = ids
         }
+    }
+
+    /// 默认先等 home 的 shell 环境快照（启动时已在解析），再按它的 PATH 判断，免得每个命令各跑一遍登录 shell。
+    nonisolated private static func availabilityProbe(_ probe: (@Sendable (String) -> Bool)?) async -> @Sendable (String) -> Bool {
+        if let probe { return probe }
+        let store = TandockShellEnvironmentStore.shared
+        _ = await store.resolve(store.homeDirectory)
+        return { TandockAgentLauncher.isAvailable(command: $0, store: store) }
     }
 
     func showOverview() {

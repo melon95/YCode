@@ -140,6 +140,35 @@ public struct TandockGitService: Sendable {
         self.executable = executable
     }
 
+    /// 没装 Xcode 命令行工具时 `/usr/bin/git` 只是个占位程序，一跑就弹安装对话框。
+    /// 后台自动触发的 Git（比如检查点）先看这个，别替用户弹窗。
+    public var isUsable: Bool {
+        executable != "/usr/bin/git" || Self.developerToolsInstalled
+    }
+
+    /// 只缓存「已安装」：用户中途装上命令行工具后，下一次检查就能生效，不必重启 app。
+    private static let toolsLock = NSLock()
+    private nonisolated(unsafe) static var toolsInstalled = false
+
+    private static var developerToolsInstalled: Bool {
+        toolsLock.lock()
+        let known = toolsInstalled
+        toolsLock.unlock()
+        if known { return true }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
+        process.arguments = ["-p"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return false }
+        toolsLock.lock()
+        toolsInstalled = true
+        toolsLock.unlock()
+        return true
+    }
+
     public func status(root: URL) throws -> TandockGitStatus {
         let repo = try repositoryRoot(root)
         let branch = try branchInfo(root: repo)

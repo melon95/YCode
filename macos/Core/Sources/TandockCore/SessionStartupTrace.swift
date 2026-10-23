@@ -55,6 +55,17 @@ public struct TandockSessionStartupTrace: Equatable, Sendable {
         }
     }
 
+    public static func format(_ duration: Duration) -> String { milliseconds(duration) }
+
+    /// Error type plus enum case only. Associated values (paths, stderr) are dropped.
+    public static func reason(_ error: Error) -> String {
+        let typeName = String(describing: type(of: error))
+        let mirror = Mirror(reflecting: error)
+        if let label = mirror.children.first?.label { return "\(typeName).\(label)" }
+        if mirror.displayStyle == .enum { return "\(typeName).\(error)" }
+        return typeName
+    }
+
     private static func milliseconds(_ duration: Duration) -> String {
         let parts = duration.components
         return String(format: "%.3f", Double(parts.seconds) * 1_000 + Double(parts.attoseconds) / 1e15)

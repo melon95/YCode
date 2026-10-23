@@ -275,6 +275,7 @@ public final class TandockConfigurationStore {
         try document.encodedData().write(to: configurationURL, options: .atomic)
         // 命令可能刚被改过，probe 的缓存结论立刻作废。
         TandockAgentLauncher.invalidateProbeCache()
+        TandockShellEnvironmentStore.shared.invalidate()
     }
 
     private static let knownAgentKeys: Set<String> = [

@@ -117,8 +117,12 @@ struct AgentSessionRuntimeTests {
         })
     }
 
-    @Test("slow preflight leaves main responsive and respects stop/archive", arguments: [false, true], ["none", "stop", "archive"])
-    func asynchronousPreflight(resume: Bool, action: String) async throws {
+    /// "shell-env" waits on a slow shell environment snapshot; "fallback" has no store and waits on the
+    /// legacy login-shell probe. Both pending phases must leave main responsive and honour stop/archive.
+    @Test("slow preflight leaves main responsive and respects stop/archive", arguments: [false, true], ["none", "stop", "archive", "shell-env:none", "shell-env:stop", "shell-env:archive"])
+    func asynchronousPreflight(resume: Bool, variant: String) async throws {
+        let usesShellEnvironment = variant.hasPrefix("shell-env:")
+        let action = usesShellEnvironment ? String(variant.dropFirst("shell-env:".count)) : variant
         let directory = try temporaryDirectory(named: "async preflight")
         defer { try? FileManager.default.removeItem(at: directory) }
         let entered = directory.appendingPathComponent("probe-entered")
@@ -143,7 +147,21 @@ struct AgentSessionRuntimeTests {
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
         defer { pool.terminateAllImmediately() }
-        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let shellEnvironmentStore: TandockShellEnvironmentStore? = usesShellEnvironment
+            ? TandockShellEnvironmentStore(hostEnvironment: ["HOME": directory.path], shell: "/bin/zsh") { _, _, _, _ in
+                FileManager.default.createFile(atPath: entered.path, contents: nil)
+                let deadline = Date().addingTimeInterval(2)
+                while !FileManager.default.fileExists(atPath: released.path), Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.02)
+                }
+                return FileManager.default.fileExists(atPath: released.path)
+                    ? .success(.init(variables: ["PATH": "/usr/bin:/bin"]))
+                    : .failure(.timedOut)
+            }
+            : nil
+        let service = TandockAgentSessionService(
+            repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: shellEnvironmentStore
+        )
         let existing = resume ? try repository.createSession(projectID: project.id, title: "Resume", agentProfile: profile.id) : nil
         var finished = false
         let launch = Task { @MainActor in
@@ -171,7 +189,8 @@ struct AgentSessionRuntimeTests {
         }
         let logURL = data.appendingPathComponent("logs/session-startup.log")
         #expect(await eventually {
-            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=probe.begin main_thread=false")) == true
+            let expected = usesShellEnvironment ? "event=shell_env.miss" : "event=probe.begin main_thread=false"
+            return (try? String(contentsOf: logURL, encoding: .utf8).contains(expected)) == true
         })
     }
 
@@ -238,7 +257,7 @@ struct AgentSessionRuntimeTests {
         )
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
-        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: .testHost)
 
         let created = try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "First")
         let nativeID = try #require(created.agentSessionID)
@@ -275,7 +294,7 @@ struct AgentSessionRuntimeTests {
         let profile = TandockAgentProfile(id: "disabled", command: fixture.script.path, enabled: false)
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
-        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: .testHost)
         await #expect(throws: TandockAgentSessionServiceError.disabledAgent(profile.resolvedDisplayName)) {
             try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Blocked")
         }
@@ -301,7 +320,7 @@ struct AgentSessionRuntimeTests {
         let store = TandockConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
-        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: .testHost)
         let row = try await service.createSession(
             projectID: project.id, agentProfileID: "codex", title: "History",
             resumeAgentSessionID: "019c-history-id"
@@ -326,7 +345,7 @@ struct AgentSessionRuntimeTests {
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
         defer { pool.terminateAllImmediately() }
-        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool, shellEnvironmentStore: .testHost)
         let row = try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "CLI")
         let runtime = try #require(service.runtime(id: row.id))
         #expect(await eventually { runtime.backlogText.contains("READY") })
@@ -364,7 +383,7 @@ struct AgentSessionRuntimeTests {
         let store = TandockConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let service = TandockAgentSessionService(
-            repository: repository, configurationStore: store, processPool: TandockSessionProcessPool()
+            repository: repository, configurationStore: store, processPool: TandockSessionProcessPool(), shellEnvironmentStore: .testHost
         )
         await #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
             try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Fails")
@@ -396,8 +415,8 @@ struct AgentSessionRuntimeTests {
         let settings = TandockConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
         try settings.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
-        let first = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
-        let second = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
+        let first = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool, shellEnvironmentStore: .testHost)
+        let second = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool, shellEnvironmentStore: .testHost)
         let row = try await first.createSession(projectID: project.id, agentProfileID: profile.id, title: "Concurrent")
         defer { pool.terminateAllImmediately() }
         let originalPID = try #require(first.runtime(id: row.id)?.processIdentifier)
@@ -431,7 +450,7 @@ struct AgentSessionRuntimeTests {
         var profile = TandockAgentProfile(id: "claude-code", command: "missing-claude-\(UUID().uuidString)", environment: ["ARGS_FILE": argsFile.path])
         try settings.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
-        let service = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
+        let service = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool, shellEnvironmentStore: .testHost)
         await #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
             try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Retry")
         }
@@ -440,7 +459,7 @@ struct AgentSessionRuntimeTests {
         profile.command = fixture.script.path
         try settings.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let reopened = try ProjectWorkspaceRepository(databaseURL: data.appendingPathComponent("ycode.db"))
-        let retry = TandockAgentSessionService(repository: reopened, configurationStore: settings, processPool: pool)
+        let retry = TandockAgentSessionService(repository: reopened, configurationStore: settings, processPool: pool, shellEnvironmentStore: .testHost)
         defer { pool.terminateAllImmediately() }
         let created = try await retry.restartSession(id: failed.id)
         let nativeID = try #require(created.agentSessionID)
