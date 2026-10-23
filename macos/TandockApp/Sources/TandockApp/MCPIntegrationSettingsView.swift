@@ -84,7 +84,6 @@ final class MCPIntegrationSettingsModel: ObservableObject {
                 hookStatuses[agent] = try await hookService.install(for: agent, chainExistingCodexNotify: chainExisting)
             } else {
                 _ = try await hookService.uninstall(for: agent)
-                // Removing a chained hook restores the user's notify command.
                 hookStatuses[agent] = try await hookService.status(for: agent)
             }
         } catch {
@@ -254,8 +253,6 @@ struct MCPIntegrationSettingsView: View {
         }
     }
 
-    // Form flattens row identities across sections; the hook and MCP rows
-    // must not share the same agent ID or their group surfaces get misplaced.
     private struct IntegrationRow: Identifiable {
         let id: String
         let agent: TandockMCPAgent
@@ -325,8 +322,6 @@ struct MCPIntegrationSettingsView: View {
         ) { await model.setHookInstalled($0, for: agent) }
     }
 
-    /// Registered, but the agent still runs a helper from another location; the
-    /// tooltip names that path so the user can see what repair will replace.
     @ViewBuilder
     private func staleControls(registered: String, busy: Bool, repair: @escaping () async -> Void) -> some View {
         warning(l10n.text("needsRepair") + (registered.isEmpty ? "" : " · " + registered))

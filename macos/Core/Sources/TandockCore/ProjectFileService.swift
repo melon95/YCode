@@ -38,14 +38,10 @@ public enum TandockProjectFileError: LocalizedError, Equatable {
 }
 
 public struct TandockProjectFileService: Sendable {
-    /// 只剪 `.git`。别的目录再大也照列 —— 树是按展开一层一层读的，
-    /// 没展开的目录一次也不会被碰，`node_modules` 摆在那里不花钱。
     public static let skippedDirectoryNames: Set<String> = [".git"]
 
     public init() {}
 
-    /// 列一层，不递归。`relativePath` 空字符串就是项目根。
-    /// 整棵树一次读完在这个量级的仓库上是七百毫秒起步，而展开的通常就那么几层。
     public func listChildren(root: URL, relativePath: String = "") throws -> [TandockFileEntry] {
         let root = try resolvedRoot(root)
         let directory = relativePath.isEmpty ? root : try directoryURL(root: root, relativePath: relativePath)
@@ -174,7 +170,6 @@ public struct TandockProjectFileService: Sendable {
         return candidate
     }
 
-    /// 列目录用的解析：必须落在根以内，而且确实是个目录。
     private func directoryURL(root: URL, relativePath: String) throws -> URL {
         let components = try validatedComponents(relativePath)
         let candidate = components.reduce(root) { partial, component in

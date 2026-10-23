@@ -1,8 +1,5 @@
 import Foundation
 
-/// Matches the old backend's 256 KiB terminal replay contract while keeping
-/// ANSI control bytes intact. A newly-created view replays this buffer before
-/// it starts receiving live output.
 struct BoundedByteBacklog: Sendable {
     let capacity: Int
     private(set) var bytes: [UInt8] = []
@@ -33,8 +30,6 @@ enum DecodedWaitStatus: Equatable {
     case stopped(Int32)
 }
 
-/// SwiftTerm 1.20.0 exposes waitpid's raw status. Decode it at our boundary so
-/// callers never mistake `42 << 8` for the actual exit code.
 func decodeWaitStatus(_ raw: Int32) -> DecodedWaitStatus {
     let signal = raw & 0x7f
     if signal == 0 { return .exited((raw >> 8) & 0xff) }

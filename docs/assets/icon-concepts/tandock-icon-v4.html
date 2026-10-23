@@ -52,7 +52,6 @@ const COLORS = {
   limeBottom: '#a9e84a',
 };
 
-// Continuous-curvature rounded rect on the macOS icon grid (824pt body inside 1024).
 function squircle(ctx, x, y, w, h, r) {
   const q = r * (1 - 0.62);
   ctx.beginPath();
@@ -75,7 +74,6 @@ function vgrad(ctx, y0, y1, top, bottom) {
   return g;
 }
 
-// Thick rounded stroke with a drop shadow, the building block for every glyph in this concept.
 function stroke(ctx, points, width, style, shadow = true) {
   ctx.save();
   if (shadow) {
@@ -94,7 +92,6 @@ function stroke(ctx, points, width, style, shadow = true) {
   ctx.restore();
 }
 
-// Chevron pointing right with its tip at (tipX, 512).
 function chevron(tipX, reach, half) {
   return [[tipX - reach, 512 - half], [tipX, 512], [tipX - reach, 512 + half]];
 }
@@ -105,7 +102,6 @@ function drawIcon(canvas) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   ctx.clearRect(0, 0, 1024, 1024);
 
-  // Body.
   ctx.save();
   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
   ctx.shadowBlur = 28;
@@ -115,7 +111,6 @@ function drawIcon(canvas) {
   ctx.fill();
   ctx.restore();
 
-  // Glow pooled inside the dock, where the chevrons are heading.
   ctx.save();
   squircle(ctx, 100, 100, 824, 824, 186);
   ctx.clip();
@@ -126,11 +121,9 @@ function drawIcon(canvas) {
   ctx.fillRect(100, 100, 824, 824);
   ctx.restore();
 
-  // Dock: a cream bracket open to the left, like a "]" that receives the prompt.
   const dock = [[652, 318], [744, 318], [744, 706], [652, 706]];
   stroke(ctx, dock, 66, vgrad(ctx, 318, 706, COLORS.cradle, COLORS.cradleShade));
 
-  // Tandem: two prompt chevrons, one behind the other, riding into the dock.
   stroke(ctx, chevron(436, 136, 156), 86, vgrad(ctx, 356, 668, COLORS.blueTop, COLORS.blueBottom));
   stroke(ctx, chevron(590, 136, 156), 86, vgrad(ctx, 356, 668, COLORS.limeTop, COLORS.limeBottom));
 }

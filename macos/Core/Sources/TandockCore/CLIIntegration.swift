@@ -158,7 +158,6 @@ public enum TandockCLIArguments {
 
 public enum TandockDeepLinkParser {
     public static func request(from url: URL) throws -> TandockCLIOpenRequest? {
-        // Keep existing links usable after the product rename.
         guard ["tandock", "ycode"].contains(url.scheme?.lowercased() ?? "") else {
             throw TandockCLIError.invalidDeepLink(url.absoluteString)
         }

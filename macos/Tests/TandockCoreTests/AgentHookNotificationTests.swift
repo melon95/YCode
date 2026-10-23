@@ -124,8 +124,6 @@ struct AgentHookNotificationTests {
             "terminal_id": "delayed-session", "source": "codex", "event": "turn_complete"
         ]).utf8)
         if splitFrame { try writeSocket(payload, to: descriptor) }
-        // Give accept/read time to run before the first bytes or the framing newline
-        // arrive. This delay stays within the listener's existing 200 ms read timeout.
         usleep(50_000)
         try writeSocket(splitFrame ? Data([10]) : payload + Data([10]), to: descriptor)
 

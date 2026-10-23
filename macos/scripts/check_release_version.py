@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Fail closed before publishing a stable GitHub release."""
 import json
 import re
 import subprocess
@@ -31,7 +30,6 @@ if __name__ == '__main__':
     tag, repository = sys.argv[1:]
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
         raise ValueError('Invalid repository')
-    # gh failure is fatal; an outage/auth error is never treated as "no releases".
     pages = json.loads(subprocess.check_output(['gh', 'api', '--paginate', '--slurp', f'repos/{repository}/releases?per_page=100']))
     check(tag, [release for page in pages for release in page])
     print(f'{tag}: stable release version is available')

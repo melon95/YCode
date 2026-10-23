@@ -52,8 +52,6 @@ public enum TandockPiTitleBridge {
         } catch { return .failed(error.localizedDescription) }
     }
 
-    // The bridge calls pi's public extension API on the same event loop as its TUI.
-    // No simulated keystrokes, conversation messages, or external edits to its live tree.
     static let source = #"""
     import fs from 'node:fs';
     import path from 'node:path';

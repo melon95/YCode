@@ -1,7 +1,5 @@
 import Foundation
 
-/// Incremental metadata reader. Incomplete trailing records stay unread until the next event;
-/// replacement/truncation resets the cache, including explicit title clears.
 public final class TandockSessionTitleReader: @unchecked Sendable {
     public static let shared = TandockSessionTitleReader()
     private struct Entry {
@@ -34,7 +32,6 @@ public final class TandockSessionTitleReader: @unchecked Sendable {
             defer { try? handle.close() }
             do {
                 try handle.seek(toOffset: entry.offset)
-                // Read in chunks: a large transcript must not allocate a second full copy.
                 var pending = Data()
                 while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
                     pending.append(chunk)

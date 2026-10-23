@@ -73,7 +73,6 @@ struct IntegrationSettingsTests {
         #expect(!model.cliBusy)
         model.errorMessage = nil
 
-        // Render installed, off, and conflict states without touching user CLI configuration.
         _ = NSApplication.shared
         for locale in [TandockLocale.zh, .en] {
             for dark in [false, true] {

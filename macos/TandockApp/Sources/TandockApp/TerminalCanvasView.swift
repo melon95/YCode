@@ -4,12 +4,9 @@ import SwiftTerm
 import SwiftUI
 import TandockCore
 
-/// AppKit owns the transition as a single Core Animation transaction. SwiftUI only
-/// supplies the live pane contents; it never lays them out at intermediate sizes.
 struct TerminalCanvasView<Pane: Identifiable, Content: View>: NSViewRepresentable {
     let panes: [Pane]
     let layout: TandockTerminalLayout
-    /// 焦点窗格的阴影换成珊瑚色光晕；描边由窗格内容自己画。
     var focusedID: Pane.ID?
     @ViewBuilder let content: (Pane) -> Content
     @Environment(\.self) private var environment
@@ -36,7 +33,6 @@ struct TerminalCanvasView<Pane: Identifiable, Content: View>: NSViewRepresentabl
 
 @MainActor
 final class TandockCanvasHost<ID: Hashable>: NSView {
-    /// What was on screen when a transition (re)started, read before any resize.
     private struct Origin {
         var frame: CGRect
         var paneOpacity: Float
@@ -48,7 +44,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
     private var layoutMode: TandockTerminalLayout = .single
     private var weights: [String: [String: [CGFloat]]] = [:]
     private var dividers: [String: TandockCanvasDivider] = [:]
-    /// Panes that just left the canvas fade out beneath the remaining ones.
     private var ghosts: [TandockCanvasGhost] = []
     private var generation = 0
     private var finishTimer: Timer?
@@ -74,8 +69,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        // Since macOS 14 AppKit syncs the layer's masksToBounds from this flag
-        // (default false), so setting the layer property alone does not clip.
         clipsToBounds = true
     }
 
@@ -84,8 +77,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
     private var configuration: String { "\(layoutMode.rawValue)-\(order.count)" }
     private var focusedID: ID?
 
-    /// 浮卡之间的缝（也是分隔条的命中宽度）与画布四周的留白。顶上只留一点，
-    /// 给焦点光晕让位；顶栏本身已经有足够的高度隔开。
     static var paneGap: CGFloat { 8 }
     static var insets: NSEdgeInsets { NSEdgeInsets(top: 4, left: 8, bottom: 8, right: 8) }
 
@@ -100,7 +91,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         return TandockTerminalCanvasGeometry(layout: layout, count: count, size: size, weights: weights, gap: Self.paneGap)
     }
 
-    /// 几何在留白内的坐标系里算，放到画布上时整体平移。
     private func placed(_ rect: CGRect) -> CGRect {
         rect.offsetBy(dx: Self.insets.left, dy: Self.insets.top)
     }
@@ -119,8 +109,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
             && bounds.width > 0 && bounds.height > 0 && geometryChanged
         let continuing = isTransitioning && !reduceMotion && !geometryChanged
 
-        // Read the screen BEFORE any root view or terminal size changes, so the
-        // first animated frame is exactly the last static one.
         var origins: [ID: Origin] = [:]
         if animate {
             origins = capture(destinations: Dictionary(uniqueKeysWithValues: zip(nextIDs, nextFrames)))
@@ -155,8 +143,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
                 pane.isHidden = hidden
                 pane.cardShadow.isHidden = hidden
                 pane.isFocused = layout != .tabs && id == focusedID
-                // Live content goes straight to its destination: each terminal
-                // reflows once instead of on every animation frame.
                 pane.frame = nextFrames[index]
                 pane.layoutSubtreeIfNeeded()
                 panes[id] = pane
@@ -170,7 +156,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         super.layout()
         guard bounds.size != lastSize else { return }
         lastSize = bounds.size
-        // Window/inspector resizing and divider drags remain direct manipulation.
         cancelTransition()
         applyGeometry(geometry())
     }
@@ -180,9 +165,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         if window == nil { cancelTransition() }
     }
 
-    /// Freezes everything at its on-screen state. An interrupted transition keeps
-    /// its snapshots and continues from the presented geometry; only a transition
-    /// from rest takes new snapshots.
     private func capture(destinations: [ID: CGRect]) -> [ID: Origin] {
         let wasTransitioning = isTransitioning
         generation += 1
@@ -227,7 +209,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         isTransitioning = true
         let token = generation
         let duration = duration
-        // Measured after the destination layout work, so no frame is skipped.
         let start = CACurrentMediaTime()
         let move = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
         let fade = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -236,7 +217,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         for id in order {
             guard let pane = panes[id], let layer = pane.layer else { continue }
             guard let origin = origins[id] else {
-                // A new pane appears in place once its neighbours have made room.
                 for view in [pane, pane.cardShadow] as [NSView] {
                     Self.fade(view, from: 0, to: 1, begin: start + duration * 0.35,
                               duration: duration * 0.55, timing: fade)
@@ -267,9 +247,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
                 }
             }
             if let snapshot = pane.snapshot, let opacity = origin.snapshotOpacity, opacity > 0 {
-                // Only the old pixels travel, so no two layers of text slide over
-                // each other. Once the slot has (nearly) settled they dissolve
-                // into the live terminal, which has redrawn at its new size by then.
                 let fresh = opacity >= 1
                 Self.fade(snapshot, from: opacity, to: 0, begin: start + (fresh ? duration * 0.55 : 0),
                           duration: duration * 0.35 * Double(opacity), timing: fade)
@@ -280,10 +257,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
                       duration: duration * 0.5 * Double(ghost.alphaValue), timing: fade)
         }
         CATransaction.commit()
-        // Every animation ends by `start + duration` in media time. Scheduling the
-        // hand-off on that clock does not depend on a render-server completion
-        // callback, which never arrives for a window that is not being drawn. The
-        // common modes keep it on time during menu tracking and nested run loops.
         finishTimer?.invalidate()
         let timer = Timer(timeInterval: max(0, start + duration - CACurrentMediaTime()), repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -328,7 +301,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         CGPoint(x: frame.minX + frame.width * anchor.x, y: frame.minY + frame.height * anchor.y)
     }
 
-    /// The model value is the end state; the animation only presents the way there.
     private static func fade(_ view: NSView, from: Float, to: Float, begin: CFTimeInterval,
                              duration: CFTimeInterval, timing: CAMediaTimingFunction) {
         view.alphaValue = CGFloat(to)
@@ -343,8 +315,6 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         layer.add(animation, forKey: TandockCanvasPane.fadeKey)
     }
 
-    /// One bitmap pass per pane. AppKit's display cache omits SwiftTerm's
-    /// layer-backed background, so it is painted underneath the cached pixels.
     static func snapshot(_ host: NSView) -> (image: NSImage, background: NSColor)? {
         guard host.bounds.width > 0, host.bounds.height > 0,
               let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
@@ -424,26 +394,16 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
     }
 }
 
-/// A clipping slot for one live pane. During a transition the slot's layer
-/// animates between frames while the live content already has its destination
-/// size, pinned to the visual top-left, so glyphs are cropped, never stretched.
 @MainActor
 final class TandockCanvasPane: NSView {
     static let frameKey = "canvas-frame"
     static let fadeKey = "canvas-fade"
 
     let host: NSHostingView<AnyView>
-    /// Drawn behind the pane by the canvas: the pane clips its content to the rounded
-    /// card, which would clip a shadow attached to its own layer as well.
     let cardShadow = TandockCanvasShadow()
     private(set) var snapshot: TandockCanvasSnapshot?
-    /// Fallback for the visible frame before the first render commit, when
-    /// Core Animation has no presentation layer yet.
     var animatedOrigin: CGRect?
 
-    /// The card outline lives on this clipping layer, not in the SwiftUI content:
-    /// a layer border is drawn above every sublayer and always follows the animated
-    /// bounds, so it stays whole mid-transition and never ends up in a snapshot.
     var isFocused = false {
         didSet {
             guard isFocused != oldValue else { return }
@@ -459,8 +419,6 @@ final class TandockCanvasPane: NSView {
         host.sizingOptions = []
         super.init(frame: .zero)
         wantsLayer = true
-        // Since macOS 14 AppKit syncs the layer's masksToBounds from this flag
-        // (default false), so setting the layer property alone does not clip.
         clipsToBounds = true
         layer?.cornerRadius = TandockCanvasShadow.cornerRadius
         layer?.cornerCurve = .continuous
@@ -496,7 +454,6 @@ final class TandockCanvasPane: NSView {
         cardShadow.setFrameSize(newSize)
     }
 
-    /// Leaves the canvas together with its shadow.
     func detach() {
         cardShadow.removeFromSuperview()
         removeFromSuperview()
@@ -525,7 +482,6 @@ final class TandockCanvasPane: NSView {
         let view = TandockCanvasSnapshot(image: image, background: background, coverage: coverage)
         addSubview(view, positioned: .above, relativeTo: host)
         snapshot = view
-        // Fills the slot where it is wider than the live content mid-transition.
         layer?.backgroundColor = background.cgColor
     }
 
@@ -547,9 +503,6 @@ final class TandockCanvasPane: NSView {
     }
 }
 
-/// The floating-card shadow of one pane (visual direction B), or the accent glow when
-/// the pane has focus. It shares the pane's frame and follows its frame animation;
-/// `shadowPath` keeps Core Animation from rendering the shadow offscreen every frame.
 @MainActor
 final class TandockCanvasShadow: NSView {
     static let cornerRadius: CGFloat = TandockMetrics.radiusCard
@@ -592,7 +545,6 @@ final class TandockCanvasShadow: NSView {
         guard let layer else { return }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if isFocused {
-            // A soft ring of accent light, centred on the card edge.
             layer.shadowColor = (NSColor(hex: dark ? "FF7D72" : "FF5A4E") ?? .systemRed).cgColor
             layer.shadowOpacity = dark ? 0.55 : 0.4
             layer.shadowRadius = 5
@@ -601,12 +553,10 @@ final class TandockCanvasShadow: NSView {
             layer.shadowColor = (dark ? NSColor.black : NSColor(srgbRed: 22 / 255, green: 19 / 255, blue: 58 / 255, alpha: 1)).cgColor
             layer.shadowOpacity = dark ? 0.35 : 0.12
             layer.shadowRadius = 5
-            // Flipped geometry: a positive offset falls below the card.
             layer.shadowOffset = CGSize(width: 0, height: 2)
         }
     }
 
-    /// Replays the pane's frame animation, plus the matching path change.
     func follow(_ frame: CAAnimationGroup, from size: CGSize) {
         guard let layer else { return }
         layer.add(frame, forKey: TandockCanvasPane.frameKey)
@@ -627,9 +577,6 @@ final class TandockCanvasShadow: NSView {
     }
 }
 
-/// Old pixels at their original scale over their own background, covering the
-/// whole slot so the new layout dissolves in evenly instead of showing a seam
-/// where the slot grows past the old bitmap. Never intercepts input.
 @MainActor
 final class TandockCanvasSnapshot: NSView {
     let image: NSImage
@@ -641,8 +588,6 @@ final class TandockCanvasSnapshot: NSView {
         wantsLayer = true
         layerContentsRedrawPolicy = .never
         layer?.backgroundColor = background.cgColor
-        // The bitmap is layer contents, so it is on screen in the very commit
-        // that starts the transition instead of waiting for a display pass.
         let pixels = TandockCanvasBitmap(frame: CGRect(origin: .zero, size: image.size))
         pixels.layer?.contents = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         pixels.layer?.contentsScale = image.representations.first
@@ -653,7 +598,6 @@ final class TandockCanvasSnapshot: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// A retargeted transition may pass through a larger slot than first planned.
     func cover(_ size: CGSize) {
         setFrameSize(CGSize(width: max(frame.width, size.width), height: max(frame.height, size.height)))
     }
@@ -681,7 +625,6 @@ private final class TandockCanvasBitmap: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// The last visible frame of a pane that was just closed.
 @MainActor
 private final class TandockCanvasGhost: NSView {
     override var isFlipped: Bool { true }
@@ -691,8 +634,6 @@ private final class TandockCanvasGhost: NSView {
         wantsLayer = true
         layer?.cornerRadius = TandockCanvasShadow.cornerRadius
         layer?.cornerCurve = .continuous
-        // Since macOS 14 AppKit syncs the layer's masksToBounds from this flag
-        // (default false), so setting the layer property alone does not clip.
         clipsToBounds = true
         layer?.backgroundColor = background.cgColor
         addSubview(TandockCanvasSnapshot(image: image, background: background, coverage: frame.size))
@@ -721,8 +662,6 @@ private final class TandockCanvasDivider: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        // The gap between two floating cards already reads as the divider, so the
-        // view only provides the hit area, cursor and accessibility element.
         setAccessibilityElement(true)
         setAccessibilityRole(.splitter)
     }

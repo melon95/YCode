@@ -17,9 +17,7 @@
   <path d="M250 377 512 528 512 830 250 679Z" fill="url(#left)"/>
   <path d="M774 377 512 528 512 830 774 679Z" fill="url(#right)"/>
 </g>
-<!-- Faint outer rim keeps the silhouette crisp at small sizes. -->
 <path d="M512 226 774 377 774 679 512 830 250 679 250 377Z" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="6" stroke-linejoin="round"/>
-<!-- The Y: three glowing edges meeting at the front vertex. -->
 <path d="M250 377 L512 528 L774 377 M512 528 L512 830" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
 <circle cx="512" cy="528" r="17" fill="#fff" filter="url(#glow)"/>
 <path d="M774 158 C787.76 230.24 787.76 230.24 860 244 C787.76 257.76 787.76 257.76 774 330 C760.24 257.76 760.24 257.76 688 244 C760.24 230.24 760.24 230.24 774 158Z" fill="#fff" filter="url(#soft)"/>

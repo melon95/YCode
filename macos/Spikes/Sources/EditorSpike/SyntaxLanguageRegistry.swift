@@ -27,8 +27,6 @@ struct SyntaxLanguageGroup: Sendable {
     }
 }
 
-/// FS.8 的唯一原生清单。旧实现实际为 39 组（16 个 CodeMirror language
-/// package 组 + 23 个 StreamLanguage 组），旧文档写成 37 是计数错误。
 let syntaxLanguageGroups: [SyntaxLanguageGroup] = [
     .init("javascript", extensions: ["js", "jsx", "mjs", "cjs"]),
     .init("typescript", extensions: ["ts", "tsx"]),

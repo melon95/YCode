@@ -29,9 +29,6 @@ public enum TandockDataRootResolver {
         if let path = environment["YCODE_NATIVE_DATA_ROOT"], !path.isEmpty {
             return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         }
-        // Early migration builds and manual validation notes used this shorter
-        // spelling. Honor it as a safety alias so a typo cannot silently fall
-        // through to the user's live Application Support directory.
         if let path = environment["YCODE_DATA_ROOT"], !path.isEmpty {
             return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         }

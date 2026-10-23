@@ -104,7 +104,6 @@ struct TerminalCanvasLayoutTests {
         #expect(TandockTerminalLayout.reflow(.columns, from: 2, to: 3) == .mainSide)
         #expect(TandockTerminalLayout.reflow(.mainSide, from: 3, to: 4) == .grid2x2)
         #expect(TandockTerminalLayout.reflow(.stack, from: 3, to: 4) == .stack)
-        // Cancelling a picker returns to the stored three-session layout.
         #expect(TandockTerminalLayout.reflow(.mainSide, from: 3, to: 3) == .mainSide)
     }
 

@@ -155,15 +155,6 @@ public struct TandockAgentProfile: Equatable, Sendable, Identifiable {
     public var resolvedDisplayName: String { displayName?.isEmpty == false ? displayName! : id }
 }
 
-/// 内置的 agent CLI 名单。范围**刻意收窄**：claude / codex / grok / pi。
-///
-/// `defaults` 是全新安装时就写进配置的；`suggestions` 只在「这台机器上确实装了这个命令」
-/// 时才出现在设置里（见 SettingsView 的 `commandAvailability` 过滤），所以名单长短
-/// 不会打扰没装的人。
-///
-/// 移除了 cursor-agent / aider / goose：它们**没有图标**，加进来就是三行首字母，
-/// 而且都不在这一轮要覆盖的范围里。要用的人手动新增即可 —— 新的图标选择器已经
-/// 能给任意 agent 配品牌图标或 SF Symbol。
 public enum TandockAgentCatalog {
     public static let defaults = [
         TandockAgentProfile(
@@ -176,15 +167,7 @@ public enum TandockAgentCatalog {
         )
     ]
 
-    // `introspect` 只给有历史读取器的 agent 填（见 HistoryIntrospection）：
-    // 目前是 claude / codex / pi。grok 留空 —— 填一个没有对应读取器的值
-    // 不会带来历史导入，只会让人以为有。
     public static let suggestions = [
-        // Gemini CLI 已停更，不再主动建议。
-        //
-        // 但**支持没有删**：`isGemini` / API key 提示 / 计价这些都按
-        // `basename == "gemini"` 判断，手动加一个 gemini agent 照样正确工作，
-        // 已经配好的人升级后也不受影响。"不再推荐"和"不能用了"是两回事。
         TandockAgentProfile(id: "grok-cli", displayName: "Grok CLI", command: "grok", icon: "Grok"),
         TandockAgentProfile(id: "pi", displayName: "pi", command: "pi", icon: "Pi", introspect: "pi")
     ]
@@ -224,7 +207,6 @@ public struct TandockAgentLaunchPlan: Equatable, Sendable {
     public let environment: [String: String]
     public let workingDirectory: URL
     public var startupTrace: TandockSessionStartupTrace? = nil
-    // Only plans built here identify a shell command that may be instrumented.
     public var shellCommandArgumentIndex: Int? = nil
 }
 
@@ -237,19 +219,11 @@ public struct TandockAgentProcessResult: Equatable, Sendable {
 public enum TandockAgentLauncher {
     private static let reservedKeys = ["YCODE_RUN_ID", "YCODE_TERMINAL_ID", "YCODE_NOTIFY_SOCK", "YCODE_MCP_SOCK", "YCODE_NATIVE_DATA_ROOT"]
 
-    /// `command -v` 的结果缓存。
-    ///
-    /// 只在没有 shell 环境快照（`TandockShellEnvironmentStore`）时才走到这里：probe 跑的是
-    /// `$SHELL -l -i -c` —— 一整套 rc（oh-my-zsh / fnm / 补全）要跑 0.2~1s。
-    ///
-    /// 命中就省掉整个登录 shell。命中失败的负缓存 TTL 短得多：用户刚 `npm i -g` 装完
-    /// 一个 CLI，不该还要等五分钟才认。
     private static let probeCacheLock = NSLock()
     private nonisolated(unsafe) static var probeCache: [String: (value: Bool, at: Date)] = [:]
     private static let probeHitTTL: TimeInterval = 300
     private static let probeMissTTL: TimeInterval = 10
 
-    /// 丢掉整份 probe 缓存。改了 agent 命令 / PATH 之后调一次，下一次 probe 重新问 shell。
     public static func invalidateProbeCache() {
         probeCacheLock.lock()
         probeCache.removeAll()
@@ -264,7 +238,6 @@ public enum TandockAgentLauncher {
             return FileManager.default.isExecutableFile(atPath: trimmed)
         }
         let shellPath = resolvedShell(shell, hostEnvironment: environment)
-        // PATH 进 key：同一条命令在不同 PATH 下结论可能相反，缓存不能把两者混为一谈。
         let key = "\(shellPath)\u{0}\(trimmed)\u{0}\(environment["PATH"] ?? "")"
         if let cached = cachedProbe(key: key) {
             startupTrace?.mark("probe.cache_hit available=\(cached)")
@@ -308,10 +281,6 @@ public enum TandockAgentLauncher {
         probeCacheLock.unlock()
     }
 
-    /// 跑一条 agent 的子命令（不接 PTY，等它结束）。成功返回 nil，失败返回可读的原因。
-    /// 走登录 shell 是为了跟启动 agent 用同一份 PATH —— 这些 CLI 常装在
-    /// nvm / homebrew 的路径下，GUI 进程自己的 PATH 里没有。
-    /// 不加 `-i`：交互式 shell 会把整套 rc 和提示符都拉起来，一条命令要等上好几秒。
     public static func runSubcommand(
         command: String,
         arguments: [String],
@@ -324,7 +293,6 @@ public enum TandockAgentLauncher {
         let line = ([trimmed] + arguments).map(shellQuote).joined(separator: " ")
         let process = Process()
         let store = TandockShellEnvironmentStore.shared
-        // 绝对路径不用借 shell 找 —— 少起一个登录 shell 就少等一秒。
         if trimmed.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: trimmed) {
             process.executableURL = URL(fileURLWithPath: trimmed)
             process.arguments = arguments
@@ -332,10 +300,8 @@ public enum TandockAgentLauncher {
         } else if shell == nil,
                   let snapshot = store.cached(for: store.homeDirectory)?.snapshot,
                   let executable = resolveExecutable(trimmed, environment: snapshot.variables) {
-            // 已有 shell 环境快照：用它的 PATH 直接跑，跟启动 agent 是同一份环境。
             process.executableURL = executable
             process.arguments = arguments
-            // 调用方显式传的环境优先；默认的宿主环境只用来补快照里没有的 key。
             let callerWins = environment != ProcessInfo.processInfo.environment
             var merged: [String: String] = snapshot.variables
             for (key, value) in environment where callerWins || merged[key] == nil {
@@ -355,7 +321,6 @@ public enum TandockAgentLauncher {
         } catch {
             return error.localizedDescription
         }
-        // 卡住的子命令不能把调用方一起拖住 —— 归档这种事没必要等一个不返回的进程。
         let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.05)
@@ -394,14 +359,10 @@ public enum TandockAgentLauncher {
         var environment: [String: String]
         var directExecutable: URL?
         if let shellEnvironment {
-            // 快照已经是 rc 求值后的结果：在它上面叠 agent 配置，然后直接 spawn，不再经过 shell。
-            // 凭据与旧路径一致：先叠宿主环境和 agent 配置，再按 agent 去掉；旧路径里 rc 最后跑，
-            // 所以 rc 自己 export 的值仍然保留。
             environment = shellEnvironment.variables
             for key in credentialKeys where environment[key] == nil {
                 if let value = hostEnvironment[key] { environment[key] = value }
             }
-            // `$变量` 占位符优先按 rc 之后的环境展开：只在 rc 里 export 的 key 以前也能拿到真值。
             var placeholderSource: [String: String] = hostEnvironment
             for (key, value) in shellEnvironment.variables { placeholderSource[key] = value }
             for (key, value) in profile.environment {
@@ -447,8 +408,6 @@ public enum TandockAgentLauncher {
 
         if let directExecutable {
             let arguments = profile.arguments + additionalArguments
-            // 以前 agent 在 rc 跑过的 shell 里 exec，继承 rc 设的 `ulimit -n` / `umask`。
-            // 快照带不走进程属性，用不读任何 rc 的 /bin/sh 补上再 exec，额外开销约 1ms。
             if let prelude = processAttributePrelude(shellEnvironment) {
                 startupTrace?.mark("exec.direct process_attributes=applied")
                 let script: String = prelude + #"exec "$0" "$@""#
@@ -526,8 +485,6 @@ public enum TandockAgentLauncher {
         resolvedShell(shell, hostEnvironment: hostEnvironment)
     }
 
-    /// 在 PATH 里找可执行文件，代替 shell 的 `command -v`。alias / shell 函数在这里找不到，
-    /// 这是对的：`exec` 本来也执行不了它们，以前 probe 说「可用」、启动却 127。
     public static func resolveExecutable(_ command: String, environment: [String: String], workingDirectory: URL? = nil) -> URL? {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -544,7 +501,6 @@ public enum TandockAgentLauncher {
             return executable(workingDirectory.appendingPathComponent(trimmed).standardizedFileURL)
         }
         for entry in (environment["PATH"] ?? "").split(separator: ":", omittingEmptySubsequences: false) {
-            // 跟 shell 一样：空项和相对项（`.`、`node_modules/.bin`）相对工作目录解析。
             let directory: URL
             if entry.hasPrefix("/") {
                 directory = URL(fileURLWithPath: String(entry))
@@ -560,7 +516,6 @@ public enum TandockAgentLauncher {
         return nil
     }
 
-    /// 值来自 `parseLimits` 的白名单校验（数字 / unlimited / 八进制），可以直接拼进脚本。
     static func processAttributePrelude(_ snapshot: TandockShellEnvironment?) -> String? {
         var prelude = ""
         if let limit = snapshot?.fileDescriptorLimit { prelude += "ulimit -n \(limit) 2>/dev/null; " }
@@ -568,7 +523,6 @@ public enum TandockAgentLauncher {
         return prelude.isEmpty ? nil : prelude
     }
 
-    /// 已缓存了 home 快照就直接查 PATH（微秒级），否则退回跑登录 shell 的 probe。
     public static func isAvailable(command: String, store: TandockShellEnvironmentStore = .shared) -> Bool {
         if let snapshot = store.cached(for: store.homeDirectory)?.snapshot {
             return resolveExecutable(command, environment: snapshot.variables) != nil
@@ -576,7 +530,6 @@ public enum TandockAgentLauncher {
         return probe(command: command)
     }
 
-    /// 所有 agent 可能被去掉的凭据变量；解析 shell 环境时统一先拿掉，启动时再按 agent 补回。
     static let credentialKeys = ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"]
 
     private static func expandPlaceholder(_ value: String, hostEnvironment: [String: String]) -> String {

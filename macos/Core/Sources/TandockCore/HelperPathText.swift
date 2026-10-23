@@ -1,10 +1,6 @@
 import Foundation
 
-/// Text helpers for finding and rewriting the helper path inside entries Tandock
-/// manages in agent configs. A helper path goes stale when the app bundle moves
-/// or a helper is renamed (e.g. `ycode-mcp` → `tandock-mcp`).
 enum HelperPathText {
-    /// Body of a TOML basic string, without the surrounding quotes.
     static func tomlEscaped(_ value: String) -> String {
         var escaped = ""
         for character in value {
@@ -20,7 +16,6 @@ enum HelperPathText {
         return escaped
     }
 
-    /// Decodes a single TOML string value: basic ("…") or literal ('…').
     static func parseTOMLString(_ raw: String) -> String? {
         let value = raw.trimmingCharacters(in: .whitespaces)
         if value.count >= 2, value.hasPrefix("'"), value.hasSuffix("'") {
@@ -30,9 +25,6 @@ enum HelperPathText {
         return try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) as? String
     }
 
-    /// Splits a hook command into its leading program path and the remaining
-    /// arguments. Handles the single-quoted form Tandock writes as well as a bare
-    /// leading token.
     static func leadingPath(ofCommand command: String) -> (path: String, rest: Substring)? {
         let trimmed = command.drop { $0 == " " }
         if trimmed.first == "'" {
@@ -40,7 +32,6 @@ enum HelperPathText {
             var index = trimmed.index(after: trimmed.startIndex)
             while index < trimmed.endIndex {
                 if trimmed[index] == "'" {
-                    // '\'' is how shellQuote embeds a literal quote.
                     let escape = trimmed[index...].prefix(4)
                     if escape == "'\\''" {
                         path.append("'")
@@ -62,15 +53,12 @@ enum HelperPathText {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-    /// Every spelling of `path` that can appear in a TOML file: as a TOML string
-    /// body, and as a JSON string (slashes escaped as `\/`) nested inside one.
     static func tomlSpellings(of path: String) -> [String] {
         let plain = tomlEscaped(path)
         let jsonEscaped = tomlEscaped(path.replacingOccurrences(of: "/", with: "\\/"))
         return plain == jsonEscaped ? [plain] : [jsonEscaped, plain]
     }
 
-    /// Replaces each spelling of `old` with the matching spelling of `new`.
     static func replacingTOMLSpellings(of old: String, with new: String, in text: String) -> String {
         zip(tomlSpellings(of: old), tomlSpellings(of: new)).reduce(text) { result, pair in
             result.replacingOccurrences(of: pair.0, with: pair.1)

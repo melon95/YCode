@@ -70,7 +70,6 @@ if [[ "$MODE" != "notarize" ]]; then
   /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$CONTENTS/MacOS/TandockApp"
   for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
     /usr/bin/lipo -create "$ARM_BIN_DIR/$helper" "$INTEL_BIN_DIR/$helper" -output "$CONTENTS/Resources/$helper"
-    # Stable aliases for hooks/MCP registrations created before the rename.
     ln -sfn "$helper" "$CONTENTS/Resources/${helper/tandock/ycode}"
   done
   cp "$NATIVE_DIR/Resources/TandockApp-Info.plist" "$CONTENTS/Info.plist"

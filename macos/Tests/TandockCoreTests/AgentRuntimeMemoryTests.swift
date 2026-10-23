@@ -208,8 +208,6 @@ struct AgentRuntimeMemoryTests {
         let completed = await eventually({ !runtime.status.isLive && total >= byteCount + marker.utf8.count }, timeout: 45)
         #expect(completed)
         #expect(sawPayload)
-        // The interactive login shell may emit a job-control notice before
-        // exec. Count that preamble separately from the exact flood payload.
         #expect(total == preambleBytes + byteCount + marker.utf8.count)
         #expect(String(decoding: runtime.backlog.bytes.suffix(marker.utf8.count), as: UTF8.self) == marker)
         let report: [String: Any] = ["input_bytes": byteCount, "received_bytes": total, "shell_preamble_bytes": preambleBytes, "initial_physical_footprint_bytes": initial, "peak_physical_footprint_bytes": peak, "peak_growth_bytes": peak - initial, "final_physical_footprint_bytes": footprint(), "completed": completed]

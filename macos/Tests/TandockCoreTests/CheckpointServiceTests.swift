@@ -61,7 +61,6 @@ struct CheckpointServiceTests {
         let event = TandockAgentHookEvent(terminalID: session.id, source: "codex", eventKind: "turn_complete", bodyPreview: "queued")
 
         let kinds = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[String], Error>) in
-            // A failed initial shows up as a missing "initial" row below.
             service.enqueueInitial(session: session, project: project) { _ in
                 #expect(!Thread.isMainThread)
             }

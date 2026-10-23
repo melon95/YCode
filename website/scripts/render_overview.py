@@ -1,11 +1,3 @@
-"""Render the Tandock product overview film in English or Chinese, fully procedurally.
-
-Usage: python3 scripts/render_overview.py [--lang en|zh] [contact-sheet.jpg]
-Requires Pillow, NumPy, FFmpeg, rsvg-convert (librsvg) and macOS system fonts (PingFang SC or Hiragino Sans GB, Menlo).
-No screen recordings or screenshots are used: every frame of the Tandock window,
-terminals, panels and motion graphics is drawn here as an illustrative animation.
-Outputs tandock-overview.<lang>.mp4, tandock-overview-poster.<lang>.jpg and zh/en captions into public/assets.
-"""
 from pathlib import Path
 from functools import lru_cache
 import glob
@@ -20,7 +12,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 ROOT = Path(__file__).resolve().parents[1]
 A = ROOT / 'public/assets'
 W, H, FPS = 1920, 1080, 24
-# The app window is drawn at 2x logical size, then downsampled for crisp text.
 LW, LH, K = 1390, 796, 2
 BOX = (265, 211, LW, LH)
 INK = '#23251f'
@@ -32,7 +23,6 @@ UI_LINE = '#dedcd5'
 SELECT = '#e3e9f8'
 SELECT_INK = '#3552c4'
 
-# name, seconds, title, subtitle
 SCENES = [
  ('intro', 5, 'Agents, code, changes.', 'One workspace.'),
  ('launch', 5, 'Start with the CLI you know', 'Claude Code, Codex, Pi, or your own CLI. Every session runs in its own PTY.'),
@@ -53,7 +43,6 @@ if '--lang' in args:
 if LANG not in ('en', 'zh'):
     raise SystemExit('--lang must be en or zh')
 
-# Every on-screen English string maps to its Chinese counterpart for --lang zh.
 ZH_UI = {
  'Agents, code, changes.': '把 Agent、代码和变更', 'One workspace.': '放在同一个工作台。',
  'Start with the CLI you know': '从你熟悉的 CLI 开始',
@@ -106,7 +95,6 @@ ZH_UI = {
 def tr(value):
     return ZH_UI.get(value, value) if LANG == 'zh' else value
 
-# ---------- fonts and easing ----------
 
 def cjk_font_path():
     found = glob.glob('/System/Library/AssetsV2/com_apple_MobileAsset_Font*/*/AssetData/PingFang.ttc')
@@ -124,7 +112,6 @@ def font(size, kind='regular'):
         return ImageFont.truetype('/System/Library/Fonts/Apple Symbols.ttf', size)
     return ImageFont.truetype(CJK, size, index=FACES[kind])
 
-# PingFang lacks these glyphs; Menlo covers most, Apple Symbols the rest.
 MENLO_SYM = set('⌘⌕☐▸▾✓')
 
 def face_for(ch, kind):
@@ -149,7 +136,6 @@ def text_width(value, size, kind='regular'):
     return sum(font(size, k).getlength(r) for r, k in runs_of(value, lambda ch: face_for(ch, kind)))
 
 def draw_text(d, x, y, value, size, fill, kind='regular', anchor='la'):
-    """Draw with per-glyph font fallback; anchor semantics match PIL."""
     value = tr(value)
     runs = runs_of(value, lambda ch: face_for(ch, kind))
     x -= {'l': 0, 'm': .5, 'r': 1}[anchor[0]]*text_width(value, size, kind)
@@ -179,7 +165,6 @@ def fade(img, alpha):
         img.putalpha(img.getchannel('A').point(lambda v: int(v*alpha)))
     return img
 
-# ---------- 2x canvas in logical coordinates ----------
 
 class Canvas:
     def __init__(self, w, h, bg=(0,0,0,0)):
@@ -205,7 +190,6 @@ class Canvas:
         return text_width(v, int(size*K), kind)/K
 
     def mixed(self, x, y, v, size, fill, bold=False):
-        """Monospace for ASCII runs, CJK font for the rest; y is the baseline."""
         v = tr(v)
         mono = 'monobold' if bold else 'mono'
         cjk = 'bold' if bold else 'regular'
@@ -221,7 +205,6 @@ class Canvas:
     def paste(self, img, x, y):
         self.im.alpha_composite(img, (int(x*K), int(y*K)))
 
-# ---------- agents and terminal content (illustrative) ----------
 
 CLAUDE = [('head','Claude Code  ·  ~/Welcome'),('p','› tighten spacing and copy on the welcome screen'),('i','● Read Sources/WelcomeView.swift'),
           ('i','● Edit spacing: 16 → 20'),('i','● Edit padding: 24 → 32'),('ok','✓ Updated 1 file  +3 −3')]
@@ -240,7 +223,6 @@ AGENTS = {
 LINE_COLOR = {'head': '#f1efe6', 'p': '#f0a57f', 'i': '#bdbab0', 'cmd': '#9dbaf0', 'ok': '#8fcf9c'}
 
 def terminal(w, h, agent, t, focus=False):
-    """One PTY pane as its own canvas so content clips naturally."""
     name, color, script, _ = AGENTS[agent]
     c = Canvas(w, h)
     c.rect(0, 0, w, h, 9, fill='#1d1f1a')
@@ -268,7 +250,6 @@ def terminal(w, h, agent, t, focus=False):
         c.rect(0, 0, w, h, 9, outline=ACCENT, width=2.5)
     return c.im
 
-# ---------- app window chrome ----------
 
 TABS = [('Files','⌘1'), ('Changes','⌘2'), ('Todos','⌘3'), ('Terminal','⌘4')]
 SIDEBAR = 206
@@ -276,7 +257,6 @@ TOP = 46
 
 def window(sessions, tool=None, panel_w=0):
     c = Canvas(LW, LH, (255,255,255,255))
-    # Toolbar
     c.rect(0, 0, LW, TOP, 0, fill='#fbfaf8')
     c.rect(0, TOP-1, LW, 1, 0, fill=UI_LINE)
     for i, col in enumerate(['#ff5f57', '#febc2e', '#28c840']):
@@ -293,7 +273,6 @@ def window(sessions, tool=None, panel_w=0):
         c.text(x+12, 23, label, 13, SELECT_INK if active else INK, 'medium', 'lm')
         c.text(x+tw-10, 23, key, 11, SELECT_INK if active else UI_MUTED, 'regular', 'rm')
         x -= 6
-    # Sidebar
     c.rect(0, TOP, SIDEBAR, LH-TOP, 0, fill='#f5f4f0')
     c.rect(SIDEBAR-1, TOP, 1, LH-TOP, 0, fill=UI_LINE)
     c.rect(12, TOP+12, SIDEBAR-24, 30, 8, fill='#ebeae5')
@@ -316,7 +295,6 @@ def window(sessions, tool=None, panel_w=0):
             row.circle(SIDEBAR-24, 24, 3.5, '#3fae63')
         c.paste(fade(row.im, alpha), 0, y)
     c.text(18, LH-24, '+  New Session', 12.5, INK, 'medium', 'lm')
-    # Canvas area and optional right panel
     right = LW-panel_w
     c.rect(SIDEBAR, TOP, right-SIDEBAR, LH-TOP, 0, fill='#ebeae5')
     if panel_w > 0:
@@ -344,7 +322,6 @@ def arrangement(name, area):
         return [(x0+i*(cw+g), y0, cw, h) for i in range(4)]
 
 def keyframes(frames, t):
-    """frames: [(time, arrangement)]; returns (from, to, q)."""
     for (t0, a), (t1, b) in zip(frames, frames[1:]):
         if t < t1:
             return a, b, inout((t-t0-(t1-t0-.7))/.7)
@@ -372,7 +349,6 @@ def click_ring(c, x, y, t):
         ImageDraw.Draw(layer).ellipse([(x-r)*K, (y-r)*K, (x+r)*K, (y+r)*K], outline=(182,75,44,a), width=3*K)
         c.im.alpha_composite(layer)
 
-# ---------- right-side panels ----------
 
 KW, STR, NUM = '#a846b9', '#c8412f', '#2f6fed'
 CODE = [
@@ -487,7 +463,6 @@ def changes_panel(c, rect, t):
     staged = t > 2.8
     yy = diff_block(c, x, y+40, w, 'WelcomeView.swift', 'Sources', '+3 −3', DIFF, staged, 2.8)
     diff_block(c, x, yy+8, w, 'plan.md', 'docs', '+4', PLAN, t > 3.3, 3.3)
-    # Commit bar
     by = y+h-56
     c.rect(x, by, w, 56, 0, fill='#fbfaf8')
     c.rect(x, by, w, 1, 0, fill=UI_LINE)
@@ -509,7 +484,6 @@ def todos_panel(c, rect, t):
     draft = tr('Check contrast in dark mode')
     typed = draft[:int(clamp((t-.7)/1.1)*len(draft))] if t < 2.1 else ''
     c.text(x+28, y+69, typed if typed else '+  Add Todo', 13, INK if typed else UI_MUTED, 'regular', 'lm')
-    # Item slots: section headers and rows are laid out from state, then interpolated.
     def layout(after):
         doing = ['review'] if after else ['polish']
         queue = ['dark', 'check'] if added else ['check', 'review']
@@ -556,7 +530,6 @@ def todos_panel(c, rect, t):
             row.rect(16, 10, 18, 18, 5, fill='white', outline='#b9bab0', width=1.5)
         row.text(44, 19, label, 13.5, UI_MUTED if done else INK, 'regular', 'lm')
         c.paste(fade(row.im, alpha), x, iy)
-    # MCP toast from the agent that updated the list.
     q = ease((t-3.1)/.4) * (1-ease((t-5.4)/.4))
     if q > 0:
         tw = 360
@@ -568,7 +541,6 @@ def todos_panel(c, rect, t):
         toast.text(52, 40, 'MCP · todo_update  →  1 marked done', 11.5, '#bdbab0', 'regular', 'lm')
         c.paste(fade(toast.im, q), x+w-tw-16, y+470+int(16*(1-q)))
 
-# ---------- scene composition ----------
 
 def rounded_panel(im, shot, box, radius=15, alpha=1):
     x, y, w, h = map(int, box); w = max(1, w); h = max(1, h)
@@ -600,11 +572,9 @@ def pill(im, x, y, label, color=INK, alpha=1):
     return width
 
 yy, xx = np.mgrid[0:H, 0:W]
-# Diagonal coordinate: 0 at the top-left corner, 2 at the bottom-right corner.
 DIAG = (xx/W + yy/H).astype(np.float32)
 TRANSITION = .6
 ACCENT_RGB = np.array([182, 75, 44], dtype=np.float32)
-# Each scene enters with its own transition.
 TRANSITIONS = {'launch': 'iris', 'four': 'push', 'layout': 'tiles', 'files': 'sweep',
                'changes': 'split', 'todos': 'zoom', 'palette': 'push_up', 'outro': 'blur'}
 IRIS_C = (W/2, H*.55)
@@ -612,7 +582,6 @@ DIST = np.hypot(xx-IRIS_C[0], yy-IRIS_C[1]).astype(np.float32)
 TILE = 120
 TCOLS, TROWS = W//TILE, math.ceil(H/TILE)
 _col, _row = xx//TILE, yy//TILE
-# Tiles flip in along the diagonal from the top-left.
 TILE_DELAY = ((_col+_row)/(TCOLS+TROWS-2)*.55).astype(np.float32)
 TILE_LX = np.abs(xx-(_col*TILE+TILE/2)).astype(np.float32)
 TILE_LY = np.abs(yy-(_row*TILE+TILE/2)).astype(np.float32)
@@ -651,7 +620,6 @@ def keycap(im, x, y, key, label, alpha, scale=1):
     draw_text(d, x+w/2, y+h*.8, label, int(18*scale), MUTED, 'regular', 'mm')
     im.alpha_composite(fade(layer, alpha))
 
-# Camera: logical crop rects (x, y, width) inside the window.
 def camera(local, target, start=.5, dur=1.6):
     q = inout((local-start)/dur)
     x, y, w = (lerp(a, b, q) for a, b in zip((0, 0, LW), target))
@@ -676,7 +644,6 @@ def highlight(im, cam, rect, q):
     im.alpha_composite(layer)
 
 def tags(im, items):
-    """Right-aligned pills on the title row: [(label, color, alpha)], first is leftmost."""
     widths = [int(text_width(label, 20, 'medium'))+44 for label, _, a in items if a > 0]
     x = W-70-sum(widths)-12*max(0, len(widths)-1)
     for label, color, a in items:
@@ -748,7 +715,6 @@ def render_frame(scene, local, global_t, index, prev=None):
             card.text(24, 276, '☐  worktree', 12, UI_MUTED, 'regular', 'lm')
             card.text(cw-24, 276, '⑂ feature/welcome', 12, SELECT_INK, 'regular', 'rm')
             c.paste(fade(card.im, card_a), cx, cy)
-        # The chosen tile grows into the live terminal pane.
         g = inout((local-2.0)/.6)
         if g > 0:
             tile = tiles[0]
@@ -874,7 +840,6 @@ def to_img(a):
     return Image.fromarray(np.uint8(np.clip(a, 0, 255)))
 
 def paint(out, mask, strength=1.):
-    """Blend the accent color into out where mask (H, W) is set."""
     m = (mask*strength)[..., None]
     return out*(1-m) + ACCENT_RGB*m
 
@@ -909,7 +874,6 @@ def transition(kind, old, new, t):
         half = q*TILE/2
         m = ((TILE_LX < half) & (TILE_LY < half)).astype(np.float32)
         out = arr(old)*(1-m[..., None]) + arr(new)*m[..., None]
-        # Fresh tiles start in the accent color and settle to the new frame.
         return to_img(paint(out, m*(1-q), .85))
     if kind == 'split':
         off = int(H/2*p)
@@ -939,9 +903,6 @@ def transition(kind, old, new, t):
     raise ValueError(kind)
 
 def line_sweep(old, new, p):
-    """A thin accent line travels from the bottom-right corner to the top-left.
-    Behind it (toward the bottom-right) the new scene is revealed; ahead of it
-    the previous scene stays, dimming slightly as the line approaches."""
     pos = 2.08 - 2.16*p
     a = np.asarray(old, dtype=np.float32); b = np.asarray(new, dtype=np.float32)
     reveal = np.clip((DIAG-pos)/.004 + .5, 0, 1)[..., None]
@@ -954,11 +915,9 @@ def line_sweep(old, new, p):
     out = out*(1-line) + ACCENT_RGB*line
     return Image.fromarray(np.uint8(np.clip(out, 0, 255)))
 
-# ---------- sound: original synthesized score and UI effects ----------
 
 SR = 48000
 STARTS = dict(zip([s[0] for s in SCENES], np.cumsum([0]+[s[1] for s in SCENES])[:-1].tolist()))
-# One chord per scene (I–vi–IV–V), so harmony changes land on the line sweep.
 CHORDS = {'intro': [48,55,59,62,64], 'launch': [45,52,55,59,60], 'four': [41,48,52,55,57], 'layout': [43,50,55,57,62],
           'files': [48,55,59,62,64], 'changes': [45,52,55,59,60], 'todos': [41,48,52,55,57], 'palette': [43,50,55,57,62],
           'outro': [48,55,59,62,64,67]}
@@ -967,7 +926,6 @@ def hz(m):
     return 440*2**((m-69)/12)
 
 def lowpass(x, k):
-    """Cheap FIR lowpass: repeated moving averages."""
     for _ in range(2):
         x = np.convolve(x, np.ones(k)/k, mode='same')
     return x
@@ -1025,7 +983,6 @@ def hat(rng):
     return x*np.exp(-np.arange(len(x))/SR*70)
 
 def whoosh(rng, dur=.62):
-    # Band-limited noise with a rising-then-falling brightness, swept right to left.
     n = int(dur*SR); u = np.arange(n)/n
     x = rng.normal(0, 1, n)
     bright = lowpass(x, 5) - lowpass(x, 90)
@@ -1065,20 +1022,16 @@ def reverb(x, rng, seconds=2.2, decay=.55):
 
 def soundtrack(path):
     n = int(TOTAL*SR); rng = np.random.default_rng(21)
-    # Pad and arpeggio go to the hall; rhythm stays dry so low end never smears.
     music = Mix(n); rhythm = Mix(n); sfx = Mix(n)
     beat = 60/96
-    # Pad and bass follow the per-scene chords.
     for name, dur, *_ in SCENES:
         at = STARTS[name]; chord = CHORDS[name]
         hold = dur+(3.5 if name == 'outro' else 1.2)
-        # The bass carries the root, so the pad voices only the upper chord tones.
         for k, m in enumerate(chord[1:]):
             music.add(pad_note(hz(m), hold, rng), at-.35, pan=(k-len(chord)/2)*.18, gain=.03)
         if name not in ('intro', 'outro'):
             for b in np.arange(0, dur, beat*2):
                 rhythm.add(bass_note(hz(chord[0]-12), beat*2), at+b, gain=.05)
-    # Plucked arpeggio on eighth notes, sparse in the intro, resolving on the outro.
     pattern = [0, 2, 4, 3, 1, 3, 4, 2]
     step = beat/2
     for i, at in enumerate(np.arange(0, TOTAL-4.2, step)):
@@ -1088,7 +1041,6 @@ def soundtrack(path):
             continue
         m = chord[pattern[i % 8] % len(chord)]+24
         music.add(pluck(hz(m)), at, pan=.35 if i % 2 else -.35, gain=.1 if i % 4 == 0 else .07)
-    # Light rhythm from the second scene until the outro.
     for at in np.arange(STARTS['launch'], STARTS['outro'], beat):
         k = int(round((at-STARTS['launch'])/beat))
         if k % 2 == 0:
@@ -1097,7 +1049,6 @@ def soundtrack(path):
             rhythm.add(hat(rng), at+beat/2, pan=.25, gain=.035)
     music.add(chime(hz(84)), STARTS['outro']+.15, gain=.12)
     music.add(chime(hz(91)), STARTS['outro']+.55, pan=.2, gain=.08)
-    # UI effects timed to on-screen actions.
     for name in list(STARTS)[1:]:
         sig, pan = whoosh(rng)
         if TRANSITIONS[name] not in ('push', 'sweep'):
@@ -1123,12 +1074,10 @@ def soundtrack(path):
     sfx.add(chime(hz(88)), S['todos']+3.1, pan=.3, gain=.07)
     sfx.add(chime(hz(84)), S['files']+4.3, pan=.3, gain=.045)
     sfx.add(pop(400, 700), S['palette']+.4, gain=.1)
-    # Master: music gets a hall, effects a short room; soft-limit and fade.
     wet_l = reverb(music.l, rng); wet_r = reverb(music.r, rng)
     room_l = reverb(sfx.l, rng, .6, .12); room_r = reverb(sfx.r, rng, .6, .12)
     left = music.l*.8 + wet_l*.35 + rhythm.l + sfx.l + room_l*.18
     right = music.r*.8 + wet_r*.35 + rhythm.r + sfx.r + room_r*.18
-    # Gentle high-pass (~40 Hz) removes sub rumble.
     left = left - lowpass(left, 1200); right = right - lowpass(right, 1200)
     t = np.arange(n)/SR
     fade = np.minimum(1, t/.8)*np.minimum(1, (TOTAL-t)/2.2)
@@ -1169,7 +1118,6 @@ if __name__ == '__main__':
     contact = Path(args[0]) if args else None
     with tempfile.TemporaryDirectory(prefix='tandock-overview-') as td:
         temp = Path(td); silent = temp/'silent.mp4'; audio = temp/'sound.wav'
-        # rsvg-convert keeps the transparent corners (Quick Look renders onto white).
         subprocess.run(['rsvg-convert', '-w', '512', '-h', '512', str(A/'icon.svg'), '-o', str(temp/'icon.png')], check=True)
         ICON = Image.open(temp/'icon.png').convert('RGBA')
         encoder = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}',

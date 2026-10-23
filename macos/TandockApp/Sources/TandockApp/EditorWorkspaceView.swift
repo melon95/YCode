@@ -16,14 +16,9 @@ struct ProjectFileWorkspaceView: View {
     let onDeletePath: (URL) -> Void
     @Environment(\.tandockL10n) private var l10n
 
-    /// 一张卡里是「树 ｜ 编辑器」并排，不是二选一。树在不在只看卡头上那枚开关 ——
-    /// 一篇文档都没开时也照样收得起来，收完这张卡给一段空状态，告诉你怎么把树叫回来。
-    /// 卡头上没有编辑器的动作：保存走 ⌘S 与「文件 › 保存」，不值得在那排图标里再占一格。
     private var treeIsVisible: Bool { workspace.isFileTreeVisible }
     private var showsEditor: Bool { !workspace.tabs.paths.isEmpty }
 
-    /// 树的开关就是卡头最前面那枚图标（跟变更面板的树／平铺是同一套做法），
-    /// 不在右边另起一个按钮。
     private var headerSpec: TandockPanelHeaderSpec {
         var spec = header
         spec.iconIsOn = treeIsVisible
@@ -32,7 +27,6 @@ struct ProjectFileWorkspaceView: View {
         return spec
     }
 
-    /// 文件名占住卡头最上面那一行；一篇都没开时这格还是面板名。
     @ViewBuilder private var headerLeading: some View {
         if showsEditor {
             TandockEditorTabStrip(workspace: workspace) { path in
@@ -66,8 +60,6 @@ struct ProjectFileWorkspaceView: View {
     }
 }
 
-/// 卡头不在这里 —— 它属于整张文件卡，由 `ProjectFileWorkspaceView` 摆，
-/// 好让树和编辑器并排时上面只有一条卡头，而不是一边一条。
 private struct TandockEditorWorkspaceView: View {
     @ObservedObject var workspace: TandockEditorWorkspace
     let editorFontSize: CGFloat
@@ -77,9 +69,6 @@ private struct TandockEditorWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 标签条不在这里 —— 文件名在卡头最上面那一行，横跨树与编辑器（设计稿）。
-            // 这一条上的东西（预览／源码）只属于当前选中的那篇文档，
-            // 所以它得站在标签条**下面** —— 浮在标签之上会读成「这排标签的工具条」。
             if hasDocumentBar {
                 documentBar
                 Divider()
@@ -152,8 +141,6 @@ private struct TandockEditorWorkspaceView: View {
         }
     }
 
-    /// 属于「当前这篇文档」的那几样（预览／源码）留在这一条，
-    /// 没有内容时整条不出现。面板级的动作在卡头上，不在这儿。
     private var hasDocumentBar: Bool {
         guard let document = workspace.selectedDocument else { return false }
         return document.canTogglePreview || document.previewKind == .image
@@ -548,15 +535,11 @@ private struct TandockNativeImagePreview: NSViewRepresentable {
     }
 }
 
-/// 卡头上那一行文件名。放不下的标签收进末尾的 ⌄ 菜单里 ——
-/// 横向滚动条在一条 22 高的卡头上既看不见也不好拨。
-/// 当前选中的那张永远留在外面：它要是被挤进菜单，这一行就再也说不出「你在看哪篇」。
 private struct TandockEditorTabStrip: View {
     @ObservedObject var workspace: TandockEditorWorkspace
     let onSelectionChanged: (String?) -> Void
     @Environment(\.tandockL10n) private var l10n
 
-    /// 标签自己定宽，不让 HStack 去分 —— 宽度算得出来，才知道第几张开始放不下。
     private static let font = NSFont.systemFont(ofSize: 11)
     private static let spacing: CGFloat = 2
     private static let overflowWidth: CGFloat = 24
@@ -576,7 +559,6 @@ private struct TandockEditorTabStrip: View {
         .frame(height: 24)
     }
 
-    /// 从左往右能塞几张就塞几张；塞不下的进菜单。选中的那张一定在 `visible` 里。
     private func split(in total: CGFloat) -> (visible: [String], overflow: [String]) {
         let paths = workspace.tabs.paths
         let full = paths.reduce(CGFloat.zero) { $0 + width(of: $1) } + Self.spacing * CGFloat(max(0, paths.count - 1))
@@ -605,7 +587,6 @@ private struct TandockEditorTabStrip: View {
     private func width(of path: String) -> CGFloat {
         let text = (displayName(path) as NSString).size(withAttributes: [.font: Self.font]).width
         let dirtyDot: CGFloat = workspace.tabs.dirtyPaths.contains(path) ? 11 : 0
-        // 8 左内边距 + 5 间距 + 9 的 ✕ + 8 右内边距，取整到 32。
         return min(max(ceil(text) + dirtyDot + 32, 58), 150)
     }
 

@@ -26,9 +26,6 @@ struct AgentCustomizationTests {
             try String(contentsOf: (scoped ? project : home).appendingPathComponent(relative), encoding: .utf8)
         }
         func relativePath(_ url: URL) -> String? {
-            // Foundation's directory enumeration and URL resolution can choose
-            // opposite /var aliases. Normalize only the fixture's ancestor,
-            // leaving all skill paths and symlinks below it untouched.
             let path = root.path
             let alternate = path.hasPrefix("/private/var/") ? String(path.dropFirst("/private".count))
                 : path.hasPrefix("/var/") ? "/private" + path : path
@@ -59,7 +56,6 @@ struct AgentCustomizationTests {
         #expect(try f.text(".claude/settings.json").contains("dark"))
         #expect(try f.text(".claude/settings.json").contains("9007199254740993"))
 
-        // A project override can re-enable a globally disabled skill.
         try await f.service.setSkillEnabled(true, record: skill, agent: .claude, project: f.project)
         let scoped = await f.service.snapshot(agent: .claude, project: f.project)
         #expect(scoped.skills.first?.enabled == true)

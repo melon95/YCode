@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// 把 `git diff` 的文本切成「文件头 + 若干 hunk」，好让变更面板逐块渲染、逐块暂存。
-/// 单块暂存就是把 `fileHeader + 这一块` 拼成补丁交给 `git apply --cached`。
 struct TandockUnifiedDiff {
     struct Line: Identifiable {
         enum Kind {
@@ -28,7 +26,6 @@ struct TandockUnifiedDiff {
         let id: Int
         let text: String
         let kind: Kind
-        /// 行号：新增行给新文件的号，删除行给旧文件的号，上下文两边一致。
         let number: Int?
     }
 
@@ -37,13 +34,11 @@ struct TandockUnifiedDiff {
         let header: String
         let lines: [Line]
 
-        /// 交给 `git apply` 的补丁正文：`@@` 那行加它下面的内容，末尾留一个换行。
         var patchBody: String {
             ([header] + lines.map(\.text)).joined(separator: "\n") + "\n"
         }
     }
 
-    /// 从 `@@ -12,7 +12,9 @@` 里取出两边的起始行号。
     private static func startLines(of header: String) -> (Int, Int) {
         let numbers = header
             .split(separator: "@")
@@ -56,7 +51,6 @@ struct TandockUnifiedDiff {
         return (numbers.first ?? 1, numbers.count > 1 ? numbers[1] : numbers.first ?? 1)
     }
 
-    /// `diff --git` 到 `+++` 之间的部分，每个 hunk 都要带上它才能 apply。
     let fileHeader: String
     let hunks: [Hunk]
 
@@ -84,7 +78,6 @@ struct TandockUnifiedDiff {
                 continue
             }
             guard currentHeader != nil else {
-                // 还没进入第一个 hunk：这些是 diff --git / index / --- / +++ 这类头部行
                 if !raw.isEmpty { headerLines.append(raw) }
                 continue
             }

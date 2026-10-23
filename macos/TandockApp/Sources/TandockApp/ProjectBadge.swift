@@ -2,13 +2,9 @@ import AppKit
 import SwiftUI
 import TandockCore
 
-/// 跨项目画布里「这格属于哪个项目」的标识（设计稿 docs/canvas-cross-project.html §1）。
-/// 颜色只是辅助：徽章显示项目名，紧凑模式用首字母，不靠颜色单独传达身份。
 enum TandockProjectPalette {
-    /// 白字压在每一个底色上都 ≥ 4.5:1；刻意避开珊瑚，免得被误读成焦点色。
     private static let hexes = ["1A7F6C", "6A5AE0", "A8620F", "2A5FD0", "B8447A", "5F7A1F", "4F5D75", "8A4B2E"]
 
-    /// 按项目 id 稳定取色。不能用 `hashValue`：它每次启动都不一样，项目色会跟着乱跳。
     static func hex(for projectID: String) -> String {
         var hash: UInt64 = 0xcbf29ce484222325
         for byte in projectID.utf8 {
@@ -22,7 +18,6 @@ enum TandockProjectPalette {
         return Color.tandockDynamic(light: hex, dark: hex)
     }
 
-    /// 菜单标签里用的色块位图。`.borderlessButton` 的菜单只认图片标签，SwiftUI 形状会被丢掉。
     static func dotImage(for projectID: String, size: CGFloat = 9) -> NSImage {
         let color = NSColor(hex: hex(for: projectID)) ?? .systemGray
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
@@ -39,7 +34,6 @@ enum TandockProjectPalette {
     }
 }
 
-/// 项目徽章：项目色底 + 项目名。`showsName == false` 时收成首字母图标（窄窗格）。
 struct TandockProjectBadge: View {
     let projectID: String
     let name: String
@@ -74,7 +68,6 @@ struct TandockProjectBadge: View {
     }
 }
 
-/// 项目色小方块：侧栏项目行、下拉框里的项目名前面用。
 struct TandockProjectDot: View {
     let projectID: String
     var size: CGFloat = 9

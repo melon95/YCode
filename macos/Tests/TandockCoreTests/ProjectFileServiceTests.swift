@@ -23,10 +23,8 @@ struct ProjectFileServiceTests {
         #expect(rootPaths.contains("ignored.txt"))
         #expect(rootPaths.contains("中文 目录"))
         #expect(rootPaths.contains("Sources"))
-        // 树按展开一层层读，所以重目录留在原地，不展开就不花钱。
         #expect(rootPaths.contains("node_modules"))
         #expect(!rootPaths.contains(".git"))
-        // 只列一层：孙子辈不该出现在根的结果里。
         #expect(!rootPaths.contains(where: { $0.contains("/") }))
 
         let nested = try service.listChildren(root: fixture.root, relativePath: "中文 目录").map(\.path)
@@ -50,7 +48,6 @@ struct ProjectFileServiceTests {
         #expect(throws: TandockProjectFileError.self) {
             try service.listChildren(root: fixture.root, relativePath: "missing")
         }
-        // 文件不是目录，列它应该报错而不是给一个空列表。
         #expect(throws: TandockProjectFileError.self) {
             try service.listChildren(root: fixture.root, relativePath: "keep.txt")
         }

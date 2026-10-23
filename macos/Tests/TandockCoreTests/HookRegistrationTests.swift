@@ -118,8 +118,6 @@ struct HookRegistrationTests {
         try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
         let old = "/Applications/YCode.app/Contents/Resources/ycode-notify"
         let escapedOld = old.replacingOccurrences(of: "/", with: "\\\\/")
-        // Shape Codex Computer Use leaves behind: it wraps the managed notify and
-        // passes Tandock's invocation along as a JSON-encoded argument.
         try Data("""
         model = "gpt-6"
         \(TandockHookRegistrationService.codexNotifyMarker)
@@ -173,7 +171,6 @@ struct HookRegistrationTests {
         #expect(try await !fixture.service.repairStaleHelperPath(for: .codex))
         let repaired = try String(contentsOf: fixture.root.appendingPathComponent(".codex/config.toml"), encoding: .utf8)
         #expect(!repaired.contains(oldHelper.path))
-        // Uninstall still recognises the repaired entries as its own.
         #expect(try await fixture.service.uninstall(for: .codex) == .notInstalled)
         #expect(!(try String(contentsOf: fixture.root.appendingPathComponent(".codex/config.toml"), encoding: .utf8)).contains("ycode-managed"))
     }

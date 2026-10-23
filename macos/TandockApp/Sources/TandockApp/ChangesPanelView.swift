@@ -1,16 +1,12 @@
 import SwiftUI
 import TandockCore
 
-/// 设计稿 §09 变更：顶部范围选择器 → 一列到底的折叠式 diff 流 → 底部只读汇总。
-/// 这里不做提交：变更区的职责是看清 agent 改了什么、把不想要的丢掉；
-/// 提交由 agent 自己做，或者在项目 shell 里 `git commit`。
 struct ChangesPanelView: View {
     @ObservedObject var model: WorkspaceModel
     let header: TandockPanelHeaderSpec
     @Environment(\.tandockL10n) private var l10n
     @State private var expandedHunks: Set<String> = []
     @State private var hoveredPath: String?
-    /// 平铺一列 vs 按目录收成树。开关就是卡头左边那枚图标。
     @State private var treeMode = false
     @State private var collapsedDirectories: Set<String> = []
 
@@ -46,11 +42,7 @@ struct ChangesPanelView: View {
         .onAppear { model.refreshGitStatus() }
     }
 
-    // MARK: 头部 —— 范围面包屑 + ⋯
 
-    /// 卡头一行装完：名字 + 计数 + 对比范围 + 「全部暂存」+ ⋯ + ✕。
-    /// 范围面包屑原先单独占一条 —— 那条除了它什么都没有，白占 28 的高度。
-    /// 它会变长，所以给它 `layoutPriority(-1)`：窄的时候先截它，名字和右边的动作不动。
     private var cardHeader: some View {
         var spec = header
         spec.iconIsOn = treeMode
@@ -71,7 +63,6 @@ struct ChangesPanelView: View {
         }
     }
 
-    /// 范围选择器：它决定 diff 从哪儿来，也决定文件行上的暂存／丢弃出不出现。
     private var scopeMenu: some View {
         Menu {
             Button {
@@ -96,7 +87,6 @@ struct ChangesPanelView: View {
 
             Divider()
 
-            // 只改对比，不 checkout —— 真正的切分支在 ⋯ 菜单里。
             Menu(l10n.text("compareAgainst")) {
                 ForEach(model.gitBranches) { branch in
                     Button {
@@ -135,9 +125,6 @@ struct ChangesPanelView: View {
             }
             .disabled(model.changesCommits.isEmpty && model.checkpoints.isEmpty)
         } label: {
-            // ⌄ 自己画：`.borderlessButton` 的菜单会把卡头右边的空位全吃掉，
-            // 画成一条横贯整栏的下拉框；`.button` + `.plain` 才是「贴着文字走」，
-            // 而且窄的时候分支名还能自己截断（`.fixedSize()` 一钉住就不肯让了）。
             HStack(spacing: 3) {
                 Text(scopeTitle)
                     .lineLimit(1)
@@ -165,7 +152,6 @@ struct ChangesPanelView: View {
         }
     }
 
-    /// 显示选项 + 低频动作。302 px 放不下一排按钮，而这些都不是每天点的。
     private var optionsMenu: some View {
         Menu {
             Toggle(l10n.text("ignoreWhitespaceOption"), isOn: $model.changesIgnoreWhitespace)
@@ -202,7 +188,6 @@ struct ChangesPanelView: View {
         .help(l10n.text("gitActions"))
     }
 
-    // MARK: 一列到底的折叠式 diff
 
     private var changeStream: some View {
         ScrollViewReader { scroller in
@@ -220,7 +205,6 @@ struct ChangesPanelView: View {
                 }
                 .padding(.bottom, 8)
             }
-            // 左边树里点一个文件，右边这列滚到它那儿去。
             .onChange(of: model.selectedGitPath) { _, path in
                 guard treeMode, let path else { return }
                 withAnimation(TandockMotion.scroll) { scroller.scrollTo(path, anchor: .top) }
@@ -228,17 +212,12 @@ struct ChangesPanelView: View {
         }
     }
 
-    /// 按目录收成树。157 个改动平铺成一列时，路径那一段全是重复的前缀，
-    /// 看不出「这一轮动了哪几块」；收成树一眼就能看出来。
-    /// 树模式下 diff 不再塞在每个文件底下，而是**在右边整整一栏里**铺开 ——
-    /// 左边那列已经很窄了，再往里插几十行 diff，树就被挤没了。
     private var changeTree: some View {
         GeometryReader { proxy in
             let treeWidth = min(max(proxy.size.width * 0.38, 150), 320)
             HStack(spacing: 0) {
                 treeColumn.frame(width: treeWidth)
                 Divider()
-                // 右边还是那份整列的文件流 —— 左树只是导航：点一个文件，右边展开它并滚过去。
                 changeStream.frame(maxWidth: .infinity)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -305,8 +284,6 @@ struct ChangesPanelView: View {
             guard var child = node.directories[name] else { continue }
             var label = name
             var path = prefix.isEmpty ? name : prefix + "/" + name
-            // 一条只有单个子目录、自己没有文件的链，压成一行 —— 不然 node_modules/.bin 这种
-            // 会摞出五六层只有一个孩子的空目录。
             while child.files.isEmpty, child.directories.count == 1, let entry = child.directories.first {
                 label += "/" + entry.key
                 path += "/" + entry.key
@@ -341,15 +318,12 @@ struct ChangesPanelView: View {
         .padding(.leading, CGFloat(depth) * 12 + 10)
         .padding(.trailing, 10)
         .frame(height: 24)
-        // 目录行原先连 contentShape 之外什么都没有：它可以点，但看不出可以点。
         .tandockRow(isSelected: false, cornerRadius: 0)
         .onTapGesture {
             if collapsed { collapsedDirectories.remove(path) } else { collapsedDirectories.insert(path) }
         }
     }
 
-    /// 树里的一行文件：图标 + 文件名 + 增删计数。展开箭头没有了 ——
-    /// 点一下就是「在右边打开它」，不是「在这儿铺开它」。
     private func treeFileRow(_ change: TandockGitFileChange, depth: Int) -> some View {
         let selected = model.selectedGitPath == change.path
         let hovered = hoveredPath == change.path
@@ -381,8 +355,6 @@ struct ChangesPanelView: View {
         .help(change.path)
     }
 
-    /// 一行 = 折叠箭头 + 状态标 + 粗文件名 + 灰目录 + 增删计数；
-    /// hover 时计数让位给动作，而动作只在「未提交的改动」范围里存在。
     private func fileHeader(_ change: TandockGitFileChange, depth: Int? = nil) -> some View {
         let hovered = hoveredPath == change.path
         let expanded = model.expandedGitPaths.contains(change.path)
@@ -426,7 +398,6 @@ struct ChangesPanelView: View {
         .background(alignment: .bottom) { Divider() }
     }
 
-    /// 文件行右侧的两个动作。跟着对象走：作用在这一个文件上。
     @ViewBuilder
     private func rowActions(_ change: TandockGitFileChange) -> some View {
         if change.hasWorktreeChange {
@@ -492,7 +463,6 @@ struct ChangesPanelView: View {
     private func hunkView(path: String, header: String, hunk: TandockUnifiedDiff.Hunk) -> some View {
         let key = "\(path)#\(hunk.id)"
         let expanded = expandedHunks.contains(key)
-        // 整文件删除这类 hunk 动辄几百行，默认只铺开一屏的量，其余折起来
         let visible = expanded ? hunk.lines : Array(hunk.lines.prefix(Self.collapsedLineCount))
         let hidden = hunk.lines.count - visible.count
         return VStack(spacing: 0) {
@@ -554,9 +524,7 @@ struct ChangesPanelView: View {
 
     private static let collapsedLineCount = 24
 
-    // MARK: 底部只读汇总条
 
-    /// 26 px，只汇总「N 个文件 · +X −Y」，不承载动作。
     private var summaryBar: some View {
         let totals = model.scopedTotals
         return HStack(spacing: 10) {
@@ -577,7 +545,6 @@ struct ChangesPanelView: View {
         .frame(height: 26)
     }
 
-    // MARK: 计数与文案
 
     private var unstagedCount: Int {
         model.scopedChanges.filter(\.hasWorktreeChange).count

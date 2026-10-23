@@ -1,8 +1,6 @@
 import SwiftUI
 import TandockCore
 
-/// 设计稿 §06 屏 04：⌘K 是「所有东西的第二入口」——
-/// 有了它，工具栏才敢只留四个按钮。一个入口，四类结果，分组顺序固定。
 struct CommandPaletteView: View {
     @ObservedObject var model: WorkspaceModel
     let onClose: () -> Void
@@ -110,9 +108,6 @@ struct CommandPaletteView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: TandockMetrics.rowHeight)
-        // 原先只认键盘高亮项：用鼠标在面板里移动时一片死寂，必须先按方向键
-        // 才知道自己指着哪一条。现在 hover 与键盘高亮是同一套底。
-        // 命令面板本身就是白底浮层，浮起的小卡片在上面看不出来；用淡强调色底，字色不变。
         .tandockRow(isSelected: active, selection: .tint, horizontalInset: 8)
         .foregroundStyle(Color.primary)
         .padding(.horizontal, 8)

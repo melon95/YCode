@@ -17,7 +17,6 @@ struct DirectoryWatcherTests {
         watcher.start()
         defer { watcher.stop() }
 
-        // FSEvents 是从「现在」开始听的，起流本身要一点时间，早写的改动会漏掉。
         try await Task.sleep(for: .milliseconds(300))
         try fixture.file("嵌套 目录/新文件.swift", contents: "print(1)")
 
@@ -26,7 +25,6 @@ struct DirectoryWatcherTests {
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(collector.paths.contains("嵌套 目录/新文件.swift"))
-        // 报的是相对根的路径，不是绝对路径。
         #expect(!collector.paths.contains(where: { $0.hasPrefix("/") }))
     }
 
@@ -50,7 +48,6 @@ struct DirectoryWatcherTests {
     }
 }
 
-/// FSEvents 报的是真实路径，所以根也得先把 /var → /private/var 这类软链解开。
 private struct WatcherFixture {
     let root: URL
 
@@ -83,7 +80,6 @@ private struct WatcherFixture {
     }
 }
 
-/// 回调在 FSEvents 自己的队列上来，收集器得自己加锁。
 private final class PathCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []

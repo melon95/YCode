@@ -13,13 +13,9 @@ struct TandockLocalization {
         String(format: text(key), arguments: arguments)
     }
 
-    /// 会话在界面上叫什么。CLI 还没报出标题时列表里显示的是斜体的「新会话」，
-    /// 确认框、通知这些地方必须用同一个名字——否则会弹出「删除""？」这种没主语的问句。
     func sessionDisplayName(_ session: SessionMetadata, liveTitle: String? = nil) -> String {
         let trimmed = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        // 库里还没名字时用 CLI 刚报的窗口标题：会话开始对话后立刻改名，
-        // 不用等下一轮 jsonl 扫描（以前要重启才能看到名字）。
         if let live = liveTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !live.isEmpty {
             return live
         }
@@ -217,7 +213,6 @@ struct TandockLocalization {
         "detected": [.zh: "已检测到", .en: "Detected"],
         "add": [.zh: "添加", .en: "Add"],
         "addCustomAgent": [.zh: "添加自定义 Agent…", .en: "Add Custom Agent..."],
-        // 菜单项带省略号（表示「还要再问你」），对话框标题不带 —— 它就是那个「再问」。
         "addCustomAgentTitle": [.zh: "添加自定义 Agent", .en: "Add Custom Agent"],
         "agentIcon": [.zh: "图标", .en: "Icon"],
         "agentIconKeyHelp": [.zh: "可选择白名单图标，也可输入未知键验证字母占位回落。", .en: "Choose a whitelisted icon or enter an unknown key to verify the letter fallback."],
@@ -509,7 +504,6 @@ struct TandockLocalization {
         "openExternalFailedFormat": [.zh: "打开外部编辑器失败：%@", .en: "Failed to open external editor: %@"],
         "noExternalEditor": [.zh: "没有可用于打开此文件的应用", .en: "No application is available to open this file"],
 
-        // —— 原生 UI 重构（docs/ui-native-redesign.html）——
         "presenceRunning": [.zh: "运行中", .en: "Running"],
         "presenceNeedsYou": [.zh: "等你", .en: "Needs You"],
         "presenceIdle": [.zh: "未在运行", .en: "Not Running"],

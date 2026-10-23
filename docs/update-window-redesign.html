@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tandock 更新窗口</title>
 <style>
-/* 文档外壳 doc-，窗口模拟 u-。色板沿用「方向 B 纸面浮卡」。 */
 :root {
   --doc-bg: #f6f5f9; --doc-ink: #16133a; --doc-muted: #5a5873; --doc-line: #dedce8; --doc-card: #fff;
   --coral: #ff5a4e; --coral-text: #c3301f; --ok: #1a8a54; --warn: #b67707; --err: #d2382f;
@@ -37,7 +36,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 .cell > .cap b { color: var(--doc-ink); }
 .dark .cell > .cap { color: #a9a6c8; } .dark .cell > .cap b { color: #fff; }
 
-/* 更新窗口：标题栏用系统样式，内容区是一张浮卡落在 chrome 底上 */
 .u-win { --bg: #efeef4; --card: #fcfcfe; --text: #16133a; --soft: #5a5873; --muted: #7a7893; --track: rgba(22,19,58,.1); --field: rgba(22,19,58,.06); --edge: rgba(22,19,58,.12);
   background: var(--bg); color: var(--text); border-radius: 12px; overflow: hidden; width: 100%;
   box-shadow: 0 24px 50px -20px rgba(22,19,58,.4), 0 0 0 1px var(--edge); font-size: 13px; }

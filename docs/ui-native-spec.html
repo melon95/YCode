@@ -8,9 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ═══════════════════════════════════════════════════════════════
-   A · 文档外壳 —— 与内嵌的 app 稿刻意区分开
-   ═══════════════════════════════════════════════════════════════ */
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
   --doc-bg:#12100e; --doc-panel:#1a1714; --doc-panel-2:#221d19;
@@ -60,7 +57,6 @@ li::marker{color:var(--doc-ink-3)}
 a{color:var(--doc-accent)}
 hr.rule{border:0;border-top:1px solid var(--doc-rule);margin:52px 0}
 
-/* 表格 */
 table{width:100%;border-collapse:collapse;margin:18px 0;font-size:13.5px}
 th{text-align:left;font-weight:500;font-family:var(--code);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--doc-ink-3);padding:0 14px 9px;border-bottom:1px solid var(--doc-rule);vertical-align:bottom}
 td{padding:11px 14px;border-bottom:1px solid var(--doc-rule);color:var(--doc-ink-2);vertical-align:top}
@@ -69,7 +65,6 @@ td b{color:var(--doc-ink);font-weight:500}
 tr:hover td{background:rgba(255,255,255,.017)}
 .tnum{font-family:var(--code);font-size:12px;color:var(--doc-ink)}
 
-/* 标注气泡 / 决策条 */
 .notes{counter-reset:note;margin:20px 0 0;padding:0;list-style:none;max-width:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
 .notes li{counter-increment:note;background:var(--doc-panel);padding:15px 17px 16px;margin:0;font-size:13.5px;color:var(--doc-ink-2);line-height:1.62}
 .notes li::before{content:counter(note);display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--doc-accent);color:#171310;font-family:var(--code);font-size:10px;font-weight:600;margin-right:9px;vertical-align:1px}
@@ -87,7 +82,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .tag.on{border-color:rgba(119,166,92,.5);color:var(--doc-green)}
 .tag.off{border-color:rgba(210,89,63,.45);color:var(--doc-red)}
 
-/* 舞台 —— 承载 app 稿 */
 .stage{background:#0b0a09;border:1px solid var(--doc-rule);padding:40px;margin:26px 0 0;display:flex;flex-direction:column;align-items:center;gap:14px;overflow:auto}
 .stage.tight{padding:26px}
 .cap{font-family:var(--code);font-size:11px;color:var(--doc-ink-3);text-align:center}
@@ -98,32 +92,25 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .trio>div{background:#0b0a09;padding:22px 18px;display:flex;flex-direction:column;align-items:center;gap:12px}
 @media(max-width:1100px){.duo,.trio{grid-template-columns:1fr}}
 
-/* 主题切换条 */
 .themebar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;background:rgba(18,16,14,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--doc-rule);padding:9px 40px;font-family:var(--code);font-size:11px;color:var(--doc-ink-3)}
 .themebar button{font-family:var(--code);font-size:11px;padding:4px 12px;border:1px solid var(--doc-rule);background:var(--doc-panel);color:var(--doc-ink-2);border-radius:999px;cursor:pointer}
 .themebar button.on{border-color:var(--doc-accent);color:var(--doc-accent)}
 .themebar .sp{flex:1}
 .themebar a{text-decoration:none;color:var(--doc-ink-3)}
 
-/* 色板 */
 .swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:18px 0 0}
 .sw{background:var(--doc-panel);padding:13px 15px}
 .sw .chipc{height:34px;border-radius:4px;border:1px solid rgba(255,255,255,.08);margin-bottom:9px}
 .sw .nm{font-size:12.5px;color:var(--doc-ink)}
 .sw .hx{font-family:var(--code);font-size:10.5px;color:var(--doc-ink-3);margin-top:2px}
 
-/* ═══════════════════════════════════════════════════════════════
-   B · app 组件系统 —— 所有屏幕共用这一套，改一处全稿一致
-   ═══════════════════════════════════════════════════════════════ */
 .app{font-variant-emoji:text;
-  /* 浅色（TandockThemeCatalog.light + TandockDesignSystem） */
   --bg:#ffffff; --chrome:#f4f4f6; --panel:#fbfbfc; --field:#ffffff;
   --text:#1d1d1f; --soft:#5a5a5e; --faint:#8e8e93; --line:rgba(0,0,0,.10);
   --accent:#0b63e5; --accent-soft:rgba(11,99,229,.16);
   --ok:#1A8A54; --warn:#B67707; --err:#D2382F;
   --term-bg:#ffffff; --term-fg:#1d1d1f;
   --add-bg:rgba(26,138,84,.10); --del-bg:rgba(210,56,47,.10);
-  /* 尺寸（TandockMetrics） */
   --sidebar:238px; --inspector:302px; --row:28px; --panehead:28px;
   --tabbar:38px; --head:30px; --ctrl:24px; --r:6px;
   font-family:-apple-system,"SF Pro Text","PingFang SC","IBM Plex Sans",sans-serif;
@@ -140,7 +127,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   --term-bg:#16181d; --term-fg:#e8e8ea;
   --add-bg:rgba(56,184,124,.13); --del-bg:rgba(240,101,90,.13);
 }
-/* 标题栏 + 统一工具栏 */
 .tbar{height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--chrome);border-bottom:1px solid var(--line);position:relative}
 .traffic{display:flex;gap:8px;padding-right:6px}
 .traffic i{width:12px;height:12px;border-radius:50%;display:block}
@@ -154,18 +140,15 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .seg b.on{background:var(--bg);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.18)}
 .tbtn{width:26px;height:22px;display:grid;place-items:center;border-radius:5px;color:var(--soft)}
 .tbtn.on{background:var(--accent-soft);color:var(--accent)}
-/* 画布顶栏上的面板开关：图标按钮，右上角 4px 徽标点 */
 .itab{position:relative;width:28px;height:24px;display:grid;place-items:center;border-radius:var(--r);color:var(--soft);flex:none}
 .itab.on{background:var(--accent-soft);color:var(--accent)}
 .itab svg{width:15px;height:15px;display:block}
 .itab i{position:absolute;top:1px;right:1px;width:4px;height:4px;border-radius:50%;background:var(--accent);display:block}
 .tdiv{width:1px;height:16px;background:var(--line);flex:none;margin:0 4px}
-/* 三区骨架 */
 .body{display:flex;height:var(--h,560px)}
 .side{width:var(--sidebar);flex:none;background:var(--chrome);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
 .canvas{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column}
 .insp{width:var(--inspector);flex:none;background:var(--chrome);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
-/* 通用行 */
 .row{height:var(--row);display:flex;align-items:center;gap:8px;padding:0 8px;margin:0 8px;border-radius:var(--r);min-width:0;font-size:13px}
 .row.sel{background:var(--accent);color:#fff}
 .row.sel .dim,.row.sel .kb{color:rgba(255,255,255,.78)}
@@ -178,18 +161,15 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .kb{font-family:var(--code);font-size:10px;color:var(--faint)}
 .dot{width:7px;height:7px;border-radius:50%;flex:none;display:block}
 .dot.run{background:var(--ok)}.dot.need{background:var(--warn)}.dot.idle{background:var(--faint);opacity:.55}
-/* 分组标题 */
 .grp{height:22px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11.5px;font-weight:600;color:var(--soft)}
 .grp .cnt{font-family:var(--code);font-size:10.5px;color:var(--faint);font-weight:400}
 .grp .sp{flex:1}
 .chev{width:10px;text-align:center;font-size:8px;color:var(--faint)}
-/* 面板头 —— 变更/待办/文件/shell 共用 30px */
 .phead{height:var(--head);display:flex;align-items:center;gap:8px;padding:0 10px;font-size:11.5px;font-weight:500;flex:none}
 .phead .sp{flex:1}
 .lnk{color:var(--accent);font-size:11.5px}
 .lnk.danger{color:var(--err)}
 .ell{color:var(--soft);font-size:13px;letter-spacing:.5px}
-/* 输入 */
 .field{display:flex;align-items:center;gap:7px;height:28px;padding:0 9px;background:var(--field);border:1px solid var(--line);border-radius:7px;color:var(--faint);font-size:12.5px}
 .searchrow{height:30px;display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--faint);font-size:12.5px}
 .chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;background:color-mix(in srgb,var(--text) 9%,transparent);font-size:11px;color:var(--text)}
@@ -197,11 +177,9 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .chip .n{font-family:var(--code);font-size:10.5px;color:var(--faint)}
 .chip.on .n{color:var(--accent)}
 .chip i{width:5px;height:5px;border-radius:50%;background:var(--warn);display:block}
-/* 按钮 */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:22px;padding:0 10px;border-radius:5px;background:color-mix(in srgb,var(--text) 8%,transparent);font-size:12px;color:var(--text)}
 .btn.pri{background:var(--accent);color:#fff}
 .btn.off{opacity:.42}
-/* 画布窗格 */
 .pane{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg);border:1px solid transparent;border-radius:4px;overflow:hidden}
 .pane.focus{border-color:var(--accent)}
 .pane-h{height:var(--panehead);display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line);font-size:11.5px;font-weight:500;flex:none}
@@ -219,15 +197,11 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .split>.pane+.pane{border-left:1px solid var(--line)}
 .split.v{flex-direction:column}
 .split.v>.pane+.pane{border-left:0;border-top:1px solid var(--line)}
-/* 图标占位 */
-/* agent 图标：内嵌 @lobehub/icons 的彩色裸 glyph，与 TandockAgentIcons.swift 同源 */
 .ic{width:13px;height:13px;flex:none;display:block}
-/* 选中行上 agent 图标 tint 成白色 90%，彩色 glyph 不与蓝底打架 */
 .row.sel .ic{filter:brightness(0) invert(1);opacity:.9}
 .fic{width:13px;height:13px;flex:none;display:grid;place-items:center;font-size:9px;font-family:var(--code);font-weight:600}
 .fic.ts{color:#3178c6}.fic.html{color:#e44d26}.fic.rs{color:#dea584}.fic.swift{color:#f05138}.fic.md{color:#7aa2f7}.fic.dir{color:#8b93a8}
 .fic.dir::before{content:"";display:block;width:10px;height:8px;border-radius:2px;background:currentColor;opacity:.8}.fic.json{color:#f0c674}
-/* 变更面板 */
 .fhd{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12.5px;border-bottom:1px solid var(--line)}
 .st{width:16px;height:16px;border-radius:4px;display:grid;place-items:center;font-family:var(--code);font-size:9px;font-weight:700;flex:none}
 .st.m{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
@@ -246,7 +220,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .dl.add{background:var(--add-bg)}.dl.add .tx{color:var(--ok)}
 .dl.del{background:var(--del-bg)}.dl.del .tx{color:var(--err)}
 .morebtn{height:22px;display:grid;place-items:center;background:color-mix(in srgb,var(--text) 5%,transparent);font-size:11.5px;color:var(--accent)}
-/* 待办 */
 .box{width:14px;height:14px;border-radius:4px;flex:none;display:grid;place-items:center;margin-top:1px}
 .box.todo{border:1.5px solid color-mix(in srgb,var(--text) 40%,transparent)}
 .box.doing{background:var(--warn)}
@@ -257,7 +230,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .trow .tt.done{color:var(--soft);text-decoration:line-through}
 .trow .by{font-size:11px;color:var(--faint);margin-top:1px}
 .trow .sp{flex:1}
-/* 文件树 / 编辑器 */
 .ftbar{height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--line);color:var(--soft);font-size:12px;flex:none}
 .ftbar .sp{flex:1}
 .frow{height:24px;display:flex;align-items:center;gap:6px;font-size:12.5px;border-radius:4px;margin:0 6px;padding:0 6px}
@@ -272,7 +244,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .code .n{width:32px;text-align:right;padding-right:10px;color:var(--faint);flex:none}
 .kw{color:#a626a4}.str{color:#50a14f}.cm{color:#a0a1a7}.fn{color:#4078f2}.ty{color:#c18401}
 .app.dark .kw{color:#c678dd}.app.dark .str{color:#98c379}.app.dark .cm{color:#7f848e}.app.dark .fn{color:#61afef}.app.dark .ty{color:#e5c07b}
-/* 浮层 */
 .sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 60px rgba(0,0,0,.4);overflow:hidden}
 .menu{background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 14px 40px rgba(0,0,0,.34);padding:4px;min-width:186px;font-size:12.5px}
 .menu .mi{height:22px;display:flex;align-items:center;gap:8px;padding:0 9px;border-radius:4px;color:var(--text)}
@@ -288,7 +259,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .dlg .b{font-size:11.5px;color:var(--soft);margin-top:6px;line-height:1.55}
 .dlg .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 .kbd{font-family:var(--code);font-size:10.5px;border:1px solid var(--line,var(--doc-rule));border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--soft,var(--doc-ink-2));background:var(--bg,var(--doc-panel));white-space:nowrap}
-/* 标注定位 */
 .anno{position:relative}
 .pin{position:absolute;width:18px;height:18px;border-radius:50%;background:var(--doc-accent);color:#171310;font-family:var(--code);font-size:10px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 3px rgba(217,164,65,.22);z-index:5}
 .ruler{position:absolute;border:1px dashed rgba(217,164,65,.55);pointer-events:none;z-index:4}
@@ -345,7 +315,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </nav>
 </header>
 
-<!-- ══════════════ 01 设计原则 ══════════════ -->
 <section id="principles">
   <div class="sec-head"><span class="sec-num">01</span><h2>设计原则</h2></div>
   <p class="lede">这六条不是口号，是这一版所有删减的依据。后续任何一次加控件，都要先说清它不违反哪一条。</p>
@@ -378,7 +347,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </table>
 </section>
 
-<!-- ══════════════ 02 设计基础 ══════════════ -->
 <section id="tokens">
   <div class="sec-head"><span class="sec-num">02</span><h2>设计基础与 token</h2></div>
   <p class="lede">代码里的对应物是 <code>TandockDesignSystem.swift</code>（尺寸与状态色）与 <code>TandockThemeCatalog</code>（主题色）。视图里不写颜色字面量，只取 token。</p>
@@ -460,7 +428,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
     SVGO 压缩过的 arc flag（<code>a6.1 6.1 0 013.0-.4</code>）CoreSVG 解析不了，要展开成带空格的形式；<code>fill-rule</code> 写在 <code>&lt;svg&gt;</code> 上不被继承，必须落到每个 <code>&lt;path&gt;</code> 上，否则图标糊成一团。
   </div>
 </section>
-<!-- ══════════════ 03 统一性规约 ══════════════ -->
 <section id="consistency">
   <div class="sec-head"><span class="sec-num">03</span><h2>统一性规约</h2></div>
   <p class="lede">同一件事在四个面板里有四种做法，是这一版之前最大的问题。下面十五条是全稿的横向约束——任何新面板先对照一遍，不符合就是 bug，不是风格差异。</p>
@@ -516,7 +483,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </div>
 </section>
 
-<!-- ══════════════ 04 主窗口 ══════════════ -->
 <section id="shell">
   <div class="sec-head"><span class="sec-num">04</span><h2>主窗口骨架</h2></div>
   <p class="lede">侧栏走 <code>NavigationSplitView</code>；<b>画布与面板区是 detail 里并排的两块</b>，各有各的顶部。
@@ -544,7 +510,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
       </div>
 
       <div class="body" style="--h:600px">
-        <!-- 侧栏 -->
         <div class="side">
           <div class="searchrow"><span>⌕</span><span>搜索会话</span></div>
           <div style="display:flex;gap:6px;padding:0 8px 6px"><span class="chip on">全部 <span class="n">7</span></span><span class="chip"><i></i>等你 <span class="n">1</span></span></div>
@@ -565,7 +530,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
           <div style="height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px"><span>＋</span><span>新建会话 · tandock</span><span class="sp"></span><span style="color:var(--soft)">＋项目</span></div>
         </div>
 
-        <!-- 画布 -->
         <div class="canvas">
           <div class="split" style="padding:0">
             <div class="pane focus">
@@ -589,7 +553,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
           </div>
         </div>
 
-        <!-- 检查器 · 面板栈 -->
         <div class="insp">
           <div class="sc" style="flex:1.25">
             <div class="sc-h"><span class="chev">▾</span><span>文件</span><span class="sp"></span><span class="a">⧉</span><span class="a">⤢</span><span class="a">✕</span></div>
@@ -642,7 +605,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </table>
 </section>
 
-<!-- ══════════════ 05 侧栏 ══════════════ -->
 <section id="sidebar">
   <div class="sec-head"><span class="sec-num">05</span><h2>侧栏</h2></div>
   <p class="lede">一列里装四层：搜索 → 过滤 → 项目组（会话行 + 历史区）→ 底部新建。<code>WorkspaceSidebarView.swift</code>。</p>
@@ -728,7 +690,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </ol>
 </section>
 
-<!-- ══════════════ 06 画布 ══════════════ -->
 <section id="canvas">
   <div class="sec-head"><span class="sec-num">06</span><h2>画布与窗格</h2></div>
   <p class="lede">画布是格位模型：一格要么是一个会话，要么是 agent 选择器，最多 4 格。<code>TerminalWorkspaceView.swift</code>。</p>
@@ -847,7 +808,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 </section>
 
 <style>
-/* §07 面板栈 */
 .sc{display:flex;flex-direction:column;min-height:0;border-bottom:1px solid var(--line)}
 .sc:last-child{border-bottom:0}
 .sc-h{height:30px;display:flex;align-items:center;gap:7px;padding:0 10px;font-size:11.5px;font-weight:600;flex:none;background:color-mix(in srgb,var(--text) 4%,transparent)}
@@ -858,7 +818,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .grip{height:5px;background:color-mix(in srgb,var(--text) 6%,transparent);flex:none}
 </style>
 
-<!-- ══════════════ 07 检查器外壳 ══════════════ -->
 <section id="inspector">
   <div class="sec-head"><span class="sec-num">07</span><h2>检查器 · 面板栈</h2></div>
   <p class="lede">
@@ -1146,7 +1105,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 </section>
 
 <style>
-/* §08 文件区专用组件（与 §09 变更区同构：顶栏 → 左树 → 右内容） */
 .fv{display:flex;flex-direction:column;height:100%}
 .fv-top{height:44px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--line);flex:none}
 .fv-top .lead{display:flex;align-items:center;padding-right:8px}
@@ -1177,7 +1135,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .app.dark .jk{color:#7aa2f7}.app.dark .jv{color:#9ece6a}.app.dark .jn{color:#f7768e}
 </style>
 
-<!-- ══════════════ 08 文件 ══════════════ -->
 <section id="files">
   <div class="sec-head"><span class="sec-num">08</span><h2>文件</h2></div>
   <p class="lede">
@@ -1414,7 +1371,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 </section>
 
 <style>
-/* §09 变更视图专用组件（与 §02 token 同源） */
 .cv{display:flex;flex-direction:column;height:100%}
 .cv-top{height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);flex:none}
 .cv-toggle{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-size:12px}
@@ -1466,7 +1422,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
 .sub{position:relative}
 </style>
 
-<!-- ══════════════ 09 变更 ══════════════ -->
 <section id="changes">
   <div class="sec-head"><span class="sec-num">09</span><h2>变更</h2></div>
   <p class="lede">
@@ -1748,7 +1703,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </table>
 </section>
 
-<!-- ══════════════ 10 待办 ══════════════ -->
 <section id="todos">
   <div class="sec-head"><span class="sec-num">10</span><h2>待办</h2></div>
   <p class="lede">这份清单的特别之处是 <b>agent 和你在写同一份</b>（<code>ycode-todos</code> MCP 经 UDS 读写同一张 <code>project_todos</code> 表）。面板要回答的是「刚才那条是谁动的、动成了什么样」，不是「有几项待办」。</p>
@@ -1819,7 +1773,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </div>
 </section>
 
-<!-- ══════════════ 11 浮层 ══════════════ -->
 <section id="overlays">
   <div class="sec-head"><span class="sec-num">11</span><h2>浮层与对话框</h2></div>
   <p class="lede">三类：命令面板（sheet）、新建会话（就地，不是浮层）、系统 alert / confirmationDialog。<b>没有会话信息浮层</b>——见 §01。规则：<b>只有破坏性动作才用确认框</b>。</p>
@@ -1926,7 +1879,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </table>
 </section>
 
-<!-- ══════════════ 12 空状态 ══════════════ -->
 <section id="empty">
   <div class="sec-head"><span class="sec-num">12</span><h2>空状态与文案基准</h2></div>
   <p class="lede">空状态不是「这里什么都没有」，是「下一步做什么」或「这东西是怎么工作的」。统一两行：标题陈述事实，说明给出路。</p>
@@ -2009,7 +1961,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </ul>
 </section>
 
-<!-- ══════════════ 13 设置 ══════════════ -->
 <section id="settings">
   <div class="sec-head"><span class="sec-num">13</span><h2>设置</h2></div>
   <p class="lede">系统 <code>Settings</code> scene，三组十二页，按用户心智分组而不是按实现模块。<b>即时生效</b>，没有保存／取消。</p>
@@ -2083,7 +2034,6 @@ tr:hover td{background:rgba(255,255,255,.017)}
   </div>
 </section>
 
-<!-- ══════════════ 14 交付 ══════════════ -->
 <section id="deliver">
   <div class="sec-head"><span class="sec-num">14</span><h2>交付与落点</h2></div>
   <p class="lede">这一节把稿子和仓库对上：哪条规则落在哪个文件、哪些还没做、以及这套界面是怎么打包成 <code>/Applications/Tandock.app</code> 的。</p>

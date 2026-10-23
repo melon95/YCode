@@ -1,7 +1,6 @@
 import CryptoKit
 import Foundation
 
-// All arguments are public metadata. Private update keys never enter this tool.
 let args = CommandLine.arguments
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))

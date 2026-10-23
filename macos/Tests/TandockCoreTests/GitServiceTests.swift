@@ -52,7 +52,6 @@ struct GitServiceTests {
         try fixture.git("add", "second.txt")
         try fixture.git("commit", "-m", "add second")
 
-        // 提交之外还留一处没提交的改动，它只该出现在 uncommitted 与 branch 两个范围里。
         try fixture.file("base.txt", "base changed\n")
 
         let service = TandockGitService()
@@ -66,7 +65,6 @@ struct GitServiceTests {
         let commit = try service.changes(root: fixture.root, scope: .commit(sha: firstSHA)).map(\.path)
         #expect(commit == ["first.txt"])
 
-        // 只读范围里没有工作区那一列（状态只有一个字符），写操作也由 scope 直接挡住。
         #expect(TandockGitDiffScope.uncommitted.allowsWrites)
         #expect(!TandockGitDiffScope.branch(base: "main").allowsWrites)
         #expect(!TandockGitDiffScope.commit(sha: firstSHA).allowsWrites)

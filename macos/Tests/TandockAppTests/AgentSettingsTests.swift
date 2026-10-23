@@ -26,7 +26,6 @@ struct AgentSettingsTests {
 
         let workspace = WorkspaceModel(dataRootOverride: root)
         #expect(workspace.agentProfiles == [disabled])
-        // The empty-availability fallback must never reintroduce disabled agents.
         #expect(workspace.availableAgentProfiles.isEmpty)
         reopened.setAgentEnabled(id: custom.id, enabled: true)
         reopened.save()

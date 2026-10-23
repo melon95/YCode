@@ -52,8 +52,6 @@ struct SidebarOverlayTests {
             host.layoutSubtreeIfNeeded()
         }
 
-        /// Polls until `done` holds, for at most two seconds. A fixed sleep raced the
-        /// 220 ms dismissal timer and the slide animation when suites ran in parallel.
         func settle(until done: () throws -> Bool) async throws {
             let deadline = ContinuousClock.now + .seconds(2)
             repeat {

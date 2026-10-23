@@ -6,7 +6,6 @@ umask 077
 KEYCHAIN="$RUNNER_TEMP/tandock-signing.keychain-db"
 CERTIFICATE="$RUNNER_TEMP/tandock-certificate.p12"
 KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-# Mask the generated password too; never print certificate/private-key data.
 echo "::add-mask::$KEYCHAIN_PASSWORD"
 printf '%s' "$APPLE_CERTIFICATE_P12_BASE64" | /usr/bin/base64 --decode > "$CERTIFICATE"
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"

@@ -5,8 +5,6 @@ import Testing
 @testable import TandockApp
 import TandockCore
 
-/// 自绘更新窗口：错误归类、驱动的状态流转，以及每个阶段都能排版出非空的视图。
-/// 设 `YCODE_UPDATE_SNAPSHOT_DIR` 可以把每个阶段渲染成 PNG 供人工查看。
 @Suite("Update window", .serialized)
 @MainActor
 struct UpdateWindowTests {
@@ -119,8 +117,6 @@ struct UpdateWindowTests {
             try? FileManager.default.removeItem(at: directory)
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
-        // No SUFeedURL: start permits this, while each user check produces a local configuration
-        // error before any feed request. This isolated fixture can never download or install an app.
         let info: [String: Any] = [
             "CFBundleIdentifier": bundleID, "CFBundleName": "Tandock Update Test",
             "CFBundleVersion": "1", "CFBundlePackageType": "BNDL",
@@ -293,8 +289,6 @@ struct UpdateWindowTests {
                         capturedMeasurements.withLock { $0.append(measurement) }
                     }
                 ))
-                // Older SwiftUI versions place provisional layouts while computing
-                // fittingSize. Assert the settled card, after assigning its real frame.
                 let fittingSize = host.fittingSize
                 capturedMeasurements.withLock { $0.removeAll() }
                 host.frame = NSRect(origin: .zero, size: fittingSize)
@@ -374,7 +368,6 @@ struct UpdateWindowTests {
 
 import Sparkle
 
-/// Sparkle 只公开状态的解码构造；用协议公开的 NSCoder 入口构造尚未下载的测试状态。
 private final class UpdateStateCoder: NSCoder {
     private let stage: SPUUserUpdateStage
     init(stage: SPUUserUpdateStage = .notDownloaded) { self.stage = stage; super.init() }

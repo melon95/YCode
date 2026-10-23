@@ -48,9 +48,6 @@ public struct TandockBoundedByteBacklog: Equatable, Sendable {
     }
 }
 
-/// Owns the PTY process independently from any SwiftUI/AppKit terminal view.
-/// SwiftTerm calls its delegate on a private queue; state changes and consumer
-/// callbacks are delivered on the main thread.
 public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProcessDelegate, TerminalDelegate {
     public let id: String
     public private(set) var runID = UUID().uuidString
@@ -91,9 +88,6 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     public init(id: String, columns: Int = 80, rows: Int = 24, backlogCapacity: Int = 256 * 1024) {
         self.id = id
         self.backlog = TandockBoundedByteBacklog(capacity: backlogCapacity)
-        // The runtime terminal is headless: replay is owned by the bounded raw
-        // backlog and each attached TerminalView owns its visible scrollback.
-        // Keeping a second 10k-line scrollback here doubled retained output.
         terminal = Terminal(delegate: forwarder, options: TerminalOptions(cols: columns, rows: rows, scrollback: 0))
         super.init()
         forwarder.target = self
@@ -165,8 +159,6 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
         attachedViews.removeAll { $0.value == nil || $0.value === view }
     }
 
-    /// The forkpty child is the process-group leader. Signal the whole group
-    /// so an agent's shell children cannot survive an archive or restart.
     public func terminate() {
         guard processIdentifier > 0, status.isLive else { return }
         if kill(-processIdentifier, SIGHUP) != 0 { _ = kill(processIdentifier, SIGHUP) }
@@ -191,9 +183,6 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
 
     public func dataReceived(slice: ArraySlice<UInt8>) {
         let bytes = Array(slice)
-        // LocalProcess drains on the main queue with bounded pending bytes.
-        // Coalesce small chunks for one run-loop turn, but flush synchronously
-        // at the limit so output cannot escape into an unbounded async queue.
         if Thread.isMainThread {
             MainActor.assumeIsolated { enqueueOutput(bytes) }
         } else {
@@ -207,7 +196,6 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     private func enqueueOutput(_ bytes: [UInt8]) {
         if !bytes.isEmpty, !loggedFirstDelegate {
             loggedFirstDelegate = true
-            // SwiftTerm already delivers on main; this is not a raw PTY read timestamp.
             startupTrace?.mark("first_output.delegate_received bytes=\(bytes.count)")
         }
         pendingOutput.append(contentsOf: bytes)
@@ -242,8 +230,6 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
         backlog.append(ArraySlice(bytes))
         terminal.feed(buffer: ArraySlice(bytes))
         if let trace = startupTrace {
-            // Inspect the already parsed screen, so OSC/CSI-only output does not
-            // masquerade as visible text. Never persist the screen's contents.
             if !loggedFirstScreenText {
                 let hasText = (0..<terminal.rows).contains { row in
                     guard let line = terminal.getLine(row: row) else { return false }
@@ -274,15 +260,11 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     private func logFirstViewFeed() {
         guard !loggedFirstFeed else { return }
         loggedFirstFeed = true
-        // A feed is not a rendered frame or proof that the Agent is ready.
         startupTrace?.mark("first_output.fed_to_view")
     }
 
     @MainActor
     private func retireAfterDrainingOutput() {
-        // The process exit source may run before LocalProcess's last buffered
-        // reads. Keep this runtime alive through a short quiet period so a
-        // fast exit cannot discard its output tail when the pool releases it.
         outputDrainTask?.cancel()
         outputDrainTask = Task { [self] in
             try? await Task.sleep(for: .milliseconds(100))
@@ -335,8 +317,6 @@ public final class TandockSessionProcessPool {
 
     public init() {}
 
-    /// Share one in-flight launch across windows. Stop/archive invalidates it so
-    /// an asynchronous preflight cannot bring a closed session back to life.
     func performLaunch(id: String, operation: @escaping @MainActor () async throws -> SessionMetadata) async throws -> SessionMetadata {
         if let pending = pendingLaunches[id] { return try await pending.task.value }
         let token = UUID()

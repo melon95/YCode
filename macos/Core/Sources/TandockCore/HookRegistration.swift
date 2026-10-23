@@ -4,8 +4,6 @@ public enum TandockHookRegistrationStatus: Equatable, Sendable {
     case installed
     case notInstalled
     case conflictUserNotify(existing: [String])
-    /// Installed, but a managed entry still runs a helper other than this
-    /// bundle's (an older install location or the pre-rename `ycode-notify`).
     case stale(registered: String)
 
     public var isStale: Bool {
@@ -31,9 +29,6 @@ public enum TandockHookRegistrationError: LocalizedError, Equatable {
     }
 }
 
-/// Additive config patcher for Claude hooks and ownership-marked Codex
-/// notify/PermissionRequest hooks. Uninstall removes only Tandock's entries;
-/// chained Codex notify commands are restored byte-for-value.
 public actor TandockHookRegistrationService {
     public static let claudeMarkerKey = "_ycode_managed"
     public static let codexNotifyMarker = "# ycode-managed (do not edit this line or the one below)"
@@ -73,10 +68,6 @@ public actor TandockHookRegistrationService {
         }
     }
 
-    /// Rewrites only the helper path inside Tandock's managed entries. Unlike a
-    /// reinstall this keeps whatever the agent added around them, such as a
-    /// wrapper that chains Codex `notify` or Codex's hook trust state.
-    /// Returns whether a change was written.
     @discardableResult
     public func repairStaleHelperPath(for agent: TandockMCPAgent) throws -> Bool {
         guard case .stale = try status(for: agent) else { return false }
@@ -249,7 +240,6 @@ public actor TandockHookRegistrationService {
         return .notInstalled
     }
 
-    /// Helper paths referenced by the managed notify line and hooks block.
     private func codexRegisteredHelpers(in raw: String) -> [String] {
         var paths: [String] = []
         if let (_, value) = topLevelNotify(in: raw),
@@ -271,9 +261,6 @@ public actor TandockHookRegistrationService {
         return paths
     }
 
-    /// Finds Tandock's `<helper> turn_complete codex` invocation, either as the
-    /// notify command itself or JSON-encoded inside a wrapper's argument (Codex
-    /// Computer Use chains the previous notify that way).
     private func notifyHelperPath(in arguments: [String]) -> String? {
         if arguments.count >= 3, arguments[1] == "turn_complete", arguments[2] == "codex" {
             return arguments[0]
@@ -299,7 +286,6 @@ public actor TandockHookRegistrationService {
         var raw = try String(contentsOf: codexConfigURL, encoding: .utf8)
         let stale = Set(codexRegisteredHelpers(in: raw).filter { $0 != helperURL.path })
         for old in stale {
-            // Ranges shift after each rewrite, so look each region up again.
             if let (range, _) = topLevelNotify(in: raw) {
                 raw.replaceSubrange(range, with: HelperPathText.replacingTOMLSpellings(
                     of: old, with: helperURL.path, in: String(raw[range])))
@@ -364,8 +350,6 @@ public actor TandockHookRegistrationService {
         let firstTable = raw.range(of: #"(?m)^\s*\["#, options: .regularExpression)?.lowerBound ?? raw.endIndex
         let root = raw[..<firstTable]
         guard let range = root.range(
-            // Whitespace after the array must not consume the managed-hooks
-            // marker on the next line; it would make the notify value unparseable.
             of: #"(?m)^[ \t]*notify[ \t]*=[ \t]*(\[[^\r\n]*\])[ \t]*(?:#[^\r\n]*)?(?:\r?\n|$)"#,
             options: .regularExpression
         ) else { return nil }

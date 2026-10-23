@@ -17,8 +17,6 @@ struct TandockNativeApp: App {
             DeferredNativeRootView().frame(minWidth: TandockMetrics.windowMinWidth, minHeight: 640)
         }
         .defaultSize(width: 1240, height: 780)
-        // 画布与面板区是同级的两块：标题栏交给内容自己画，
-        // 系统工具栏会横贯整窗、把面板区压在下面（设计稿 §04／§07）。
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -111,9 +109,6 @@ struct TandockNativeApp: App {
     }
 }
 
-/// Present native window chrome before synchronous repository and integration
-/// setup. The previous root constructed WorkspaceModel while SwiftUI was still
-/// creating the first window, so launch had no visible feedback for that work.
 private struct DeferredNativeRootView: View {
     @State private var isReady = false
 
@@ -195,7 +190,6 @@ private struct NativeRootView: View {
     @State private var isFullScreen = false
 
     @StateObject private var sidebarPresentation = TandockSidebarPresentation()
-    /// 侧栏是被窄窗口自动收起的（而不是用户收的）——窗口变宽时只自动恢复这一种。
     @State private var sidebarAutoCollapsed = false
     @State private var showingCommandPalette = false
     @State private var renameTarget: SessionMetadata?
@@ -214,7 +208,6 @@ private struct NativeRootView: View {
             .dynamicTypeSize(model.uiDynamicTypeSize)
             .preferredColorScheme(model.preferredColorScheme)
             .tint(Color(hex: model.activeTheme.accent))
-            // 窗口底色就是侧栏、顶栏、画布缝隙共用的那一层，窗格与卡片浮在它上面。
             .background(Color.tandockChrome)
     }
 
@@ -230,7 +223,6 @@ private struct NativeRootView: View {
             applyAutoSidebarCollapse(windowWidth: width)
         }
         .onAppear {
-            // 窗口是从上次保存的尺寸恢复的，宽度一开始就可能偏窄，不会再触发尺寸变化。
             DispatchQueue.main.async { applyAutoSidebarCollapse(windowWidth: windowWidthNow()) }
         }
         .background {
@@ -276,14 +268,8 @@ private struct NativeRootView: View {
             )
             .ignoresSafeArea(.container, edges: .top)
         } detail: {
-            // 画布 + 面板区并排。面板区自绘而不是用系统 `.inspector`：
-            // 系统那条会在顶上留一段永远空着的工具栏区，而且撑不起多列（设计稿 §07）。
-            // 面板区能拉多宽取决于这块**容器**有多宽（画布留够最小宽，剩下的都归面板区）。
-            // GeometryReader 得套在外面：套成 `.background` 量到的是 HStack 自己撑开后的宽度，
-            // 面板区一旦超宽，那个宽度就跟着变大，等于拿自己的结果给自己当上限，钳不住。
             GeometryReader { proxy in
                 HStack(spacing: 0) {
-                    // 顶栏与画布之间不画线：顶栏融进底色，下面的窗格是浮卡，层次由卡片表达。
                     VStack(spacing: 0) {
                         canvasTopBar
                         projectDetail
@@ -298,14 +284,11 @@ private struct NativeRootView: View {
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                // 只认这两件事：面板区开合、列数增减。宽度还会因为拖分隔条和窗口改宽而变，
-                // 那两种是跟手的，`value:` 里不带它们，就不会被这条动画接管。
                 .animation(TandockMotion.panelArea, value: model.inspectorIsVisible)
                 .animation(TandockMotion.panelArea, value: model.panelColumns.count)
                 .onAppear { model.setAvailableDetailWidth(proxy.size.width) }
                 .onChange(of: proxy.size.width) { _, width in model.setAvailableDetailWidth(width) }
             }
-            // 画布内容延伸到标题栏，顶栏与侧栏的搜索栏保持同高。
             .ignoresSafeArea(.container, edges: .top)
         }
     }
@@ -517,7 +500,6 @@ private struct NativeRootView: View {
         )
     }
 
-    /// 终端占满整个内容区，底下压一条状态栏 —— 进程信息、分支、字号都归它（设计稿问题 01）。
     @ViewBuilder
     private var projectDetail: some View {
         if model.selectedProject != nil {
@@ -530,7 +512,6 @@ private struct NativeRootView: View {
         }
     }
 
-    /// 已确认的空状态：整个工作区承载打开项目入口，不显示空侧栏与项目工具。
     private var noProjectState: some View {
         NoProjectView(
             isDropTargeted: $isDropTargeted,
@@ -543,7 +524,6 @@ private struct NativeRootView: View {
         .onAppear { model.refreshAgentAvailability() }
     }
 
-    /// 拖进来的若不是目录，落地后在卡片下方给一句具体原因，不弹窗。
     private func adoptDroppedFolders(_ providers: [NSItemProvider]) {
         let l10n = TandockLocalization(locale: model.locale)
         dropRejection = nil
@@ -563,8 +543,6 @@ private struct NativeRootView: View {
         }
     }
 
-    /// 只喂给窗口标题（「窗口」菜单、调度中心那些地方按它认窗口）。
-    /// 画布顶栏不再画它——那条名字在下面的窗格头里已经有了。
     private var focusedSessionTitle: String {
         guard let session = model.focusedCanvasSessionID.flatMap({ model.session(id: $0) }) else { return "" }
         return model.displayName(for: session)
@@ -578,8 +556,6 @@ private struct NativeRootView: View {
         }
     }
 
-    /// 窗口窄于 `sidebarAutoCollapseWidth` 就收起侧栏把空间让给画布；变宽后只恢复自动收起的那次，
-    /// 用户自己收起的不动。
     private func applyAutoSidebarCollapse(windowWidth: CGFloat) {
         if windowWidth < TandockMetrics.sidebarAutoCollapseWidth {
             guard sidebarPresentation.isExpanded else { return }
@@ -597,7 +573,6 @@ private struct NativeRootView: View {
 
     private var sidebarIsHidden: Bool { !sidebarPresentation.isExpanded }
 
-    /// 画布顶栏 44：它只属于画布，右缘就是画布的右边界；面板区不在它下面，而是它右边的另一块。
     private var canvasTopBar: some View {
         let l10n = TandockLocalization(locale: model.locale)
         return HStack(spacing: 6) {
@@ -609,8 +584,6 @@ private struct NativeRootView: View {
             .buttonStyle(TandockIconButtonStyle())
             .help(l10n.text("showHideProjectSidebar") + " ⌘B")
 
-            // 顶栏只说项目。聚焦会话的名字紧挨着就在下面那条窗格头里，
-            // 同一个标题连写两行，上面那行除了把顶栏撑成两层高之外不提供任何信息。
             if let project = model.selectedProject {
                 Text(project.displayTitle)
                     .font(.system(size: 13, weight: .semibold))
@@ -639,7 +612,6 @@ private struct NativeRootView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                // 数量变化时重建原生分段控件，避免保留上一组布局选项。
                 .id(model.canvasPaneCount)
                 .fixedSize()
                 .disabled(layouts.count <= 1)
@@ -648,7 +620,6 @@ private struct NativeRootView: View {
                 Divider().frame(height: 16)
             }
 
-            // 四个开关是一组，彼此挨着站（2），跟左边的布局控件之间才拉开距离。
             HStack(spacing: 2) {
                 ForEach(TandockWorkspacePanel.shortcutPanels + [.attention]) { panel in
                     panelToggle(panel)
@@ -656,16 +627,13 @@ private struct NativeRootView: View {
             }
             .padding(.leading, 2)
         }
-        // 窗口模式下侧栏收起时给红绿灯让位；全屏不保留按钮占位。
         .padding(.leading, sidebarIsHidden && !isFullScreen ? TandockMetrics.trafficLightWidth : 10)
         .padding(.trailing, 6)
         .frame(height: TandockMetrics.topBarHeight)
         .background(Color.tandockChrome)
     }
 
-    /// 画布与面板区之间的分隔条。列宽在 260–460 之间，画布最小 420。
     private var panelAreaDivider: some View {
-        // 面板区与画布之间也不画线：两边都是浮卡，中间露出的底色就是分隔。只留拖动命中区。
         Rectangle()
             .fill(Color.clear)
             .frame(width: 1)
@@ -685,8 +653,6 @@ private struct NativeRootView: View {
             }
     }
 
-    /// 面板开关：亮起 = 这个面板正在面板区里；再按一次关掉它。
-    /// 右上角 4 px 圆点只回答「有没有」，具体数字在卡头上。
     private func panelToggle(_ panel: TandockWorkspacePanel) -> some View {
         let l10n = TandockLocalization(locale: model.locale)
         let isOn = model.openPanels.contains(panel) && model.inspectorIsVisible
@@ -760,7 +726,6 @@ private struct NativeRootView: View {
         model.addProject(directory: url)
     }
 
-    /// ⌘N 就地把选择器摆进画布，没有中间对话框（设计稿 §06 标注 1）。
     private func presentNewSession() {
         guard !model.projects.isEmpty else { openProjectPanel(); return }
         model.reloadAgentProfiles()
@@ -807,12 +772,9 @@ private struct TandockWindowTagBridge: NSViewRepresentable {
             guard let window = view.window else { return }
             window.identifier = NSUserInterfaceItemIdentifier(token)
             if let title { window.title = title }
-            // 内容一直铺到窗口最顶：画布顶栏与面板区的第一张卡就画在原来标题栏那一行里，
-            // 不再有一条横贯整窗、什么都不放的空白（设计稿 §04）。
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
-            // 隐藏标题栏的窗口里 SwiftUI 的 minWidth 不一定管得住窗口本身，窗口最小尺寸在 AppKit 层定死。
             window.contentMinSize = NSSize(width: TandockMetrics.windowMinWidth, height: 580)
             coordinator.connect(to: window, isFullScreen: $isFullScreen)
         }
@@ -836,7 +798,6 @@ private struct TandockWindowTagBridge: NSViewRepresentable {
                         MainActor.assumeIsolated { self?.scheduleAlignment() }
                     })
                 }
-                // AppKit 可能在布局时复位按钮；跟随实际 frame 变化，不依赖固定延时。
                 for button in buttons(in: window) {
                     button.postsFrameChangedNotifications = true
                     observers.append(center.addObserver(forName: NSView.frameDidChangeNotification,
@@ -879,7 +840,6 @@ private struct TandockWindowTagBridge: NSViewRepresentable {
         private func alignButtons() {
             guard let window, !window.styleMask.contains(.fullScreen),
                   let content = window.contentView else { return }
-            // 使用窗口坐标统一中心线，保留系统按钮的横向位置、外观和点击行为。
             let contentTop = content.convert(content.bounds, to: nil).maxY
             let center = NSPoint(x: 0, y: contentTop - TandockMetrics.topBarHeight / 2)
             for button in buttons(in: window) {
@@ -930,7 +890,6 @@ final class TandockProjectWindowManager: NSObject, NSWindowDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.setContentSize(NSSize(width: 1120, height: 720))
         window.minSize = NSSize(width: TandockMetrics.windowMinWidth, height: 580)
-        // Persisted frame key predates the product rename.
         window.setFrameAutosaveName("YCode Project \(project.id)")
         window.isReleasedWhenClosed = false
         window.delegate = self

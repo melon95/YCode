@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 import TandockCore
 
-/// 文件树的图标。用的是 material-icon-theme —— 跟非原生版同一套主题，
-/// 所以同一个项目在两边看起来是一样的。认不出的类型回退到主题自带的默认 file / folder。
 struct TandockFileIconView: View {
     let name: String
     let isDirectory: Bool
@@ -32,7 +30,6 @@ struct TandockFileIconView: View {
             return isExpanded ? TandockFileIconCatalog.defaultFolderExpanded : TandockFileIconCatalog.defaultFolder
         }
         if let exact = TandockFileIconCatalog.byFileName[lower] { return exact }
-        // 先试复合扩展名（.d.ts、.test.tsx），再退回最后一段
         let pieces = lower.split(separator: ".").map(String.init)
         if pieces.count > 2, let compound = TandockFileIconCatalog.byExtension[pieces.suffix(2).joined(separator: ".")] {
             return compound

@@ -124,8 +124,6 @@ public final class TandockAgentSessionService {
                 try Task.checkCancellation()
                 row = try repository.session(id: row.id)
                 guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(row.id) }
-                // Persist a new Claude identity only after preflight succeeds, so a
-                // retry after a missing executable still creates its first history.
                 if let newNativeID {
                     try repository.setAgentSessionID(id: row.id, agentSessionID: newNativeID)
                     row = try repository.session(id: row.id)
@@ -213,8 +211,6 @@ public final class TandockAgentSessionService {
 
     public func stopSession(id: String) async throws {
         processPool.cancelPendingLaunch(id: id)
-        // An exited session no longer needs a cached runtime. A late/double
-        // Stop action on an existing session remains harmless after eviction.
         guard let runtime = processPool.runtime(id: id) else {
             _ = try repository.session(id: id)
             attention.remove(sessionID: id)
@@ -246,11 +242,6 @@ public final class TandockAgentSessionService {
         onSessionsChanged?()
     }
 
-    /// 把闲置超过 `interval` 的会话一次性归档，返回真正被归档的那些。
-    /// 正在跑的进程一律跳过：进程活着就说明这条会话还在用，
-    /// 而终端里的输入输出并不会去更新数据库的 updated_at。
-    ///
-    /// 这是幂等的——已经归档的不会再动，所以启动时调一次、之后定时调都安全。
     @discardableResult
     public func archiveIdleSessions(
         olderThan interval: TimeInterval = TandockSessionArchivePolicy.idleInterval,
@@ -270,14 +261,6 @@ public final class TandockAgentSessionService {
         return archived
     }
 
-    /// 彻底删除一条会话：进程停掉、库里的行删掉，磁盘上的 jsonl 一起收走。
-    ///
-    /// jsonl 走「移到废纸篓」而不是直接 unlink——那是用户自己 ~/.claude、~/.codex 底下的文件，
-    /// 不是我们的数据。删错了还能从废纸篓里拖回来，代价只是它暂时还占着磁盘。
-    /// 废纸篓不可用（比如外置卷）时才退回真删，否则「删除」这个动作会莫名其妙地失败。
-    ///
-    /// 路径优先用库里记着的；记录缺失时用调用方扫出来的 `fallbackJsonlPath`。
-    /// 两边都没有就只删库——并且如实返回 nil，界面得告诉用户「下次扫描它可能还会回来」。
     @discardableResult
     public func deleteSession(id: String, fallbackJsonlPath: String? = nil) async throws -> URL? {
         try await removeRuntime(id: id)
@@ -305,12 +288,6 @@ public final class TandockAgentSessionService {
         onSessionsChanged?()
     }
 
-    /// Codex 自己有 `codex archive` / `codex unarchive`，归档同步过去，
-    /// 它的 resume 选择器里才不会还列着这条。Claude Code 没有归档这个概念，
-    /// 只能记在我们自己的库里。
-    ///
-    /// 不等它返回：归档在 tandock 这边已经落库了，CLI 那边同步成不成功都不该拦着界面，
-    /// 更不能因为某个 CLI 卡住就把归档这个动作一起挂起。
     private func syncAgentArchive(session: SessionMetadata?, archived: Bool) {
         guard let session,
               let agentSessionID = session.agentSessionID,
@@ -335,7 +312,6 @@ public final class TandockAgentSessionService {
         return row
     }
 
-    /// Retries are explicit for failures; metadata discovery retries names waiting for a file/ID.
     public func retryPendingTitle(id: String) {
         guard Self.titleTasks[id] == nil, (try? repository.sessionTitleSyncError(id: id)) == nil, let row = try? repository.session(id: id),
               let title = try? repository.pendingSessionTitle(id: id) else { return }
@@ -370,7 +346,6 @@ public final class TandockAgentSessionService {
                 return TandockAgentSessionTitleWriter.write(title: title, introspect: profile.introspect,
                     jsonlPath: path, sessionID: current.agentSessionID, command: profile.command, environment: env)
             }.value
-            // Only the final queued request owns cleanup and user feedback.
             guard (try? repository.pendingSessionTitle(id: current.id)) == title else { return }
             switch outcome {
             case .written:
@@ -383,7 +358,7 @@ public final class TandockAgentSessionService {
                                                        error: confirmed == nil ? "未能读回名称" : nil)
                 if confirmed == nil { onTitleSyncError?("名称已保留在 Tandock，CLI 名称尚未确认") }
             case .missingFile:
-                return // Newly created sessions retry after identity/file discovery.
+                return
             case .unsupported:
                 try? repository.finishSessionTitleSync(id: current.id, requested: title, confirmed: nil, error: "此 Agent 暂不支持名称同步")
                 onTitleSyncError?("此 Agent 暂不支持名称同步，名称已保留在 Tandock")
@@ -494,8 +469,6 @@ public final class TandockAgentSessionService {
         do {
             plan = try await build(shellEnvironment)
         } catch TandockAgentSettingsError.missingProgram(let command) where shellEnvironment != nil {
-            // 快照可能早于用户刚装的工具（rc 里新加了 PATH）。重新解析一次再判，免得误报；
-            // 解析不出来就交给旧的登录 shell 路径做最后判断。
             try Task.checkCancellation()
             startupTrace?.mark("shell_env.retry_after_missing")
             guard let store = shellEnvironmentStore,
@@ -514,14 +487,10 @@ public final class TandockAgentSessionService {
         return plan
     }
 
-    /// 优先用缓存的快照（项目的，没有就 home 的），同时在后台刷新；改了 rc，刷新完成后的启动才生效。
-    /// 一份都没有时等一次解析；最近解析失败就别再干等超时，直接走旧的登录 shell 路径。
     private func shellEnvironment(for directory: URL, startupTrace: TandockSessionStartupTrace?) async -> TandockShellEnvironment? {
         guard let store = shellEnvironmentStore else { return nil }
         defer { store.refresh(directory) }
         if let cached = store.cached(for: directory) {
-            // home 的快照是在 `$HOME` 下求值的，rc 里按目录选 Node/Python 版本的逻辑不算数。
-            // 项目自己的快照多数几百毫秒内就能拿到，值得短暂等一下；等不到再用 home 的。
             if cached.scope == .home, store.recentFailure(for: directory) == nil,
                let project = await store.resolve(directory, waitingAtMost: Self.projectSnapshotBudget) {
                 startupTrace?.mark("shell_env.resolve scope=project waited_for_project=true")

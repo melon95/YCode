@@ -95,7 +95,7 @@ struct AgentSessionRuntimeTests {
         #expect(shellDelay >= 150)
         #expect(textDelay >= 200)
         #expect(runtime.backlogText.contains(secret))
-        #expect(!runtime.backlogText.contains("ready")) // Side-channel marker never enters the PTY.
+        #expect(!runtime.backlogText.contains("ready"))
         #expect(!log.contains(secret))
     }
 
@@ -105,7 +105,6 @@ struct AgentSessionRuntimeTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let monitor = TandockSessionStartupMonitor(trace: .init(dataRoot: directory))
         defer { monitor.stop() }
-        // Deliberately block the main actor; the monitor must keep running.
         usleep(700_000)
         let logURL = directory.appendingPathComponent("logs/session-startup.log")
         #expect(await eventually {
@@ -117,8 +116,6 @@ struct AgentSessionRuntimeTests {
         })
     }
 
-    /// "shell-env" waits on a slow shell environment snapshot; "fallback" has no store and waits on the
-    /// legacy login-shell probe. Both pending phases must leave main responsive and honour stop/archive.
     @Test("slow preflight leaves main responsive and respects stop/archive", arguments: [false, true], ["none", "stop", "archive", "shell-env:none", "shell-env:stop", "shell-env:archive"])
     func asynchronousPreflight(resume: Bool, variant: String) async throws {
         let usesShellEnvironment = variant.hasPrefix("shell-env:")
@@ -170,7 +167,6 @@ struct AgentSessionRuntimeTests {
             return try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Create")
         }
         #expect(await eventually { FileManager.default.fileExists(atPath: entered.path) })
-        // This continuation runs on main while the shell is still waiting for us.
         #expect(!finished)
         let row = try #require(repository.listSessions(projectID: project.id).first)
         #expect(pool.runtime(id: row.id) == nil)
@@ -429,8 +425,6 @@ struct AgentSessionRuntimeTests {
         let childRun = try String(contentsOf: runFile, encoding: .utf8)
         let attention = TandockAttentionStore.shared(dataRoot: data)
         #expect(attention.currentRunID(sessionID: row.id) == childRun)
-        // One turn finishes, then the next asks for approval. In the other order a
-        // turn end retires the earlier approval (see AttentionStoreTests).
         #expect(attention.accept(.init(terminalID: row.id, source: "codex", eventKind: "turn_complete", bodyPreview: "Result", runID: childRun)))
         #expect(attention.accept(.init(terminalID: row.id, source: "codex", eventKind: "permission_request", bodyPreview: "Approval", runID: childRun)))
         #expect(Set(attention.items.map(\.kind.rawValue)) == ["approval", "completion"])

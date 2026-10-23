@@ -3,8 +3,6 @@ set -euo pipefail
 
 MODE="${1:-run}"
 if [[ $# -gt 0 ]]; then shift; fi
-# Xcode installations without the optional Metal toolchain can use the native
-# builder for SwiftTerm's existing runtime-compiled shader path.
 SWIFT_BUILD_ARGS=()
 if [[ -n "${YCODE_SWIFT_BUILD_SYSTEM:-}" ]]; then
   SWIFT_BUILD_ARGS+=(--build-system "$YCODE_SWIFT_BUILD_SYSTEM")
@@ -20,8 +18,6 @@ APP_BUNDLE="$DIST_DIR/Tandock.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 BUILD_LOG="$DIST_DIR/build.log"
 
-# Prefer a stable developer identity so rebuilds keep the same signing identity.
-# Override with a certificate name/SHA-1, or '-' for an explicit ad-hoc build.
 DEV_SIGNING_IDENTITY="${DEV_SIGNING_IDENTITY:-}"
 if [[ -z "$DEV_SIGNING_IDENTITY" ]]; then
   DEV_IDENTITIES=()
@@ -42,7 +38,6 @@ if [[ -z "$DEV_SIGNING_IDENTITY" ]]; then
 fi
 echo "Development signing identity: $DEV_SIGNING_IDENTITY"
 
-# Builds never stop running apps. Each launch owns its own process.
 
 
 mkdir -p "$APP_CONTENTS/MacOS" "$APP_CONTENTS/Resources"
@@ -58,10 +53,6 @@ BIN_DIR="$(swift build "${SWIFT_BUILD_ARGS[@]}" --disable-sandbox --scratch-path
 cp "$BIN_DIR/TandockApp" "$APP_CONTENTS/MacOS/TandockApp"
 /usr/bin/install_name_tool -add_rpath @executable_path/../Frameworks "$APP_CONTENTS/MacOS/TandockApp" 2>/dev/null || true
 cp "$NATIVE_DIR/Resources/TandockApp-Info.plist" "$APP_CONTENTS/Info.plist"
-# Info.plist 里写死的 0.1.0/1 只是占位：发布包由 package_release.sh 戳真值，
-# 开发包以前就一直顶着 0.1.0，「关于」页因此报的是一个不存在的版本。
-# 这里用仓库版本 + 当前 commit 戳上去，开发包的「关于」页才说得清
-# 「跑的是哪个 commit」—— 报问题时这是唯一有用的那一半。
 DEV_VERSION="$(cat "$NATIVE_DIR/VERSION")"
 DEV_BUILD="dev-$(git -C "$NATIVE_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 if [[ -n "$(git -C "$NATIVE_DIR" status --porcelain 2>/dev/null)" ]]; then
@@ -74,11 +65,9 @@ mkdir -p "$APP_CONTENTS/Resources/ThirdPartyNotices"
 cp "$NATIVE_DIR/Resources/IconSources/"*-LICENSE.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
 cp "$NATIVE_DIR/Resources/ThirdPartyNotices/"*.txt "$APP_CONTENTS/Resources/ThirdPartyNotices/"
 cp "$BIN_DIR/tandock" "$BIN_DIR/tandock-mcp" "$BIN_DIR/tandock-notify" "$BIN_DIR/tandock-migrate" "$APP_CONTENTS/Resources/"
-# Keep previously registered helper paths usable when an existing app is updated.
 for helper in tandock tandock-mcp tandock-notify tandock-migrate; do
   ln -sfn "$helper" "$APP_CONTENTS/Resources/${helper/tandock/ycode}"
 done
-# Remove the retired native Pi bridge from reused development bundles.
 rm -rf "$APP_CONTENTS/Resources/Pi"
 mkdir -p "$APP_CONTENTS/Frameworks"
 SPARKLE_FRAMEWORK="$(find "$SCRATCH_DIR" -path '*/Sparkle.framework' -type d -print -quit)"
@@ -92,8 +81,6 @@ if [[ -d "$BIN_DIR/SwiftTerm_SwiftTerm.bundle" ]]; then
 fi
 chmod +x "$APP_CONTENTS/MacOS/TandockApp" "$APP_CONTENTS/Resources/tandock" "$APP_CONTENTS/Resources/tandock-mcp" "$APP_CONTENTS/Resources/tandock-notify" "$APP_CONTENTS/Resources/tandock-migrate"
 SIGN=(/usr/bin/codesign --force --timestamp=none --sign "$DEV_SIGNING_IDENTITY")
-# Sign nested code first, including helpers stored outside Contents/MacOS.
-# Keep Sparkle Downloader's sandbox entitlements when replacing its signature.
 FRAMEWORK="$APP_CONTENTS/Frameworks/Sparkle.framework/Versions/B"
 if [[ -d "$FRAMEWORK" ]]; then
   "${SIGN[@]}" "$FRAMEWORK/XPCServices/Installer.xpc"

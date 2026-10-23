@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// 与 docs/design-preview/index.html#empty 对齐的首次打开项目界面。
 struct NoProjectView: View {
     @Binding var isDropTargeted: Bool
     let dropRejection: String?
@@ -143,7 +142,6 @@ private struct NoProjectOpenButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            // 深色文字与珊瑚底保持可读对比度，浅深主题共用。
             .foregroundStyle(Color(red: 36 / 255, green: 23 / 255, blue: 21 / 255))
             .background(Color.tandockAccent.opacity(configuration.isPressed ? 0.72 : hovering ? 0.88 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 8))

@@ -54,7 +54,6 @@ public struct TandockGitBranchInfo: Equatable, Sendable {
     }
 }
 
-/// 一个文件的增删行数，变更列表上那个 `+2 −0`。
 public struct TandockGitLineStat: Equatable, Sendable {
     public let additions: Int
     public let deletions: Int
@@ -91,20 +90,14 @@ public struct TandockGitBranch: Identifiable, Equatable, Sendable {
     }
 }
 
-/// 变更区顶部那个范围选择器选中的东西（设计稿 §09）。
-/// 它决定 diff 从哪儿来，也决定文件行上的暂存／丢弃出不出现——只有 `.uncommitted` 能写。
 public enum TandockGitDiffScope: Equatable, Sendable {
-    /// 未提交的改动：git status + 工作区/暂存区 diff。唯一允许暂存、取消暂存、丢弃、逐块暂存的范围。
     case uncommitted
-    /// 全部变更：从与基准分支的 merge-base 到工作区，也就是「这条分支到目前为止做了什么」。只读。
     case branch(base: String)
-    /// 某一次提交（含 tandock 自己落的检查点）。只读。
     case commit(sha: String)
 
     public var allowsWrites: Bool { self == .uncommitted }
 }
 
-/// 范围选择器「提交 ›」二级菜单里的一条。
 public struct TandockGitCommit: Identifiable, Equatable, Sendable {
     public let sha: String
     public let shortSHA: String
@@ -140,13 +133,10 @@ public struct TandockGitService: Sendable {
         self.executable = executable
     }
 
-    /// 没装 Xcode 命令行工具时 `/usr/bin/git` 只是个占位程序，一跑就弹安装对话框。
-    /// 后台自动触发的 Git（比如检查点）先看这个，别替用户弹窗。
     public var isUsable: Bool {
         executable != "/usr/bin/git" || Self.developerToolsInstalled
     }
 
-    /// 只缓存「已安装」：用户中途装上命令行工具后，下一次检查就能生效，不必重启 app。
     private static let toolsLock = NSLock()
     private nonisolated(unsafe) static var toolsInstalled = false
 
@@ -187,8 +177,6 @@ public struct TandockGitService: Sendable {
         return try run(args, root: repo).stdout
     }
 
-    /// 工作区相对 HEAD 的增删行数（已暂存与未暂存合在一起看）。
-    /// 二进制文件 numstat 给的是 `-`，直接跳过。
     public func lineStats(root: URL) throws -> [String: TandockGitLineStat] {
         let repo = try repositoryRoot(root)
         let output = runIgnoringExitCode(["diff", "--no-ext-diff", "--numstat", "HEAD"], root: repo)
@@ -201,16 +189,12 @@ public struct TandockGitService: Sendable {
         return stats
     }
 
-    /// 未跟踪文件在 `git diff` 里没有输出，用 --no-index 跟空文件比一次，
-    /// 拿到的补丁格式与普通 diff 一致，变更面板可以照常逐块渲染。
     public func diffUntracked(root: URL, path: String) throws -> String {
         let repo = try repositoryRoot(root)
         let safe = try safePath(path)
-        // git status 把整个未跟踪目录报成一条（`foo/`），对目录没法做 --no-index，列出里面的文件。
         if safe.hasSuffix("/") {
             return runIgnoringExitCode(["ls-files", "--others", "--exclude-standard", "--", safe], root: repo)
         }
-        // --no-index 发现差异时退出码是 1，这里的非零退出是正常结果，不是失败。
         return runIgnoringExitCode(["diff", "--no-ext-diff", "--no-index", "--", "/dev/null", safe], root: repo)
     }
 
@@ -291,10 +275,7 @@ public struct TandockGitService: Sendable {
         return try run(["commit", "-m", trimmed], root: repo).stdout
     }
 
-    // MARK: 对比范围（设计稿 §09 的范围选择器）
 
-    /// 范围里有哪些文件变了。`.uncommitted` 走 status（带工作区/暂存区两列状态），
-    /// 另外两种走 name-status —— 它们是只读的，状态只有一列。
     public func changes(root: URL, scope: TandockGitDiffScope, ignoreWhitespace: Bool = false) throws -> [TandockGitFileChange] {
         switch scope {
         case .uncommitted:
@@ -315,7 +296,6 @@ public struct TandockGitService: Sendable {
         }
     }
 
-    /// 范围里每个文件的增删行数。
     public func lineStats(root: URL, scope: TandockGitDiffScope) throws -> [String: TandockGitLineStat] {
         switch scope {
         case .uncommitted:
@@ -330,7 +310,6 @@ public struct TandockGitService: Sendable {
         }
     }
 
-    /// 范围里某个文件的补丁。未跟踪文件在 `.uncommitted` 下走 --no-index（`diffUntracked`）。
     public func diff(root: URL, scope: TandockGitDiffScope, path: String, ignoreWhitespace: Bool = false) throws -> String {
         let repo = try repositoryRoot(root)
         let safe = try safePath(path)
@@ -354,18 +333,14 @@ public struct TandockGitService: Sendable {
         }
     }
 
-    /// `<base>` 与 HEAD 的分叉点。范围选「全部变更」时从这里开始算，
-    /// 这样基准分支后来的提交不会混进来。
     public func mergeBase(root: URL, base: String) throws -> String {
         let repo = try repositoryRoot(root)
         let revision = try safeRevision(base)
         let output = runIgnoringExitCode(["merge-base", revision, "HEAD"], root: repo)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        // 没有共同祖先（比如全新的孤立分支）时退回基准本身。
         return output.isEmpty ? revision : output
     }
 
-    /// 范围选择器「提交 ›」的列表。
     public func commits(root: URL, limit: Int = 50) throws -> [TandockGitCommit] {
         let repo = try repositoryRoot(root)
         let separator = "\u{1f}"
@@ -378,7 +353,6 @@ public struct TandockGitService: Sendable {
         }
     }
 
-    /// 仓库的默认分支：先问 origin/HEAD，问不到就按 main / master 猜，再不行用当前分支。
     public func defaultBranch(root: URL) throws -> String {
         let repo = try repositoryRoot(root)
         let head = runIgnoringExitCode(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root: repo)
@@ -473,8 +447,6 @@ public struct TandockGitService: Sendable {
         return URL(fileURLWithPath: output.trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true)
     }
 
-    /// `M\tpath` / `A\tpath` / `R100\told\tnew`。只读范围里没有暂存区那一列，
-    /// 所以 worktreeStatus 一律留空格，`isStaged` / `hasWorktreeChange` 都为假。
     private func parseNameStatus(_ output: String) -> [TandockGitFileChange] {
         var changes: [TandockGitFileChange] = []
         for line in output.split(separator: "\n") {
@@ -515,7 +487,6 @@ public struct TandockGitService: Sendable {
         return stats
     }
 
-    /// 分支名与 sha 会拼进 git 命令，挡掉以 `-` 开头的值，免得被当成选项。
     private func safeRevision(_ revision: String) throws -> String {
         let trimmed = revision.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.hasPrefix("-") else { throw TandockGitError.invalidPath(revision) }

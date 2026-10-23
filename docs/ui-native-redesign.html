@@ -8,9 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ═══════════════════════════════════════════════════════════════
-   文档外壳 —— 编辑式排版，与内嵌的 app 稿刻意区分开
-   ═══════════════════════════════════════════════════════════════ */
 *{box-sizing:border-box;margin:0;padding:0}
 .sprite{position:absolute;width:0;height:0;overflow:hidden}
 :root{
@@ -36,10 +33,8 @@ body{
     radial-gradient(700px 420px at 92% 8%,rgba(93,124,168,.08),transparent 62%);
   background-attachment:fixed;
 }
-/* 1240(窗口) + 80(stage padding) + 80(wrap padding) = 1400，正好不裁窗口 */
 .wrap{max-width:1400px;margin:0 auto;padding:0 40px 160px}
 
-/* ── 页眉 ── */
 .masthead{padding:88px 0 40px;border-bottom:1px solid var(--doc-rule)}
 .eyebrow{font-family:var(--code);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--doc-accent);margin-bottom:22px}
 h1{font-family:var(--serif);font-weight:400;font-size:76px;line-height:.98;letter-spacing:-.02em}
@@ -48,14 +43,12 @@ h1 em{font-style:italic;color:var(--doc-accent)}
 .meta{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:32px;font-family:var(--code);font-size:11.5px;color:var(--doc-ink-3)}
 .meta b{color:var(--doc-ink-2);font-weight:500}
 
-/* ── 目录 ── */
 .toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule);margin:44px 0 0}
 .toc a{background:var(--doc-panel);padding:16px 18px;text-decoration:none;color:var(--doc-ink-2);display:block;transition:.15s}
 .toc a:hover{background:#221d19;color:var(--doc-ink)}
 .toc .n{font-family:var(--code);font-size:10.5px;color:var(--doc-accent);display:block;margin-bottom:5px}
 .toc .t{font-size:14px}
 
-/* ── 章节 ── */
 section{padding:96px 0 0;scroll-margin-top:24px}
 .sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:12px}
 .sec-num{font-family:var(--code);font-size:12px;color:var(--doc-accent);letter-spacing:.1em}
@@ -67,7 +60,6 @@ p{max-width:72ch;color:var(--doc-ink-2)}
 code{font-family:var(--code);font-size:.87em;background:rgba(255,255,255,.055);padding:1px 5px;border-radius:3px;color:#e4cfa4}
 a{color:var(--doc-accent)}
 
-/* ── 诊断卡 ── */
 .diag{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
 .dcard{background:var(--doc-panel);padding:22px 24px 24px}
 .dcard .no{font-family:var(--code);font-size:10.5px;color:var(--doc-red);letter-spacing:.1em;margin-bottom:10px}
@@ -77,7 +69,6 @@ a{color:var(--doc-accent)}
 .dcard .fix{margin-top:14px;padding:11px 13px;background:rgba(119,166,92,.09);border-left:2px solid var(--doc-green);font-size:13px;color:#c7d9b9}
 .dcard .fix b{color:var(--doc-green);font-weight:600}
 
-/* ── 舞台（放 app 稿） ── */
 .stage{margin:34px 0 0;padding:44px 40px 48px;background:
   linear-gradient(180deg,#efe9e0,#e4ddd2);
   border-radius:4px;overflow-x:auto;position:relative}
@@ -92,7 +83,6 @@ a{color:var(--doc-accent)}
 .stage.dim .stool{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:rgba(255,255,255,.72)}
 .stage.dim .stool.on{background:#f2ece4;border-color:#f2ece4;color:#1d1b19}
 
-/* ── 标注 ── */
 .pin{position:absolute;z-index:90;width:20px;height:20px;border-radius:50%;
   background:var(--doc-red);color:#fff;font-family:var(--code);font-size:11px;font-weight:500;
   display:flex;align-items:center;justify-content:center;
@@ -104,7 +94,6 @@ a{color:var(--doc-accent)}
 .note .x{font-size:13.5px;line-height:1.6;color:var(--doc-ink-2)}
 .note .x b{color:var(--doc-ink);font-weight:600}
 
-/* ── 表 ── */
 table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13.5px}
 th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
   color:var(--doc-ink-3);padding:0 16px 10px 0;border-bottom:1px solid var(--doc-rule)}
@@ -112,7 +101,6 @@ td{padding:13px 16px 13px 0;border-bottom:1px solid var(--doc-rule);color:var(--
 td:first-child{color:var(--doc-ink);width:30%}
 td code{font-size:12px}
 
-/* ── token 展示 ── */
 .swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--doc-rule);border:1px solid var(--doc-rule)}
 .sw{background:var(--doc-panel);padding:0}
 .sw .chip{height:64px;border-bottom:1px solid var(--doc-rule)}
@@ -132,26 +120,22 @@ td code{font-size:12px}
 .callout{border-left:2px solid var(--doc-accent);padding:14px 20px;background:rgba(217,164,65,.06);margin:26px 0;max-width:80ch}
 .callout p{color:#e3d6bd;font-size:14px}
 
-/* ═══════════════════════════════════════════════════════════════
-   以下全部是 app 稿本体 —— 严格按 macOS 规格，字体/尺寸/材质都是真值
-   ═══════════════════════════════════════════════════════════════ */
 .win{
   --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB",sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono","JetBrains Mono",Menlo,monospace;
 
-  /* 浅色（默认） */
-  --chrome:rgba(246,246,246,.86);      /* 工具栏 / 状态栏 */
-  --sidebar:rgba(242,242,244,.92);     /* 侧栏材质 */
-  --content:#ffffff;                   /* 内容底 */
+  --chrome:rgba(246,246,246,.86);
+  --sidebar:rgba(242,242,244,.92);
+  --content:#ffffff;
   --inspector:#fbfbfc;
   --hairline:rgba(0,0,0,.09);
   --hairline-soft:rgba(0,0,0,.055);
-  --label:#1d1d1f;                     /* 一级文字 */
-  --label-2:rgba(60,60,67,.62);        /* 二级 */
-  --label-3:rgba(60,60,67,.38);        /* 三级 */
-  --fill:rgba(0,0,0,.05);              /* 控件底 */
+  --label:#1d1d1f;
+  --label-2:rgba(60,60,67,.62);
+  --label-3:rgba(60,60,67,.38);
+  --fill:rgba(0,0,0,.05);
   --fill-hover:rgba(0,0,0,.075);
-  --sel:#0b63e5;                       /* 强调 */
+  --sel:#0b63e5;
   --sel-soft:rgba(11,99,229,.12);
   --on-sel:#fff;
   --ok:#1a8a54;
@@ -160,7 +144,6 @@ td code{font-size:12px}
   --shadow-win:0 22px 62px rgba(0,0,0,.30),0 3px 12px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.18);
   --shadow-pop:0 12px 34px rgba(0,0,0,.24),0 0 0 .5px rgba(0,0,0,.14);
 
-  /* 终端画布：跟随系统外观，与 chrome 同一套明暗 */
   --canvas:#ffffff;
   --canvas-2:#f4f4f6;
   --canvas-rule:rgba(0,0,0,.09);
@@ -172,7 +155,6 @@ td code{font-size:12px}
   --canvas-card:#ffffff;
   --canvas-card-rule:rgba(0,0,0,.1);
   --canvas-row:rgba(0,0,0,.035);
-  /* 终端 ANSI 语义色：两套主题各一组，都在自己底色上过 4.5:1 */
   --t-blue:#0a58ca; --t-green:#137a4d; --t-yellow:#8a6100;
   --t-red:#cf222e; --t-purple:#8250df;
 
@@ -220,7 +202,6 @@ td code{font-size:12px}
   --shadow-pop:0 12px 34px rgba(0,0,0,.5),0 0 0 .5px rgba(255,255,255,.12);
 }
 
-/* ── 工具栏 ── */
 .tb{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 13px;
   background:var(--chrome);border-bottom:1px solid var(--hairline);backdrop-filter:saturate(1.8) blur(20px)}
 .lights{display:flex;gap:8px;margin-right:8px}
@@ -242,7 +223,6 @@ td code{font-size:12px}
 .crumb .caret{color:var(--label-3);font-size:9px;margin-left:1px}
 .grow{flex:1}
 
-/* 分段控件（macOS segmented） */
 .seg{display:inline-flex;background:var(--fill);border-radius:7px;padding:2px;gap:2px}
 .seg button{width:30px;height:24px;border:0;border-radius:5px;background:none;cursor:pointer;
   display:flex;align-items:center;justify-content:center;color:var(--label-2);transition:.12s}
@@ -256,10 +236,8 @@ td code{font-size:12px}
 .badge-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;
   background:var(--warn);box-shadow:0 0 0 2px var(--chrome)}
 
-/* ── 主体三分 ── */
 .body{flex:1;display:flex;min-height:0}
 
-/* ── 侧栏：项目 = 可折叠组，会话 = 行。两列合一 ── */
 .side{width:238px;flex:none;background:var(--sidebar);border-right:1px solid var(--hairline);
   display:flex;flex-direction:column;min-height:0;backdrop-filter:saturate(1.8) blur(20px)}
 .side-search{margin:9px 10px 8px;height:24px;border-radius:6px;background:var(--fill);
@@ -281,8 +259,6 @@ td code{font-size:12px}
 .grp .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .grp .n{font-family:var(--mono);font-size:10px;color:var(--label-3);font-variant-numeric:tabular-nums;font-weight:400}
 
-/* 会话行：单行。状态点 + agent 品牌图标 + 名称；上了画布再追加一个格位徽标 ⌘⇧N。
-   agent 用图标而不是「claude · opus-5」这行字 —— 图标一眼可辨，还省掉一整行高度。 */
 .srow{display:flex;align-items:center;gap:7px;margin:0 8px;padding:0 8px;height:28px;border-radius:6px;
   cursor:default;position:relative}
 .srow:hover{background:var(--fill)}
@@ -293,13 +269,10 @@ td code{font-size:12px}
 .srow .s1{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow .st{font-size:10.5px;color:var(--label-3);font-variant-numeric:tabular-nums;flex:none}
 
-/* 状态点语言：只有两个。一处定义，三处复用（侧栏 / 窗格头 / 收件箱）
-   会话都可恢复，所以没有「已退出」「可恢复」这类状态 —— 点进去就接着跑。 */
 .d-run{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 18%,transparent)}
 .d-attn{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 20%,transparent)}
 .srow.on .dot{box-shadow:0 0 0 3px rgba(255,255,255,.22)}
 
-/* 历史会话：归在所属项目组里，不进检查器 */
 .hrow2{display:flex;align-items:center;gap:8px;margin:0 8px;padding:0 8px;height:24px;border-radius:6px;
   color:var(--label-2);font-size:12px;cursor:default}
 .hrow2:hover{background:var(--fill)}
@@ -312,7 +285,6 @@ td code{font-size:12px}
 .hsess .dot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px var(--label-3)}
 .hsess .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* 项目组标题行的 hover ＋：新建会话到这个项目 */
 .grp .add{width:17px;height:17px;border-radius:4px;border:0;background:var(--fill);cursor:pointer;
   color:var(--label-2);display:flex;align-items:center;justify-content:center;flex:none}
 .grp .add svg{width:10px;height:10px}
@@ -323,7 +295,6 @@ td code{font-size:12px}
 .sfbtn:hover{background:var(--fill-hover)}
 .sfbtn svg{width:12px;height:12px}
 
-/* ── 中栏：终端画布（主角，占满） ── */
 .center{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--canvas)}
 .canvas{flex:1;min-height:0;display:flex;overflow:hidden}
 .pane{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;background:var(--canvas)}
@@ -333,8 +304,6 @@ td code{font-size:12px}
 .pane.focus::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
   box-shadow:inset 0 0 0 1px rgba(11,99,229,.5);}
 .win.dark .pane.focus::before{box-shadow:inset 0 0 0 1px rgba(76,141,255,.55)}
-/* 窗格头 —— 会话的唯一标识条。布局是「单个」时它就是画布顶部那一条，
-   四宫格时每格一条。没有第二套标签页机制 —— 画布只有布局，没有 tab。 */
 .pane-hd{height:28px;flex:none;display:flex;align-items:center;gap:7px;padding:0 4px 0 10px;
   background:var(--canvas-raise);border-bottom:1px solid var(--canvas-rule);
   color:var(--canvas-ink-2);font-size:12px}
@@ -366,7 +335,6 @@ td code{font-size:12px}
 @keyframes blink{50%{opacity:0}}
 .term.small{font-size:11px;line-height:1.55;padding:9px 11px}
 
-/* ── 右栏：检查器，固定位置，4 tab 互斥 ── */
 .insp{width:302px;flex:none;background:var(--inspector);border-left:1px solid var(--hairline);
   display:flex;flex-direction:column;min-height:0}
 .insp-tabs{height:38px;flex:none;display:flex;align-items:center;padding:0 10px;
@@ -386,7 +354,6 @@ td code{font-size:12px}
 .ilink{border:0;background:none;cursor:pointer;color:var(--sel);font-family:var(--ui);font-size:11.5px;padding:0}
 .iscroll{flex:1;min-height:0;overflow:hidden;padding-bottom:8px}
 
-/* 文件树 */
 .tnode{display:flex;align-items:center;gap:6px;height:24px;margin:0 8px;padding:0 6px;border-radius:6px;
   color:var(--label);font-size:12.5px;cursor:default}
 .tnode:hover{background:var(--fill)}
@@ -399,7 +366,6 @@ td code{font-size:12px}
 .tg.m{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn)}
 .tg.a{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
 
-/* 变更 */
 .fhd{display:flex;align-items:center;gap:8px;padding:0 12px;height:30px;
   border-top:1px solid var(--hairline-soft);background:var(--inspector)}
 .fhd:first-child{border-top:0}
@@ -426,7 +392,6 @@ td code{font-size:12px}
 .dl.del .tx{color:var(--err)}
 .dl.ctx .tx{color:var(--label-2)}
 
-/* 待办 */
 .todo{display:flex;align-items:flex-start;gap:9px;margin:0 8px;padding:6px 8px;border-radius:6px;cursor:default}
 .todo:hover{background:var(--fill)}
 .todo .box{width:14px;height:14px;border-radius:4px;flex:none;margin-top:1px;
@@ -440,7 +405,6 @@ td code{font-size:12px}
 .todo .by{display:block;font-size:11px;color:var(--label-3);margin-top:1px}
 
 
-/* ── 状态栏：所有"以前铺在主区的元数据"都收到这里 ── */
 .sb{height:26px;flex:none;display:flex;align-items:center;gap:0;padding:0 11px;
   background:var(--chrome);border-top:1px solid var(--hairline);
   font-size:11px;color:var(--label-2);font-variant-numeric:tabular-nums}
@@ -452,7 +416,6 @@ td code{font-size:12px}
 .sb .vd{width:1px;height:11px;background:var(--hairline);margin:0 2px}
 .sb .mono{font-family:var(--mono);font-size:10px}
 
-/* ── 浮层：popover / sheet / 命令面板 ── */
 .scrim{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,.22)}
 .win.dark .scrim{background:rgba(0,0,0,.42)}
 .pop{position:absolute;z-index:60;background:var(--content);border-radius:10px;box-shadow:var(--shadow-pop);
@@ -472,7 +435,6 @@ td code{font-size:12px}
 .arow .a2{display:block;font-size:11.5px;color:var(--label-2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .arow .a3{font-size:10.5px;color:var(--label-3);flex:none;margin-top:2px;font-variant-numeric:tabular-nums}
 
-/* 菜单 */
 .menu{position:absolute;z-index:60;min-width:214px;padding:5px;border-radius:8px;
   background:rgba(250,250,250,.86);backdrop-filter:blur(28px) saturate(1.8);
   box-shadow:var(--shadow-pop)}
@@ -487,7 +449,6 @@ td code{font-size:12px}
 .mi svg{width:13px;height:13px;opacity:.75}
 .msep{height:1px;background:var(--hairline);margin:5px 9px}
 
-/* 命令面板 */
 .palette{position:absolute;z-index:60;left:50%;top:92px;transform:translateX(-50%);width:600px;
   background:rgba(250,250,250,.9);backdrop-filter:blur(34px) saturate(1.8);
   border-radius:12px;box-shadow:0 26px 64px rgba(0,0,0,.34),0 0 0 .5px rgba(0,0,0,.16);overflow:hidden}
@@ -520,8 +481,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .btn.pri{background:var(--sel);color:#fff;box-shadow:none}
 .btn.pri:hover{background:color-mix(in srgb,var(--sel) 88%,#000)}
 
-/* Agent 选择器 —— 沿用非原生版 NewSessionPicker 的形式，按原生质感重制。
-   它既是「项目无会话」的空状态，也是 ⌘N 的内容：唯一的新建入口。 */
 .picker-host{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 12px;min-height:0}
 .pane{container-type:inline-size}
 .picker{width:100%;max-width:520px;padding:30px 28px 24px;border-radius:12px;
@@ -533,7 +492,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .pagent .av svg{width:26px;height:26px;display:block}
 .picker h3{text-align:center;font-size:20px;font-weight:600;color:var(--canvas-ink);letter-spacing:-.01em}
 .picker .sub{text-align:center;color:var(--canvas-ink-2);font-size:12px;margin:5px 0 20px}
-/* agent 并排一行 —— 「选一个」是一次横向扫视，不是一列待读的清单 */
 .picker .agents{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .pagent{display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 8px 11px;
   border-radius:10px;cursor:pointer;background:var(--canvas-row);border:1px solid var(--canvas-card-rule);
@@ -549,7 +507,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .picker .foot i{width:14px;height:14px;border-radius:4px;flex:none;display:flex;align-items:center;justify-content:center;
   font-size:9px;color:#fff;box-shadow:inset 0 0 0 1.5px var(--canvas-ink-3)}
 .picker .foot i.on{background:var(--sel);box-shadow:none}
-/* 分支选择：不勾 worktree 就是「切到这个分支再起」，勾了就是「基于它建 worktree」 */
 .branch{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:24px;
   padding:0 7px 0 8px;border-radius:6px;background:var(--canvas-row);
   border:1px solid var(--canvas-card-rule);font-size:12px;color:var(--canvas-ink);cursor:pointer}
@@ -558,8 +515,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .branch .bn{font-family:var(--mono);font-size:11px}
 .branch .ch{font-size:9px;opacity:.5}
 
-/* 同一个组件，不是第二套小号版：窗格窄到并排格子的尺寸时按容器收缩。
-   必须放在全部 .picker 规则之后，否则会被基础规则覆盖。 */
 @container (max-width:470px){
   .pane-hd .sub{display:none}
   .picker-host{padding:10px 8px}
@@ -574,14 +529,12 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   .pagent .av svg{width:19px;height:19px}
   .pagent .nm{font-size:10.5px}
   .pagent .cmd{display:none}
-  /* 窄容器下仍是一行：worktree 与分支是同一个决策带，拆成两行会读成两条设置 */
   .picker .foot{margin-top:9px;padding-top:8px;font-size:11px;gap:7px}
   .picker .foot .wt{gap:6px}
   .branch{height:22px;min-width:0;padding:0 5px 0 6px}
   .branch .bn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 
-/* 空状态 */
 .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:30px;text-align:center}
 .empty .ic{width:36px;height:36px;color:var(--label-3);margin-bottom:11px}
 .empty.on-canvas .ic{color:var(--canvas-ink-3)}
@@ -591,7 +544,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .empty.on-canvas .d{color:var(--canvas-ink-2)}
 .empty .acts{display:flex;gap:8px;margin-top:16px}
 
-/* 设置窗 */
 .set{width:760px;height:540px}
 .set .body{flex:1}
 .setnav{width:206px;flex:none;background:var(--sidebar);border-right:1px solid var(--hairline);padding:6px 0}
@@ -619,7 +571,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .win.dark .segbig button.on{background:rgba(255,255,255,.18);box-shadow:none}
 
 
-/* ── 变更面板（§03b）：单列内联 diff + 常驻提交条 ── */
 .insp-solo{width:302px;height:520px;flex:none;display:flex;flex-direction:column;
   background:var(--inspector);border:1px solid var(--hairline);border-radius:10px;overflow:hidden;
   box-shadow:0 18px 44px rgba(0,0,0,.18)}
@@ -655,7 +606,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 .iempty .t{font-size:13px;font-weight:600;color:var(--label)}
 .iempty .d{font-size:11.5px;line-height:1.55;color:var(--label-2)}
 
-/* ── 待办面板（§03c）── */
 .tadd{display:flex;align-items:center;gap:7px;margin:7px 10px 3px;padding:0 9px;height:28px;
   border-radius:7px;border:1px solid var(--hairline);background:var(--content);color:var(--label-3);font-size:12.5px}
 .tadd.focus{border-color:var(--sel);color:var(--label);box-shadow:0 0 0 3px color-mix(in srgb,var(--sel) 14%,transparent)}
@@ -686,8 +636,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 <aside aria-label="文档状态" style="position:relative;z-index:100;padding:12px 20px;background:#fff4d6;color:#493916;font:14px/1.6 system-ui,sans-serif;border-bottom:1px solid #d8bd77;text-align:left">参考档案 · 2026-10-18 核对：原生 UI 早期设计档案；布局已在后续迭代演进，旧控件与实施顺序不再作为当前待办。 <a href="README.md" style="color:inherit;text-decoration:underline">文档索引</a> · <a href="tandock-feature-spec.md" style="color:inherit;text-decoration:underline">当前产品范围</a></aside>
 
 
-<!-- 图标雪碧图：agent 品牌标来自 @lobehub/icons，tandock 标来自 src/assets/tandock-logo.svg。
-     一处定义，侧栏行 / 选择器 / 任何地方都用 <use> 引，渐变 id 不会互相打架。 -->
 <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
   <symbol id="ic-tandock" viewBox="0 0 1024 1024">
     <linearGradient id="yc-tile" x1="166" y1="120" x2="858" y2="900" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2c2922"/><stop offset=".55" stop-color="#171510"/><stop offset="1" stop-color="#0f0e0b"/></linearGradient>
@@ -723,7 +671,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 
 <div class="wrap">
 
-<!-- ══════════════ 页眉 ══════════════ -->
 <header class="masthead">
   <div class="eyebrow">tandock · macOS 原生版 · 界面设计稿 v1</div>
   <h1>把终端<br>还给<em>主位</em>。</h1>
@@ -754,7 +701,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </nav>
 </header>
 
-<!-- ══════════════ 01 诊断 ══════════════ -->
 <section id="diagnosis">
   <div class="sec-head"><span class="sec-num">01</span><h2>现状诊断</h2></div>
   <p class="sec-dek">
@@ -843,7 +789,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 02 基础 ══════════════ -->
 <section id="foundations">
   <div class="sec-head"><span class="sec-num">02</span><h2>设计基础</h2></div>
   <p class="sec-dek">
@@ -929,7 +874,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </table>
 </section>
 
-<!-- ══════════════ 03 主窗口 ══════════════ -->
 <section id="main">
   <div class="sec-head"><span class="sec-num">03</span><h2>主窗口</h2></div>
   <p class="sec-dek">
@@ -945,7 +889,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
     </div>
 
     <div class="win" id="w1">
-      <!-- 工具栏 -->
       <div class="tb">
         <div class="lights"><i></i><i></i><i></i></div>
         <button class="tbtn" title="显示/隐藏侧栏 ⌘B">
@@ -980,7 +923,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       </div>
 
       <div class="body">
-        <!-- 侧栏 -->
         <div class="side">
           <div class="side-search">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/></svg>
@@ -1050,7 +992,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           </div>
         </div>
 
-        <!-- 画布 -->
         <div class="center">
           <div class="canvas">
             <div class="pane focus">
@@ -1092,7 +1033,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           </div>
         </div>
 
-        <!-- 检查器 -->
         <div class="insp">
           <div class="insp-tabs">
             <button class="itab" data-tab="files" data-win="w1">文件</button>
@@ -1101,7 +1041,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
           </div>
 
           <div class="insp-body">
-            <!-- 变更 -->
             <div class="ipane on" data-pane="changes" data-win="w1">
               <div class="isec">
                 <span>未暂存 · 2 个文件</span><span class="sp"></span>
@@ -1141,7 +1080,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
               </div>
             </div>
 
-            <!-- 文件 -->
             <div class="ipane" data-pane="files" data-win="w1">
               <div class="isec"><span>tandock</span><span class="sp"></span><button class="ilink">在 Finder 中显示</button></div>
               <div class="iscroll">
@@ -1161,7 +1099,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
               </div>
             </div>
 
-            <!-- 待办 -->
             <div class="ipane" data-pane="todos" data-win="w1">
               <div class="isec"><span>本项目 · 4 项</span><span class="sp"></span><button class="ilink">＋ 添加</button></div>
               <div class="iscroll">
@@ -1179,7 +1116,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
       </div>
 
-      <!-- 状态栏 -->
       <div class="sb">
         <span class="it">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.2" cy="3.6" r="1.8"/><circle cx="4.2" cy="12.4" r="1.8"/><circle cx="11.8" cy="8" r="1.8"/><path d="M4.2 5.4v5.2M5.9 3.6h3.2a2.7 2.7 0 0 1 2.7 2.7"/></svg>
@@ -1200,7 +1136,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       </div>
     </div>
 
-    <!-- 标注一律落在窗口外侧，不遮挡界面本身（窗口左上角在 stage 的 40,44） -->
     <span class="pin" style="left:12px;top:164px">1</span>
     <span class="pin" style="left:12px;top:238px">2</span>
     <span class="pin" style="left:1040px;top:16px">3</span>
@@ -1237,8 +1172,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 04 多会话 ══════════════ -->
-<!-- ══════════════ 03b 变更面板 ══════════════ -->
 <section id="changes">
   <div class="sec-head"><span class="sec-num">03b</span><h2>变更面板</h2></div>
   <p class="sec-dek">
@@ -1251,7 +1184,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
     <span class="stage-label">屏 01b · 变更 / 空 / 检查点</span>
     <div style="display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
 
-      <!-- 有变更 -->
       <div class="insp-solo">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1305,7 +1237,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
       </div>
 
-      <!-- 干净 -->
       <div class="insp-solo short">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1320,7 +1251,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
       </div>
 
-      <!-- 检查点 -->
       <div class="insp-solo short">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1361,7 +1291,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 03c 待办面板 ══════════════ -->
 <section id="todos">
   <div class="sec-head"><span class="sec-num">03c</span><h2>待办面板</h2></div>
   <p class="sec-dek">
@@ -1375,7 +1304,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
     <span class="stage-label">屏 01c · 待办 / 菜单 / 空</span>
     <div style="display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap">
 
-      <!-- 有待办 -->
       <div class="insp-solo" style="height:430px">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1397,7 +1325,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
       </div>
 
-      <!-- 行菜单 -->
       <div class="insp-solo" style="height:430px;position:relative">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1426,7 +1353,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         </div>
       </div>
 
-      <!-- 空 -->
       <div class="insp-solo short">
         <div class="insp-tabs">
           <button class="itab">文件</button>
@@ -1664,7 +1590,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 05 浮层 ══════════════ -->
 <section id="overlays">
   <div class="sec-head"><span class="sec-num">05</span><h2>浮层与菜单</h2></div>
   <p class="sec-dek">
@@ -1779,7 +1704,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
         <span class="it mono">PID 48213</span><span class="vd"></span><span class="it">终端 13 pt</span>
       </div>
 
-      <!-- 浮层 A：注意力收件箱（工具栏铃铛） -->
       <div class="pop" style="width:360px;right:112px;top:58px" id="pop-inbox">
         <div class="pop-hd"><span class="t">等你</span><span class="a">全部标为已读</span></div>
         <div class="arow">
@@ -1812,7 +1736,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       </div>
       <span class="pin" style="left:752px;top:62px">1</span>
 
-      <!-- 浮层 B：侧栏项目右键菜单 -->
       <div class="menu" style="left:58px;top:150px;min-width:222px">
         <div class="mi">在新窗口中打开<span class="sp"></span><span class="kb">⇧⌘O</span></div>
         <div class="mi">在 Finder 中显示</div>
@@ -1828,7 +1751,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       </div>
       <span class="pin" style="left:44px;top:144px">2</span>
 
-      <!-- 浮层 C：侧栏会话右键菜单 -->
       <div class="menu" style="left:330px;top:128px;min-width:234px">
         <div class="mi on">放到画布<span class="sp"></span><span class="kb">⌘⇧1</span></div>
         <div class="mi">在新窗口中打开</div>
@@ -1841,7 +1763,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
       </div>
       <span class="pin" style="left:316px;top:122px">3</span>
 
-      <!-- 浮层 D：会话信息（纯信息，动作都在右键菜单里） -->
       <div class="pop" style="width:318px;left:330px;top:392px">
         <div class="pop-hd"><span class="t">会话信息</span><span class="a">复制</span></div>
         <div style="padding:12px 14px 14px;font-size:12px;line-height:1.85">
@@ -1875,7 +1796,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 06 命令面板与新建 ══════════════ -->
 <section id="palette">
   <div class="sec-head"><span class="sec-num">06</span><h2>命令面板与新建会话</h2></div>
   <p class="sec-dek">
@@ -2111,7 +2031,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 07 空状态 ══════════════ -->
 <section id="states">
   <div class="sec-head"><span class="sec-num">07</span><h2>空状态与故障</h2></div>
   <p class="sec-dek">
@@ -2183,7 +2102,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </table>
 </section>
 
-<!-- ══════════════ 08 设置 ══════════════ -->
 <section id="settings">
   <div class="sec-head"><span class="sec-num">08</span><h2>设置</h2></div>
   <p class="sec-dek">
@@ -2263,7 +2181,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
   </div>
 </section>
 
-<!-- ══════════════ 09 对照 ══════════════ -->
 <section id="mapping">
   <div class="sec-head"><span class="sec-num">09</span><h2>控件去向对照</h2></div>
   <p class="sec-dek">
@@ -2323,7 +2240,6 @@ kbd{font-family:var(--ui);font-size:10.5px;background:var(--fill);border-radius:
 
 <script>
 "use strict";
-/* 主题切换 */
 document.querySelectorAll(".stool[data-theme]").forEach(function(btn){
   btn.addEventListener("click", function(){
     var win = document.getElementById(btn.dataset.for);
@@ -2336,7 +2252,6 @@ document.querySelectorAll(".stool[data-theme]").forEach(function(btn){
     });
   });
 });
-/* 检查器 tab */
 document.querySelectorAll(".itab").forEach(function(tab){
   tab.addEventListener("click", function(){
     var w = tab.dataset.win, t = tab.dataset.tab;
@@ -2348,7 +2263,6 @@ document.querySelectorAll(".itab").forEach(function(tab){
     });
   });
 });
-/* 画布布局分段控件（仅视觉反馈） */
 document.querySelectorAll(".seg").forEach(function(seg){
   seg.querySelectorAll("button").forEach(function(b){
     b.addEventListener("click", function(){

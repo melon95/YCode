@@ -17,8 +17,6 @@ public enum TandockMCPAgent: String, CaseIterable, Identifiable, Sendable {
 public enum TandockMCPRegistrationStatus: Equatable, Sendable {
     case installed
     case notInstalled
-    /// Registered, but pointing at a helper other than this bundle's (an older
-    /// install location or the pre-rename `ycode-mcp`).
     case stale(registered: String)
 }
 
@@ -42,11 +40,7 @@ public enum TandockMCPRegistrationError: LocalizedError, Equatable {
     }
 }
 
-/// Installs only Tandock's `ycode-todos` entry and preserves all unrelated
-/// Claude/Codex configuration. Calls are serialized so two settings actions
-/// cannot race while replacing the same file.
 public actor TandockMCPRegistrationService {
-    // The registration key is a compatibility identifier, not the product name.
     public static let serverName = "ycode-todos"
 
     private let claudeConfigURL: URL
@@ -84,8 +78,6 @@ public actor TandockMCPRegistrationService {
         return .installed
     }
 
-    /// Points an existing stale entry at this bundle's helper, changing nothing
-    /// else in the entry. Returns whether a change was written.
     @discardableResult
     public func repairStaleHelperPath(for agent: TandockMCPAgent) throws -> Bool {
         guard case .stale = try status(for: agent) else { return false }
@@ -209,14 +201,12 @@ public actor TandockMCPRegistrationService {
         if let line = codexCommandLine(in: raw, block: block) {
             raw.replaceSubrange(line, with: replacement)
         } else {
-            // A table without a command line: add one right under the header.
             let header = raw[block].firstIndex(of: "\n").map { raw.index(after: $0) } ?? block.upperBound
             raw.insert(contentsOf: "command = \(replacement)\n", at: header)
         }
         try writeAtomically(Data(raw.utf8), to: codexConfigURL)
     }
 
-    /// Range of the value in the `command = …` line inside the managed table.
     private func codexCommandLine(in raw: String, block: Range<String.Index>) -> Range<String.Index>? {
         guard let line = raw.range(
             of: #"(?m)^[ \t]*command[ \t]*=[ \t]*[^\r\n]*"#,

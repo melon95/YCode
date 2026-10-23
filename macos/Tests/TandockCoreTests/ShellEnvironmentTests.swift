@@ -48,10 +48,8 @@ struct ShellEnvironmentTests {
         #expect(b["PROJECT_FLAG"] == nil)
         #expect(a["SHLVL"] == nil)
         #expect(a[TandockShellEnvironmentStore.resolvingFlag] == nil)
-        // Credentials never reach rc from the host; ones rc exports itself survive.
         #expect(a["OPENAI_API_KEY"] == nil)
         #expect(a["ANTHROPIC_API_KEY"] == "from-rc")
-        // rc ran without a terminal: tty-derived values would be wrong inside the agent's PTY.
         #expect(a["GPG_TTY"] == nil)
         #expect(resolvedA.fileDescriptorLimit == "4321")
         #expect(resolvedA.fileCreationMask?.hasSuffix("027") == true)
@@ -61,7 +59,6 @@ struct ShellEnvironmentTests {
     func timeoutAndUnsupported() throws {
         let home = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: home) }
-        // Interactive shells ignore SIGTERM, and the rc's own children must be reaped too.
         try Data("""
         trap '' TERM
         echo $$ > "$ZDOTDIR/shell.pid"
@@ -105,7 +102,7 @@ struct ShellEnvironmentTests {
 
         let fallback = try #require(store.cached(for: project))
         #expect(fallback.scope == .home)
-        store.refresh(home) // fresh: skipped
+        store.refresh(home)
         _ = try await store.resolve(project).get()
         #expect(calls.value == 2)
         #expect(store.cached(for: project)?.scope == .project)
@@ -115,8 +112,8 @@ struct ShellEnvironmentTests {
         #expect(failed == .failure(.timedOut))
         #expect(store.cached(for: project)?.snapshot.variables["DIR"] == "/work/project")
         #expect(try await store.resolve(project).get().variables["DIR"] == "/work/project")
-        #expect(calls.value == 3) // normal resolves can still use the last good snapshot
-        #expect(store.recentFailure(for: project) == nil) // a good snapshot still exists
+        #expect(calls.value == 3)
+        #expect(store.recentFailure(for: project) == nil)
 
         let other = URL(fileURLWithPath: "/work/other")
         #expect(await store.resolve(other) == .failure(.timedOut))
@@ -148,9 +145,9 @@ struct ShellEnvironmentTests {
         #expect(plan.shellCommandArgumentIndex == nil)
         #expect(plan.environment["FROM_RC"] == "rc")
         #expect(plan.environment["OVERRIDE"] == "profile")
-        #expect(plan.environment["HTTP_PROXY"] == "http://rc:1") // system mode only fills gaps
-        #expect(plan.environment["ANTHROPIC_API_KEY"] == nil)     // stripped for Claude
-        #expect(plan.environment["OPENAI_API_KEY"] == "host-openai") // restored for others
+        #expect(plan.environment["HTTP_PROXY"] == "http://rc:1")
+        #expect(plan.environment["ANTHROPIC_API_KEY"] == nil)
+        #expect(plan.environment["OPENAI_API_KEY"] == "host-openai")
         #expect(plan.environment["YCODE_TERMINAL_ID"] == "t1")
 
         let manual = try TandockAgentLauncher.makePlan(
@@ -160,7 +157,6 @@ struct ShellEnvironmentTests {
         #expect(manual.environment["HTTP_PROXY"] == "http://manual:3")
         #expect(manual.environment["ANTHROPIC_API_KEY"] == "host-key")
 
-        // An alias or shell function is not on PATH, so it reports missing instead of exiting 127 later.
         #expect(throws: TandockAgentSettingsError.missingProgram("aliased-agent")) {
             try TandockAgentLauncher.makePlan(
                 profile: TandockAgentProfile(id: "x", command: "aliased-agent"), workingDirectory: directory,
@@ -205,11 +201,8 @@ struct ShellEnvironmentTests {
             profile: claude, workingDirectory: directory, terminalID: "t", proxy: .init(mode: .off),
             hostEnvironment: [:], shellEnvironment: snapshot
         )
-        // `$NAME` resolves against the rc environment, as rc used to export it before the agent ran.
         #expect(plan.environment["TOKEN"] == "from-rc")
-        // Claude credentials from the profile were always stripped; only an rc export survived.
         #expect(plan.environment["ANTHROPIC_API_KEY"] == nil)
-        // Relative PATH entries resolve against the project, and rc's ulimit/umask are re-applied before exec.
         #expect(plan.executableURL.path == "/bin/sh")
         let expectedScript: String = "ulimit -n 65536 2>/dev/null; umask 0027 2>/dev/null; exec \"$0\" \"$@\""
         let expectedArguments: [String] = ["-c", expectedScript, agent.path, "--x"]

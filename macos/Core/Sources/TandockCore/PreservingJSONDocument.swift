@@ -31,8 +31,6 @@ public enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
-/// Edits known top-level fields without discarding fields written by a newer
-/// Tandock. Typed settings models can be layered on this document in M1.4.
 public struct PreservingJSONDocument: Equatable, Sendable {
     public private(set) var fields: [String: JSONValue]
 

@@ -65,16 +65,12 @@ struct TerminalOutputPerformanceTests {
             #expect(model.liveTitles[id] == "Initial")
         }
         var changes = 0
-        // Availability checks complete independently during this async test;
-        // measure title publications rather than unrelated workspace updates.
         let observation = model.$liveTitles.dropFirst().sink { _ in changes += 1 }
         defer { observation.cancel() }
         for index in 0..<250 {
             for id in ids { model.recordLiveTitle(sessionID: id, title: "Title \(index)") }
         }
         #expect(changes == 0)
-        // Await the flush itself: a fixed sleep raced other main-actor work when
-        // the whole suite ran in parallel.
         await model.liveTitleRefreshTask?.value
         #expect(changes == 1)
         for id in ids { #expect(model.liveTitles[id] == "Title 249") }
@@ -100,11 +96,10 @@ struct TerminalOutputPerformanceTests {
         let observation = model.objectWillChange.sink { changes += 1 }
         defer { observation.cancel() }
         NotificationCenter.default.post(name: .tandockAgentHookEvent, object: event)
-        #expect(changes == 0) // Duplicate hooks are ignored before publishing any workspace state.
+        #expect(changes == 0)
         #expect(model.session(id: row.id)?.title == "Unchanged")
     }
 
-    /// Opt-in four-PTY benchmark: report CPU, assert ordered output rather than a hardware-dependent time budget.
     @Test("four visible PTYs stream ordered UTF-8", .enabled(if: ProcessInfo.processInfo.environment["YCODE_OUTPUT_BENCHMARK_REPORT"] != nil))
     func fourVisiblePTYBenchmark() async throws {
         let (root, model, _, _) = try fixture()

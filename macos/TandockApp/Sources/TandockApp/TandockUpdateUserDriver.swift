@@ -2,13 +2,10 @@ import AppKit
 import Foundation
 import Sparkle
 
-/// 自绘更新界面的 Sparkle 驱动。检查、下载、签名校验和安装仍由 Sparkle 完成，
-/// 这里只接收它的回调、把状态交给 `TandockUpdateModel`，再把用户的选择回给 Sparkle。
 @MainActor
 final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
     let model = TandockUpdateModel()
     private let windowController: TandockUpdateWindowController
-    /// 出错后「重试」：由控制器接上 `SPUUpdater.checkForUpdates()`。
     var retryCheck: (@escaping () -> Void) -> Void = { $0() }
 
     private var expectedLength: UInt64?
@@ -21,15 +18,11 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         super.init()
     }
 
-    // MARK: 权限
 
-    /// 打包时已写入 `SUEnableAutomaticChecks`，正常不会走到这里。
-    /// 万一走到，沿用自动检查、不发送系统信息。
     func show(_ request: SPUUpdatePermissionRequest, reply: @escaping (SUUpdatePermissionResponse) -> Void) {
         reply(SUUpdatePermissionResponse(automaticUpdateChecks: true, sendSystemProfile: false))
     }
 
-    // MARK: 检查
 
     func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) {
         var handlers = newHandlers()
@@ -76,7 +69,6 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         windowController.show(activate: state.userInitiated)
     }
 
-    /// 窗口里不内嵌更新说明（appcast 里没有，内嵌网页也增加攻击面），这里只给一个能打开的链接。
     static func releaseNotesURL(for item: SUAppcastItem) -> URL? {
         if let url = item.fullReleaseNotesURL ?? item.releaseNotesURL { return url }
         guard let feed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
@@ -124,7 +116,6 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         windowController.show(activate: true)
     }
 
-    /// 贴到 issue 里用的错误详情：域、码、描述，以及底层错误。
     static func detail(of error: NSError) -> String {
         var lines = ["\(error.domain) (\(error.code))", error.localizedDescription]
         if let reason = error.localizedFailureReason { lines.append(reason) }
@@ -134,7 +125,6 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         return lines.joined(separator: "\n")
     }
 
-    // MARK: 下载
 
     func showDownloadInitiated(cancellation: @escaping () -> Void) {
         expectedLength = nil
@@ -163,10 +153,8 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         model.updatePhase(.downloading(version: downloadingVersion, received: receivedLength, expected: expectedLength))
     }
 
-    // MARK: 解压与安装
 
     func showDownloadDidStartExtractingUpdate() {
-        // 解压和校验不能取消：不给按钮，关窗只是把窗口收起来，更新在后台继续。
         model.show(.extracting(progress: 0), handlers: newHandlers())
         windowController.show(activate: false)
     }
@@ -201,7 +189,6 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdateInstalledAndRelaunched(_ relaunched: Bool, acknowledgement: @escaping () -> Void) {
-        // 重启之后不再弹「已更新」：新版本能正常打开就是最好的确认。
         acknowledgement()
         windowController.close()
     }
@@ -221,7 +208,6 @@ final class TandockUpdateUserDriver: NSObject, SPUUserDriver {
         return TandockUpdateHandlers()
     }
 
-    /// 清空本阶段所有动作，使「安装」后紧接着的关闭或重复按键不会再回复 Sparkle。
     private func oneShot(_ action: @escaping () -> Void) -> () -> Void {
         let generation = actionGeneration
         return { [weak self] in

@@ -29,8 +29,6 @@ func runEditorHeadless() -> Int32 {
     editor.insertText("中文", replacementRange: editor.markedRange())
     check("中文组合输入可提交", editor.string == "中文", detail: editor.string)
 
-    // Treat the committed IME text as the loaded-document baseline. AppKit may
-    // coalesce it with the next synthetic insert when no real key event exists.
     editor.undoManager?.removeAllActions()
     editor.insertText(" + edit", replacementRange: NSRange(location: editor.string.utf16.count, length: 0))
     check("编辑可用", editor.string == "中文 + edit")

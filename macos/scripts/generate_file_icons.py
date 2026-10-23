@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""从本地 SVG 与文件映射生成图标表，无需 Node 或前端依赖。"""
 
 import json
 import pathlib
@@ -22,8 +21,8 @@ def main() -> int:
     }
     svgs = data["svg"]
 
-    def table(name: str, mapping: dict[str, str], comment: str) -> list[str]:
-        lines = [f"    /// {comment}", f"    static let {name}: [String: String] = ["]
+    def table(name: str, mapping: dict[str, str]) -> list[str]:
+        lines = [f"    static let {name}: [String: String] = ["]
         for key in sorted(mapping):
             if mapping[key] in svgs:
                 lines.append(f'        "{key}": "{mapping[key]}",')
@@ -32,20 +31,17 @@ def main() -> int:
         return lines
 
     out = [
-        "// 由 macos/scripts/generate_file_icons.py 生成，请勿手改。",
-        "// 图标来自 material-icon-theme（MIT），来源与许可证见 Resources/IconSources/README.md。",
-        "",
         "enum TandockFileIconCatalog {",
         f'    static let defaultFile = "{defaults["file"]}"',
         f'    static let defaultFolder = "{defaults["folder"]}"',
         f'    static let defaultFolderExpanded = "{defaults["folderExpanded"]}"',
         "",
     ]
-    out += table("byExtension", extension_map, "扩展名 → 图标名")
-    out += table("byFileName", filename_map, "整个文件名 → 图标名（package.json 这类）")
-    out += table("byFolder", folder_map, "文件夹名 → 图标名")
-    out += table("byFolderExpanded", folder_open_map, "展开态的文件夹图标")
-    out += ["    /// 图标名 → SVG", "    static let svg: [String: String] = ["]
+    out += table("byExtension", extension_map)
+    out += table("byFileName", filename_map)
+    out += table("byFolder", folder_map)
+    out += table("byFolderExpanded", folder_open_map)
+    out += ["    static let svg: [String: String] = ["]
     for name in sorted(svgs):
         out.append(f'        "{name}": """')
         out.append(f"        {svgs[name]}")

@@ -99,9 +99,6 @@ public struct LegacyMigrationService {
             let sourceSnapshot = staging.appendingPathComponent("legacy-source.db")
             let source = try SQLiteConnection(path: sourceDatabase.path, readOnly: true)
             try source.backup(to: sourceSnapshot.path)
-            // sqlite3_backup copies the source database header, including WAL
-            // journal mode. The snapshot must be self-contained: normalize its
-            // own copy to DELETE mode so later reads never depend on sidecars.
             do {
                 let selfContainedSnapshot = try SQLiteConnection(path: sourceSnapshot.path)
                 try selfContainedSnapshot.execute("PRAGMA journal_mode=DELETE")

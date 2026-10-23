@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Validate the feed against the delivered app, archive and pinned public key."""
 import argparse
 import base64
 import plistlib

@@ -66,7 +66,6 @@ final class AgentCustomizationSettingsModel: ObservableObject {
     }
 }
 
-/// Uses the same grouped form and trailing controls as the other settings pages.
 struct AgentCustomizationSettingsView: View {
     @ObservedObject var model: AgentCustomizationSettingsModel
     let agents: [TandockAgentProfile]
@@ -304,8 +303,6 @@ struct AgentCustomizationSettingsView: View {
     private var configurationSources: [URL] {
         guard let snapshot = model.snapshot, agent != nil,
               !(page == .mcp && agent?.supportsMCP == false) else { return [] }
-        // On a failed read, individual rows still expose their known sources;
-        // avoid presenting a fallback directory as the active config location.
         guard snapshot.issues.isEmpty else { return [] }
         let sources = page == .skills
             ? [snapshot.skillDestination] + snapshot.skills.map(\.root)

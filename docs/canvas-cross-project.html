@@ -5,11 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tandock 跨项目画布</title>
 <style>
-/* 文档外壳：doc- 前缀；窗口模拟：m- 前缀。沿用 ui-visual-direction.html 方向 B「纸面浮卡」的色板。 */
 :root {
   --doc-bg: #f6f5f9; --doc-ink: #16133a; --doc-muted: #5a5873; --doc-line: #dedce8; --doc-card: #ffffff;
   --coral: #ff5a4e; --coral-text: #c8372c; --sun: #ffc83d;
-  /* 项目标识色：与珊瑚强调色错开，避免「项目色」被误读成「焦点色」 */
   --pj-a: #1c9c85; --pj-b: #7b6cf6; --pj-c: #d98a1f; --pj-d: #2f6fed;
 }
 * { box-sizing: border-box; }
@@ -36,7 +34,6 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 .doc-pj { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
 .doc-pj i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
-/* ——— 窗口模拟（亮色，方向 B） ——— */
 .m-win { --m-bg: #efeef4; --m-card: #fcfcfe; --m-text: #16133a; --m-soft: #3d3a5c; --m-muted: #7a7893;
   --m-field: rgba(22,19,58,.06); --m-term: #1b1840; --m-term-text: #d9d7f2;
   border-radius: 12px; overflow: hidden; background: var(--m-bg); color: var(--m-text);
@@ -101,13 +98,11 @@ code { font: 12px ui-monospace, "SF Mono", Menlo, monospace; background: #f0eff5
 .legend strong { color: var(--doc-ink); }
 .stage { background: #e4e2ee; border-radius: 16px; padding: 28px; }
 
-/* 小图：状态示意 */
 .mini { background: var(--doc-card); border: 1px solid var(--doc-line); border-radius: 14px; padding: 14px; }
 .mini h3 { margin: 0 0 4px; font-size: 14px; }
 .mini p { margin: 0 0 10px; color: var(--doc-muted); font-size: 12.5px; }
 .mini .m-win { height: auto; display: block; box-shadow: none; padding: 10px; background: var(--m-bg); border-radius: 10px; font-size: 11px; }
 
-/* 新建会话选择器 */
 .np { background: var(--m-card); border-radius: 11px; box-shadow: 0 2px 8px rgba(22,19,58,.14); padding: 20px 22px 12px; width: 100%; max-width: 520px; margin: 0 auto; color: var(--m-text); }
 .np .np-t { text-align: center; font-size: 17px; font-weight: 650; }
 .np .np-s { text-align: center; color: var(--m-muted); font-size: 11.5px; margin: 2px 0 14px; }

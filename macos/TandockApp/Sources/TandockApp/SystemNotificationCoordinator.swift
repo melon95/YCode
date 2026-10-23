@@ -91,8 +91,6 @@ final class TandockSystemNotificationCoordinator: NSObject, UNUserNotificationCe
                     identifier: "tandock-\(item.id)-\(item.version)"
                 )
             } catch {
-                // Hook delivery remains best-effort and must never interfere
-                // with the Agent process that invoked the helper.
             }
         }
     }
@@ -143,8 +141,6 @@ final class TandockSystemNotificationCoordinator: NSObject, UNUserNotificationCe
         let alertsEnabled: Bool
     }
 
-    // Older SDKs do not mark notification objects Sendable. Read them in the
-    // completion handler and pass only value snapshots back to the main actor.
     private func notificationSettingsSnapshot() async -> NotificationSettingsSnapshot {
         await withCheckedContinuation { continuation in
             center.getNotificationSettings { settings in

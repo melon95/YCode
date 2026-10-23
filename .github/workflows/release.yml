@@ -92,7 +92,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Never replace assets of a public release; a retry may reuse only its draft.
           python3 macos/scripts/check_release_version.py "$RELEASE_TAG" "$GH_REPO"
           if ! gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/tandock-release.json" 2>/dev/null; then
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "Tandock $VERSION" --generate-notes

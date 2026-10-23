@@ -1,4 +1,3 @@
-// English copy lives in the HTML; Chinese overrides are keyed by data-i.
 const zh = {
   skip: '跳至正文', navTour: '演示', navPanels: '面板', navStart: '开始使用', navFaq: '常见问题',
   heroTitle: '编程 Agent，<br>并排工作。',
@@ -94,7 +93,6 @@ document.querySelector('#language').addEventListener('click', () => {
   applyLanguage();
 });
 
-// ---------- Film: one rendered file per language, plus chapter links ----------
 const video = document.querySelector('#intro-video');
 function updateFilm() {
   const src = `assets/tandock-overview.${language}.mp4`;
@@ -131,7 +129,6 @@ function markChapter() {
 }
 video.addEventListener('timeupdate', markChapter);
 
-// ---------- Panels dock: tabs mirror the app's panel shortcuts ----------
 const tabs = [...document.querySelectorAll('.dock-tabs [role=tab]')];
 function renderPanel() {
   const [title, body, limit, alt] = copy[language].panels[view];
@@ -157,7 +154,6 @@ tabs.forEach((tab, i) => {
   });
 });
 
-// ---------- Interactive demo: typing terminals and animated layouts ----------
 const canvas = document.querySelector('#canvas');
 const panes = [...canvas.querySelectorAll('.pane')];
 let typingRun = 0;
@@ -199,7 +195,6 @@ function cursor() {
   return el;
 }
 
-// FLIP: measure, switch the grid, then animate each pane from its old box.
 document.querySelectorAll('.layouts button').forEach(button => button.addEventListener('click', () => {
   const layout = button.dataset.layout;
   if (canvas.classList.contains(`layout-${layout}`)) return;
@@ -221,7 +216,6 @@ document.querySelectorAll('.layouts button').forEach(button => button.addEventLi
 }));
 panes.forEach(pane => pane.addEventListener('click', () => panes.forEach(p => p.classList.toggle('focus', p === pane))));
 
-// ---------- Copy build commands ----------
 document.querySelector('#copy').addEventListener('click', async () => {
   const status = document.querySelector('#copy-status');
   try {
@@ -234,8 +228,6 @@ document.querySelector('#copy').addEventListener('click', async () => {
 
 applyLanguage();
 
-// Keep content visible without scripts or motion support; animate each real
-// section's content once when it enters the viewport.
 if (!motion.matches && 'IntersectionObserver' in window) {
   const entrances = new IntersectionObserver(entries => {
     for (const entry of entries) {

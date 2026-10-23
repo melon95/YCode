@@ -43,15 +43,10 @@ struct HistoryIntrospectionTests {
         let session = try #require(
             index.scanWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace).first { $0.agent == .pi }
         )
-        // 文件名是 `<时间戳>_<会话 id>.jsonl`，只有下划线后面那截才是 pi --resume 认的 id。
         #expect(session.sessionID == "01a0c6de-636a-7211-ae7f-725cfcc36faf")
-        // 标题取第一条用户消息，而不是那条带着整段 preamble 的 system 消息。
         #expect(session.title == "读取 pi 历史")
 
         let events = try index.events(for: session)
-        // 首行 `session` 是文件头，不产出事件（与 codex 的 session_meta 同处理），
-        // 所以 sequence 从 1 起跳；`model_change` 留成 unknown 占住 sequence 1，
-        // 于是 sequence 始终等于行号 —— 增量追加时不会错位。
         #expect(events.map(\.sequence) == [1, 2, 3, 4, 5, 6, 7])
         #expect(events.map(\.preview) == [
             "?? model_change",
@@ -62,11 +57,9 @@ struct HistoryIntrospectionTests {
             "[result: bash]",
             "pi 历史已接入"
         ])
-        // 状态变更行不参与排序与搜索：时间戳被抹成 0。
         #expect(events[0].timestampMilliseconds == 0)
         #expect(events.dropFirst().allSatisfy { $0.timestampMilliseconds > 0 })
 
-        // 图片分片只有 base64，绝不能混进正文 —— 否则一条消息几百 KB 会把预览和搜索撑爆。
         #expect(events[2].preview == "读取 pi 历史")
         #expect(!events[2].preview.contains("iVBOR"))
 
@@ -88,7 +81,6 @@ struct HistoryIntrospectionTests {
             Issue.record("expected toolResult")
             return
         }
-        // pi 直接给了工具名，不用像 Claude 那样拿 tool_use_id 回查。
         #expect(tool == "bash")
         #expect(excerpt.contains("ok"))
         #expect(status == .ok)
@@ -172,9 +164,6 @@ private struct HistoryFixture {
         ]
         try Data((codexLines.joined(separator: "\n") + "\n").utf8).write(to: codexFile)
 
-        // pi：~/.pi/agent/sessions/<编码后的 cwd>/<时间戳>_<id>.jsonl
-        // 这几行的形状照抄自真实文件（~/.pi/agent/sessions/），包括 image 分片、
-        // 数字毫秒时间戳、以及 toolResult 上的 toolName / isError。
         let piDirectory = home.appendingPathComponent(".pi/agent/sessions", isDirectory: true)
             .appendingPathComponent(TandockHistoryIndex.encodePiWorkspace(workspace), isDirectory: true)
         try FileManager.default.createDirectory(at: piDirectory, withIntermediateDirectories: true)
@@ -182,8 +171,6 @@ private struct HistoryFixture {
         let piLines = [
             "{\"type\":\"session\",\"version\":3,\"id\":\"01a0c6de-636a-7211-ae7f-725cfcc36faf\",\"timestamp\":\"2026-09-22T02:07:38.346Z\",\"cwd\":\"\(workspace.path)\"}",
             #"{"type":"model_change","id":"e839","parentId":null,"timestamp":"2026-09-22T02:07:38.587Z","provider":"anthropic","modelId":"claude-opus-5"}"#,
-            // pi 把 skill 作为一条独立的 user 消息注入 —— 标题必须跳过它，
-            // 否则会变成一整段 skill 正文（真实数据里确实出现过 22KB 的标题）。
             #"{"type":"message","id":"a0","parentId":null,"timestamp":"2026-09-22T02:07:39.000Z","message":{"role":"user","content":[{"type":"text","text":"<skill name=\"apple-design\" location=\"/x/SKILL.md\">\nRefs\n</skill>"}]}}"#,
             #"{"type":"message","id":"a1","parentId":null,"timestamp":"2026-09-22T02:07:40.000Z","message":{"role":"user","content":[{"type":"text","text":"读取 pi 历史"},{"type":"image","data":"iVBORw0KGgoAAAANSUhEUg"}]}}"#,
             #"{"type":"message","id":"a2","parentId":"a1","timestamp":"2026-09-22T02:07:41.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"先看一眼格式","thinkingSignature":"xx"},{"type":"toolCall","id":"toolu_1","name":"bash","arguments":{"command":"ls"}}]}}"#,

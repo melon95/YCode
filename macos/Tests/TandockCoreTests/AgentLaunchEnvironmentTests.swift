@@ -8,8 +8,6 @@ struct AgentLaunchEnvironmentTests {
     func defaults() {
         #expect(TandockAgentCatalog.defaults.map(\.id) == ["claude-code", "codex"])
         #expect(TandockAgentCatalog.suggestions.map(\.id) == ["grok-cli", "pi"])
-        // Gemini CLI 已停更，不再主动建议 —— 但支持仍在（见
-        // `geminiFromLoginShellPath` 与 `apiKeyHints`），手动加一个照样能跑。
         #expect(!TandockAgentCatalog.suggestions.contains { $0.id == "gemini-cli" })
     }
 

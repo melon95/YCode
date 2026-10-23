@@ -6,7 +6,6 @@ final class TandockUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     static let shared = TandockUpdateController()
 
     @Published private(set) var isConfigured: Bool
-    /// 自绘的更新界面。检查、下载、签名校验和安装仍由 Sparkle 完成，驱动只负责界面。
     private let driver: TandockUpdateUserDriver?
     private var updater: SPUUpdater?
     private let retry = TandockUpdateRetryCoordinator()
@@ -45,9 +44,6 @@ final class TandockUpdateController: NSObject, ObservableObject, SPUUpdaterDeleg
     }
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
-        // Sparkle 2.10.0 的 SPUUpdater.m 在通知此回调前，已将 _driver 清空、
-        // sessionInProgress 设为 false、canCheckForUpdates 设为 true。
-        // 在此同步开始新检查还会阻止旧周期安排下次后台检查。
         retry.updateCycleDidFinish(
             canCheckForUpdates: updater.canCheckForUpdates,
             sessionInProgress: updater.sessionInProgress

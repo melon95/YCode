@@ -98,14 +98,9 @@ public struct TandockTerminalTheme: Equatable, Sendable {
 }
 
 public enum TandockThemeCatalog {
-    /// 只有浅色与深色两套配色，外加「跟随系统」。
-    /// 值取自设计稿 §02 的 token —— 整个窗口（含终端画布）跟着系统外观走，
-    /// 不存在一块不听系统话的区域，所以也不需要十套主题。
     public static let systemID = "system"
     public static let defaultID = systemID
 
-    // 品牌色取自应用图标与官网（docs/ui-visual-direction.html 方向 B）：
-    // 珊瑚强调、深墨文字、向日葵黄光标，底色带一点紫调。
     public static let light = TandockThemeOption(
         id: "light", label: "Light", systemColorScheme: "light",
         background: "#efeef4", surface: "#fcfcfe", panel: "#fcfcfe",
@@ -126,7 +121,6 @@ public enum TandockThemeCatalog {
         options.first { $0.id == id }
     }
 
-    /// 解析当前该用哪套。`system` 与任何旧的主题 id 都跟随系统外观。
     public static func resolve(id: String, prefersDark: Bool) -> TandockThemeOption {
         switch id {
         case light.id: light
@@ -273,7 +267,6 @@ public final class TandockConfigurationStore {
         proxyFields["no_proxy"] = .string(settings.proxy.noProxy)
         document["proxy"] = .object(proxyFields)
         try document.encodedData().write(to: configurationURL, options: .atomic)
-        // 命令可能刚被改过，probe 的缓存结论立刻作废。
         TandockAgentLauncher.invalidateProbeCache()
         TandockShellEnvironmentStore.shared.invalidate()
     }
@@ -370,9 +363,6 @@ public final class TandockConfigurationStore {
     }
 }
 
-/// 启动时进哪个项目。原来这里有三档「启动时显示」可选，但三档的差别只有
-/// 「最近项目一个会话都没有时进不进去」，而「恢复最近工作区」又恢复不了任何东西
-/// —— 画布布局只活在进程内。所以只留一条：有最近项目就进它，没有就给项目总览。
 public func initialProjectID(recentProjectID: String?, projects: [ProjectRecord]) -> String? {
     let recent = recentProjectID.flatMap { id in projects.first(where: { $0.id == id }) }
     return recent?.id ?? projects.first?.id

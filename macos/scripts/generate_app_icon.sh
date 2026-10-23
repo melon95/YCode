@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Regenerate Resources/AppIcon.icns from Resources/AppIcon.svg.
-# Requires rsvg-convert (brew install librsvg); Quick Look renders SVGs onto white and loses the transparent corners.
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "$0")/.." && pwd)"

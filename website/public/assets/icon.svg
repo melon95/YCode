@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Tandock icon: a chevron and a text caret drawn at one stroke weight form the Y; the sparkle marks the AI agent. -->
   <rect x="100" y="100" width="824" height="824" rx="186" fill="#ff5a4e"/>
   <path d="M334 278 L512 462 L690 278" fill="none" stroke="#ffffff" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
   <rect x="472" y="552" width="80" height="260" rx="40" fill="#16133a"/>

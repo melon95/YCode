@@ -27,7 +27,6 @@ struct TerminalCanvasTransitionTests {
         canvas.layoutSubtreeIfNeeded()
     }
 
-    /// Width available to panes inside the canvas' outer margin.
     private var contentWidth: CGFloat {
         1000 - TandockCanvasHost<String>.insets.left - TandockCanvasHost<String>.insets.right
     }
@@ -104,21 +103,17 @@ struct TerminalCanvasTransitionTests {
         update(canvas, .stack)
         #expect(canvas.isTransitioning)
         #expect(live(canvas).map(ObjectIdentifier.init) == oldHosts.map(ObjectIdentifier.init))
-        // Terminals are resized once, to the destination, and stay visible.
         #expect(live(canvas).allSatisfy { $0.frame.width == contentWidth && $0.alphaValue == 1 })
         #expect(snapshots(canvas).count == 2)
         for (index, pane) in slots(canvas).enumerated() {
             let snapshot = try #require(pane.snapshot)
             #expect(snapshot.image.size == oldFrames[index].size)
-            // The old pixels plus their background cover every intermediate slot size.
             #expect(snapshot.frame.origin == .zero)
             #expect(snapshot.frame.width == max(oldFrames[index].width, pane.frame.width))
             #expect(snapshot.frame.height == max(oldFrames[index].height, pane.frame.height))
             #expect(snapshot.alphaValue == 0)
             #expect(snapshot.layer?.animation(forKey: TandockCanvasPane.fadeKey) != nil)
-            // Flipped geometry keeps cropped content pinned to the visual top-left.
             #expect(pane.layer?.contentsAreFlipped() == true)
-            // The live destination-sized content must not spill over neighbours.
             window.displayIfNeeded()
             #expect(pane.clipsToBounds)
             #expect(pane.layer?.masksToBounds == true)
@@ -138,10 +133,8 @@ struct TerminalCanvasTransitionTests {
         update(canvas, .stack)
         let firstSnapshots = snapshots(canvas).map(ObjectIdentifier.init)
         update(canvas, .columns)
-        // The visible pixels are reused rather than re-captured from the hidden future.
         #expect(snapshots(canvas).map(ObjectIdentifier.init) == firstSnapshots)
         for (index, pane) in slots(canvas).enumerated() {
-            // Back at the original layout: nothing visibly moved yet, so nothing moves.
             #expect(pane.frame == initial[index])
             #expect(pane.layer?.animation(forKey: TandockCanvasPane.frameKey) == nil)
         }
@@ -203,7 +196,6 @@ struct TerminalCanvasTransitionTests {
         update(canvas, .columns)
         #expect(live(canvas).count == 2)
         #expect(live(canvas).contains { $0 === first })
-        // Only the existing pane needs old pixels; the new one fades in live.
         #expect(snapshots(canvas).count == 1)
         let added = slots(canvas).first { $0.host !== first }
         #expect(added?.layer?.animation(forKey: TandockCanvasPane.fadeKey) != nil)
@@ -215,7 +207,6 @@ struct TerminalCanvasTransitionTests {
         #expect(ghosts.count == 1)
         canvas.cancelTransition()
         #expect(snapshots(canvas).isEmpty)
-        // One floating card plus the shadow view drawn behind it.
         #expect(canvas.subviews.count == 2)
         #expect(slots(canvas).first.map { canvas.subviews.contains($0.cardShadow) } == true)
         #expect(slots(canvas).first?.alphaValue == 1)
@@ -235,7 +226,6 @@ struct TerminalCanvasTransitionTests {
         let pixel = try #require(pixels.colorAt(x: 20, y: image.height / 2)?.usingColorSpace(.deviceRGB))
         #expect(pixel.redComponent > 0.99 && pixel.greenComponent > 0.99 && pixel.blueComponent > 0.99)
         #expect(pixel.alphaComponent > 0.99)
-        // The glyphs are part of the same pass, drawn over the background.
         var dark = 0
         for x in stride(from: 0, to: min(400, image.width), by: 1) {
             if let color = pixels.colorAt(x: x, y: 8)?.usingColorSpace(.deviceRGB), color.redComponent < 0.5 { dark += 1 }

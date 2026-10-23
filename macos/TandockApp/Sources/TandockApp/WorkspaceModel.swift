@@ -12,10 +12,6 @@ private struct SessionMetadataChange: Sendable {
     let sender: UUID
 }
 
-/// 侧栏的「状态」过滤档。归档是单独一档：归档过的会话平时不该混在活跃列表里，
-/// 但也得有个地方能看见它们、把它们捞回来；`all` 则是活跃 + 归档一起看。
-/// 这几档从原来的一排 chip 挪进了顶栏那个漏斗菜单 —— chip 一排最多塞得下三档，
-/// 再加「排序」「显示空项目」就没地方了，而菜单是可以一直加行的。
 enum TandockSidebarFilter: String, CaseIterable, Identifiable {
     case active, archived, all
 
@@ -30,8 +26,6 @@ enum TandockSidebarFilter: String, CaseIterable, Identifiable {
     }
 }
 
-/// 侧栏会话的排序方式。默认 `.manual` 就是仓库里的既有顺序（建会话的先后），
-/// 换句话说不选排序时列表跟以前一模一样。
 enum TandockSidebarSort: String, CaseIterable, Identifiable {
     case manual, lastUsed, title
 
@@ -62,7 +56,6 @@ enum TandockWorkspacePanel: String, CaseIterable, Identifiable {
         }
     }
 
-    /// 画布顶栏右端那四个开关的图标。只用轮廓线版本——填充版在 24 px 的工具栏里太重。
     var symbolName: String {
         switch self {
         case .files: "doc.text"
@@ -73,7 +66,6 @@ enum TandockWorkspacePanel: String, CaseIterable, Identifiable {
         }
     }
 
-    /// ⌘1–⌘4，顺序与 `shortcutPanels` 一致。
     var shortcutHint: String {
         guard let index = Self.shortcutPanels.firstIndex(of: self) else { return "" }
         return "⌘\(index + 1)"
@@ -101,27 +93,18 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var sessions: [SessionMetadata] = []
     @Published var selectedProjectID: String?
     @Published var selectedSessionID: String?
-    /// 侧栏项目行的「+」想让新会话落在哪个项目；选择器读走之后清掉。
     @Published var newSessionProjectRequest: String?
-    /// 最近一次建会话用的项目，新会话选择器没有更具体的线索时用它。
     private(set) var lastNewSessionProjectID: String?
     @Published private(set) var visibleSessionIDs: [String] = []
-    /// Retain open tabs when a split layout shows only four of them.
     private var tabSessionIDs: [String] = []
     @Published private(set) var focusedCanvasSlot = 0
     @Published private(set) var terminalLayout: TandockTerminalLayout = .single
-    /// CLI 通过 OSC 0/1/2 报出来的窗口标题，按会话 id 存。
-    /// 临时显示后备，不落库。正式会话名由元数据监听更新，避免把忙碌状态、
-    /// 当前目录等终端标题覆盖到用户起的名字上。
     @Published private(set) var pendingTitleSessionIDs: Set<String> = []
     @Published private(set) var liveTitles: [String: String] = [:]
     private var pendingLiveTitles: [String: String] = [:]
-    // Readable so tests can await the coalesced flush instead of guessing its timing.
     private(set) var liveTitleRefreshTask: Task<Void, Never>?
-    /// 面板区每列的宽度，拖画布与面板区之间那条分隔条来改。
     @Published private(set) var panelColumnWidth: CGFloat = TandockMetrics.panelColumnWidth
 
-    /// 面板按每列最多两张分列：开第三个面板就另起一列。
     var panelsUseCompactLayout: Bool {
         let columns = (openPanels.count + TandockMetrics.panelsPerColumn - 1) / TandockMetrics.panelsPerColumn
         let needed = CGFloat(columns) * TandockMetrics.panelColumnMinWidth + CGFloat(max(0, columns - 1)) * TandockMetrics.panelGrip + TandockMetrics.panelCardGap
@@ -137,7 +120,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 画布 + 面板区那一块现在有多宽。视图量出来交给这里，宽度约束才有得算。
     @Published private(set) var availableDetailWidth: CGFloat = 0
 
     func setAvailableDetailWidth(_ width: CGFloat) {
@@ -145,9 +127,6 @@ final class WorkspaceModel: ObservableObject {
         availableDetailWidth = width
     }
 
-    /// 面板区总宽 = 列宽 × 列数 + 列间的缝 + 右侧留白（面板是浮卡，外侧留一条与卡缝同宽的底色）。
-    /// 往宽了不设上限，只有一条硬底线：画布不能被挤到 `canvasMinWidth` 以下。
-    /// 窗口变窄或多开一列时也走这里 —— 让步的是面板区，不是画布。
     var panelAreaWidth: CGFloat {
         let columns = max(1, panelColumns.count)
         let raw = panelColumnWidth * CGFloat(columns) + TandockMetrics.panelGrip * CGFloat(columns - 1)
@@ -155,19 +134,14 @@ final class WorkspaceModel: ObservableObject {
         return min(raw, maximumPanelAreaWidth ?? raw)
     }
 
-    /// 每一列实际有多宽。平时就是 `panelColumnWidth`，只有面板区被画布顶到天花板时才更窄。
-    /// 面板区必须按这个值给列定死宽度，不能让几列去等分容器宽 ——
-    /// 加列时容器宽是动画着长的，等分的话开头那一帧原有的列会被压成一半再撑开。
     var resolvedPanelColumnWidth: CGFloat {
         let columns = max(1, panelColumns.count)
         let grips = TandockMetrics.panelGrip * CGFloat(columns - 1) + TandockMetrics.panelCardGap
         return max(TandockMetrics.panelColumnMinWidth, (panelAreaWidth - grips) / CGFloat(columns))
     }
 
-    /// 面板区能占到的最宽。量不到宽度（第一帧）时返回 nil，不设限。
     private var maximumPanelAreaWidth: CGFloat? {
         guard availableDetailWidth > 0 else { return nil }
-        // 减掉画布与面板区之间那条 1 px 分隔条。
         let ceiling = availableDetailWidth - TandockMetrics.canvasMinWidth - 1
         return max(TandockMetrics.panelColumnMinWidth, ceiling)
     }
@@ -183,8 +157,6 @@ final class WorkspaceModel: ObservableObject {
     func commitPanelAreaWidth() {
     }
 
-    /// 面板区里开着的面板，数组顺序 = 从上到下的堆叠顺序。
-    /// 不是互斥 tab：几个面板可以同时开着（设计稿 §07）。
     @Published private(set) var openPanels: [TandockWorkspacePanel] = []
     @Published private(set) var focusedPanel: TandockWorkspacePanel = .files
     @Published private(set) var terminalFontSize: CGFloat = 13
@@ -198,7 +170,6 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var terminalSearchResult = ""
     @Published private(set) var terminalSearchRequest: TandockTerminalSearchRequest?
     @Published private(set) var shellWorkspaces: [String: TandockProjectShellWorkspace] = [:]
-    /// 终端面板里当前在看哪一格。分屏树保留着（Core 没动），界面上只是一次显示一格、上面一排标签。
     @Published private(set) var shellSelection: [String: String] = [:]
     @Published private(set) var historySessions: [TandockHistorySession] = []
     @Published private(set) var historyEvents: [TandockHistoryEvent] = []
@@ -213,21 +184,15 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var todoIsLoading = false
     @Published private(set) var gitStatus: TandockGitStatus?
     @Published private(set) var gitDiff = ""
-    /// 变更面板是一列内联 diff，所以按文件缓存，展开哪个就加载哪个。
     @Published private(set) var gitDiffs: [String: String] = [:]
     @Published private(set) var gitLineStats: [String: TandockGitLineStat] = [:]
     @Published var expandedGitPaths: Set<String> = []
     @Published private(set) var selectedGitPath: String?
     @Published private(set) var gitBranches: [TandockGitBranch] = []
-    /// 变更区顶部的范围选择器（设计稿 §09）：决定 diff 从哪儿来，也决定写操作出不出现。
     @Published private(set) var changesScope: TandockGitDiffScope = .uncommitted
-    /// 「全部变更」对比的基准分支，默认取仓库的默认分支。
     @Published private(set) var changesBaseBranch = ""
-    /// 范围菜单「提交 ›」里的列表。
     @Published private(set) var changesCommits: [TandockGitCommit] = []
-    /// 当前范围下变了的文件。`.uncommitted` 时就是 `gitStatus.changes`。
     @Published private(set) var scopedChanges: [TandockGitFileChange] = []
-    /// 显示选项：忽略空白改动（git diff -w）。
     @Published var changesIgnoreWhitespace = false {
         didSet { if oldValue != changesIgnoreWhitespace { refreshGitStatus() } }
     }
@@ -240,17 +205,13 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var checkpointStatus = ""
     @Published private(set) var attentionItems: [TandockAttentionItem] = []
     @Published private(set) var terminalFocusRequest: (sessionID: String, token: UUID)?
-    // Keep this guard for the full pane lifetime, including an exit racing navigation.
     private var attentionNavigationSessionIDs: Set<String> = []
     let attentionProjectID: String?
     let attentionStore: TandockAttentionStore
     @Published private(set) var agentProfiles: [TandockAgentProfile] = []
     @Published private(set) var pinnedSessionIDs: Set<String> = []
     private let sessionMetadataSender = UUID()
-    /// 侧栏是多项目平铺的，所以它要看到所有项目的会话，而不只是当前项目的。
     @Published private(set) var sessionsByProject: [String: [SessionMetadata]] = [:]
-    /// 已归档的单独放一份：画布、计数那些地方只认活着的会话，
-    /// 归档的只在侧栏选中「已归档」那个 chip 时才露面。
     @Published private(set) var archivedSessionsByProject: [String: [SessionMetadata]] = [:]
     @Published private(set) var availableAgentProfileIDs: Set<String> = []
     @Published var sidebarQuery = ""
@@ -259,24 +220,17 @@ final class WorkspaceModel: ObservableObject {
     }
     @Published var sidebarProjectsCollapsed = true
     @Published var sidebarSort: TandockSidebarSort = .manual
-    /// 关掉之后，当前过滤下一条会话都不剩的项目连组标题都不画 ——
-    /// 项目多了以后「等你」那一档常常只有一两个项目有内容。
     @Published var sidebarShowsEmptyProjects = true
     @Published var collapsedProjectIDs: Set<String> = []
     @Published var expandedHistoryProjectIDs: Set<String> = []
-    /// 还没选项目时右边也不摆面板区 —— 跟 `resetCanvas()` 给的默认保持一致。
     @Published var inspectorIsVisible = false
     @Published var isPresentingNewSession = false {
         didSet { if isPresentingNewSession != oldValue { newSessionLayout = nil } }
     }
     @Published private var newSessionLayout: TandockTerminalLayout?
-    /// 正在 resume 的会话：点一下就接着跑，重复点不再叠一次启动。
     @Published private(set) var resumingSessionIDs: Set<String> = []
     private var importingHistorySessions: Set<String> = []
-    /// 会话起不来时的具体原因，按会话 id 记。窗格里只有硬失败才显示内容，其余时候永远是终端。
     @Published private(set) var sessionStartErrors: [String: String] = [:]
-    /// 检查器的初始宽度（沿用迁移过来的 `fileTreeWidth`）。
-    /// 拖动与记忆由系统的 `.inspector` 负责，这里只提供 ideal 值。
     @Published private(set) var inspectorWidth: CGFloat = TandockMetrics.inspectorWidth
     @Published var errorMessage: String?
     @Published private(set) var preferences = NativeWorkspacePreferences(
@@ -289,7 +243,6 @@ final class WorkspaceModel: ObservableObject {
     let dataRoot: URL
     private var repository: ProjectWorkspaceRepository?
     private var sessionService: TandockAgentSessionService?
-    /// 画布本身（会话、焦点、布局）和面板区的开关是全局的，只有「文件面板里选中的文件」属于项目。
     private var selectedFileByProject: [String: URL] = [:]
     private var editorWorkspaces: [String: TandockEditorWorkspace] = [:]
     private var terminalSearchGeneration = 0
@@ -314,7 +267,6 @@ final class WorkspaceModel: ObservableObject {
     private var eventCancellables: Set<AnyCancellable> = []
     private let gitService = TandockGitService()
 
-    /// `dataRootOverride` 只给测试用：测试在同一个进程里并行跑，用 `setenv` 指路径会和别的线程读环境变量撞车。
     init(initialProjectID: String? = nil, lockedProjectID: String? = nil, dataRootOverride: URL? = nil) {
         dataRoot = dataRootOverride ?? TandockDataRootResolver.resolve()
         attentionProjectID = lockedProjectID
@@ -337,9 +289,6 @@ final class WorkspaceModel: ObservableObject {
                 checkpointService: checkpointService
             )
             self.sessionService = sessionService
-            // 启动先扫一遍闲置会话：14 天没动静的收进归档，侧栏默认那一档就只剩真在用的。
-            // 放在挂 onSessionsChanged 之前，省得这一趟批量归档反过来触发一次 reload——
-            // 紧接着的 reloadForLaunch 本来就会读到归档之后的结果。
             sessionService.archiveIdleSessions()
             sessionService.onSessionsChanged = { [weak self] in
                 self?.titleGeneration += 1
@@ -372,8 +321,6 @@ final class WorkspaceModel: ObservableObject {
         startIdleArchiveSweep()
     }
 
-    /// 窗口一开就是好几天不关，光靠启动时那一次扫不够；每小时再扫一遍。
-    /// 归档本身是幂等的，扫空一趟的代价也就是一条 SELECT。
     private func startIdleArchiveSweep() {
         idleArchiveTask?.cancel()
         idleArchiveTask = Task { [weak self] in
@@ -381,7 +328,6 @@ final class WorkspaceModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 60 * 60 * 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
                 self.sessionService?.archiveIdleSessions()
-                // 同一趟里再对一次 jsonl：窗口开着的这一小时里，标题可能已经被 CLI 改过了。
                 self.importDiscoveredSessions()
             }
         }
@@ -404,7 +350,6 @@ final class WorkspaceModel: ObservableObject {
         selectedSessionID.flatMap { session(id: $0) }
     }
 
-    /// 画布是跨项目的，所以按 id 找会话要在所有项目里找，不能只看当前项目的 `sessions`。
     func session(id: String) -> SessionMetadata? {
         if let hit = sessions.first(where: { $0.id == id }) { return hit }
         for list in sessionsByProject.values {
@@ -417,7 +362,6 @@ final class WorkspaceModel: ObservableObject {
         projects.first { $0.id == id }
     }
 
-    /// 焦点窗格所属的项目。右侧面板、新会话的默认项目都跟它走。
     var focusedCanvasProjectID: String? {
         focusedCanvasSessionID.flatMap { session(id: $0)?.projectID }
     }
@@ -450,12 +394,10 @@ final class WorkspaceModel: ObservableObject {
         TandockTerminalLayout.validModes(for: canvasPaneCount)
     }
 
-    /// 「跟随系统」时按当前外观解析；视图 body 会随系统外观重算，所以不用自己监听。
     var activeTheme: TandockThemeOption {
         TandockThemeCatalog.resolve(id: themeID, prefersDark: TandockAppearanceProbe.prefersDark)
     }
 
-    /// nil 表示交给系统
     var preferredColorScheme: ColorScheme? {
         switch themeID {
         case TandockThemeCatalog.light.id: .light
@@ -465,8 +407,6 @@ final class WorkspaceModel: ObservableObject {
     }
     var l10n: TandockLocalization { TandockLocalization(locale: locale) }
 
-    /// Show the first title immediately, then publish the latest titles together
-    /// at most four times a second. CLI spinner titles must not drive layout.
     func recordLiveTitle(sessionID: String, title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -488,18 +428,15 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 界面上这条会话叫什么：用户起的名字 > CLI 报的 live title > 斜体的「新会话」。
     func displayName(for session: SessionMetadata) -> String {
         l10n.sessionDisplayName(session, liveTitle: liveTitles[session.id])
     }
 
-    /// 有没有名字可显示（库里的或 CLI 报的）。侧栏拿它决定要不要走斜体占位那一支。
     func hasDisplayTitle(_ session: SessionMetadata) -> Bool {
         !session.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || liveTitles[session.id] != nil
     }
 
-    /// PATH 上找得到的 agent —— 装不上的不进选择器（设计稿 §06）。
     var availableAgentProfiles: [TandockAgentProfile] {
         let enabled = agentProfiles.filter(\.enabled)
         let usable = enabled.filter { availableAgentProfileIDs.contains($0.id) }
@@ -515,7 +452,6 @@ final class WorkspaceModel: ObservableObject {
         archivedSessionsByProject[projectID] ?? []
     }
 
-    /// 侧栏一行会话要不要显示：受搜索框与漏斗菜单里的状态档控制，最后按排序档排一次。
     func sidebarSessions(in projectID: String) -> [SessionMetadata] {
         let query = sidebarQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let pool: [SessionMetadata]
@@ -536,7 +472,6 @@ final class WorkspaceModel: ObservableObject {
             + sorted.filter { !pinnedSessionIDs.contains($0.id) }
     }
 
-    /// 顶部快捷入口跨项目汇总；最近会话固定按活动时间排序，并与固定组去重。
     func sidebarShortcutSessions(pinned: Bool, projectID: String? = nil) -> [SessionMetadata] {
         guard sidebarFilter != .archived else { return [] }
         let query = sidebarQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -559,19 +494,12 @@ final class WorkspaceModel: ObservableObject {
         }.prefix(10))
     }
 
-    /// 空壳会话：CLI 从来没报出过标题，磁盘上也就没有对应的 jsonl —— 建完就没管的那一条。
-    /// 点开是空终端，resume 也没有内容可续，留在列表里只是占位。
-    ///
-    /// 但「正在跑」和「已经摆上画布」的不算：新建的头几秒还没有标题，
-    /// 它不能在用户眼皮底下闪一下就消失。选「全部」时这些空壳也会露面，
-    /// 好歹留一条能把它们找出来删掉的路。
     private func isEmptyShell(_ session: SessionMetadata) -> Bool {
         guard !pinnedSessionIDs.contains(session.id), !hasDisplayTitle(session) else { return false }
         if visibleSessionIDs.contains(session.id) || resumingSessionIDs.contains(session.id) { return false }
         return runtimeStatus(for: session)?.isLive != true
     }
 
-    /// `.manual` 直接原样返回 —— 仓库给的顺序本身就是用户建会话的顺序，别去动它。
     private func sidebarSorted(_ sessions: [SessionMetadata]) -> [SessionMetadata] {
         switch sidebarSort {
         case .manual:
@@ -597,7 +525,6 @@ final class WorkspaceModel: ObservableObject {
         visibleSessionIDs.firstIndex(of: sessionID)
     }
 
-    /// 界面字号走系统字阶的三档缩放，不再整棵树覆盖一个绝对字号（设计稿问题 07）。
     var uiDynamicTypeSize: DynamicTypeSize {
         switch uiFontSize {
         case ..<14: .small
@@ -618,7 +545,6 @@ final class WorkspaceModel: ObservableObject {
         collapsedProjectIDs = Set(projects.map(\.id))
     }
 
-    /// 历史区挂在项目组下；展开哪个项目就为哪个项目扫历史（历史数据本来就按 cwd 分组）。
     func toggleHistorySection(for projectID: String) {
         if expandedHistoryProjectIDs.contains(projectID) {
             expandedHistoryProjectIDs.remove(projectID)
@@ -630,12 +556,8 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 侧栏点一行会话：把它放到画布上（不管属于哪个项目），没在跑就直接接着跑。
-    /// 并排是 tandock 的核心差异，所以走 `.newPane` —— 已经在画布上就聚焦过去，
-    /// 还有空格位就并排开一格，满 4 格才替换当前焦点格。
     func activateSession(_ session: SessionMetadata) {
         attentionNavigationSessionIDs.remove(session.id)
-        // 画布是跨项目的：不再为了换项目而换掉整块画布，焦点落到哪个会话，右侧面板就跟到哪个项目。
         openSessionInCanvas(session.id, mode: .newPane)
         resumeIfNeeded(session.id)
     }
@@ -649,8 +571,6 @@ final class WorkspaceModel: ObservableObject {
 
     func isResuming(_ id: String) -> Bool { resumingSessionIDs.contains(id) }
 
-    /// 启动就在后台解析一次 shell 环境（home 和当前项目），见 `TandockShellEnvironmentStore`。
-    /// 之后新建/恢复会话直接用快照 spawn agent，不再每次现跑一遍 rc。
     private func prewarmAgentLaunchPath() {
         let store = TandockShellEnvironmentStore.shared
         store.refresh(store.homeDirectory)
@@ -676,7 +596,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 默认先等 home 的 shell 环境快照（启动时已在解析），再按它的 PATH 判断，免得每个命令各跑一遍登录 shell。
     nonisolated private static func availabilityProbe(_ probe: (@Sendable (String) -> Bool)?) async -> @Sendable (String) -> Bool {
         if let probe { return probe }
         let store = TandockShellEnvironmentStore.shared
@@ -714,7 +633,6 @@ final class WorkspaceModel: ObservableObject {
             sessions = try id.map { try cliSessions(projectID: $0) } ?? []
             refreshSessionsByProject()
             restoreProjectContext(for: id)
-            // 画布上已经有这个项目的会话、而焦点在别的项目上：把焦点挪过来，右侧面板才对得上。
             if focusedCanvasProjectID != id,
                let slot = visibleSessionIDs.firstIndex(where: { session(id: $0)?.projectID == id }) {
                 focusedCanvasSlot = slot
@@ -741,8 +659,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 新建会话：不勾 worktree 就是「切到这个分支再起」；分支留空表示用仓库当前分支。
-    /// `projectID` 为空表示当前项目。新会话选择器里可以选别的项目，所以分支也要在那个项目的仓库里切。
     func createSession(agentProfileID: String, title: String, branch: String?, useWorktree: Bool, projectID: String? = nil) async {
         guard let targetID = projectID ?? selectedProjectID, let project = project(id: targetID) else { return }
         if let branch, !branch.isEmpty {
@@ -816,10 +732,7 @@ final class WorkspaceModel: ObservableObject {
             do {
                 _ = try await sessionService?.restartSession(id: id)
             } catch is CancellationError {
-                // Stop/archive cancelled a pending preflight.
             } catch {
-                // 硬失败（命令找不到、worktree 路径不存在…）留在窗格里，不弹全局 alert：
-                // 这类错误不会因为多等一会儿就好，要就地给重试。
                 sessionStartErrors[id] = error.localizedDescription
             }
             resumingSessionIDs.remove(id)
@@ -841,9 +754,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func renameSession(id: String, title: String) {
-        // 空标题一路写进 jsonl 之后，列表只会回落到斜体的「新会话」，
-        // 看起来像是改名失败而不是改成了空 —— 两个重命名对话框各自挡了一道，
-        // 这里再兜一次，因为这是个公开方法。
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         titleGeneration += 1
@@ -885,11 +795,6 @@ final class WorkspaceModel: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    /// 删除会话：库里的行和磁盘上的 jsonl 一起收掉（jsonl 进废纸篓）。
-    /// 归档是「先收起来」，这个是「不要了」——不删 jsonl 的话，下一轮扫描又会把它导回来。
-    ///
-    /// 库里没记路径的（在应用里新建、没被扫描认领过的那些）现扫一遍当前项目来找；
-    /// 找不到就只能删库，并明确告诉用户这条可能会随扫描回来，别让它默默复活。
     func deleteSession(id: String) {
         guard let session = sessions.first(where: { $0.id == id })
             ?? archivedSessionsByProject.values.flatMap({ $0 }).first(where: { $0.id == id }) else { return }
@@ -898,7 +803,6 @@ final class WorkspaceModel: ObservableObject {
         let agentSessionID = session.agentSessionID
         let home = historyHomeDirectory
         let index = historyIndex
-        // 目录还在才扫得动。目录没了这一趟就查不出文件在哪，也就没资格说「它不存在」。
         let workspace = project?.pathExists == true ? project?.repositoryURL : nil
         Task {
             var fallback: String?
@@ -917,9 +821,6 @@ final class WorkspaceModel: ObservableObject {
                 pendingLiveTitles[id] = nil
                 liveTitles[id] = nil
                 reloadSessions()
-                // 没删到文件多数时候是正常的：刚建的会话还没跟 CLI 说过话，磁盘上本来就没有 jsonl；
-                // 扫过一遍也没找到，说明扫描根目录下就没有它，导入同样带不回来——这两种都不用打扰用户。
-                // 只有「压根没扫成」（项目目录不在了）才真有可能漏网，那时才提醒一句。
                 let couldHaveMissedIt = removed == nil && recorded == nil && agentSessionID != nil && !scanned
                 if couldHaveMissedIt {
                     errorMessage = l10n.text("deleteSessionJsonlMissing")
@@ -930,13 +831,11 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 取消归档：会话回到活跃列表，agent 进程不会跟着起来 —— 要它跑得自己点一下继续。
     func unarchiveSession(id: String) {
         Task {
             do {
                 try await sessionService?.unarchiveSession(id: id)
                 self.reloadSessions()
-                // 归档那一组里少了一条，空了就退回「全部」，不然停在一张空列表上。
                 if self.sidebarArchivedCount == 0 { self.sidebarFilter = .active }
             } catch {
                 errorMessage = error.localizedDescription
@@ -972,15 +871,11 @@ final class WorkspaceModel: ObservableObject {
         if openPanels.contains(.changes) { refreshCheckpoints() }
     }
 
-    /// 右侧面板（文件、变更、待办、项目终端）永远属于焦点窗格的项目：焦点跨项目了就把项目上下文换过去。
-    /// 只换上下文，不碰画布。
-    /// 窗格菜单「在侧栏中定位」：把所属项目展开，让这一行露出来。
     func revealSessionInSidebar(_ session: SessionMetadata) {
         sidebarProjectsCollapsed = false
         collapsedProjectIDs.remove(session.projectID)
     }
 
-    /// 窗格菜单「仅看此项目」：画布上别的项目的窗格收起来。只是移出画布，里面的 agent 继续在后台跑。
     func keepOnlyProjectInCanvas(_ projectID: String) {
         let focusedID = focusedCanvasSessionID
         visibleSessionIDs = visibleSessionIDs.filter { session(id: $0)?.projectID == projectID }
@@ -1076,7 +971,6 @@ final class WorkspaceModel: ObservableObject {
         if changesTabMode { isPresentingNewSession = wasPresenting }
     }
 
-    /// 画布顶栏右端那四个图标：开关，不是单选。全关则面板区整体收起。
     func togglePanel(_ panel: TandockWorkspacePanel) {
         if let index = openPanels.firstIndex(of: panel) {
             openPanels.remove(at: index)
@@ -1094,7 +988,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 面板区里上下换位（拖卡头，或从菜单里移动）。
     func movePanel(_ panel: TandockWorkspacePanel, by offset: Int) {
         guard let index = openPanels.firstIndex(of: panel) else { return }
         let target = index + offset
@@ -1102,13 +995,11 @@ final class WorkspaceModel: ObservableObject {
         openPanels.swapAt(index, target)
     }
 
-    /// 「把这个面板叫出来」：没开就开，已经开着就只是聚焦，不会把别的面板关掉。
     func selectInspectorTab(_ panel: TandockWorkspacePanel) {
         inspectorIsVisible = true
         showPanel(panel)
     }
 
-    /// ⌥⌘→：只收起/展开面板区，不改各面板的开关状态。
     func toggleInspector() {
         inspectorIsVisible.toggle()
         if inspectorIsVisible, openPanels.isEmpty { showPanel(focusedPanel) }
@@ -1123,8 +1014,6 @@ final class WorkspaceModel: ObservableObject {
         if panel == .changes { refreshGitStatus() }
     }
 
-    /// 新会话选择器里切项目时读那个项目的分支。不走 `gitBranches`（那份只属于当前项目），
-    /// 也不改任何已发布状态。
     func loadBranches(projectID: String) async -> TandockProjectBranches {
         guard let project = project(id: projectID) else { return .none }
         let root = project.repositoryURL
@@ -1151,7 +1040,6 @@ final class WorkspaceModel: ObservableObject {
                 var base = changesBaseBranch
                 if base.isEmpty {
                     base = (try? await Task.detached(priority: .userInitiated) { try service.defaultBranch(root: root) }.value) ?? ""
-                    // 第一次打开一个项目：默认对比基准分支，也就是「这条分支到目前为止做了什么」。
                     if !base.isEmpty, scope == .uncommitted { scope = .branch(base: base) }
                 }
                 let resolvedScope = scope
@@ -1177,7 +1065,6 @@ final class WorkspaceModel: ObservableObject {
                     ? self.l10n.text("cleanWorkspace")
                     : self.l10n.text("changesCountFormat", result.changes.count)
                 gitIsLoading = false
-                // 已经展开的文件换范围后要按新范围重新取补丁。
                 gitDiffs = [:]
                 reloadExpandedDiffs()
                 autoExpandIfSmall()
@@ -1191,11 +1078,9 @@ final class WorkspaceModel: ObservableObject {
                 gitIsLoading = false
             }
         }
-        // 检查点是范围菜单「提交 ›」里的一段，跟着一起刷新。
         refreshCheckpoints()
     }
 
-    // MARK: 对比范围
 
     func setChangesScope(_ scope: TandockGitDiffScope) {
         guard changesScope != scope else { return }
@@ -1205,14 +1090,12 @@ final class WorkspaceModel: ObservableObject {
         refreshGitStatus()
     }
 
-    /// 「比较基准」只改对比，不 checkout —— 真正的切分支在 ⋯ 菜单里（设计稿 §09）。
     func setChangesBase(_ branch: String) {
         changesBaseBranch = branch
         setChangesScope(.branch(base: branch))
         if case .branch = changesScope {} else { refreshGitStatus() }
     }
 
-    /// 文件多或行数大时默认全折叠，顶部给一句提示；小改动直接全展开，不给提示条。
     private static let autoExpandFileLimit = 10
     private static let autoExpandLineLimit = 800
 
@@ -1230,7 +1113,6 @@ final class WorkspaceModel: ObservableObject {
         return totals.additions + totals.deletions > Self.autoExpandLineLimit
     }
 
-    /// 「全部展开」在大 diff 上会把几千行一次性铺进内存，超过这个量就禁用。
     private var exceedsHardExpandBudget: Bool {
         let totals = scopedTotals
         return scopedChanges.count > 80 || totals.additions + totals.deletions > 5_000
@@ -1248,7 +1130,6 @@ final class WorkspaceModel: ObservableObject {
         expandedGitPaths = []
     }
 
-    /// 小改动不该还要人一个个点开。
     private func autoExpandIfSmall() {
         guard !scopedChanges.isEmpty, !exceedsAutoExpandBudget else { return }
         for change in scopedChanges where !expandedGitPaths.contains(change.path) {
@@ -1257,7 +1138,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 范围里每个文件的增删总和，底部那条只读汇总用。
     var scopedTotals: (files: Int, additions: Int, deletions: Int) {
         var additions = 0
         var deletions = 0
@@ -1348,7 +1228,6 @@ final class WorkspaceModel: ObservableObject {
                 let scope = changesScope
                 let ignoreWhitespace = changesIgnoreWhitespace
                 let diff = try await Task.detached(priority: .userInitiated) { () -> String in
-                    // 未跟踪文件在 git diff 里没有输出，走 --no-index 跟空文件比一次。
                     if untracked, scope == .uncommitted { return try service.diffUntracked(root: root, path: path) }
                     return try service.diff(root: root, scope: scope, path: path, ignoreWhitespace: ignoreWhitespace)
                 }.value
@@ -1388,7 +1267,6 @@ final class WorkspaceModel: ObservableObject {
         reloadExpandedDiffs()
     }
 
-    /// 单块暂存：把文件头和这一块拼成补丁交给 git apply --cached。
     func applyGitHunk(path: String, patch: String) {
         guard let project = selectedProject else { return }
         let service = gitService
@@ -1398,7 +1276,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func mutateGitPath(_ path: String, _ operation: (TandockGitService, URL) -> @Sendable () throws -> Void) {
-        // 只有「未提交的改动」范围能写；其它范围的界面上根本不出现这些按钮，这里再挡一道。
         guard changesScope.allowsWrites else { return }
         guard let project = selectedProject else { return }
         let service = gitService
@@ -1487,8 +1364,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 面板里看得到的待办：没有「进行中 / 已完成」的区分，只有还要做的事。
-    /// 库里和 MCP 里仍然带着 status（agent 可能标成 done），标了 done 的当作做完了，不再露面。
     var openTodos: [TandockTodo] { todos.filter { $0.status != .done } }
 
     func moveTodo(id: String, by offset: Int) {
@@ -1626,7 +1501,6 @@ final class WorkspaceModel: ObservableObject {
         shellPool.runtime(paneID: paneID)
     }
 
-    /// 终端面板当前那一格。没选过就是第一格。
     var selectedShellPaneID: String? {
         guard let projectID = selectedProjectID, let workspace = shellWorkspaces[projectID] else { return nil }
         if let chosen = shellSelection[projectID], workspace.paneIDs.contains(chosen) { return chosen }
@@ -1638,8 +1512,6 @@ final class WorkspaceModel: ObservableObject {
         shellSelection[projectID] = paneID
     }
 
-    /// ＋：再开一格终端，并切过去。底下仍走 split —— Core 的分屏树没动，
-    /// 只是界面上一次显示一格，多出来的格子表现为一个标签。
     func addShellPane() {
         guard let target = selectedShellPaneID else { return }
         splitShellPane(target, direction: .right, select: true)
@@ -1656,7 +1528,6 @@ final class WorkspaceModel: ObservableObject {
 
     func closeShellPane(_ paneID: String) {
         guard let projectID = selectedProjectID, var workspace = shellWorkspaces[projectID] else { return }
-        // 关掉的正是在看的那格时，先挑一个邻居，免得关完停在一个已经没有的 id 上。
         let neighbour = workspace.paneIDs.first { $0 != paneID }
         guard workspace.close(paneID: paneID) else { return }
         shellWorkspaces[projectID] = workspace
@@ -1701,7 +1572,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 树里双击 = 固定这个标签（不再是斜体的预览位），下一次单击别的文件就不会把它顶掉。
     func pinProjectFile(_ url: URL) {
         selectedTerminalPath = url
         selectedEditorWorkspace?.open(url: url, preview: false)
@@ -1784,8 +1654,6 @@ final class WorkspaceModel: ObservableObject {
                       let runtime = self.sessionService?.runtime(id: change.sessionID),
                       runtime.runID == change.runID,
                       runtime.status == change.status else { return }
-                // The service clears normal exits. Preserve failure details
-                // when an unexpected exit automatically closes its pane.
                 if let index = self.visibleSessionIDs.firstIndex(of: change.sessionID) {
                     self.closeCanvasSlot(index, dismissAttention: false)
                 } else {
@@ -1824,8 +1692,6 @@ final class WorkspaceModel: ObservableObject {
             .sink { [weak self] sessionID in self?.observeOutputIdentity(sessionID) }
             .store(in: &eventCancellables)
         NotificationCenter.default.publisher(for: .tandockCheckpointCreated)
-            // CheckpointService posts on its caller's thread. Hop before any
-            // operator: closures written here inherit main-actor isolation.
             .receive(on: DispatchQueue.main)
             .compactMap { $0.object as? TandockCheckpointRecord }
             .sink { [weak self] record in
@@ -1838,8 +1704,6 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func observeOutputIdentity(_ sessionID: String) {
-        // Metadata is already kept current by reloadSessions. Avoid a database
-        // read for every PTY chunk, including output from other windows.
         if let row = session(id: sessionID), row.agentSessionID == nil,
            agentProfiles.first(where: { $0.id == row.agentProfile })?.introspect == "codex",
            Date().timeIntervalSince(lastIdentityProbe) > 2 {
@@ -1937,7 +1801,6 @@ final class WorkspaceModel: ObservableObject {
         restoreProjectContext(for: selectedProjectID)
     }
 
-    /// Retired native Pi rows remain on disk, but cannot be opened as CLI sessions.
     private func cliSessions(projectID: String, includeArchived: Bool = false) throws -> [SessionMetadata] {
         try (repository?.listSessions(projectID: projectID, includeArchived: includeArchived) ?? [])
             .filter { $0.agentProfile != "pi-rpc" }
@@ -1980,7 +1843,6 @@ final class WorkspaceModel: ObservableObject {
         selectedFileByProject[selectedProjectID] = selectedTerminalPath
     }
 
-    /// 切项目只换「属于项目」的那部分：文件面板选中的文件，以及按项目起的 shell。
     private func restoreProjectContext(for projectID: String?) {
         selectedTerminalPath = projectID.flatMap { selectedFileByProject[$0] }
         if openPanels.contains(.terminal) { ensureSelectedProjectShells() }
@@ -2018,8 +1880,6 @@ final class WorkspaceModel: ObservableObject {
         tabSessionIDs = []
         focusedCanvasSlot = 0
         terminalLayout = .single
-        // 第一次打开一个项目：只给画布和左边那列。文件树一开就摊开太主动了 ——
-        // 右边的面板区等顶栏那四个开关（或 ⌥⌘→）叫它，再照 focusedPanel 给回文件卡。
         openPanels = []
         focusedPanel = .files
         inspectorIsVisible = false
@@ -2285,9 +2145,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 把每个项目的 jsonl 历史都收成会话行。会话与「历史」不再是两种东西：
-    /// 磁盘上有这条对话，侧栏里就有这条会话，14 天没动静的落在归档档位里。
-    /// 扫描按项目各开一个后台任务，冷启动时不要卡住第一帧。
     func importDiscoveredSessions() {
         let home = historyHomeDirectory
         let index = historyIndex
@@ -2319,9 +2176,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    /// 落库的那一半。没有对应 agent profile 的历史会被 `drafts` 丢掉——
-    /// 导进来也没有 CLI 能 resume 它；已经在库里的会跟着 jsonl 刷新标题和时间，
-    /// 所以每次扫描都可以无脑调用。
     private func importDiscoveredSessions(_ found: [TandockHistorySession], into project: ProjectRecord) {
         guard let repository, !found.isEmpty else { return }
         for item in found { knownHistory[item.jsonlURL.resolvingSymlinksInPath().path] = item }
@@ -2345,8 +2199,6 @@ final class WorkspaceModel: ObservableObject {
             projectID: project.id,
             profileIDsByIntrospect: profileIDsByIntrospect
         ).map { draft in
-            // Several profiles may launch the same CLI. Keep the profile that owns an
-            // existing session instead of importing a second row under the first profile.
             let parser = agentProfiles.first { $0.id == draft.agentProfile }?.introspect
             guard let existing = existingRows.first(where: { row in
                 row.agentSessionID == draft.agentSessionID

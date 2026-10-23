@@ -52,7 +52,6 @@ const COLORS = {
   limeBottom: '#a9e84a',
 };
 
-// Continuous-curvature rounded rect on the macOS icon grid (824pt body inside 1024).
 function squircle(ctx, x, y, w, h, r) {
   const q = r * (1 - 0.62);
   ctx.beginPath();
@@ -75,7 +74,6 @@ function vgrad(ctx, y0, y1, top, bottom) {
   return g;
 }
 
-// Paints into an offscreen layer so cut-outs (destination-out) never touch the background.
 function layer(size, paint) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
@@ -86,10 +84,10 @@ function layer(size, paint) {
 }
 
 const CX = 512, CY = 512;
-const DISC_R = 232;   // the two docked halves together form this disc
-const SEAM = 26;      // gap between the halves
-const TAB_R = 66;     // the connector tab on the blue half
-const TAB_X = CX + 34; // tab centre sits just past the seam, into the lime half
+const DISC_R = 232;
+const SEAM = 26;
+const TAB_R = 66;
+const TAB_X = CX + 34;
 
 function drawIcon(canvas) {
   const ctx = canvas.getContext('2d');
@@ -98,7 +96,6 @@ function drawIcon(canvas) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   ctx.clearRect(0, 0, 1024, 1024);
 
-  // Body.
   ctx.save();
   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
   ctx.shadowBlur = 28;
@@ -118,7 +115,6 @@ function drawIcon(canvas) {
   ctx.fillRect(100, 100, 824, 824);
   ctx.restore();
 
-  // Dock: a cream ring around the disc, open at the upper right where the lime half came in.
   ctx.save();
   ctx.shadowColor = 'rgba(5, 8, 20, 0.45)';
   ctx.shadowBlur = 24;
@@ -131,7 +127,6 @@ function drawIcon(canvas) {
   ctx.stroke();
   ctx.restore();
 
-  // Blue half: left semicircle plus the round connector tab poking across the seam.
   const blue = layer(size, c => {
     c.beginPath();
     c.arc(CX, CY, DISC_R, 0, Math.PI * 2);
@@ -143,7 +138,6 @@ function drawIcon(canvas) {
     c.fill();
   });
 
-  // Lime half: right semicircle with a socket cut to fit the tab, keeping the seam width.
   const lime = layer(size, c => {
     c.beginPath();
     c.arc(CX, CY, DISC_R, 0, Math.PI * 2);
@@ -165,7 +159,6 @@ function drawIcon(canvas) {
   ctx.drawImage(lime, 0, 0);
   ctx.restore();
 
-  // Top-edge sheen across the whole disc so the halves read as one solid object.
   ctx.save();
   ctx.beginPath();
   ctx.arc(CX, CY, DISC_R, 0, Math.PI * 2);

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# 文案表是个字典字面量：重复 key 编译期不报错，运行到第一次读表时才 fatalError。
-# 这条检查把它挡在启动之前。
 set -euo pipefail
 
 NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

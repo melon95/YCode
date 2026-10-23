@@ -1,10 +1,7 @@
 import CoreServices
 import Foundation
 
-/// FSEvents 的一层薄包装：盯着一个根目录，变动合并之后把「哪些相对路径动过」交出来。
-/// 文件树拿它替掉了每秒一次的全量重扫 —— 没人动磁盘时它一次目录也不读。
 public final class TandockDirectoryWatcher: @unchecked Sendable {
-    /// FSEvents 给的是真实路径，所以根也要先把软链解开，否则前缀对不上。
     private let root: URL
     private let latency: CFTimeInterval
     private let onChange: @Sendable ([String]) -> Void
@@ -32,8 +29,6 @@ public final class TandockDirectoryWatcher: @unchecked Sendable {
             release: nil,
             copyDescription: nil
         )
-        // FileEvents：连文件级的改动都报，否则只报目录，改个文件名要等下一次目录事件。
-        // NoDefer：第一批事件立刻给，别再多等一个 latency。
         let flags = UInt32(
             kFSEventStreamCreateFlagUseCFTypes
                 | kFSEventStreamCreateFlagFileEvents
@@ -65,7 +60,6 @@ public final class TandockDirectoryWatcher: @unchecked Sendable {
         FSEventStreamRelease(current)
     }
 
-    /// 绝对路径换成相对根的路径；根自己变动记作空字符串。
     fileprivate func handle(_ paths: [String]) {
         let rootComponents = root.pathComponents
         var relativePaths: [String] = []
@@ -81,7 +75,6 @@ public final class TandockDirectoryWatcher: @unchecked Sendable {
     }
 }
 
-/// C 回调收不了闭包，上下文只能从 `info` 指针里取回来。
 private let eventCallback: FSEventStreamCallback = { _, info, count, paths, _, _ in
     guard let info, count > 0 else { return }
     let watcher = Unmanaged<TandockDirectoryWatcher>.fromOpaque(info).takeUnretainedValue()

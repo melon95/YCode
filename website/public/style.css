@@ -1,4 +1,3 @@
-/* Palette follows the app icon: coral tile, ink caret, sun sparkle. */
 :root{
   --alu:#efeef4; --alu-2:#e3e1ec; --paper:#fcfcfe; --ink:#16133a; --muted:#5a5873; --line:#d3d1df;
   --term:#1b1840; --term-ink:#e6e3f2; --term-dim:#908dac;
@@ -27,7 +26,6 @@ kbd,code,pre{font-family:'JetBrains Mono',ui-monospace,Menlo,'PingFang SC',monos
 .skip{position:absolute;left:16px;top:-60px;background:var(--ink);color:var(--alu);padding:10px 14px;border-radius:8px;z-index:10}
 .skip:focus{top:12px}
 
-/* Type scale: 1.25 ratio on a 17px base. */
 h1{font-size:clamp(44px,6.6vw,84px);line-height:1.02;font-weight:750;letter-spacing:-.035em;text-wrap:balance}
 h2{font-size:clamp(28px,3.4vw,40px);line-height:1.12;font-weight:700;letter-spacing:-.025em;text-wrap:balance}
 h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
@@ -35,7 +33,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 :lang(zh-CN) h2{letter-spacing:0}
 .fineprint{font-size:14px;color:var(--muted)}
 
-/* Navigation */
 .nav{display:flex;align-items:center;gap:32px;height:76px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:19px;letter-spacing:-.02em}
 .nav nav{display:flex;gap:26px;margin-left:auto;font-size:15px;color:var(--muted)}
@@ -45,14 +42,12 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 #language:hover{border-color:var(--muted)}
 .nav-git{font-weight:600}
 
-/* Buttons */
 .button{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:48px;padding:0 20px;border-radius:10px;font-weight:600;font-size:16px;transition:background-color .15s,border-color .15s}
 .primary{background:var(--ink);color:var(--alu)}
 .primary:hover{background:color-mix(in srgb,var(--ink) 80%,var(--accent))}
 .ghost{background:var(--alu-2);color:var(--ink)}
 .ghost:hover{border-color:var(--muted)}
 
-/* Hero */
 .hero{padding-top:56px}
 .hero-copy{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:56px;align-items:end}
 .hero-side p:first-child{font-size:19px;line-height:1.55;max-width:34em}
@@ -60,7 +55,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .stage{margin-top:56px}
 .stage figcaption{margin-top:16px;font-size:14px;color:var(--muted);text-align:center}
 
-/* The interactive app window: the one bold element on the page. */
 .app-window{background:var(--paper);border-radius:14px;overflow:hidden;border:0}
 [data-ui] .titlebar{display:flex;align-items:center;gap:18px;height:46px;padding:0 12px 0 16px;border-bottom:0;background:color-mix(in srgb,var(--paper) 92%,var(--alu))}
 .lights{display:flex;gap:8px}
@@ -94,7 +88,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .cursor{display:inline-block;width:.6em;height:1.1em;vertical-align:-.2em;background:var(--sun);animation:blink 1.1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 
-/* Agents */
 .agents{margin-top:120px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:24px 56px;align-items:start}
 .commands{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .commands li{padding:16px 16px 14px;border-radius:12px;background:var(--paper);border:0}
@@ -104,7 +97,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .commands .custom{background:var(--alu-2)}
 .agents>p{grid-column:2;font-size:15px;color:var(--muted);max-width:42em}
 
-/* Tour */
 .tour{margin-top:140px}
 .tour-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:end;margin-bottom:32px}
 .tour-head p{color:var(--ink);max-width:32em}
@@ -117,7 +109,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .chapters button[aria-current="true"]{color:var(--ink);background:var(--alu-2);font-weight:600}
 .chapters time{font:13px/1.9 var(--sans);font-variant-numeric:tabular-nums;color:var(--muted)}
 
-/* Panels dock: mirrors the app's panel toolbar. */
 .panels{margin-top:140px}
 .panels-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:end;margin-bottom:32px}
 .panels-head p{color:var(--ink);max-width:32em}
@@ -132,10 +123,8 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .dock-text p{color:var(--ink);max-width:30em}
 .panel-limit{margin-top:auto;font-size:14px;padding-top:14px;border-top:0}
 .shot{position:relative;border-left:0;overflow:hidden;background:#fff}
-/* Screenshots are full windows; show only the right-hand panel (native x 1660–3420). */
 .shot img{position:absolute;top:0;right:0;width:194.3%;max-width:none;height:auto}
 
-/* Start */
 .start{margin-top:140px}
 .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-top:32px;counter-reset:step}
 .steps li{padding:28px 28px 8px 0;border-top:2px solid var(--ink);margin-right:28px;counter-increment:step}
@@ -143,7 +132,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .steps kbd{display:inline-block;padding:6px 10px;border-radius:8px;background:var(--paper);border-bottom-width:3px;font-size:15px;margin-bottom:18px}
 .steps p{margin-top:8px;color:var(--ink);font-size:16px}
 
-/* FAQ */
 .faq{margin-top:140px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:56px}
 .faq-list details{background:var(--paper);padding-inline:20px;margin-bottom:8px}
 .faq-list details:last-child{border-bottom:0}
@@ -158,7 +146,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .code-block button:hover{border-color:var(--term-dim)}
 .copy-status{min-height:1.6em;padding-bottom:12px;font-size:14px;color:var(--muted)}
 
-/* Closing */
 .closing{margin-top:160px;padding:72px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:24px;border-top:0}
 .closing h2{font-size:clamp(32px,4.4vw,52px);max-width:14em}
 
@@ -167,7 +154,6 @@ h3{font-size:21px;line-height:1.3;font-weight:650;letter-spacing:-.01em}
 .footer div{margin-left:auto;display:flex;gap:20px}
 .footer a:hover{color:var(--ink)}
 
-/* Responsive */
 @media (max-width:980px){
   .hero-copy,.tour-head,.panels-head,.agents,.faq{grid-template-columns:1fr;gap:20px}
   .agents>p{grid-column:1}

@@ -52,8 +52,6 @@ public extension Notification.Name {
     static let tandockTodosChanged = Notification.Name("dev.ycode.native.todos.changed")
 }
 
-/// Synchronous SQLite repository shared by the app and the standalone MCP helper.
-/// Every multi-step write uses `BEGIN IMMEDIATE` so concurrent helper/UI writes serialize.
 public final class TandockTodoRepository: @unchecked Sendable {
     private let database: SQLiteConnection
     private let lock = NSRecursiveLock()
@@ -133,7 +131,6 @@ public final class TandockTodoRepository: @unchecked Sendable {
         return result
     }
 
-    /// String entrypoint used at process/protocol boundaries so invalid values return a typed error.
     @discardableResult
     public func update(id: String, title: String? = nil, statusRaw: String?) throws -> TandockTodo {
         let status: TandockTodoStatus?

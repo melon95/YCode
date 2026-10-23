@@ -110,7 +110,6 @@ final class WorkspaceStateTests: XCTestCase {
             appearance: loaded.appearance
         ))
         let saved = try PreservingJSONDocument(data: Data(contentsOf: configurationURL))
-        // 「启动时显示」删掉之后这个键不再写，但别人写进去的值也不该被抹掉。
         XCTAssertEqual(saved["startup"], .string("future-mode"))
         XCTAssertEqual(saved["theme"], .string("snow"))
         XCTAssertEqual(saved["future"], .object(["nested": .number(42)]))
@@ -163,7 +162,6 @@ final class WorkspaceStateTests: XCTestCase {
             ProjectRecord(id: "quiet", name: "quiet", repositoryURL: URL(fileURLWithPath: "/tmp/quiet"), createdAtMilliseconds: 1, isolateSessions: false, liveSessionCount: 0, totalSessionCount: 3),
             ProjectRecord(id: "live", name: "live", repositoryURL: URL(fileURLWithPath: "/tmp/live"), createdAtMilliseconds: 2, isolateSessions: false, liveSessionCount: 2, totalSessionCount: 4)
         ]
-        // 最近项目一个会话都没有也照样进去 —— 会话数不该决定进不进项目。
         XCTAssertEqual(initialProjectID(recentProjectID: "quiet", projects: projects), "quiet")
         XCTAssertEqual(initialProjectID(recentProjectID: "live", projects: projects), "live")
         XCTAssertEqual(initialProjectID(recentProjectID: "missing", projects: projects), "quiet")

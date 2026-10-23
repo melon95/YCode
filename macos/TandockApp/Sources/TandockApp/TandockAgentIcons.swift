@@ -1,9 +1,4 @@
-// 由 macos/scripts/generate_agent_icons.py 生成，请勿手改。
-// 来源与许可证见 macos/Resources/IconSources/README.md。
-// 认识的品牌取彩色裸 glyph，其余取单色 Mono。
-
 enum TandockAgentIconCatalog {
-    /// 彩色图标（应用标志 + 认识的品牌），按原色渲染，不着色。
     static let brand: [String: String] = [
         "tandock": """
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 824 824"><path d="M286 100L738 100C853.3 100 924 170.7 924 286L924 738C924 853.3 853.3 924 738 924L286 924C170.7 924 100 853.3 100 738L100 286C100 170.7 170.7 100 286 100Z" fill="#ff5a4e"/><rect x="288" y="286" width="213" height="96" rx="48" fill="#ffffff"/><rect x="523" y="286" width="213" height="96" rx="48" fill="#ffe3df"/><rect x="468" y="430" width="88" height="330" rx="44" fill="#16133a"/><path d="M724 542C737.7 626.3 737.7 626.3 822 640C737.7 653.7 737.7 653.7 724 738C710.3 653.7 710.3 653.7 626 640C710.3 626.3 710.3 626.3 724 542Z" fill="#ffc83d"/></svg>
@@ -28,9 +23,6 @@ enum TandockAgentIconCatalog {
         """,
     ]
 
-    /// 单色图标表。**不是字典字面量**：320 条字典字面量会把 Swift 的类型检查
-    /// 拖到几分钟，而一条大字符串字面量是常数时间。这里存成
-    /// `名字\u{1}svg\u{2}名字\u{1}svg…`，首次访问时解析一次并缓存。
     static let mono: [String: String] = {
         var table: [String: String] = [:]
         table.reserveCapacity(320)

@@ -2,8 +2,6 @@ import Darwin
 import Foundation
 
 public enum TandockAgentSessionIdentity {
-    /// An open rollout descriptor is an exact process-to-session association, unlike
-    /// guessing the newest transcript in a project with several simultaneous agents.
     public static func codexRolloutPath(pid: Int32) -> String? {
         guard pid > 0 else { return nil }
         let process = Process(), output = Pipe()

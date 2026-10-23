@@ -48,7 +48,6 @@ final class TandockSidebarPresentation: ObservableObject {
     }
 }
 
-/// 只有固定展开才给侧栏留宽度；悬停预览始终在画布上方，画布与终端宿主保持原位。
 struct TandockSidebarLayout<Sidebar: View, Detail: View>: View {
     @ObservedObject var presentation: TandockSidebarPresentation
     @ViewBuilder var sidebar: Sidebar

@@ -6,7 +6,6 @@ public enum TandockCustomizationAgent: String, CaseIterable, Identifiable, Senda
     public var supportsMCP: Bool { self != .pi }
 
     public static func resolve(_ profile: TandockAgentProfile) -> Self? {
-        // The executable determines the config format; history introspection is unrelated.
         let name = URL(fileURLWithPath: profile.command).lastPathComponent
         return Self(rawValue: name)
     }
@@ -69,8 +68,6 @@ public struct TandockCustomizationSnapshot: Sendable {
     public var mcpDestination: URL
 }
 
-/// Reads the CLI's own files. Listing never starts a server, installs a package,
-/// resolves credentials, or changes the CLI's trust/approval decisions.
 public actor TandockAgentCustomizationService {
     let home: URL
     let fm: FileManager
@@ -95,8 +92,6 @@ public actor TandockAgentCustomizationService {
         for (root, scope) in roots where fm.fileExists(atPath: root.path) {
             do {
                 for directory in try skillDirectories(root: root) {
-                    // Pi filters each discovered path before deduplicating skill
-                    // names, so aliases remain independently loadable resources.
                     let identity = agent == .pi ? directory.path : directory.resolvingSymlinksInPath().path
                     guard seen.insert(identity).inserted else { continue }
                     do { result.skills.append(try skill(directory: directory, root: root, scope: scope)) }
@@ -149,8 +144,6 @@ public actor TandockAgentCustomizationService {
         case .grok: key = "GROK_HOME"
         case .pi: key = "PI_CODING_AGENT_DIR"
         }
-        // Relative and tilde paths have CLI-specific resolution rules. Refuse
-        // management rather than resolve them relative to the desktop process.
         return environment[key].map { $0.hasPrefix("/") } ?? true
     }
 
@@ -166,8 +159,6 @@ public actor TandockAgentCustomizationService {
     }
 
     func claudeStateURL(_ environment: [String: String]) -> URL {
-        // Claude keeps this file directly inside an explicit config directory,
-        // but directly inside HOME when using its default directory.
         (environment["CLAUDE_CONFIG_DIR"] == nil ? home : configurationHome(agent: .claude, environment: environment))
             .appendingPathComponent(".claude.json")
     }

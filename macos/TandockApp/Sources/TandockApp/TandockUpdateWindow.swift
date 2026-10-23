@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 import TandockCore
 
-/// 更新窗口。一个窗口走完全程，不会在状态之间弹出第二个窗口（设计稿 §1）。
-/// 标题栏透明、窗口底色用 chrome，内容区是一张浮卡，和主窗口同一套语言。
 @MainActor
 final class TandockUpdateWindowController: NSObject, NSWindowDelegate {
     private let model: TandockUpdateModel
@@ -31,7 +29,6 @@ final class TandockUpdateWindowController: NSObject, NSWindowDelegate {
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)
         } else {
-            // 后台检查到更新或下载推进时不抢焦点，只把窗口摆到前面。
             window.orderFrontRegardless()
         }
     }
@@ -57,7 +54,6 @@ final class TandockUpdateWindowController: NSObject, NSWindowDelegate {
         return window
     }
 
-    /// 跟随应用里的主题设置：「跟随系统」就交给系统，亮 / 暗则钉死。
     private func applyAppearance() {
         let theme = TandockConfigurationStore(
             configurationURL: TandockDataRootResolver.resolve().appendingPathComponent("config.json")
@@ -71,8 +67,6 @@ final class TandockUpdateWindowController: NSObject, NSWindowDelegate {
         window?.title = localization.l10n.text("updTitle")
     }
 
-    /// 点标题栏的关闭按钮：有明确语义的阶段（取消、稍后、知道了）就当作那个选择，
-    /// 不能中断的阶段只是把窗口收起来。
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if let close = model.handlers.close {
             close()
@@ -108,7 +102,6 @@ struct TandockUpdateView: View {
             .fixedSize(horizontal: true, vertical: true)
             .background(Color.tandockChrome)
             .onChange(of: model.phase) { _, phase in announce(phase) }
-            // 退出被某个窗口拦住才露出「重试退出」：等 4 秒还没退出再说，平时一闪而过的安装不展示它。
             .task(id: isWaitingToQuit) {
                 quitIsStuck = false
                 guard isWaitingToQuit else { return }
@@ -121,7 +114,6 @@ struct TandockUpdateView: View {
         model.phase == .installing(applicationTerminated: false)
     }
 
-    // MARK: 各阶段
 
     private var content: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -275,7 +267,6 @@ struct TandockUpdateView: View {
         }
     }
 
-    // MARK: 零件
 
     private var cancelButton: some View {
         HStack {
@@ -361,7 +352,6 @@ struct TandockUpdateView: View {
         }
     }
 
-    // MARK: 图标与角标
 
     private var icon: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -402,7 +392,6 @@ struct TandockUpdateView: View {
         }
     }
 
-    // MARK: 数据
 
     private var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
@@ -412,7 +401,6 @@ struct TandockUpdateView: View {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .file)
     }
 
-    /// 状态变化时读屏播报标题，用户不必自己去找窗口里变了什么。
     private func announce(_ phase: TandockUpdatePhase) {
         let text: String
         switch phase {
@@ -431,7 +419,6 @@ struct TandockUpdateView: View {
     }
 }
 
-/// 6pt 高的进度条，珊瑚色填充。不确定进度是一段来回扫的渐变。
 private struct UpdateProgressBar: View {
     let fraction: Double?
     @State private var sweep = false
@@ -461,7 +448,6 @@ private struct UpdateProgressBar: View {
     }
 }
 
-/// 更新窗里的按钮：主按钮珊瑚底白字，其余是淡底。
 private struct UpdateButtonStyle: ButtonStyle {
     var primary = false
     @Environment(\.isEnabled) private var isEnabled
@@ -498,7 +484,6 @@ private struct UpdateLinkStyle: ButtonStyle {
     }
 }
 
-/// 元数据与按钮按各自的完整自然宽度换行，不压缩或截断翻译后的标签。
 struct TandockUpdateFlowLayout: Layout {
     var alignment: HorizontalAlignment
     var spacing: CGFloat = 8
@@ -561,7 +546,6 @@ struct TandockUpdateFlowLayout: Layout {
     }
 }
 
-/// 测试可读取实际放置的控件几何尺寸，验证自然宽度的标签仍在卡片内部。
 struct TandockUpdateFlowMeasurement: Sendable {
     let width: CGFloat
     let height: CGFloat

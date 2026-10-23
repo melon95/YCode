@@ -1,7 +1,6 @@
 import Darwin
 import Foundation
 
-/// Uses the CLI's metadata API; never edits the rollout or Codex SQLite database.
 public enum TandockCodexTitleClient {
     public static func rename(command: String, sessionID: String, name: String,
                               environment: [String: String] = ProcessInfo.processInfo.environment) throws -> String {

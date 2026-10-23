@@ -1,8 +1,6 @@
 import Foundation
 import OSLog
 
-/// A single monotonic timeline for one create/resume attempt. Never log terminal
-/// contents, command arguments, environment values, titles, or project paths.
 public struct TandockSessionStartupTrace: Equatable, Sendable {
     public let runID: String
     private let started = ContinuousClock.now
@@ -21,7 +19,6 @@ public struct TandockSessionStartupTrace: Equatable, Sendable {
         Self.logger.notice("\(line, privacy: .public)")
         let url = logURL
         Self.queue.async {
-            // Bounded, asynchronous diagnostics must not delay or fail a launch.
             do {
                 let fm = FileManager.default
                 try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -57,7 +54,6 @@ public struct TandockSessionStartupTrace: Equatable, Sendable {
 
     public static func format(_ duration: Duration) -> String { milliseconds(duration) }
 
-    /// Error type plus enum case only. Associated values (paths, stderr) are dropped.
     public static func reason(_ error: Error) -> String {
         let typeName = String(describing: type(of: error))
         let mirror = Mirror(reflecting: error)

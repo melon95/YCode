@@ -225,8 +225,6 @@ public struct TandockCheckpointService: Sendable {
         try create(kind: "turn", session: session, project: project, event: event)
     }
 
-    /// 每个仓库一条串行队列：Git 不进主线程，同一会话的 initial 一定排在 turn 前面，
-    /// 同一仓库不会同时跑两个 `git add -A`；别的大仓库排着的快照也不会拖住这一个。
     private static let queuesLock = NSLock()
     private nonisolated(unsafe) static var queues: [String: DispatchQueue] = [:]
 
@@ -240,8 +238,6 @@ public struct TandockCheckpointService: Sendable {
         return queue
     }
 
-    /// 后台建 initial 快照，调用方不等。Agent 在用户第一次输入前不会改文件；
-    /// 用较高优先级跑，尽量赶在第一次输入之前完成。
     public func enqueueInitial(
         session: SessionMetadata,
         project: ProjectRecord,

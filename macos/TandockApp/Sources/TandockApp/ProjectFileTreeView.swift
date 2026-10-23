@@ -10,8 +10,6 @@ private struct ProjectFileTreeNode: Identifiable {
     var name: String { entry.path.split(separator: "/").last.map(String.init) ?? entry.path }
 }
 
-/// 列表里的一行：要么是一个真实条目，要么是「正在输入名字」的那一行。
-/// 新建不弹窗 —— 在它将要待的位置上直接长出一行来写名字（和访达一样）。
 private enum ProjectFileRow: Identifiable {
     case entry(ProjectFileTreeNode)
     case draft(parent: String, depth: Int, isDirectory: Bool)
@@ -41,14 +39,11 @@ private enum ProjectFileURLResult: Sendable {
 
 @MainActor
 private final class ProjectFileTreeModel: ObservableObject {
-    /// 按父目录存的一层层孩子，key 是父目录的相对路径，根是空字符串。
-    /// 只有展开过的目录在里面 —— 没展开的目录一次也没读过。
     @Published private(set) var children: [String: [TandockFileEntry]] = [:]
     @Published private(set) var loadingPaths: Set<String> = []
     @Published var errorMessage: String?
     var locale: TandockLocale = .zh
 
-    /// 卡头上那个转圈只认根目录那一次 —— 展开一个子目录是毫秒级的，转一下反而闪。
     var isLoading: Bool { loadingPaths.contains("") }
 
     let root: URL
@@ -62,7 +57,6 @@ private final class ProjectFileTreeModel: ObservableObject {
 
     deinit { watcher?.stop() }
 
-    /// 读根目录那一层，然后把磁盘交给 FSEvents 盯着。
     func start() async {
         await load("", force: true)
         guard watcher == nil else { return }
@@ -78,7 +72,6 @@ private final class ProjectFileTreeModel: ObservableObject {
         watcher = nil
     }
 
-    /// 读一层。已经读过的不再读，除非 `force`（改过文件、或者 FSEvents 说它脏了）。
     func load(_ path: String, force: Bool = false) async {
         if !force, loadedPaths.contains(path) { return }
         guard !loadingPaths.contains(path) else { return }
@@ -99,7 +92,6 @@ private final class ProjectFileTreeModel: ObservableObject {
             loadedPaths.insert(path)
             errorMessage = nil
         case let .failure(message):
-            // 根读不动是真出事了；子目录多半是刚被删掉或改了名，把它从缓存里摘掉就行。
             if path.isEmpty {
                 errorMessage = message
             } else {
@@ -108,8 +100,6 @@ private final class ProjectFileTreeModel: ObservableObject {
         }
     }
 
-    /// FSEvents 报上来的是「谁动了」。它所在的那一层肯定变了；它自己要是个目录，
-    /// 里面那一层也可能变了。两边都标脏，再跟「读过的目录」求交集 —— 没展开的不读。
     private func handleChanges(_ relativePaths: [String]) {
         var dirty: Set<String> = []
         for path in relativePaths {
@@ -123,18 +113,15 @@ private final class ProjectFileTreeModel: ObservableObject {
         }
     }
 
-    /// 某个条目在不在树里（只看已经读过的那几层）。
     func entry(for path: String) -> TandockFileEntry? {
         children[Self.parentPath(of: path)]?.first { $0.path == path }
     }
 
-    /// 改过名或删掉的目录：连它下面所有缓存一起扔，不然键还是旧路径。
     private func discardCache(under path: String) {
         children = children.filter { $0.key != path && !$0.key.hasPrefix(path + "/") }
         loadedPaths = loadedPaths.filter { $0 != path && !$0.hasPrefix(path + "/") }
     }
 
-    /// 自己动过磁盘之后立刻重读受影响的那一层，不等 FSEvents 那 0.4 秒。
     private func reload(parentOf path: String) async {
         await load(Self.parentPath(of: path), force: true)
     }
@@ -181,7 +168,6 @@ private final class ProjectFileTreeModel: ObservableObject {
             return nil
         }
         errorMessage = nil
-        // 改名的如果是个目录，它下面那些缓存的键全是旧路径，只能整片扔掉重读。
         if entry.isDirectory { discardCache(under: entry.path) }
         await load(parent, force: true)
         return (
@@ -251,9 +237,6 @@ private final class ProjectFileTreeModel: ObservableObject {
     }
 }
 
-/// 文件卡：一条卡头 + 「树 ｜ detail」。detail 就是编辑器，由外面传进来 ——
-/// 树的数据与展开状态归这里，所以收起树再放出来不用重读目录，也就没有中间那段转圈。
-/// 目录是展开一层读一层的，没展开的目录（`node_modules` 之类）一次也不碰。
 struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     let project: ProjectRecord
     let header: TandockPanelHeaderSpec
@@ -265,7 +248,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
     let onMovePath: (URL, URL) -> Void
     let onDeletePath: (URL) -> Void
     let mayDeletePath: (URL) -> Bool
-    /// 卡头上名字那一格。开着文档时外面塞的是标签条，否则就是「文件」两个字。
     @ViewBuilder let headerLeading: () -> HeaderLeading
     @ViewBuilder let detail: () -> Detail
 
@@ -316,7 +298,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                     if treeIsVisible {
                         treeColumn
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            // 右边有编辑器时树退成一条定宽的列；只有树时它占满整张卡。
                             .frame(width: showsDetail ? treeColumnWidth(in: proxy.size.width) : nil)
                             .transition(.move(edge: .leading))
                         if showsDetail { Divider() }
@@ -325,7 +306,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                         detail()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    // 树收起来了又一篇文档都没开 —— 这张卡本来会是一片空白。
                     if !treeIsVisible && !showsDetail {
                         TandockInspectorEmptyState(
                             title: l10n.text("emptyFilesTitle"),
@@ -336,9 +316,7 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                // 树滑进滑出的那一份会探出这张卡的左缘。不裁的话它会整片压在画布上面滑过去。
                 .clipped()
-                // 收放树、开出第一篇文档都是宽度在变，跟面板区开合用同一条曲线。
                 .animation(TandockMotion.panelArea, value: treeIsVisible)
                 .animation(TandockMotion.panelArea, value: showsDetail)
             }
@@ -366,7 +344,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         .onChange(of: l10n.locale) { _, locale in model.locale = locale }
         .onChange(of: selectedFileURL) { _, url in applyExternalSelection(url) }
         .onChange(of: model.children) { _, children in
-            // 选中的那个文件被别人删了／改了名：它那一层已经重读过，里面找不到它了。
             guard let selectedFileURL,
                   let path = relativePathIfContained(for: selectedFileURL),
                   let siblings = children[ProjectFileTreeModel.parentPath(of: path)],
@@ -415,14 +392,10 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         }
     }
 
-    /// 树让出大半给编辑器，但不窄到读不出文件名，也不宽到把编辑器挤没。
     private func treeColumnWidth(in total: CGFloat) -> CGFloat {
         min(max(total * 0.38, 150), 320)
     }
 
-    /// 卡头上只留「新建文件 / 新建文件夹」，都是树的动作，所以树收起来时跟着一起走。
-    /// 没有「刷新」：磁盘一动 FSEvents 就把那一层重读了，那个按钮点不点都一样。
-    /// 也没有「在访达中显示」：它是针对某一个条目的，右键菜单里才有上下文。
     private var fileHeader: some View {
         TandockPanelHeader(spec: header, leading: headerLeading) {
             if model.isLoading { ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 18) }
@@ -435,8 +408,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         }
     }
 
-    /// 真实条目 + 草稿行。草稿插在它所属目录的第一个位置 ——
-    /// 名字还没定，按名字排序无从谈起，放在最前面至少位置是固定的、一眼能看见。
     private var visibleRows: [ProjectFileRow] {
         let nodes = visibleNodes
         guard case let .create(parent, isDirectory) = prompt else {
@@ -452,7 +423,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
             depth = nodes[index].depth + 1
             insertAt = index + 1
         } else {
-            // 父目录没展开（或被过滤掉了）：退回到列表最前，名字照样能写完。
             depth = 0
             insertAt = 0
         }
@@ -460,7 +430,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         return rows
     }
 
-    /// 正在输入名字的那一行：缩进、图标都跟真实条目一样，只是名字位上是个输入框。
     private func draftRow(depth: Int, isDirectory: Bool) -> some View {
         HStack(spacing: 5) {
             Color.clear.frame(width: 10, height: 10)
@@ -483,7 +452,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
             .onSubmit { commitPrompt() }
             .onExitCommand { prompt = nil }
             .onChange(of: nameFieldFocused) { _, focused in
-                // 点到别处就当写完了；名字是空的就当没建过。
                 guard !focused, prompt != nil else { return }
                 if promptInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     prompt = nil
@@ -494,7 +462,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
             .task(id: promptTaskID) { nameFieldFocused = true }
     }
 
-    /// 换一个 prompt 就重新抢一次焦点。
     private var promptTaskID: String {
         switch prompt {
         case let .create(parent, isDirectory): "create:\(parent):\(isDirectory)"
@@ -551,12 +518,8 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         .padding(.leading, CGFloat(node.depth) * 14 + 8)
         .padding(.trailing, 6)
         .frame(height: 24)
-        // 树行铺满整列，所以不收边、不圆角；hover 与按下由 tandockRow 统一提供 ——
-        // 改之前只有「选中」一态，指针在几百行文件里移动时完全没有落点感。
         .tandockRow(isSelected: selectedPath == node.entry.path, cornerRadius: 0)
-        // 正在改名的那一行不接管点击：不然点进输入框想挪光标，会被这条手势吃掉。
         .onTapGesture { if !renaming { select(node.entry) } }
-        // 双击 = 固定这个标签，之后再单击别的文件就不会把它顶掉（和标签条上双击同一个意思）。
         .simultaneousGesture(TapGesture(count: 2).onEnded {
             guard !renaming, !node.entry.isDirectory else { return }
             onOpenFile(project.repositoryURL.appendingPathComponent(node.entry.path))
@@ -639,7 +602,6 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
                     if path.hasPrefix(oldPath + "/") { return newPath + path.dropFirst(oldPath.count) }
                     return path
                 })
-                // 改完名这些路径在缓存里都是新键，一层都还没读过。
                 loadExpanded()
                 onMovePath(oldURL, newURL)
             }
@@ -681,14 +643,11 @@ struct ProjectFileTreeView<HeaderLeading: View, Detail: View>: View {
         }
     }
 
-    /// 展开一个目录就是去读它那一层 —— 树上所有「展开」都得走这里，
-    /// 不然那个目录在缓存里没有孩子，点开是空的。
     private func expand(_ path: String) {
         expandedPaths.insert(path)
         Task { await model.load(path) }
     }
 
-    /// 恢复出来的展开状态（比如刚切回这个项目）要把对应的层补读回来。
     private func loadExpanded() {
         for path in expandedPaths {
             Task { await model.load(path) }

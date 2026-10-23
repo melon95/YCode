@@ -21,7 +21,6 @@ extension TandockAgentCustomizationService {
             let root = try tomlObject(raw)
             var skills = try dictionary(root["skills"])
             var configs = try array(skills["config"])
-            // Codex keys these overrides by the SKILL.md path, not its name.
             let file = record.directory.appendingPathComponent("SKILL.md")
             let index = configs.lastIndex { value in
                 guard case let .object(entry) = value, case let .string(path)? = entry["path"] else { return false }
@@ -37,7 +36,6 @@ extension TandockAgentCustomizationService {
             try write(Data(updated.utf8), to: url, expected: revision)
         case .grok:
             let raw = revision.map { String(decoding: $0, as: UTF8.self) } ?? ""
-            // Preserve the other globally disabled skill names.
             var effective: [String: JSONValue] = [:]
             for source in urls {
                 if let data = try read(source) {
@@ -62,8 +60,6 @@ extension TandockAgentCustomizationService {
                 guard pattern.hasPrefix("+") || pattern.hasPrefix("-") else { return false }
                 return samePiSkillPath(String(pattern.dropFirst()), file: file, base: record.root.deletingLastPathComponent())
             }
-            // Pi's exact +/- paths override glob exclusions. Leave all other
-            // resource settings and package selections unchanged.
             patterns.append((enabled ? "+" : "-") + file.path)
             root["skills"] = patterns
             try write(jsonData(root), to: url, expected: revision)
@@ -139,10 +135,8 @@ extension TandockAgentCustomizationService {
             }
             return urls
         case .codex:
-            // Path-specific overrides work for both global and project skills.
             return [configURL(agent: .codex, project: nil, environment: environment)]
         case .grok:
-            // Grok ignores [skills] in project config files.
             return [configURL(agent: .grok, project: nil, environment: environment)]
         case .pi:
             if record.scope == .project, let project { return [project.appendingPathComponent(".pi/settings.json")] }
@@ -157,8 +151,6 @@ extension TandockAgentCustomizationService {
     }
 
     private func samePiSkillPath(_ raw: String, file: URL, base: URL) -> Bool {
-        // Match Pi's exact filters against discovery paths, without resolving
-        // symlinks: filtering one alias must not hide a still-enabled alias.
         let path = (raw.hasPrefix("./") || raw.hasPrefix(".\\") ? String(raw.dropFirst(2)) : raw)
             .replacingOccurrences(of: "\\", with: "/")
         let prefix = base.path + "/"

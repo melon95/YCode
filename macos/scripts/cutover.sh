@@ -108,8 +108,6 @@ verify_native_candidate() {
       }
       ;;
     local)
-      # Local self-use drops only the Developer ID / notarization requirements.
-      # Deep signature, universal2, bundle contents and app/ZIP consistency still apply.
       [[ -f "$NATIVE_ARCHIVE" ]] || {
         echo "local adoption requires --native-archive for prepare-grade verification" >&2
         exit 1
@@ -182,9 +180,6 @@ case "$ACTION" in
     sed -i '' 's/^state=.*/state=active/' "$MANIFEST"
     ;;
   adopt)
-    # Local self-use: the native app already owns the live data root. Do not re-run
-    # tandock-migrate over data the native app has been writing; capture a rollback
-    # anchor, archive the legacy app and install the candidate in its place.
     [[ "$MODE" == "local" ]] || { echo "adopt is only available with --local" >&2; exit 1; }
     require_stopped
     require_safe_snapshot_location

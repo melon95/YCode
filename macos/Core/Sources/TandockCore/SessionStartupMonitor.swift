@@ -1,8 +1,6 @@
 import Darwin
 import Foundation
 
-/// Observes shell completion off the main queue without changing PTY delivery.
-/// All mutable monitoring state is confined to `queue` after initialization.
 final class TandockSessionStartupMonitor: @unchecked Sendable {
     let shellPrefix: String
     private let trace: TandockSessionStartupTrace
@@ -31,13 +29,11 @@ final class TandockSessionStartupMonitor: @unchecked Sendable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                         attributes: [.posixPermissions: 0o700])
                 descriptor = open(marker.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-            } catch { /* Diagnostics cannot prevent a launch. */ }
+            } catch {}
         }
         if descriptor >= 0 {
             self.directory = directory
             let path = TandockAgentLauncher.shellQuote(marker.path)
-            // Builtins only. Preserve exec's arguments and suppress all diagnostic errors.
-            // The file check also avoids recreating a marker after the monitor expires.
             shellPrefix = "{ if command test -f \(path); then command printf ready > \(path); fi; } 2>/dev/null || :; "
             let fd = descriptor
             let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write], queue: queue)
@@ -50,7 +46,6 @@ final class TandockSessionStartupMonitor: @unchecked Sendable {
             self.directory = nil
             shellPrefix = ""
             try? FileManager.default.removeItem(at: directory)
-            // "skipped": direct exec from a shell environment snapshot, or a shell without POSIX builtins.
             trace.mark(captureShellBoundary ? "shell.marker_unavailable" : "shell.marker_skipped")
         }
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -71,8 +66,6 @@ final class TandockSessionStartupMonitor: @unchecked Sendable {
         let count = bytes.withUnsafeMutableBytes { pread(markerDescriptor, $0.baseAddress, $0.count, 0) }
         guard count == 5, bytes == Array("ready".utf8) else { return }
         shellObserved = true
-        // Observation time on a background queue, not an exact child timestamp
-        // or proof that exec succeeded. Main-thread stalls cannot delay this event.
         trace.mark("shell.ready_before_exec_observed")
         markerDescriptor = -1
         markerSource?.cancel()
@@ -92,7 +85,6 @@ final class TandockSessionStartupMonitor: @unchecked Sendable {
             finish()
             return
         }
-        // At most one queued probe, even if the main thread stalls for seconds.
         guard pendingProbe == nil else { return }
         pendingProbe = now
         DispatchQueue.main.async { [weak self] in

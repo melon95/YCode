@@ -30,8 +30,6 @@ public enum TandockTerminalLayout: String, CaseIterable, Codable, Identifiable, 
         }
     }
 
-    /// The progression the intro film shows as sessions are added:
-    /// one pane, side by side, main + side, then the grid.
     public static func defaultLayout(for count: Int) -> Self {
         switch count {
         case ...1: .single
@@ -45,8 +43,6 @@ public enum TandockTerminalLayout: String, CaseIterable, Codable, Identifiable, 
         validModes(for: count).contains(current) ? current : defaultLayout(for: count)
     }
 
-    /// A pending picker occupies the same slot and layout as the session it creates.
-    /// Keep a non-default layout selected by the user when it still fits.
     public static func reflow(_ current: Self, from previousCount: Int, to count: Int) -> Self {
         if count > previousCount, current == defaultLayout(for: previousCount) {
             return defaultLayout(for: count)
@@ -55,10 +51,6 @@ public enum TandockTerminalLayout: String, CaseIterable, Codable, Identifiable, 
     }
 }
 
-/// The two intentional ways a session enters the terminal canvas. Creating a
-/// session grows the canvas when room is available; selecting an existing
-/// session replaces the current slot instead. Neither path starts or stops a
-/// process, so changing what is visible can never duplicate an Agent runtime.
 public enum TandockTerminalCanvasOpenMode: Sendable {
     case newPane
     case replaceFocused

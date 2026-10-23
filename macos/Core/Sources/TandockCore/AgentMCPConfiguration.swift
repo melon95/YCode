@@ -56,8 +56,6 @@ extension TandockAgentCustomizationService {
         if agent == .claude, let project {
             let user = try read(claudeStateURL(environment)).map(object) ?? [:]
             disabled = try stringArray(dictionary(dictionary(user["projects"])[project.path])["disabledMcpServers"])
-            // Approval rejections are separate from the on/off toggle. Never
-            // turn an approval rejection into an enabled state in the UI.
             let local = try read(project.appendingPathComponent(".claude/settings.local.json")).map(object) ?? [:]
             if scope == .project {
                 rejected = try stringArray(local["disabledMcpjsonServers"])
@@ -72,7 +70,6 @@ extension TandockAgentCustomizationService {
             let enabled = server["enabled"] != .bool(false) && !disabled.contains(name) && !rejected.contains(name) && !globallyDisabled.contains(name)
             let endpoint: String
             if case let .string(url)? = server["url"], let components = URLComponents(string: url) {
-                // Query strings and userinfo often carry credentials.
                 endpoint = (components.scheme ?? "http") + "://" + (components.host ?? "") + (components.port.map { ":\($0)" } ?? "")
             } else if case let .string(command)? = server["command"] {
                 endpoint = URL(fileURLWithPath: command).lastPathComponent
@@ -91,8 +88,6 @@ extension TandockAgentCustomizationService {
         return try values.map { guard case let .string(string) = $0 else { throw TandockCustomizationError.invalidConfiguration }; return string }
     }
 
-    // Foundation retains integral JSON numbers as NSNumber, including values
-    // above Double's exact range. Only the changed switch is reconstructed.
     func jsonRoot(_ data: Data?) throws -> [String: Any] {
         guard let data else { return [:] }
         return try jsonDictionary(JSONSerialization.jsonObject(with: data))
@@ -131,9 +126,6 @@ extension TandockAgentCustomizationService {
     }
 }
 
-/// Edits only the selected server's tables. A real TOML parser validates both
-/// documents; comparing their complete semantic trees prevents a misleading
-/// table-looking line in a multiline string from changing unrelated settings.
 enum TandockMCPTableEditor {
     static func settingEnabled(_ enabled: Bool, name: String, in raw: String) throws -> String {
         func parsed(_ text: String) throws -> [String: JSONValue] {

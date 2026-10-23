@@ -52,8 +52,6 @@ struct AgentCustomizationSettingsTests {
         await model.setMCP(server, enabled: false, profile: profile)
         #expect(model.snapshot?.servers.first { $0.name == server.name }?.enabled == false)
         #expect(try String(contentsOf: projectConfig, encoding: .utf8) == projectConfigText)
-        // A click delivered from a stale row after switching CLI must not write
-        // that skill's name into the newly selected CLI's configuration.
         model.selectedAgentID = "claude-code"
         #expect(model.snapshot == nil)
         let claude = try #require(TandockAgentCatalog.defaults.first { $0.id == "claude-code" })

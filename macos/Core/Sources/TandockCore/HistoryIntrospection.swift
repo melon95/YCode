@@ -77,8 +77,6 @@ public enum TandockHistoryError: Error, CustomStringConvertible {
     }
 }
 
-/// Read-only Claude/Codex JSONL scanner with an in-memory append cache.
-/// Source files are never opened for writing and no second conversation copy is persisted.
 public final class TandockHistoryIndex: @unchecked Sendable {
     private struct ASCIIQuery: Sendable {
         let bytes: [UInt8]
@@ -150,7 +148,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return result
     }
 
-    /// Refresh one known file after a filesystem event, without enumerating all projects.
     public func refreshSession(_ session: TandockHistorySession, homeDirectory: URL) -> TandockHistorySession? {
         guard let metadata = sessionMetadata(session.jsonlURL) else { return nil }
         let title: String?
@@ -214,9 +211,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         let sessions = recentWorkspaceSessions(homeDirectory: homeDirectory, workspace: workspace)
             ?? scanWorkspace(homeDirectory: homeDirectory, workspace: workspace)
         let box = TandockHistoryHitBatchBox(count: sessions.count)
-        // Searching must not retain every parsed event in the long-lived UI index.
-        // Bound concurrency so large histories cannot multiply their peak memory by
-        // the number of session files on the machine.
         let workerCount = min(4, sessions.count)
         DispatchQueue.concurrentPerform(iterations: workerCount) { workerIndex in
             for sessionIndex in stride(from: workerIndex, to: sessions.count, by: workerCount) {
@@ -453,15 +447,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return box.results.compactMap { $0 }
     }
 
-    /// pi 的会话目录名编码。取自 pi 自身的实现（`dist/core/session-manager.js`）：
-    ///
-    /// ```js
-    /// const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-    /// ```
-    ///
-    /// 即：去掉开头的 `/`，把 `/` `\` `:` 换成 `-`，再前后各包一个 `--`。
-    /// 注意它**不**像 Claude 那样把所有非字母数字都换掉 —— 路径里原有的 `-` 和 `.`
-    /// 原样保留，所以 `melon-autoui` 不会和 `melon/autoui` 撞名，歧义比 Claude 那套小。
     public static func encodePiWorkspace(_ workspace: URL) -> String {
         var path = workspace.standardizedFileURL.path
         if path.hasPrefix("/") { path.removeFirst() }
@@ -496,9 +481,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return box.results.compactMap { $0 }
     }
 
-    /// 文件名形如 `2026-09-22T02-07-38-346Z_01a0c6de-636a-7211-ae7f-725cfcc36faf.jsonl`，
-    /// 下划线后面才是会话 id。整段文件名当 id 用也能跑，但那样 id 里带着时间戳，
-    /// 和 pi 自己 `--resume` 认的 id 对不上。
     private static func piSessionID(_ url: URL) -> String {
         let stem = url.deletingPathExtension().lastPathComponent
         guard let underscore = stem.lastIndex(of: "_") else { return stem }
@@ -506,10 +488,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return id.isEmpty ? stem : id
     }
 
-    /// pi 有显式的会话名（`session_info`，可能来自 pi 自己的 `/name`，也可能是
-    /// 用户在 tandock 里改的名字）：有就用它，跟 pi 一样取最后一条。
-    /// 没有才退回第一条用户消息：pi 的首条 system 消息带着整段 preamble，
-    /// 不能当标题；用户消息里的图片分片只有 base64，也要跳过。
     private func piTitle(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else { return nil }
         if let named = TandockSessionTitleReader.shared.title(url: url, agent: "pi") { return named }
@@ -532,9 +510,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return nil
     }
 
-    /// 从后往前找最后一条 `session_info`。空名字在 pi 里是「清除标题」的意思，
-    /// 遇到它就停下来走回推导逻辑，而不是继续往前翻出一个更旧的名字。
-    /// 测试入口：改名写进文件后，扫描这侧要能原样读回来。
     static func piSessionInfoNameForTesting(_ data: Data) -> String? { piSessionInfoName(data) }
 
     private static func piSessionInfoName(_ data: Data) -> String? {
@@ -561,9 +536,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return nil
     }
 
-    /// 把 pi 的 content 取成纯文本。content 可能是字符串（system 消息）或分片数组。
-    /// **只取 `text` 分片** —— `image` 分片的 `data` 是整张 PNG 的 base64，
-    /// 一条就能有几百 KB，混进正文会把预览和搜索索引撑爆。
     private static func piText(_ message: TandockJSONSlice) -> String {
         guard let content = message.container("content") else { return "" }
         if let string = content.string { return string }
@@ -873,12 +845,7 @@ public final class TandockHistoryIndex: @unchecked Sendable {
                 kind = .unknown(rawType: type)
             }
         case .pi:
-            // 首行 `session` 是文件头（id/version/cwd），和 codex 的 `session_meta` 同性质，
-            // 直接丢弃而不是留成 unknown —— 它不是对话里的一步。
             guard type != "session" else { return nil }
-            // model_change / thinking_level_change / context_edit 是会话状态变更，
-            // 留成 unknown：时间戳会被抹成 0，不参与排序与搜索，但仍占一个 sequence，
-            // 这样 sequence 始终等于行号，增量追加时不会错位。
             guard type == "message", let message = root.container("message") else {
                 kind = .unknown(rawType: type)
                 break
@@ -890,14 +857,11 @@ public final class TandockHistoryIndex: @unchecked Sendable {
                 kind = .message(role: .system, text: Self.piText(message))
             case "toolResult":
                 kind = .toolResult(
-                    // pi 直接给了工具名，不用像 Claude 那样拿 tool_use_id 回查。
                     tool: message.member("toolName")?.string ?? "",
                     outputExcerpt: Self.piTextPrefix(message, maximumUTF8Bytes: 4096),
                     status: message.member("isError")?.bool == true ? .error : .ok
                 )
             case "assistant":
-                // 与 Claude 分支同构：一条 assistant 消息里可能同时有正文、thinking
-                // 和多个 toolCall，这里取第一个「非正文」分片代表它，正文兜底。
                 let blocks = message.container("content")?.elements ?? []
                 if let block = blocks.first(where: {
                     let type = $0.member("type")?.string
@@ -936,7 +900,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         )
     }
 
-    /// toolResult 正文的截断版。工具输出动辄上万行，全取进内存没有意义。
     private static func piTextPrefix(_ message: TandockJSONSlice, maximumUTF8Bytes: Int) -> String {
         guard let content = message.container("content") else { return "" }
         if content.string != nil {
@@ -946,7 +909,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return first.stringPrefixMember("text", maximumUTF8Bytes: maximumUTF8Bytes) ?? ""
     }
 
-    /// `piText` 的 Foundation 版，给慢路径用。同样只取 text 分片，跳过 image。
     private static func piTextSlow(_ message: [String: Any]) -> String {
         if let string = message["content"] as? String { return string }
         guard let blocks = message["content"] as? [Any] else { return "" }
@@ -1226,12 +1188,6 @@ public final class TandockHistoryIndex: @unchecked Sendable {
         return String(text[startRange.upperBound..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
-    /// pi 会把 skill、系统提醒这类上下文**作为一条独立的 user 消息**塞进记录。
-    /// 不挡住的话，标题会变成一整段 22KB 的 skill 正文 —— 实测就是这样：
-    /// 有一条会话的标题是 `<skill name="apple-design" location=...`。
-    ///
-    /// 与 `isClaudeInjectedPreamble` 同构，只是标记不同。这里判前缀而不是「包含」：
-    /// 用户自己发的消息里出现 `<skill>` 字样是正常的，不该被吞掉。
     private static func isPiInjectedPreamble(_ text: String) -> Bool {
         ["<skill ", "<skill\n", "<system-reminder>", "<available_skills>", "<env>", "<project-context>"]
             .contains { text.hasPrefix($0) }
@@ -1412,8 +1368,6 @@ private final class TandockHistoryCodexCandidateBatchBox: @unchecked Sendable {
     }
 }
 
-/// Small selective JSON navigator. It skips values that M3.1 does not display,
-/// avoiding Foundation's allocation-heavy conversion of very large tool payloads.
 private final class TandockJSONBuffer {
     let storage: NSData
     let bytes: UnsafeBufferPointer<UInt8>

@@ -1,6 +1,5 @@
 import Foundation
 
-/// Flat pane frames keep terminal view identity independent of the split hierarchy.
 public struct TandockTerminalCanvasGeometry {
     public struct Divider: Identifiable {
         public let group: String
@@ -11,7 +10,6 @@ public struct TandockTerminalCanvasGeometry {
         public let availableLength: CGFloat
         public var id: String { "\(group)-\(index)" }
 
-        /// Resize only the two neighbours; small canvases relax the minimum equally.
         public func resizedWeights(translation: CGFloat) -> [CGFloat] {
             guard availableLength > 0 else { return lengths }
             var result = lengths
@@ -26,7 +24,6 @@ public struct TandockTerminalCanvasGeometry {
     public private(set) var frames: [CGRect] = []
     public private(set) var dividers: [Divider] = []
 
-    /// `gap` 是窗格之间的缝，也是分隔条的命中宽度；浮卡布局传 8，贴合布局用默认的 5。
     public init(layout: TandockTerminalLayout, count: Int, size: CGSize, weights: [String: [CGFloat]] = [:],
                 gap preferredGap: CGFloat = 5) {
         guard count > 0 else { return }

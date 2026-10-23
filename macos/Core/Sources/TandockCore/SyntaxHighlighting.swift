@@ -63,11 +63,9 @@ public struct TandockSyntaxToken: Equatable, Sendable {
 }
 
 public enum TandockSyntaxRegistry {
-    /// FS.8 的唯一正式清单：16 个原生语言包组 + 23 个旧 StreamLanguage 组。
     public static let groups: [TandockSyntaxLanguageGroup] = [
         .init(id: "javascript", extensions: ["js", "jsx", "mjs", "cjs"], verificationSample: "const answer = 42"),
         .init(id: "typescript", extensions: ["ts", "tsx"], verificationSample: "interface User { name: string }"),
-        // lock 文件没有可识别的扩展名，但内容就是 JSON / TOML，按文件名认出来才有高亮
         .init(
             id: "json",
             extensions: ["json", "jsonc", "json5"],

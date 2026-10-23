@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tandock 视觉方向</title>
 <style>
-/* 文档外壳：doc- 前缀；窗口模拟：m- 前缀。两套类名不交叉，避免样式互相污染。 */
 :root {
   --doc-bg: #f6f5f9; --doc-ink: #16133a; --doc-muted: #5a5873; --doc-line: #dedce8; --doc-card: #ffffff;
   --coral: #ff5a4e; --coral-strong: #d9392e; --sun: #ffc83d; --ink: #16133a;
@@ -45,7 +44,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 .doc-chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; border: 1px solid rgba(0,0,0,.1); }
 .doc-reco { border: 2px solid var(--coral); background: #fffaf9; }
 
-/* ——— 窗口模拟 ——— */
 .m-win { --r: 12px; border-radius: var(--r); overflow: hidden; background: var(--m-bg); color: var(--m-text);
   box-shadow: 0 30px 60px -20px rgba(22,19,58,.35), 0 0 0 1px var(--m-edge);
   display: grid; grid-template-columns: 196px 1fr; height: 430px; font-size: 11px; }
@@ -93,7 +91,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 .m-status .m-bar { width: 60px; height: 6px; border-radius: 3px; background: var(--m-term-line); position: relative; top: 4px; overflow: hidden; }
 .m-status .m-bar::after { content: ""; position: absolute; inset: 0 70% 0 0; background: var(--m-term-good); }
 
-/* 方向 A：墨与珊瑚（深色优先） */
 .dir-a { --m-bg:#110f28; --m-edge:rgba(255,255,255,.06); --m-text:#f1f0f8; --m-text-soft:#c9c6de; --m-muted:#8d89ad;
   --m-side:#110f28; --m-side-line:#221f45; --m-field:#1d1a3f; --m-sel:#2a2658; --m-sel-text:#fff;
   --m-canvas:#110f28; --m-top:#110f28; --m-top-line:#221f45; --m-seg-on:#2e2a5e; --m-accent:#ff7d72;
@@ -102,7 +99,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   --m-ph:#0b0920; --m-ph-line:#1c1940; --m-ph-text:#8d89ad; --m-ph-focus:#1a1636; --m-ph-focus-text:#fff;
   --m-term-text:#e6e3f2; --m-term-dim:#7f7c9c; --m-term-accent:#ff8f85; --m-term-good:#6fdca0; --m-term-warn:#ffc83d; --m-term-line:#1f1c42; --m-cursor:#ffc83d; }
 .dir-a .m-panes { background: #221f45; }
-/* 方向 B：纸面浮卡（浅色优先） */
 .dir-b { --m-bg:#efeef4; --m-edge:rgba(22,19,58,.10); --m-text:#16133a; --m-text-soft:#3d3a5c; --m-muted:#6a6787;
   --m-side:transparent; --m-side-line:transparent; --m-field:#e3e1ec; --m-sel:#ffffff; --m-sel-text:#16133a;
   --m-canvas:#efeef4; --m-top:transparent; --m-top-line:transparent; --m-seg-on:#ffffff; --m-accent:#ff5a4e;
@@ -112,7 +108,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   --m-ph:transparent; --m-ph-line:#efeef4; --m-ph-text:#6a6787; --m-ph-focus:transparent; --m-ph-focus-text:#16133a;
   --m-term-text:#16133a; --m-term-dim:#908dac; --m-term-accent:#c3301f; --m-term-good:#1f8a57; --m-term-warn:#b27800; --m-term-line:#efeef4; --m-cursor:#ff5a4e; }
 .dir-b .m-row.m-on { box-shadow: 0 1px 2px rgba(22,19,58,.08); }
-/* 方向 B 深色 */
 .dir-b.dark { --m-bg:#110f28; --m-edge:rgba(255,255,255,.07); --m-text:#f1f0f8; --m-text-soft:#c9c6de; --m-muted:#8d89ad;
   --m-field:#1f1c47; --m-sel:#1f1c47; --m-sel-text:#fff; --m-canvas:#110f28; --m-seg-on:#2e2a5e; --m-accent:#ff7d72;
   --m-term:#1b1840; --m-pane-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 10px 24px -10px rgba(0,0,0,.6); --m-pane-border: 0;
@@ -120,7 +115,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   --m-ph-line:#25224f; --m-ph-text:#8d89ad; --m-ph-focus-text:#fff;
   --m-term-text:#e6e3f2; --m-term-dim:#7f7c9c; --m-term-accent:#ff8f85; --m-term-good:#6fdca0; --m-term-warn:#ffc83d; --m-term-line:#25224f; --m-cursor:#ffc83d; }
 .dir-b.dark .m-row.m-on { box-shadow: none; }
-/* 方向 C：原生精修 */
 .dir-c { --m-bg:#ffffff; --m-edge:rgba(0,0,0,.12); --m-text:#1d1d1f; --m-text-soft:#3a3a3c; --m-muted:#8a8a8e;
   --m-side: linear-gradient(180deg, rgba(236,234,244,.92), rgba(229,227,238,.92)); --m-side-line: rgba(0,0,0,.08);
   --m-field: rgba(0,0,0,.05); --m-sel: rgba(255,90,78,.14); --m-sel-text:#c3301f;
@@ -130,7 +124,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   --m-ph:#ffffff; --m-ph-line:rgba(0,0,0,.06); --m-ph-text:#8a8a8e; --m-ph-focus:#ffffff; --m-ph-focus-text:#1d1d1f;
   --m-term-text:#1d1d1f; --m-term-dim:#8a8a8e; --m-term-accent:#c3301f; --m-term-good:#1f8a57; --m-term-warn:#a56a00; --m-term-line:rgba(0,0,0,.06); --m-cursor:#ff5a4e; }
 
-/* 新会话卡片模拟 */
 .m-ns { border-radius: 14px; padding: 26px 26px 20px; text-align: center; }
 .m-ns-logo { width: 46px; height: 46px; margin: 0 auto 12px; display: block; }
 .m-ns h4 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
@@ -193,7 +186,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 <h2 class="doc-h2">三个方向<small>同一个场景：侧栏 + 顶栏 + 三栏终端，焦点在中间窗格</small></h2>
 <p class="doc-sub">三个方向都换成品牌色；区别在于窗格是「贴合」还是「浮起」，以及深色还是浅色优先。</p>
 
-<!-- 方向 A -->
 <div class="doc-dir">
   <div class="doc-dir-meta">
     <h3>A. 墨与珊瑚</h3>
@@ -214,7 +206,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   <div class="m-win dir-a" id="mock-a"></div>
 </div>
 
-<!-- 方向 B -->
 <div class="doc-dir">
   <div class="doc-dir-meta">
     <h3>B. 纸面浮卡</h3>
@@ -239,7 +230,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   </div>
 </div>
 
-<!-- 方向 C -->
 <div class="doc-dir">
   <div class="doc-dir-meta">
     <h3>C. 原生精修</h3>
@@ -335,7 +325,6 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 </div>
 
 <script>
-// 三个方向的窗口模拟共用同一份内容，只换主题变量。
 const side = `
   <div class="m-lights"><i></i><i></i><i></i></div>
   <div class="m-search">⌕ 搜索会话</div>

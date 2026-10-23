@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 import TandockCore
 
-/// 置顶、项目、最近共用一列；会话标题优先，操作在悬停时出现。
 struct WorkspaceSidebarView: View {
     @ObservedObject var model: WorkspaceModel
     let lockedProjectID: String?
@@ -21,7 +20,6 @@ struct WorkspaceSidebarView: View {
     @State private var recentSessionsCollapsed = false
 
     var body: some View {
-        // 侧栏融进窗口底色，不画分隔线（视觉方向 B）：顶栏、列表、底栏靠留白分开。
         VStack(spacing: 0) {
             topBar
             ScrollView {
@@ -40,7 +38,6 @@ struct WorkspaceSidebarView: View {
             .overlay { if model.projects.isEmpty { emptyProjects } }
             footer
         }
-        // 铺品牌底色而不是露出系统材质：macOS 26 的侧栏玻璃是偏冷的灰，跟画布的紫调底色对不上。
         .background(Color.tandockChrome)
     }
 
@@ -48,17 +45,12 @@ struct WorkspaceSidebarView: View {
         var list = model.projects
         if let lockedProjectID { list = list.filter { $0.id == lockedProjectID } }
         guard !model.sidebarShowsEmptyProjects else { return list }
-        // 「显示空项目」关掉时，当前选中的项目依然留着 —— 否则搜索打一个字
-        // 就把自己正在干活的那个项目从眼前拿走了，底栏「新建会话」的落点也跟着没了。
         return list.filter { project in
             project.id == model.selectedProjectID || !model.sidebarSessions(in: project.id).isEmpty
         }
     }
 
-    // MARK: 顶栏 · 搜索与过滤
 
-    /// 侧栏顶栏 44 —— 跟画布顶栏、面板区列首卡头同高，那条横线因此横穿整窗。
-    /// 窗口模式下固定侧栏给红绿灯让位；全屏与悬浮预览使用列表同样的左边距。
     private var topBar: some View {
         searchField
             .padding(.leading, reservesWindowControlsSpace ? TandockMetrics.trafficLightWidth + 4 : 8)
@@ -90,7 +82,6 @@ struct WorkspaceSidebarView: View {
         )
     }
 
-    /// 会话筛选只管理状态与排序；项目显示选项放在「项目」标题旁。
     private var filterMenu: some View {
         Menu {
             Picker(l10n.text("filterStatus"), selection: $model.sidebarFilter) {
@@ -110,7 +101,6 @@ struct WorkspaceSidebarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        // 过滤器不在默认档位时按钮变色 —— 否则「我的会话去哪了」没有任何线索。
         .foregroundStyle(isFiltering ? Color.tandockAccent : Color.secondary)
         .frame(width: 22, height: 24)
         .help(l10n.text("sessionFilters"))
@@ -214,7 +204,6 @@ struct WorkspaceSidebarView: View {
         .padding(.top, 12)
     }
 
-    // MARK: 项目组
 
     @ViewBuilder
     private func projectSection(_ project: ProjectRecord) -> some View {
@@ -300,7 +289,6 @@ struct WorkspaceSidebarView: View {
         .contextMenu { projectMenu(project) }
     }
 
-    /// 设计稿 §05 标注 2：工具栏瘦身后，项目管理动作都在这个菜单里。
     @ViewBuilder
     private func projectMenu(_ project: ProjectRecord) -> some View {
         Button(l10n.text("openInNewWindow")) {
@@ -331,7 +319,6 @@ struct WorkspaceSidebarView: View {
         }
         .disabled(lockedProjectID != nil)
         Divider()
-        // 只移除 Tandock 里的记录，磁盘目录保持不动；确认框在 TandockNativeApp 里。
         Button(l10n.text("removeProjectEllipsis"), role: .destructive) {
             model.selectProject(project.id)
             onRemoveProject(project)
@@ -339,7 +326,6 @@ struct WorkspaceSidebarView: View {
         .disabled(lockedProjectID != nil)
     }
 
-    // MARK: 会话行
 
     private func sessionRow(_ session: SessionMetadata, shortcut: Bool = false) -> some View {
         let selected = model.selectedSessionID == session.id
@@ -409,7 +395,6 @@ struct WorkspaceSidebarView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 32)
-        // 行底与操作共用同一份悬停状态，避免嵌套的跟踪区域相互覆盖。
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(selected ? (hovering ? 0.09 : 0.06) : (hovering ? 0.06 : 0)))
@@ -433,9 +418,6 @@ struct WorkspaceSidebarView: View {
         .contextMenu { sessionMenu(session, archived: archived) }
     }
 
-    /// 会话菜单：改名字、收起来（归档）、彻底不要了（连 jsonl 一起删）。
-    /// 「放到画布」删掉——点这一行本来就是放上去；「在独立窗口打开」也删掉——独立窗口的单位是项目。
-    /// 归档过的那条只有一件事可做：捞回来。
     @ViewBuilder
     private func sessionMenu(_ session: SessionMetadata, archived: Bool) -> some View {
         if archived {
@@ -447,11 +429,9 @@ struct WorkspaceSidebarView: View {
         if model.pendingTitleSessionIDs.contains(session.id) {
             Button(l10n.text("retryTitleSync")) { model.retryTitleSync(session) }
         }
-        // 归档的那条也能删 —— 归档是「先收起来」，删除是「不要了，连 jsonl 一起」。
         Button(l10n.text("deleteSessionEllipsis"), role: .destructive) { onDeleteSession(session) }
     }
 
-    // MARK: 空状态与底栏
 
     private var emptyProjects: some View {
         VStack(spacing: 8) {
@@ -468,7 +448,6 @@ struct WorkspaceSidebarView: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            // 新建会话在项目标题、各项目行和 ⌘N 里，这里只留添加项目。
             Spacer(minLength: 0)
             Button(action: onAddProject) {
                 Image(systemName: "folder.badge.plus")

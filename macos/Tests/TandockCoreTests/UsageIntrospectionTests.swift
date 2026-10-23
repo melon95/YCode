@@ -67,8 +67,6 @@ struct UsageIntrospectionTests {
         let usage = TandockUsageAnalyzer().aggregateWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace)
 
         let pi = try #require(usage.sessions.first { $0.agent == .pi })
-        // pi 每次 API 调用记一条 usage（不像 codex 记累计总量），所以逐条相加：
-        // input 100+10、output 50+5、cacheWrite 7+1、cacheRead 11+2。
         #expect(pi.tokens == TandockTokenCounts(input: 110, output: 55, cacheCreation: 8, cacheRead: 13))
         #expect(pi.messageCount == 2)
         #expect(pi.model == "claude-opus-5")
@@ -81,13 +79,8 @@ struct UsageIntrospectionTests {
         let usage = TandockUsageAnalyzer().aggregateWorkspace(homeDirectory: fixture.home, workspace: fixture.workspace)
 
         let pi = try #require(usage.sessions.first { $0.agent == .pi })
-        // 成本取文件里记的 `usage.cost.total`（0.005 + 0.0025），不走内置价目表 ——
-        // pi 记的是它当时实际按哪个价算的，比我们手工维护的表更可信。
-        // claude-opus-5 也确实不在那张表里，走表的话这里会是 0。
         #expect(abs(pi.costUSD - 0.0075) < 0.000_001)
 
-        // fixture 末尾那条是 401 失败的空转：usage 全 0、cost 0。
-        // 它不该被算成一次调用，否则按模型分布会多出一行全 0 的 claude-fable-5-1。
         #expect(pi.messageCount == 2)
         #expect(!usage.byModel.contains { $0.model == "claude-fable-5-1" })
     }
@@ -118,9 +111,6 @@ private struct UsageFixture {
         ]
         try Data((claudeLines.joined(separator: "\n") + "\n").utf8).write(to: claude)
 
-        // pi：每次 API 调用一条 usage，自带 cost；末尾那条是 401 失败的空转。
-        // 走开关而不是默认写入 —— 既有三个测试断言的是整个 workspace 的总量，
-        // 默认加一份 pi 数据会把它们全部撞坏，而那些断言测的是别的东西。
         if includePi {
         let piDirectory = home.appendingPathComponent(".pi/agent/sessions")
             .appendingPathComponent(TandockHistoryIndex.encodePiWorkspace(workspace))

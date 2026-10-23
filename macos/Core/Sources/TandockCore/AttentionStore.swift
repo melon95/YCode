@@ -29,8 +29,6 @@ public extension Notification.Name {
     static let tandockAcceptedAttention = Notification.Name("dev.ycode.accepted-attention")
 }
 
-/// One in-memory owner per canonical data root, retained beyond window lifetime.
-/// Only this owner consumes raw hooks and publishes accepted notifications.
 @MainActor
 public final class TandockAttentionStore: ObservableObject {
     private static var stores: [String: TandockAttentionStore] = [:]
@@ -71,8 +69,6 @@ public final class TandockAttentionStore: ObservableObject {
 
     @discardableResult
     public func begin(session: SessionMetadata, source: String, runID: String = UUID().uuidString) -> String {
-        // Concurrent callers may obtain the same runtime from the process pool.
-        // Its generation is authoritative; adopting it twice must preserve state.
         if runs[session.id]?.id == runID { return runID }
         if let previous = runs[session.id], previous.live { end(sessionID: session.id, runID: previous.id) }
         invalidateAttention(sessionID: session.id)
@@ -138,7 +134,6 @@ public final class TandockAttentionStore: ObservableObject {
     }
 
     public func failedToStart(session: SessionMetadata, message: String) {
-        // A failed restart preflight must not invalidate the process still running.
         if let run = runs[session.id], run.live {
             notify(upsert(session: session, runID: run.id, kind: .failure, summary: message, date: Date()))
             return
@@ -175,8 +170,6 @@ public final class TandockAttentionStore: ObservableObject {
             lastReceivedAt: date, summary: summary, event: event)
         items = (items.filter { existing in
             guard existing.id != id else { return false }
-            // A turn end retires the earlier reminder, without claiming the
-            // permission was approved. Never retire a newer or foreign turn.
             guard kind == .completion, existing.kind == .approval,
                   existing.sessionID == session.id, existing.runID == runID,
                   existing.lastReceivedAt <= date else { return true }

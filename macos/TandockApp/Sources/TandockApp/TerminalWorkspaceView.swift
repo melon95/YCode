@@ -3,9 +3,6 @@ import SwiftTerm
 import SwiftUI
 import TandockCore
 
-/// 设计稿 §03 标注 4／5：终端就是画布，不是面板。
-/// 画布右边固定一个检查器，tab 互斥；原来的画布工具条（布局菜单 + 面板开关 + 字号加减）已拆到
-/// 工具栏、检查器 tab 与状态栏。
 struct TerminalWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.tandockL10n) private var l10n
@@ -24,10 +21,7 @@ struct TerminalWorkspaceView: View {
         .tandockSessionArchiveDialog(model: model, target: $archiveTarget)
     }
 
-    // MARK: 画布
 
-    /// 画布上的一格：要么是一个会话，要么是 agent 选择器。
-    /// ⌘N 不覆盖整块画布 —— 它只是多占一格，其它会话照常在跑（设计稿 §04 标注 3）。
     private enum CanvasPane: Identifiable {
         case session(SessionMetadata, slot: Int)
         case picker
@@ -43,7 +37,6 @@ struct TerminalWorkspaceView: View {
     private var canvasPanes: [CanvasPane] {
         let sessions = model.visibleSessions
         var panes = sessions.enumerated().map { CanvasPane.session($1, slot: $0) }
-        // 没有会话时画布本身就是选择器；按了 ⌘N 就在末尾多开一格，满 4 格则占用焦点格。
         if sessions.isEmpty {
             return [.picker]
         }
@@ -60,7 +53,6 @@ struct TerminalWorkspaceView: View {
     private var terminalCanvas: some View {
         let panes = canvasPanes
         let layout = model.presentedTerminalLayout
-        // 只有一个窗格时不标焦点，与窗格自己的描边规则一致。
         let focusedID = layout == .tabs && model.isPresentingNewSession
             ? TerminalSessionTabBar.pickerID
             : (panes.count > 1 ? model.focusedCanvasSessionID : nil)
@@ -87,8 +79,6 @@ struct TerminalWorkspaceView: View {
         }
     }
 
-    /// 空着的窗格就是 agent 选择器：点一下这个窗格就有 agent 在跑，不用先回侧栏。
-    /// 画布上还有别的会话时给它一条窗格头，好把这一格关掉。
     private func pickerPane(standalone: Bool) -> some View {
         VStack(spacing: 0) {
             if !standalone {
@@ -116,7 +106,6 @@ struct TerminalWorkspaceView: View {
 
     private func terminalPane(_ session: SessionMetadata, slot: Int) -> some View {
         let focused = slot == model.focusedCanvasSlot
-        // 只有画布上不止一个窗格时，「哪个是焦点」才需要标出来。
         let marked = focused && model.visibleSessionIDs.count > 1
         return VStack(spacing: 0) {
             paneHeader(session, slot: slot, focused: marked)
@@ -125,16 +114,10 @@ struct TerminalWorkspaceView: View {
             paneBody(session, slot: slot)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // 焦点只有一种表达（视觉方向 B）：卡片一圈 1px 强调描边加外侧光晕，都由画布画
-        // （描边在窗格的裁切层上，布局切换时始终完整）；窗格头不再整条上色。
         .background(Color(nsColor: model.activeTheme.nsTerminalBackground))
     }
 
-    /// 窗格头 28px，只放会话本身：状态点、agent 图标、名称、菜单、⌘⇧N、关闭。
-    /// 名字后面什么都不跟——是哪个 agent 由图标回答，CLI 吐的终端标题各家格式不一，
-    /// 而且终端第一行就在说同一件事。查找使用 ⌘F，不在这条上占按钮。
     private func paneHeader(_ session: SessionMetadata, slot: Int, focused: Bool) -> some View {
-        // 窗格窄到放不下项目名时，徽章收成只剩首字母图标（设计稿 §6）。
         ViewThatFits(in: .horizontal) {
             paneHeaderContent(session, slot: slot, focused: focused, badgeShowsName: true)
             paneHeaderContent(session, slot: slot, focused: focused, badgeShowsName: false)
@@ -151,7 +134,6 @@ struct TerminalWorkspaceView: View {
 
     private func paneHeaderContent(_ session: SessionMetadata, slot: Int, focused: Bool, badgeShowsName: Bool) -> some View {
         HStack(spacing: 8) {
-            // 项目徽章放在最前：混放时第一眼要回答的是「这是哪个项目的 agent」。
             if let project = model.project(id: session.projectID) {
                 TandockProjectBadge(projectID: project.id, name: project.name, showsName: badgeShowsName)
             }
@@ -167,7 +149,6 @@ struct TerminalWorkspaceView: View {
             Text("⌘⇧\(slot + 1)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
-            // 关窗格 = 停掉里面的 Agent：只隐藏的话进程还在后台跑，侧栏上的绿点也一直不灭。
             Button {
                 if model.runtimeStatus(for: session)?.isLive == true { model.stopSession(session.id) }
                 model.closeCanvasSlot(slot)
@@ -219,22 +200,18 @@ struct TerminalWorkspaceView: View {
                 focused: slot == model.focusedCanvasSlot && !(model.presentedTerminalLayout == .tabs && model.isPresentingNewSession),
                 focusRequest: model.terminalFocusRequest?.sessionID == session.id ? model.terminalFocusRequest?.token : nil,
                 searchRequest: model.terminalSearchRequest,
-                // 点终端正文、或键盘焦点落进来，都算选中这个窗格，不必非点标题。
                 onFocus: { if model.focusedCanvasSlot != slot { model.focusCanvasSlot(slot) } },
                 onFilePath: model.recordTerminalPath,
-                // CLI 报出来的窗口标题直接回给模型，侧栏那条当场改名。
                 onTitle: { model.recordLiveTitle(sessionID: session.id, title: $0) },
                 onUserInput: { model.recordTerminalInteraction(sessionID: session.id, runID: runtime.runID) }
             ) { result, generation in
                 model.updateTerminalSearchResult(result, generation: generation)
             }
-            // 终端离卡片边缘留一点呼吸空间，字不再贴着圆角。
             .padding(.leading, 8)
             .padding(.top, 6)
             .padding(.bottom, 2)
             .background(Color(nsColor: model.activeTheme.nsTerminalBackground))
         } else if let failure = model.startError(for: session.id) {
-            // 启动失败才有例外：命令找不到、worktree 路径不存在这类硬失败，就地给原因与重试。
             VStack(spacing: 10) {
                 Text(l10n.text("sessionStartFailedTitle")).font(.subheadline.weight(.medium))
                 Text(failure)
@@ -256,7 +233,6 @@ struct TerminalWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            // 会话总是自己起来：不给「正在接着跑…」这类过场屏，窗格里永远是终端底色。
             Color(nsColor: model.activeTheme.nsTerminalBackground)
                 .onAppear { model.resumeIfNeeded(session.id) }
         }
@@ -264,11 +240,6 @@ struct TerminalWorkspaceView: View {
 
 }
 
-/// 右侧检查器的内容。外壳（开合、拖宽、分隔条）交给系统的 `.inspector`，
-/// 这里只管 tab 条与四个面板本身。
-/// 面板区：文件 / 变更 / 待办 / 终端各自开关。
-/// 开着的按顺序纵向堆在一列里，**每列最多两张，开第三个就另起一列**；卡与卡、列与列之间留 8 的间距。
-/// 自绘而不是用系统 `.inspector`：那条会在顶上留一段永远空着的工具栏区，也撑不起多列（设计稿 §07）。
 struct WorkspaceInspectorView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.tandockL10n) private var l10n
@@ -289,34 +260,26 @@ struct WorkspaceInspectorView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(column.enumerated()), id: \.element) { row, panel in
                             if row > 0 { panelGrip(vertical: false) }
-                            // 每列第一张卡的卡头站在窗口最顶那一行，高度跟画布顶栏一样 44，
-                            // 于是顶栏下面那条横线横穿画布与面板区，中间不断档（设计稿 §04）。
                             panelCard(panel, headOfColumn: row == 0)
                         }
                     }
-                    // 列宽定死，不跟着容器等分：加列那一下容器是动画着变宽的，
-                    // 等分会让原有的列先缩到一半再长回来。定死之后新列是被"露"出来的。
                     .frame(maxHeight: .infinity)
                     .frame(width: model.resolvedPanelColumnWidth)
                 }
             }
         }
-        // 面板卡与画布窗格一样浮在底色上：外侧留白与画布的留白同宽，顶上留出与卡缝一样的一段。
         .padding(.top, TandockMetrics.panelCardGap)
         .padding([.trailing, .bottom], TandockMetrics.panelCardGap)
-        // 靠左钉住：容器还没长到位的那几帧，多出来的那列先探到窗口右缘外面，由窗口裁掉。
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(Color.tandockChrome)
     }
 
-    /// 卡与卡、列与列之间的缝。浮卡之间露出的底色就是分隔，不再画隔条。
     private func panelGrip(vertical: Bool) -> some View {
         Color.clear
             .frame(width: vertical ? TandockMetrics.panelCardGap : nil,
                    height: vertical ? nil : TandockMetrics.panelCardGap)
     }
 
-    /// 卡本身不画卡头 —— 卡头交给面板自己，好让面板把自己的动作按钮摆进同一行。
     private func panelCard(_ panel: TandockWorkspacePanel, headOfColumn: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: TandockMetrics.radiusCard, style: .continuous)
         return panelBody(panel, spec: headerSpec(panel, headOfColumn: headOfColumn))
@@ -326,9 +289,6 @@ struct WorkspaceInspectorView: View {
             .tandockCard(cornerRadius: TandockMetrics.radiusCard)
     }
 
-    /// 列首那张的卡头下沿与画布顶栏下沿对齐（顶上让出卡缝），其余 30。
-    /// 没有折叠箭头 —— 一张收起来的卡只剩一条占着高度的卡头，要它不如直接 ✕ 关掉；
-    /// ✕ 等同于灭掉画布顶栏上那个开关，再点亮就回来。
     private func headerSpec(_ panel: TandockWorkspacePanel, headOfColumn: Bool) -> TandockPanelHeaderSpec {
         TandockPanelHeaderSpec(
             panel: panel,
@@ -339,8 +299,6 @@ struct WorkspaceInspectorView: View {
             moveDown: { model.movePanel(panel, by: 1) },
             canMoveUp: model.openPanels.first != panel,
             canMoveDown: model.openPanels.last != panel,
-            // 只有点得动的图标才留：文件卡那枚是文件树开关，变更卡那枚是树／平铺开关；
-            // 终端和待办的图标既不点，旁边也已经写着自己是谁。
             showsIcon: panel != .terminal && panel != .todos
         )
     }
@@ -391,8 +349,6 @@ struct WorkspaceInspectorView: View {
     }
 }
 
-/// 终端面板 = 一排标签 + 一格终端。分屏树在 Core 里原样留着，界面上一次只显示一格；
-/// ＋ 开出来的新格子在这里表现为一个标签（设计稿 §07 的终端面板先做成这样）。
 private struct ProjectShellWorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
     let header: TandockPanelHeaderSpec
@@ -416,8 +372,6 @@ private struct ProjectShellWorkspaceView: View {
 
     private var paneIDs: [String] { model.selectedShellWorkspace?.paneIDs ?? [] }
 
-    /// 标签顶掉了卡头上的「终端」两个字，左边那枚图标也一起去掉 ——
-    /// 标签自己就写着「终端 1」，标题和图标都是在重复同一句话。
     private var tabStrip: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 3) {
@@ -488,8 +442,6 @@ private struct ProjectShellWorkspaceView: View {
                 onTitle: { _ in },
                 onSearchResult: { _, _ in }
             )
-            // A different process needs a fresh view and coordinator, including
-            // tab/project switches and restarts that keep the same pane ID.
             .id(ObjectIdentifier(runtime))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -536,8 +488,6 @@ private struct TandockTerminalView: NSViewRepresentable {
             font: .monospacedSystemFont(ofSize: fontSize, weight: .regular),
             options: TerminalOptions(cols: 80, rows: 24, scrollback: 10_000)
         )
-        // Keep the native backing surface inside the same bounds as the pane
-        // throughout a SwiftUI resize, including its cursor/scrollbar sublayers.
         view.layer?.masksToBounds = true
         view.terminalDelegate = context.coordinator
         view.onBecomeFirstResponder = { [weak coordinator = context.coordinator] in coordinator?.onFocus() }
@@ -683,9 +633,6 @@ private struct TandockTerminalView: NSViewRepresentable {
             runtime.resize(columns: max(2, newCols), rows: max(1, newRows))
         }
 
-        /// OSC 0/1/2：CLI 自己报的会话名字。以前这里是空实现，侧栏得等下一次
-        /// jsonl 扫描（实际上往往是重启）才能从「新会话」改成真名字。
-        /// 终端会反复重发同一个标题，本地先去重，别把每一帧都捣成一次重绘。
         func setTerminalTitle(source: TerminalView, title: String) {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, trimmed != lastTitle else { return }
@@ -732,15 +679,12 @@ private final class TandockHostedTerminalView: TerminalView {
     var onBecomeFirstResponder: (() -> Void)?
     private(set) var isSendingTerminalReply = false
 
-    // Protocol replies (including focus reports) are not user input.
     override func send(source: Terminal, data: ArraySlice<UInt8>) {
         isSendingTerminalReply = true
         defer { isSendingTerminalReply = false }
         super.send(source: source, data: data)
     }
 
-    // 点击终端正文即选中这个窗格；becomeFirstResponder 在 SwiftTerm 里不是 open，
-    // 覆盖不了，鼠标按下是进入终端焦点的唯一入口。
     override func mouseDown(with event: NSEvent) {
         onBecomeFirstResponder?()
         super.mouseDown(with: event)

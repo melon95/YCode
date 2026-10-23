@@ -6,8 +6,6 @@ import Testing
 @testable import TandockApp
 import TandockCore
 
-/// 跨项目画布（docs/canvas-cross-project.html）：画布是全局的，右侧面板跟随焦点窗格的项目。
-/// 画布测试不拉起 agent 进程；Shell 视图回归只启动临时项目的普通 Shell。
 @Suite("Cross-project canvas", .serialized)
 @MainActor
 struct CrossProjectCanvasTests {
@@ -19,7 +17,6 @@ struct CrossProjectCanvasTests {
         let betaSessions: [SessionMetadata]
     }
 
-    /// 在临时数据根里先用仓库建好两个项目、各两个会话，再起模型，这样不会碰到真实数据，也不起进程。
     private func fixture(sessionCount: Int = 2) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("tandock-cross-project-\(UUID().uuidString)", isDirectory: true)
@@ -99,7 +96,6 @@ struct CrossProjectCanvasTests {
         paneIDs.append(betaPane)
         let beta = try #require(model.shellRuntime(paneID: betaPane))
         reportDirectory(beta)
-        // The launch directory is correct even before the view-binding fix.
         #expect(await eventually { String(decoding: beta.backlog.bytes, as: UTF8.self).replacingOccurrences(of: "/private/var/", with: "/var/").contains(directoryReport(f.beta)) })
         #expect(await eventually { alpha.attachedViewCount == 0 && beta.attachedViewCount == 1 })
         #expect(visibleText().contains(directoryReport(f.beta)))
@@ -324,7 +320,6 @@ struct CrossProjectCanvasTests {
         try await waitForPins(f.model, [])
         #expect(f.model.focusedCanvasSessionID == active.id)
 
-        // A second window may be clicked before its queued metadata refresh arrives.
         f.model.toggleSessionPin(background)
         other.toggleSessionPin(background)
         try await waitForPins(f.model, [])
@@ -398,7 +393,6 @@ struct CrossProjectCanvasTests {
             f.model.openSessionInCanvas(id, mode: .newPane)
         }
         #expect(f.model.visibleSessionIDs.count == 3)
-        // 已经在画布上的会话只聚焦，不重复开一格。
         f.model.openSessionInCanvas(f.alphaSessions[0].id, mode: .newPane)
         #expect(f.model.visibleSessionIDs.count == 3)
         #expect(f.model.selectedProjectID == f.alpha.id)

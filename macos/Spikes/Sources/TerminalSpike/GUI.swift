@@ -1,12 +1,3 @@
-// 带窗口的验证:跑真实 Claude/Codex,人工确认渲染。
-//
-// headless 能证明「字节进了状态机」,证明不了「画出来是对的」。全屏 TUI、
-// 中文宽度、Emoji 字形、输入法组合这些必须看屏幕。
-//
-// 快捷键:
-//   ⌘1  attach / detach 当前视图(验隐藏后进程不死)
-//   ⌘2  连打 20 次 attach/detach,打印 pid 是否变化
-//   ⌘3  打印当前会话状态(pid / 字节数 / 标题)
 
 import AppKit
 import SwiftTerm
@@ -51,8 +42,6 @@ final class SpikeWindowController: NSWindowController {
         attachView()
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        // 与旧版同口径:登录 shell 包装(AG.5),这样 ~/.zshrc 的 PATH 生效,
-        // claude / codex 才找得到。
         let inner = ([command] + commandArgs).map(shellQuote).joined(separator: " ")
         session.start(
             executable: shell,
@@ -63,7 +52,6 @@ final class SpikeWindowController: NSWindowController {
         updateStatus(0)
     }
 
-    /// 造一个新视图接到已有会话上。旧视图直接扔掉 —— 模拟面板被销毁。
     func attachView() {
         guard termView == nil else { return }
         let v = TerminalView(frame: container.bounds)
@@ -89,7 +77,6 @@ final class SpikeWindowController: NSWindowController {
             "pid=\(session.pid) [\(alive)] · view=\(attached) · bytes=\(bytes) · title=\(session.title)"
     }
 
-    // ── 验证动作 ────────────────────────────────────────────────────────
 
     @objc func toggleAttach() {
         if termView == nil { attachView() } else { detachView() }

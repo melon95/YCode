@@ -52,7 +52,6 @@ const COLORS = {
   limeBottom: '#a9e84a',
 };
 
-// Continuous-curvature rounded rect on the macOS icon grid (824pt body inside 1024).
 function squircle(ctx, x, y, w, h, r) {
   const q = r * (1 - 0.62);
   ctx.beginPath();
@@ -75,7 +74,6 @@ function vgrad(ctx, y0, y1, top, bottom) {
   return g;
 }
 
-// A docked module: rounded tile with a light inner rim on top so it reads as a physical block.
 function tile(ctx, x, y, size, top, bottom) {
   ctx.save();
   ctx.shadowColor = 'rgba(5, 8, 20, 0.45)';
@@ -94,7 +92,6 @@ function tile(ctx, x, y, size, top, bottom) {
   ctx.restore();
 }
 
-// The cradle: a thick U whose inner floor the tiles sit on.
 function cradle(ctx) {
   const x = 236, y = 420, w = 552, h = 300, wall = 64, r = 96;
   ctx.save();
@@ -102,7 +99,6 @@ function cradle(ctx) {
   ctx.shadowBlur = 36;
   ctx.shadowOffsetY = 18;
   ctx.beginPath();
-  // Outer contour, clockwise: top-left lip → down → bottom → up → top-right lip.
   ctx.moveTo(x, y + wall / 2);
   ctx.arc(x + wall / 2, y + wall / 2, wall / 2, Math.PI, 0);
   ctx.lineTo(x + wall, y + h - wall - r + wall);
@@ -128,7 +124,6 @@ function drawIcon(canvas) {
   ctx.setTransform(s, 0, 0, s, 0, 0);
   ctx.clearRect(0, 0, 1024, 1024);
 
-  // Body.
   ctx.save();
   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
   ctx.shadowBlur = 28;
@@ -138,7 +133,6 @@ function drawIcon(canvas) {
   ctx.fill();
   ctx.restore();
 
-  // Soft halo behind the dock so the modules feel lit from below.
   ctx.save();
   squircle(ctx, 100, 100, 824, 824, 186);
   ctx.clip();
@@ -152,12 +146,9 @@ function drawIcon(canvas) {
   const dock = cradle(ctx);
   const size = 196, gap = 28;
   const leftX = dock.innerLeft + 24;
-  // Left module already seated on the floor.
   tile(ctx, leftX, dock.floor - size, size, COLORS.blueTop, COLORS.blueBottom);
-  // Right module hovering above its slot, still sliding in.
   tile(ctx, leftX + size + gap, dock.floor - size - 150, size, COLORS.limeTop, COLORS.limeBottom);
 
-  // Motion cue: the empty slot the lime module is heading into.
   ctx.save();
   ctx.setLineDash([22, 18]);
   ctx.lineWidth = 10;

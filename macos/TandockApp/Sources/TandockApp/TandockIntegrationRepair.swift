@@ -1,9 +1,6 @@
 import Foundation
 import TandockCore
 
-/// Helper executables shipped in the bundle, and the launch-time repair of agent
-/// configs that still run an older helper (a moved bundle, or the pre-rename
-/// `ycode-mcp` / `ycode-notify` left behind by an update).
 enum TandockBundledHelpers {
     static func url(named name: String) -> URL {
         let resource = Bundle.main.resourceURL?.appendingPathComponent(name)
@@ -16,9 +13,6 @@ enum TandockBundledHelpers {
             ?? URL(fileURLWithPath: name)
     }
 
-    /// Only an installed copy may rewrite agent configs on its own. A build run
-    /// from the repo's dist folder or a translocated download would otherwise
-    /// point every agent at a path that soon disappears.
     static func isInstalledLocation(_ bundleURL: URL, home: URL) -> Bool {
         let path = bundleURL.resolvingSymlinksInPath().path
         guard !path.contains("/AppTranslocation/") else { return false }

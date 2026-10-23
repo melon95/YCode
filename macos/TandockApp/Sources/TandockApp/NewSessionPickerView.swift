@@ -2,18 +2,14 @@ import AppKit
 import SwiftUI
 import TandockCore
 
-/// 设计稿 §06 屏 05：新建会话没有弹窗。
-/// 选择器就地摆进画布，选完 agent 立刻变成终端；同一个组件也用作「项目无会话」与「空窗格」。
 struct NewSessionPickerView: View {
     @ObservedObject var model: WorkspaceModel
     @Environment(\.tandockL10n) private var l10n
     @State private var useWorktree = false
     @State private var branch: String = ""
-    /// 新会话落在哪个项目。默认值的来历见 `defaultProjectID()`。
     @State private var projectID: String?
     @State private var projectBranches = TandockProjectBranches.none
     @State private var branchesLoaded = false
-    /// 已经点下去的 agent。只用来先把反馈画出来——真正的启动下一个 runloop 才跑。
     @State private var startingProfileID: String?
 
     var body: some View {
@@ -33,7 +29,6 @@ struct NewSessionPickerView: View {
             applyProjectRequest()
         }
         .onChange(of: model.newSessionProjectRequest) { _, _ in applyProjectRequest() }
-        // 项目变了，分支列表和当前分支都要重读，不能把 A 项目的分支名带进 B 项目。
         .task(id: projectID) { await reloadBranches() }
     }
 
@@ -54,11 +49,9 @@ struct NewSessionPickerView: View {
             foot(compact: compact)
                 .disabled(startingProfileID != nil)
         }
-        // 选择器本身就放在一张浮卡（画布窗格）里，不再套第二层卡片。
         .padding(compact ? 13 : 22)
     }
 
-    /// agent 横排一行 —— 选一个是一次横向扫视，不是一列待读的清单。
     private func agents(compact: Bool) -> some View {
         HStack(spacing: compact ? 5 : 9) {
             ForEach(model.availableAgentProfiles) { profile in
@@ -91,8 +84,6 @@ struct NewSessionPickerView: View {
         }
     }
 
-    /// 起会话前要决定三件事：项目、分支、是否隔离。起来之后就改不了了。
-    /// 项目和分支挨在一起（分支是项目的下一级，换项目分支就跟着重读），worktree 单独靠右。
     private func foot(compact: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: compact ? 7 : 9) {
@@ -183,8 +174,6 @@ struct NewSessionPickerView: View {
         projectID.flatMap { model.project(id: $0) }
     }
 
-    /// 默认项目：侧栏「+」点名的 > 焦点窗格所属项目（⌘N 再开一个同项目的最常见）
-    /// > 最近建会话用过的 > 当前项目 > 侧栏第一个。
     private func defaultProjectID() -> String? {
         let candidates = [
             model.newSessionProjectRequest,
@@ -196,7 +185,6 @@ struct NewSessionPickerView: View {
         return candidates.compactMap { $0 }.first { model.project(id: $0) != nil }
     }
 
-    /// 「+」点名的项目只用一次；选择器读走就清掉，免得下一次 ⌘N 还被它钉住。
     private func applyProjectRequest() {
         if let request = model.newSessionProjectRequest, model.project(id: request) != nil {
             projectID = request
@@ -211,7 +199,6 @@ struct NewSessionPickerView: View {
         branchesLoaded = false
         branch = ""
         let result = await model.loadBranches(projectID: projectID)
-        // 读的过程中又换了项目：这份结果已经过期。
         guard !Task.isCancelled, self.projectID == projectID else { return }
         projectBranches = result
         branch = result.current
@@ -245,12 +232,10 @@ struct NewSessionPickerView: View {
         }
     }
 
-    /// Keep the selection busy while command preflight runs off the main actor.
     private func start(_ profile: TandockAgentProfile) {
         guard startingProfileID == nil else { return }
         startingProfileID = profile.id
         Task { @MainActor in
-            // title 传空串：名字来自 CLI，侧栏先显示斜体的「新会话」。
             await model.createSession(
                 agentProfileID: profile.id,
                 title: "",
@@ -258,14 +243,11 @@ struct NewSessionPickerView: View {
                 useWorktree: useWorktree,
                 projectID: projectID
             )
-            // 成功的话这个视图已经被终端替掉了；失败时要把按钮放回可点状态。
             startingProfileID = nil
         }
     }
 }
 
-/// 新会话里的 agent 按钮：白色小卡片，悬停时一圈强调色描边加淡光晕，按下时略微压低。
-/// 之前是四块没有任何反馈的灰色色块，看不出哪个能点、指针在哪一个上。
 private struct TandockAgentTileStyle: ButtonStyle {
     var active: Bool
     var cornerRadius: CGFloat
@@ -292,7 +274,6 @@ private struct TandockAgentTileStyle: ButtonStyle {
                 }
                 .overlay { shape.strokeBorder(lit ? Color.tandockAccent : Color.tandockHairline, lineWidth: 1) }
                 .background {
-                    // 光晕画在卡片外侧，不占布局。
                     shape.stroke(Color.tandockAccent.opacity(lit ? 0.16 : 0), lineWidth: 6)
                 }
                 .scaleEffect(configuration.isPressed ? 0.98 : 1)
