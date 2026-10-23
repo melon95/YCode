@@ -272,6 +272,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private var newSessionLayout: TandockTerminalLayout?
     /// 正在 resume 的会话：点一下就接着跑，重复点不再叠一次启动。
     @Published private(set) var resumingSessionIDs: Set<String> = []
+    private var importingHistorySessions: Set<String> = []
     /// 会话起不来时的具体原因，按会话 id 记。窗格里只有硬失败才显示内容，其余时候永远是终端。
     @Published private(set) var sessionStartErrors: [String: String] = [:]
     /// 检查器的初始宽度（沿用迁移过来的 `fileTreeWidth`）。
@@ -735,7 +736,7 @@ final class WorkspaceModel: ObservableObject {
 
     /// 新建会话：不勾 worktree 就是「切到这个分支再起」；分支留空表示用仓库当前分支。
     /// `projectID` 为空表示当前项目。新会话选择器里可以选别的项目，所以分支也要在那个项目的仓库里切。
-    func createSession(agentProfileID: String, title: String, branch: String?, useWorktree: Bool, projectID: String? = nil) {
+    func createSession(agentProfileID: String, title: String, branch: String?, useWorktree: Bool, projectID: String? = nil) async {
         guard let targetID = projectID ?? selectedProjectID, let project = project(id: targetID) else { return }
         if let branch, !branch.isEmpty {
             let current = (try? gitService.branches(root: project.repositoryURL))?.first(where: \.current)?.name
@@ -752,25 +753,31 @@ final class WorkspaceModel: ObservableObject {
             errorMessage = l10n.text("worktreeNotSupportedYet")
             return
         }
-        createSession(agentProfileID: agentProfileID, title: title, projectID: targetID)
+        await createSession(agentProfileID: agentProfileID, title: title, projectID: targetID)
     }
 
-    func createSession(agentProfileID: String, title: String, projectID: String? = nil) {
+    func createSession(agentProfileID: String, title: String, projectID: String? = nil) async {
         guard let targetID = projectID ?? selectedProjectID else { return }
+        let chosenLayout = newSessionLayout
         do {
-            let row = try sessionService?.createSession(
+            let row = try await sessionService?.createSession(
                 projectID: targetID,
                 agentProfileID: agentProfileID,
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines)
             )
+            let trace = row.flatMap { sessionService?.runtime(id: $0.id)?.startupTrace }
             lastNewSessionProjectID = targetID
+            trace?.mark("ui_reload.begin")
             reloadSessions()
-            let chosenLayout = newSessionLayout
+            trace?.mark("ui_reload.end")
             isPresentingNewSession = false
             if let id = row?.id {
                 openSessionInCanvas(id, mode: .newPane)
                 if let chosenLayout { terminalLayout = TandockTerminalLayout.reflow(chosenLayout, for: visibleSessionIDs.count) }
+                trace?.mark("canvas.requested")
             }
+        } catch is CancellationError {
+            reloadSessions()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -801,6 +808,8 @@ final class WorkspaceModel: ObservableObject {
         Task {
             do {
                 _ = try await sessionService?.restartSession(id: id)
+            } catch is CancellationError {
+                // Stop/archive cancelled a pending preflight.
             } catch {
                 // 硬失败（命令找不到、worktree 路径不存在…）留在窗格里，不弹全局 alert：
                 // 这类错误不会因为多等一会儿就好，要就地给重试。
@@ -1549,11 +1558,14 @@ final class WorkspaceModel: ObservableObject {
 
     func resumeSelectedHistorySession() {
         guard let session = selectedHistorySession else { return }
-        resumeHistorySession(session)
+        Task { await resumeHistorySession(session) }
     }
 
-    func resumeHistorySession(_ history: TandockHistorySession) {
+    func resumeHistorySession(_ history: TandockHistorySession) async {
         guard let selectedProjectID else { return }
+        let key = selectedProjectID + ":" + history.sessionID
+        guard importingHistorySessions.insert(key).inserted else { return }
+        defer { importingHistorySessions.remove(key) }
         if let existing = sessions.first(where: { session in
             session.agentSessionID == history.sessionID
                 && session.projectID == selectedProjectID
@@ -1569,7 +1581,7 @@ final class WorkspaceModel: ObservableObject {
         do {
             let title = history.title?.trimmingCharacters(in: .whitespacesAndNewlines)
             let resolvedTitle = title.flatMap { $0.isEmpty ? nil : $0 } ?? l10n.text("restoredSessionTitleFormat", history.agent.rawValue)
-            let row = try sessionService?.createSession(
+            let row = try await sessionService?.createSession(
                 projectID: selectedProjectID,
                 agentProfileID: profile.id,
                 title: resolvedTitle,
@@ -1580,6 +1592,8 @@ final class WorkspaceModel: ObservableObject {
                 openSessionInCanvas(id, mode: .newPane)
                 showPanel(.terminal)
             }
+        } catch is CancellationError {
+            reloadSessions()
         } catch {
             errorMessage = error.localizedDescription
         }

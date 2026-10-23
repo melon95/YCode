@@ -50,7 +50,7 @@ struct AgentRuntimeMemoryTests {
     func archivedRuntimeDeallocates() async throws {
         let f = try Fixture()
         defer { f.pool.terminateAllImmediately(); try? FileManager.default.removeItem(at: f.root) }
-        let row = try f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Archive")
+        let row = try await f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Archive")
         let reference = try WeakRuntime(#require(f.service.runtime(id: row.id)))
         #expect(await eventually { reference.value?.bytesReceived ?? 0 > 300_000 })
         try await f.service.archiveSession(id: row.id)
@@ -63,7 +63,7 @@ struct AgentRuntimeMemoryTests {
     func stoppedRuntimeDeallocates() async throws {
         let f = try Fixture()
         defer { f.pool.terminateAllImmediately(); try? FileManager.default.removeItem(at: f.root) }
-        let row = try f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Stop")
+        let row = try await f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Stop")
         let reference = try WeakRuntime(#require(f.service.runtime(id: row.id)))
         #expect(await eventually { String(decoding: reference.value?.backlog.bytes ?? [], as: UTF8.self).contains("__OUTPUT_COMPLETE__") })
         try await f.service.stopSession(id: row.id)
@@ -85,7 +85,7 @@ struct AgentRuntimeMemoryTests {
         for cycle in 0..<10 {
             var ids: [String] = []
             for index in 0..<4 {
-                let row = try f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Memory \(cycle)/\(index)")
+                let row = try await f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Memory \(cycle)/\(index)")
                 let runtime = try #require(f.service.runtime(id: row.id))
                 ids.append(row.id)
                 references.append(WeakRuntime(runtime))
@@ -130,7 +130,7 @@ struct AgentRuntimeMemoryTests {
         let f = try Fixture()
         defer { f.pool.terminateAllImmediately(); try? FileManager.default.removeItem(at: f.root) }
         try "#!/bin/sh\nprintf 'NATURAL_EXIT\\n'\nexit 42\n".write(to: f.root.appendingPathComponent("agent.sh"), atomically: true, encoding: .utf8)
-        let row = try f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Natural exit")
+        let row = try await f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Natural exit")
         let reference = try WeakRuntime(#require(f.service.runtime(id: row.id)))
         #expect(await eventually { (try? f.repository.session(id: row.id).lastExitCode) == 42 })
         #expect(await eventually { f.pool.sessions.isEmpty })
@@ -147,13 +147,13 @@ struct AgentRuntimeMemoryTests {
         let content = try String(contentsOf: script, encoding: .utf8).replacingOccurrences(of: "while :; do sleep 60; done", with: "exit 0")
         try content.write(to: script, atomically: false, encoding: .utf8)
         var output = Data()
-        func launch() throws -> WeakRuntime {
-            let row = try f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Drain")
+        func launch() async throws -> WeakRuntime {
+            let row = try await f.service.createSession(projectID: f.project.id, agentProfileID: "memory-probe", title: "Drain")
             let runtime = try #require(f.service.runtime(id: row.id))
             runtime.onOutput = { output.append(contentsOf: $0) }
             return WeakRuntime(runtime)
         }
-        let reference = try launch()
+        let reference = try await launch()
         #expect(await eventually { reference.value == nil })
         let text = String(decoding: output, as: UTF8.self)
         #expect(text.components(separatedBy: "MEM_").count - 1 == 8192)

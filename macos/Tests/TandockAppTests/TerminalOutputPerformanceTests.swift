@@ -116,7 +116,7 @@ struct TerminalOutputPerformanceTests {
         window.contentView = host
         window.orderFrontRegardless()
         defer { window.close() }
-        for index in 0..<4 { model.createSession(agentProfileID: "output-probe", title: "Stream \(index)") }
+        for index in 0..<4 { await model.createSession(agentProfileID: "output-probe", title: "Stream \(index)") }
         host.layoutSubtreeIfNeeded()
         let rows = model.visibleSessions
         #expect(rows.count == 4)

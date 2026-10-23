@@ -73,7 +73,10 @@ public final class TandockAgentSessionService {
         agentProfileID: String,
         title: String,
         resumeAgentSessionID: String? = nil
-    ) throws -> SessionMetadata {
+    ) async throws -> SessionMetadata {
+        let trace = TandockSessionStartupTrace(dataRoot: configurationStore.configurationURL.deletingLastPathComponent())
+        trace.mark(resumeAgentSessionID?.isEmpty == false ? "import_resume.begin" : "create.begin")
+        defer { trace.mark("create.return") }
         let project = try repository.listProjects().first { $0.id == projectID }
         guard let project else { throw ProjectWorkspaceError.projectNotFound(projectID) }
         guard !project.isolateSessions else {
@@ -96,32 +99,59 @@ public final class TandockAgentSessionService {
             agentProfile: profile.id,
             agentSessionID: resumeAgentSessionID
         )
-        do {
-            if let checkpointService {
-                _ = try? checkpointService.createInitial(session: row, project: project)
-            }
-            let runID = UUID().uuidString
-            let plan = try launchPlan(profile: profile, session: row, project: project, mode: mode, proxy: settings.proxy, runID: runID, newAgentSessionID: newNativeID)
-            // Persist a new Claude identity only after preflight succeeds, so a
-            // retry after a missing executable still creates its first history.
-            if let newNativeID {
-                try repository.setAgentSessionID(id: row.id, agentSessionID: newNativeID)
+        trace.mark("metadata.persisted session=\(sessionID)")
+        return try await processPool.performLaunch(id: sessionID) { [self] in
+            do {
+                if let checkpointService {
+                    _ = try? trace.measure("checkpoint") {
+                        try checkpointService.createInitial(session: row, project: project)
+                    }
+                } else {
+                    trace.mark("checkpoint.skipped")
+                }
+                let runID = trace.runID
+                let plan = try await launchPlan(profile: profile, session: row, project: project, mode: mode, proxy: settings.proxy, runID: runID, newAgentSessionID: newNativeID, startupTrace: trace)
+                try Task.checkCancellation()
                 row = try repository.session(id: row.id)
+                guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(row.id) }
+                // Persist a new Claude identity only after preflight succeeds, so a
+                // retry after a missing executable still creates its first history.
+                if let newNativeID {
+                    try repository.setAgentSessionID(id: row.id, agentSessionID: newNativeID)
+                    row = try repository.session(id: row.id)
+                }
+                attention.begin(session: row, source: hookSource(profile), runID: runID)
+                let runtime = processPool.start(id: sessionID, plan: plan)
+                connect(runtime)
+                trace.measure("sessions_changed") { onSessionsChanged?() }
+                return row
+            } catch is CancellationError {
+                trace.mark("create.cancelled")
+                throw CancellationError()
+            } catch {
+                if Task.isCancelled {
+                    trace.mark("create.cancelled")
+                    throw CancellationError()
+                }
+                trace.mark("create.failed")
+                attention.failedToStart(session: row, message: error.localizedDescription)
+                onSessionsChanged?()
+                throw error
             }
-            attention.begin(session: row, source: hookSource(profile), runID: runID)
-            let runtime = processPool.start(id: sessionID, plan: plan)
-            connect(runtime)
-            onSessionsChanged?()
-            return row
-        } catch {
-            attention.failedToStart(session: row, message: error.localizedDescription)
-            onSessionsChanged?()
-            throw error
         }
     }
 
     @discardableResult
     public func restartSession(id: String) async throws -> SessionMetadata {
+        try await processPool.performLaunch(id: id) { [self] in
+            try await restartPreparedSession(id: id)
+        }
+    }
+
+    private func restartPreparedSession(id: String) async throws -> SessionMetadata {
+        let trace = TandockSessionStartupTrace(dataRoot: configurationStore.configurationURL.deletingLastPathComponent())
+        trace.mark("resume.begin session=\(id)")
+        defer { trace.mark("resume.return") }
         var row = try repository.session(id: id)
         guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(id) }
         guard row.worktreePath == nil else {
@@ -135,20 +165,34 @@ public final class TandockAgentSessionService {
             guard let project = try repository.listProjects().first(where: { $0.id == row.projectID }) else {
                 throw ProjectWorkspaceError.projectNotFound(row.projectID)
             }
-            let runID = UUID().uuidString
+            let runID = trace.runID
+            trace.mark("metadata.loaded")
             let mode: TandockAgentLaunchMode = isClaude(profile) && row.agentSessionID == nil ? .create : .resume
             let newNativeID = mode == .create ? UUID().uuidString.lowercased() : nil
-            let plan = try launchPlan(profile: profile, session: row, project: project, mode: mode, proxy: settings.proxy, runID: runID, newAgentSessionID: newNativeID)
+            let plan = try await launchPlan(profile: profile, session: row, project: project, mode: mode, proxy: settings.proxy, runID: runID, newAgentSessionID: newNativeID, startupTrace: trace)
+            try Task.checkCancellation()
+            row = try repository.session(id: id)
+            guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(id) }
             if let newNativeID {
                 try repository.setAgentSessionID(id: id, agentSessionID: newNativeID)
                 row = try repository.session(id: id)
             }
             attention.willStop(sessionID: id)
+            trace.mark("pool_restart.begin")
             let runtime = try await processPool.restart(id: id, plan: plan)
+            trace.mark("pool_restart.end")
             attention.begin(session: row, source: hookSource(profile), runID: runtime.runID)
             try repository.setSessionExitCode(id: id, exitCode: nil)
             connect(runtime)
+        } catch is CancellationError {
+            trace.mark("resume.cancelled")
+            throw CancellationError()
         } catch {
+            if Task.isCancelled {
+                trace.mark("resume.cancelled")
+                throw CancellationError()
+            }
+            trace.mark("resume.failed")
             attention.cancelStop(sessionID: id)
             attention.failedToStart(session: row, message: error.localizedDescription)
             throw error
@@ -158,6 +202,7 @@ public final class TandockAgentSessionService {
     }
 
     public func stopSession(id: String) async throws {
+        processPool.cancelPendingLaunch(id: id)
         // An exited session no longer needs a cached runtime. A late/double
         // Stop action on an existing session remains harmless after eviction.
         guard let runtime = processPool.runtime(id: id) else {
@@ -175,6 +220,7 @@ public final class TandockAgentSessionService {
     }
 
     private func removeRuntime(id: String) async throws {
+        processPool.cancelPendingLaunch(id: id)
         guard processPool.runtime(id: id) != nil else { return }
         attention.willStop(sessionID: id)
         do { try await processPool.remove(id: id) }
@@ -398,8 +444,11 @@ public final class TandockAgentSessionService {
         mode: TandockAgentLaunchMode,
         proxy: TandockProxySettings,
         runID: String,
-        newAgentSessionID: String? = nil
-    ) throws -> TandockAgentLaunchPlan {
+        newAgentSessionID: String? = nil,
+        startupTrace: TandockSessionStartupTrace? = nil
+    ) async throws -> TandockAgentLaunchPlan {
+        startupTrace?.mark("launch_plan.begin")
+        defer { startupTrace?.mark("launch_plan.return") }
         let root = configurationStore.configurationURL.deletingLastPathComponent()
         var arguments = launchArguments(profile: profile, session: session, mode: mode, newAgentSessionID: newAgentSessionID)
         if profile.introspect == "pi" {
@@ -409,16 +458,26 @@ public final class TandockAgentSessionService {
                 arguments += ["--session", path]
             }
         }
-        return try TandockAgentLauncher.makePlan(
-            profile: profile,
-            workingDirectory: project.repositoryURL,
-            terminalID: session.id,
-            notifySocket: notifySocket,
-            runID: runID,
-            dataRoot: configurationStore.configurationURL.deletingLastPathComponent(),
-            proxy: proxy,
-            additionalArguments: arguments
-        )
+        let notifySocket = self.notifySocket
+        let additionalArguments = arguments
+        startupTrace?.mark("launch_plan.background_queued")
+        let plan = try await Task.detached(priority: .userInitiated) {
+            startupTrace?.mark("launch_plan.background_begin")
+            defer { startupTrace?.mark("launch_plan.background_end") }
+            return try TandockAgentLauncher.makePlan(
+                profile: profile,
+                workingDirectory: project.repositoryURL,
+                terminalID: session.id,
+                notifySocket: notifySocket,
+                runID: runID,
+                dataRoot: root,
+                proxy: proxy,
+                additionalArguments: additionalArguments,
+                startupTrace: startupTrace
+            )
+        }.value
+        try Task.checkCancellation()
+        return plan
     }
 
     private func launchArguments(

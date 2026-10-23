@@ -223,6 +223,9 @@ public struct TandockAgentLaunchPlan: Equatable, Sendable {
     public let arguments: [String]
     public let environment: [String: String]
     public let workingDirectory: URL
+    public var startupTrace: TandockSessionStartupTrace? = nil
+    // Only plans built here identify a shell command that may be instrumented.
+    public var shellCommandArgumentIndex: Int? = nil
 }
 
 public struct TandockAgentProcessResult: Equatable, Sendable {
@@ -254,16 +257,21 @@ public enum TandockAgentLauncher {
         probeCacheLock.unlock()
     }
 
-    public static func probe(command: String, shell: String? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+    public static func probe(command: String, shell: String? = nil, environment: [String: String] = ProcessInfo.processInfo.environment, startupTrace: TandockSessionStartupTrace? = nil) -> Bool {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         if trimmed.hasPrefix("/") {
+            startupTrace?.mark("probe.absolute_path")
             return FileManager.default.isExecutableFile(atPath: trimmed)
         }
         let shellPath = resolvedShell(shell, hostEnvironment: environment)
         // PATH 进 key：同一条命令在不同 PATH 下结论可能相反，缓存不能把两者混为一谈。
         let key = "\(shellPath)\u{0}\(trimmed)\u{0}\(environment["PATH"] ?? "")"
-        if let cached = cachedProbe(key: key) { return cached }
+        if let cached = cachedProbe(key: key) {
+            startupTrace?.mark("probe.cache_hit available=\(cached)")
+            return cached
+        }
+        startupTrace?.mark("probe.cache_miss")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shellPath)
@@ -396,7 +404,8 @@ public enum TandockAgentLauncher {
         detectedSystemProxy: TandockSystemProxy? = nil,
         hostEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         shell: String? = nil,
-        additionalArguments: [String] = []
+        additionalArguments: [String] = [],
+        startupTrace: TandockSessionStartupTrace? = nil
     ) throws -> TandockAgentLaunchPlan {
         guard !profile.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TandockAgentSettingsError.invalidAgent("Agent 命令不能为空")
@@ -406,7 +415,10 @@ public enum TandockAgentLauncher {
             environment[key] = expandPlaceholder(value, hostEnvironment: hostEnvironment)
         }
         for key in credentialKeysToStrip(for: profile) { environment.removeValue(forKey: key) }
-        guard probe(command: profile.command, shell: shell, environment: environment) else {
+        startupTrace?.mark("probe.begin main_thread=\(Thread.isMainThread)")
+        let available = probe(command: profile.command, shell: shell, environment: environment, startupTrace: startupTrace)
+        startupTrace?.mark("probe.end available=\(available)")
+        guard available else {
             throw TandockAgentSettingsError.missingProgram(profile.command)
         }
         environment["TERM"] = "xterm-256color"
@@ -415,7 +427,9 @@ public enum TandockAgentLauncher {
         environment["CLICOLOR"] = "1"
         environment["CLICOLOR_FORCE"] = "1"
         environment.removeValue(forKey: "NO_COLOR")
+        startupTrace?.mark("proxy.begin mode=\(proxy.mode.rawValue)")
         applyProxy(proxy, detectedSystemProxy: detectedSystemProxy, to: &environment)
+        startupTrace?.mark("proxy.end")
 
         for key in reservedKeys { environment.removeValue(forKey: key) }
         environment["YCODE_TERMINAL_ID"] = terminalID
@@ -424,13 +438,17 @@ public enum TandockAgentLauncher {
         if let mcpSocket { environment["YCODE_MCP_SOCK"] = mcpSocket.path }
         if let dataRoot { environment["YCODE_NATIVE_DATA_ROOT"] = dataRoot.path }
 
+        let shellPath = resolvedShell(shell, hostEnvironment: hostEnvironment)
+        let supportsStartupMarker = ["sh", "bash", "zsh", "dash", "ksh"].contains(URL(fileURLWithPath: shellPath).lastPathComponent)
         let scriptArguments = profile.arguments + additionalArguments
         let script = (["exec", shellQuote(profile.command)] + scriptArguments.map(shellQuote)).joined(separator: " ")
         return TandockAgentLaunchPlan(
-            executableURL: URL(fileURLWithPath: resolvedShell(shell, hostEnvironment: hostEnvironment)),
+            executableURL: URL(fileURLWithPath: shellPath),
             arguments: ["-l", "-i", "-c", script],
             environment: environment,
-            workingDirectory: workingDirectory
+            workingDirectory: workingDirectory,
+            startupTrace: startupTrace,
+            shellCommandArgumentIndex: supportsStartupMarker ? 3 : nil
         )
     }
 

@@ -27,6 +27,154 @@ struct AgentSessionRuntimeTests {
         #expect(runtime.attachedViewCount == 1)
     }
 
+    @Test("startup diagnostics correlate PTY output and view attachment without recording content")
+    func startupDiagnostics() async throws {
+        let directory = try temporaryDirectory(named: "startup diagnostics")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let trace = TandockSessionStartupTrace(dataRoot: directory)
+        trace.mark("test.begin")
+        let plan = try TandockAgentLauncher.makePlan(
+            profile: .init(id: "echo", command: "/bin/echo", arguments: ["PRIVATE_OUTPUT_SENTINEL"]),
+            workingDirectory: directory, terminalID: "diagnostic-session", runID: trace.runID,
+            proxy: .init(mode: .off), hostEnvironment: ["PATH": "/usr/bin:/bin", "SHELL": "/bin/sh"],
+            startupTrace: trace
+        )
+        let pool = TandockSessionProcessPool()
+        defer { pool.terminateAllImmediately() }
+        let runtime = pool.start(id: "diagnostic-session", plan: plan)
+        let view = TerminalView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+        runtime.attach(view)
+        #expect(await eventually { runtime.backlogText.contains("PRIVATE_OUTPUT_SENTINEL") })
+        let logURL = directory.appendingPathComponent("logs/session-startup.log")
+        #expect(await eventually {
+            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=startup_monitor.end")) == true
+        })
+        let log = try String(contentsOf: logURL, encoding: .utf8)
+        let lines = log.split(separator: "\n")
+        #expect(lines.allSatisfy { $0.contains("run=\(trace.runID) elapsed_ms=") })
+        #expect(log.contains("event=probe.absolute_path"))
+        #expect(log.contains("event=pty_start.end pid="))
+        #expect(log.contains("event=first_view.attached"))
+        #expect(log.contains("event=shell.ready_before_exec_observed"))
+        #expect(log.contains("event=first_output.delegate_received"))
+        #expect(log.contains("event=first_screen_text.detected"))
+        #expect(lines.filter { $0.contains("event=first_output.consumed") }.count == 1)
+        #expect(lines.filter { $0.contains("event=first_output.fed_to_view") }.count == 1)
+        #expect(!log.contains("PRIVATE_OUTPUT_SENTINEL"))
+    }
+
+    @Test("startup stages separate slow shell initialization from delayed Agent text")
+    func startupStageBoundaries() async throws {
+        let directory = try temporaryDirectory(named: "stage boundaries ' quoted")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let shell = try executable(in: directory, name: "sh", body: "#!/bin/sh\nsleep 0.2\nexec /bin/sh -c \"$4\"\n")
+        let agent = try executable(in: directory, name: "delayed-agent", body: "#!/bin/sh\nprintf '\\033[?25l'\nsleep 0.3\nprintf '%s\n' \"$1\"\nsleep 0.2\n")
+        let trace = TandockSessionStartupTrace(dataRoot: directory)
+        let secret = "PRIVATE quoted ' text"
+        let plan = try TandockAgentLauncher.makePlan(
+            profile: .init(id: "delayed", command: agent.path, arguments: [secret]),
+            workingDirectory: directory, terminalID: "stage-test", runID: trace.runID,
+            proxy: .init(mode: .off), hostEnvironment: ["PATH": "/usr/bin:/bin"],
+            shell: shell.path, startupTrace: trace
+        )
+        let pool = TandockSessionProcessPool()
+        defer { pool.terminateAllImmediately() }
+        let runtime = pool.start(id: "stage-test", plan: plan)
+        let logURL = directory.appendingPathComponent("logs/session-startup.log")
+        #expect(await eventually {
+            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=startup_monitor.end")) == true
+        })
+        let log = try String(contentsOf: logURL, encoding: .utf8)
+        func time(_ event: String) throws -> Double {
+            let line = try #require(log.split(separator: "\n").first { $0.contains("event=\(event)") })
+            let field = try #require(line.split(separator: " ").first { $0.hasPrefix("elapsed_ms=") })
+            return try #require(Double(field.dropFirst("elapsed_ms=".count)))
+        }
+        let shellDelay = try time("shell.ready_before_exec_observed") - time("pty_start.begin")
+        let textDelay = try time("first_screen_text.detected") - time("first_output.delegate_received")
+        #expect(shellDelay >= 150)
+        #expect(textDelay >= 200)
+        #expect(runtime.backlogText.contains(secret))
+        #expect(!runtime.backlogText.contains("ready")) // Side-channel marker never enters the PTY.
+        #expect(!log.contains(secret))
+    }
+
+    @Test("startup monitor measures main-thread stalls independently of terminal output")
+    func startupMainQueueStall() async throws {
+        let directory = try temporaryDirectory(named: "main queue stall")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let monitor = TandockSessionStartupMonitor(trace: .init(dataRoot: directory))
+        defer { monitor.stop() }
+        // Deliberately block the main actor; the monitor must keep running.
+        usleep(700_000)
+        let logURL = directory.appendingPathComponent("logs/session-startup.log")
+        #expect(await eventually {
+            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=main_queue.lag")) == true
+        })
+        monitor.stop()
+        #expect(await eventually {
+            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=startup_monitor.end")) == true
+        })
+    }
+
+    @Test("slow preflight leaves main responsive and respects stop/archive", arguments: [false, true], ["none", "stop", "archive"])
+    func asynchronousPreflight(resume: Bool, action: String) async throws {
+        let directory = try temporaryDirectory(named: "async preflight")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let entered = directory.appendingPathComponent("probe-entered")
+        let released = directory.appendingPathComponent("probe-release")
+        let shell = try executable(in: directory, name: "probe-shell", body: """
+        #!/bin/sh
+        : > "$PROBE_ENTERED"
+        attempts=0
+        while [ ! -f "$PROBE_RELEASE" ] && [ "$attempts" -lt 100 ]; do
+          sleep 0.02
+          attempts=$((attempts + 1))
+        done
+        test -f "$PROBE_RELEASE"
+        """)
+        let data = directory.appendingPathComponent("data")
+        let repository = try ProjectWorkspaceRepository(databaseURL: data.appendingPathComponent("ycode.db"))
+        let project = try repository.addProject(directory: directory)
+        let store = TandockConfigurationStore(configurationURL: data.appendingPathComponent("config.json"))
+        let profile = TandockAgentProfile(id: "preflight-probe", command: "sh", arguments: ["-c", "sleep 60"], environment: [
+            "SHELL": shell.path, "PATH": "/usr/bin:/bin", "PROBE_ENTERED": entered.path, "PROBE_RELEASE": released.path
+        ])
+        try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
+        let pool = TandockSessionProcessPool()
+        defer { pool.terminateAllImmediately() }
+        let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
+        let existing = resume ? try repository.createSession(projectID: project.id, title: "Resume", agentProfile: profile.id) : nil
+        var finished = false
+        let launch = Task { @MainActor in
+            defer { finished = true }
+            if let existing { return try await service.restartSession(id: existing.id) }
+            return try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Create")
+        }
+        #expect(await eventually { FileManager.default.fileExists(atPath: entered.path) })
+        // This continuation runs on main while the shell is still waiting for us.
+        #expect(!finished)
+        let row = try #require(repository.listSessions(projectID: project.id).first)
+        #expect(pool.runtime(id: row.id) == nil)
+        if action == "stop" { try await service.stopSession(id: row.id) }
+        if action == "archive" { try await service.archiveSession(id: row.id) }
+        try Data().write(to: released)
+        if action == "none" {
+            let started = try await launch.value
+            #expect(pool.runtime(id: started.id)?.status.isLive == true)
+            try await service.stopSession(id: started.id)
+        } else {
+            await #expect(throws: CancellationError.self) { try await launch.value }
+            #expect(pool.runtime(id: row.id) == nil)
+            #expect((try repository.session(id: row.id).archivedAtMilliseconds != nil) == (action == "archive"))
+            #expect(!TandockAttentionStore.shared(dataRoot: data).items.contains { $0.sessionID == row.id && $0.kind == .failure })
+        }
+        let logURL = data.appendingPathComponent("logs/session-startup.log")
+        #expect(await eventually {
+            (try? String(contentsOf: logURL, encoding: .utf8).contains("event=probe.begin main_thread=false")) == true
+        })
+    }
+
     @Test("create is idempotent, stop reaps the process group, restart has one new PID")
     func poolLifecycle() async throws {
         let fixture = try RuntimeFixture()
@@ -92,7 +240,7 @@ struct AgentSessionRuntimeTests {
         let pool = TandockSessionProcessPool()
         let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
 
-        let created = try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "First")
+        let created = try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "First")
         let nativeID = try #require(created.agentSessionID)
         #expect(try repository.listProjects().first?.liveSessionCount == 1)
         #expect(await eventually { (try? String(contentsOf: argsFile, encoding: .utf8).contains("--session-id\n\(nativeID)")) == true })
@@ -128,8 +276,8 @@ struct AgentSessionRuntimeTests {
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
         let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
-        #expect(throws: TandockAgentSessionServiceError.disabledAgent(profile.resolvedDisplayName)) {
-            try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Blocked")
+        await #expect(throws: TandockAgentSessionServiceError.disabledAgent(profile.resolvedDisplayName)) {
+            try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Blocked")
         }
         #expect(try repository.listSessions(projectID: project.id).isEmpty)
         let existing = try repository.createSession(projectID: project.id, title: "Existing", agentProfile: profile.id)
@@ -154,7 +302,7 @@ struct AgentSessionRuntimeTests {
         try store.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
         let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
-        let row = try service.createSession(
+        let row = try await service.createSession(
             projectID: project.id, agentProfileID: "codex", title: "History",
             resumeAgentSessionID: "019c-history-id"
         )
@@ -179,7 +327,7 @@ struct AgentSessionRuntimeTests {
         let pool = TandockSessionProcessPool()
         defer { pool.terminateAllImmediately() }
         let service = TandockAgentSessionService(repository: repository, configurationStore: store, processPool: pool)
-        let row = try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "CLI")
+        let row = try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "CLI")
         let runtime = try #require(service.runtime(id: row.id))
         #expect(await eventually { runtime.backlogText.contains("READY") })
         let bridge = data.appendingPathComponent("title-bridge/pi-title-bridge.mjs")
@@ -204,7 +352,7 @@ struct AgentSessionRuntimeTests {
     }
 
     @Test("spawn failure keeps a retryable row and creates a failure reminder")
-    func failedSpawnRollback() throws {
+    func failedSpawnRollback() async throws {
         let directory = try temporaryDirectory(named: "rollback")
         defer { try? FileManager.default.removeItem(at: directory) }
         let repo = directory.appendingPathComponent("repo")
@@ -218,8 +366,8 @@ struct AgentSessionRuntimeTests {
         let service = TandockAgentSessionService(
             repository: repository, configurationStore: store, processPool: TandockSessionProcessPool()
         )
-        #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
-            try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Fails")
+        await #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
+            try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Fails")
         }
         let failed = try #require(repository.listSessions(projectID: project.id).first)
         let attention = TandockAttentionStore.shared(dataRoot: data)
@@ -250,7 +398,7 @@ struct AgentSessionRuntimeTests {
         let pool = TandockSessionProcessPool()
         let first = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
         let second = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
-        let row = try first.createSession(projectID: project.id, agentProfileID: profile.id, title: "Concurrent")
+        let row = try await first.createSession(projectID: project.id, agentProfileID: profile.id, title: "Concurrent")
         defer { pool.terminateAllImmediately() }
         let originalPID = try #require(first.runtime(id: row.id)?.processIdentifier)
         async let a = first.restartSession(id: row.id)
@@ -284,8 +432,8 @@ struct AgentSessionRuntimeTests {
         try settings.saveAgentSettings(.init(agents: [profile], proxy: .init(mode: .off)))
         let pool = TandockSessionProcessPool()
         let service = TandockAgentSessionService(repository: repository, configurationStore: settings, processPool: pool)
-        #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
-            try service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Retry")
+        await #expect(throws: TandockAgentSettingsError.missingProgram(profile.command)) {
+            try await service.createSession(projectID: project.id, agentProfileID: profile.id, title: "Retry")
         }
         let failed = try #require(repository.listSessions(projectID: project.id).first)
         #expect(failed.agentSessionID == nil)

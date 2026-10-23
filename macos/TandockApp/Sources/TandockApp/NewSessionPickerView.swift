@@ -52,6 +52,7 @@ struct NewSessionPickerView: View {
             Rectangle().fill(Color.tandockHairline).frame(height: 1)
                 .padding(.top, compact ? 10 : 18).padding(.bottom, compact ? 8 : 14)
             foot(compact: compact)
+                .disabled(startingProfileID != nil)
         }
         // 选择器本身就放在一张浮卡（画布窗格）里，不再套第二层卡片。
         .padding(compact ? 13 : 22)
@@ -244,15 +245,13 @@ struct NewSessionPickerView: View {
         }
     }
 
-    /// 乐观反馈：先把选中的 agent 置为「启动中」让 SwiftUI 画一帧，下一个 runloop 再做
-    /// 真正的启动。`model.createSession` 是主线程同步的（建行、makePlan、拉起 PTY），
-    /// 直接在点击里跑的话这段时间界面是死的——点下去没反应，然后突然跳终端。
+    /// Keep the selection busy while command preflight runs off the main actor.
     private func start(_ profile: TandockAgentProfile) {
         guard startingProfileID == nil else { return }
         startingProfileID = profile.id
-        DispatchQueue.main.async {
+        Task { @MainActor in
             // title 传空串：名字来自 CLI，侧栏先显示斜体的「新会话」。
-            model.createSession(
+            await model.createSession(
                 agentProfileID: profile.id,
                 title: "",
                 branch: branch.isEmpty ? nil : branch,

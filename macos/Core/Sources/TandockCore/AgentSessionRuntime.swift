@@ -61,6 +61,15 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     public private(set) var backlog: TandockBoundedByteBacklog
     public private(set) var title = ""
 
+    @MainActor public private(set) var startupTrace: TandockSessionStartupTrace?
+    @MainActor private var startupMonitor: TandockSessionStartupMonitor?
+    @MainActor private var loggedFirstDelegate = false
+    @MainActor private var loggedFirstScreenText = false
+    @MainActor private var nextOutputMilestone = 0
+    @MainActor private var loggedFirstOutput = false
+    @MainActor private var loggedFirstView = false
+    @MainActor private var loggedFirstFeed = false
+
     @MainActor private var attachedViews: [WeakTerminalView] = []
     @MainActor public var attachedViewCount: Int {
         attachedViews.removeAll { $0.value == nil }
@@ -95,18 +104,29 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     public func start(_ plan: TandockAgentLaunchPlan) {
         guard processIdentifier < 0 else { return }
         status = .starting
+        startupTrace = plan.startupTrace
+        var arguments = plan.arguments
+        if let trace = startupTrace {
+            let index = plan.shellCommandArgumentIndex
+            let capture = index.map { arguments.indices.contains($0) } ?? false
+            let monitor = TandockSessionStartupMonitor(trace: trace, captureShellBoundary: capture)
+            startupMonitor = monitor
+            if capture, let index { arguments[index] = monitor.shellPrefix + arguments[index] }
+        }
+        startupTrace?.mark("pty_start.begin")
         var environment = plan.environment
         runID = environment["YCODE_RUN_ID"] ?? runID
         environment["YCODE_RUN_ID"] = runID
         process.startProcess(
             executable: plan.executableURL.path,
-            args: plan.arguments,
+            args: arguments,
             environment: environment.sorted(by: { $0.key < $1.key }).map { "\($0.key)=\($0.value)" },
             execName: nil,
             currentDirectory: plan.workingDirectory.path
         )
         processIdentifier = process.shellPid
         status = .running(pid: processIdentifier)
+        startupTrace?.mark("pty_start.end pid=\(processIdentifier)")
         onStatusChange?(status)
     }
 
@@ -130,7 +150,14 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
         attachedViews.removeAll { $0.value == nil }
         if attachedViews.contains(where: { $0.value === view }) { return }
         attachedViews.append(WeakTerminalView(view))
-        if !backlog.bytes.isEmpty { view.feed(byteArray: ArraySlice(backlog.bytes)) }
+        if !loggedFirstView {
+            loggedFirstView = true
+            startupTrace?.mark("first_view.attached")
+        }
+        if !backlog.bytes.isEmpty {
+            view.feed(byteArray: ArraySlice(backlog.bytes))
+            logFirstViewFeed()
+        }
     }
 
     @MainActor
@@ -154,6 +181,8 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.flushPendingOutput()
+            self.startupTrace?.mark("process.exited raw_status=\(rawStatus.map(String.init) ?? "nil") had_output=\(self.loggedFirstOutput)")
+            self.startupMonitor?.stop()
             self.status = Self.decode(rawStatus)
             self.onStatusChange?(self.status)
             self.retireAfterDrainingOutput()
@@ -176,6 +205,11 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
 
     @MainActor
     private func enqueueOutput(_ bytes: [UInt8]) {
+        if !bytes.isEmpty, !loggedFirstDelegate {
+            loggedFirstDelegate = true
+            // SwiftTerm already delivers on main; this is not a raw PTY read timestamp.
+            startupTrace?.mark("first_output.delegate_received bytes=\(bytes.count)")
+        }
         pendingOutput.append(contentsOf: bytes)
         if pendingOutput.count >= Self.outputBatchLimit {
             flushPendingOutput()
@@ -200,16 +234,48 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
 
     @MainActor
     private func consume(_ bytes: [UInt8]) {
+        if !bytes.isEmpty, !loggedFirstOutput {
+            loggedFirstOutput = true
+            startupTrace?.mark("first_output.consumed bytes=\(bytes.count)")
+        }
         bytesReceived += bytes.count
         backlog.append(ArraySlice(bytes))
         terminal.feed(buffer: ArraySlice(bytes))
+        if let trace = startupTrace {
+            // Inspect the already parsed screen, so OSC/CSI-only output does not
+            // masquerade as visible text. Never persist the screen's contents.
+            if !loggedFirstScreenText {
+                let hasText = (0..<terminal.rows).contains { row in
+                    guard let line = terminal.getLine(row: row) else { return false }
+                    return !line.translateToString(trimRight: true).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                if hasText {
+                    loggedFirstScreenText = true
+                    trace.mark("first_screen_text.detected")
+                }
+            }
+            let milestones = [128, 1_024, 4_096, 65_536]
+            while nextOutputMilestone < milestones.count, bytesReceived >= milestones[nextOutputMilestone] {
+                trace.mark("output.volume threshold_bytes=\(milestones[nextOutputMilestone]) total_bytes=\(bytesReceived)")
+                nextOutputMilestone += 1
+            }
+        }
         attachedViews.removeAll { $0.value == nil }
         for view in attachedViews.compactMap(\.value) {
             view.feed(byteArray: ArraySlice(bytes))
+            logFirstViewFeed()
         }
         NotificationCenter.default.post(name: .tandockSessionOutput, object: id)
         onOutput?(bytes)
         if !status.isLive { retireAfterDrainingOutput() }
+    }
+
+    @MainActor
+    private func logFirstViewFeed() {
+        guard !loggedFirstFeed else { return }
+        loggedFirstFeed = true
+        // A feed is not a rendered frame or proof that the Agent is ready.
+        startupTrace?.mark("first_output.fed_to_view")
     }
 
     @MainActor
@@ -265,12 +331,36 @@ public final class TandockSessionProcessPool {
     public static let shared = TandockSessionProcessPool()
     public private(set) var sessions: [String: TandockAgentRuntime] = [:]
 
+    private var pendingLaunches: [String: (token: UUID, task: Task<SessionMetadata, Error>)] = [:]
+
     public init() {}
+
+    /// Share one in-flight launch across windows. Stop/archive invalidates it so
+    /// an asynchronous preflight cannot bring a closed session back to life.
+    func performLaunch(id: String, operation: @escaping @MainActor () async throws -> SessionMetadata) async throws -> SessionMetadata {
+        if let pending = pendingLaunches[id] { return try await pending.task.value }
+        let token = UUID()
+        let task = Task { @MainActor in
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        pendingLaunches[id] = (token, task)
+        defer {
+            if pendingLaunches[id]?.token == token { pendingLaunches[id] = nil }
+        }
+        return try await task.value
+    }
+
+    func cancelPendingLaunch(id: String) {
+        pendingLaunches.removeValue(forKey: id)?.task.cancel()
+    }
 
     @discardableResult
     public func start(id: String, plan: TandockAgentLaunchPlan) -> TandockAgentRuntime {
         if let existing = sessions[id], existing.status.isLive { return existing }
+        plan.startupTrace?.mark("runtime_init.begin")
         let runtime = TandockAgentRuntime(id: id)
+        plan.startupTrace?.mark("runtime_init.end")
         runtime.onTermination = { [weak self, weak runtime] in
             guard let self, let runtime, self.sessions[id] === runtime else { return }
             self.sessions.removeValue(forKey: id)
@@ -301,6 +391,7 @@ public final class TandockSessionProcessPool {
             defer { runtime.isRestarting = false }
             try await stop(id: id)
         }
+        try Task.checkCancellation()
         return start(id: id, plan: plan)
     }
 
@@ -311,10 +402,12 @@ public final class TandockSessionProcessPool {
     }
 
     public func shutdownAll() async {
+        for id in Array(pendingLaunches.keys) { cancelPendingLaunch(id: id) }
         for id in Array(sessions.keys) { try? await remove(id: id) }
     }
 
     public func terminateAllImmediately() {
+        for id in Array(pendingLaunches.keys) { cancelPendingLaunch(id: id) }
         for runtime in sessions.values where runtime.status.isLive { runtime.terminate() }
     }
 

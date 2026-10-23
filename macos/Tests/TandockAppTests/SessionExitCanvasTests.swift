@@ -14,7 +14,7 @@ struct SessionExitCanvasTests {
         let service: TandockAgentSessionService
         let rows: [SessionMetadata]
 
-        init() throws {
+        init() async throws {
             root = FileManager.default.temporaryDirectory.appendingPathComponent("tandock-exit-\(UUID())")
             let directory = root.appendingPathComponent("project")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -40,9 +40,11 @@ struct SessionExitCanvasTests {
             let service = TandockAgentSessionService(repository: repository, configurationStore: configuration)
             self.service = service
             let projectID = project.id
-            rows = try (0..<2).map { index in
-                try service.createSession(projectID: projectID, agentProfileID: "exit-probe", title: "Pane \(index)")
+            var created: [SessionMetadata] = []
+            for index in 0..<2 {
+                created.append(try await service.createSession(projectID: projectID, agentProfileID: "exit-probe", title: "Pane \(index)"))
             }
+            rows = created
         }
 
         func model(locked: Bool = false) -> WorkspaceModel {
@@ -69,7 +71,7 @@ struct SessionExitCanvasTests {
 
     @Test("clean CLI exit closes all matching panes and clears reminders while preserving the neighbor and history")
     func cleanExit() async throws {
-        let f = try Fixture(); defer { f.remove() }
+        let f = try await Fixture(); defer { f.remove() }
         let main = f.model(), project = f.model(locked: true)
         let row = f.rows[0], neighbor = f.rows[1]
         for session in f.rows { main.openSessionInCanvas(session.id, mode: .newPane) }
@@ -100,7 +102,7 @@ struct SessionExitCanvasTests {
 
     @Test("nonzero and signal exits close their pane and retain the failure reminder", arguments: ["/fail", "/signal"])
     func abnormalExit(command: String) async throws {
-        let f = try Fixture(); defer { f.remove() }
+        let f = try await Fixture(); defer { f.remove() }
         let model = f.model(), row = f.rows[0]
         model.openSessionInCanvas(row.id, mode: .newPane)
         let runtime = try #require(f.service.runtime(id: row.id))
@@ -113,7 +115,7 @@ struct SessionExitCanvasTests {
 
     @Test("an explicit restart keeps the pane in both windows while replacing the process")
     func restartKeepsPane() async throws {
-        let f = try Fixture(); defer { f.remove() }
+        let f = try await Fixture(); defer { f.remove() }
         let main = f.model(), project = f.model(locked: true), row = f.rows[0]
         for model in [main, project] { model.openSessionInCanvas(row.id, mode: .newPane) }
         let original = try #require(f.service.runtime(id: row.id))
@@ -130,8 +132,8 @@ struct SessionExitCanvasTests {
     }
 
     @Test("stale run and foreign data-root exit notifications cannot close a live pane")
-    func ignoresUnrelatedExit() throws {
-        let f = try Fixture(); defer { f.remove() }
+    func ignoresUnrelatedExit() async throws {
+        let f = try await Fixture(); defer { f.remove() }
         let model = f.model(), row = f.rows[0]
         model.openSessionInCanvas(row.id, mode: .newPane)
         let runtime = try #require(f.service.runtime(id: row.id))

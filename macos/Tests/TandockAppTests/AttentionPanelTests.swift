@@ -170,7 +170,10 @@ struct AttentionPanelTests {
         let model = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
             configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
-        let rows = try (0..<4).map { try service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Pane \($0)") }
+        var rows: [SessionMetadata] = []
+        for index in 0..<4 {
+            rows.append(try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Pane \(index)"))
+        }
         defer {
             for row in rows {
                 model.attentionStore.willStop(sessionID: row.id)
@@ -220,7 +223,7 @@ struct AttentionPanelTests {
         let model = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
             configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
-        let row = try service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Live")
+        let row = try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Live")
         defer { model.attentionStore.willStop(sessionID: row.id); TandockSessionProcessPool.shared.runtime(id: row.id)?.terminate() }
         f.emit(row, store: model.attentionStore, kind: kind)
         let item = try #require(model.attentionItems.first)
@@ -262,7 +265,7 @@ struct AttentionPanelTests {
         let model = f.model(), otherWindow = f.model()
         let service = TandockAgentSessionService(repository: f.repository,
             configurationStore: TandockConfigurationStore(configurationURL: f.root.appendingPathComponent("config.json")))
-        let row = try service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Continue")
+        let row = try await service.createSession(projectID: f.alpha.id, agentProfileID: "probe", title: "Continue")
         defer { model.attentionStore.willStop(sessionID: row.id); TandockSessionProcessPool.shared.runtime(id: row.id)?.terminate() }
         model.isPresentingNewSession = false
         f.emit(row, store: model.attentionStore, kind: "turn_complete")
