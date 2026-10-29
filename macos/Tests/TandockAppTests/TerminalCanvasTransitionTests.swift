@@ -235,6 +235,163 @@ struct TerminalCanvasTransitionTests {
         #expect(snapshot.size == CGSize(width: (contentWidth - TandockCanvasHost<String>.paneGap) / 2,
                                         height: 700 - insets.top - insets.bottom))
     }
+
+    @Test("card edges in the hosted canvas grab the divider and the drag stays with the pointer")
+    func hostedDividerTracksPointer() throws {
+        let (window, canvas) = try hostedFixture()
+        defer { canvas.cancelTransition(); window.close() }
+        try expectHostedDrag(canvas, vertical: true, distance: 48)
+        canvas.update(panes: [("one", AnyView(Color.red)), ("two", AnyView(Color.blue))],
+                      layout: .stack, reduceMotion: true, columnLabel: "Column", rowLabel: "Row")
+        canvas.layoutSubtreeIfNeeded()
+        try expectHostedDrag(canvas, vertical: false, distance: 40)
+    }
+
+    private func hostedFixture() throws -> (NSWindow, TandockCanvasHost<String>) {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: -4000, y: -4000, width: 1100, height: 800),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.alphaValue = 0
+        window.orderFrontRegardless()
+        let root = NSHostingView(rootView: VStack(spacing: 0) {
+            Color.clear.frame(height: 44)
+            TerminalCanvasView(panes: [ProbePane(id: "one"), ProbePane(id: "two")], layout: .columns, focusedID: "one") { pane in
+                pane.id == "one" ? Color.red : Color.blue
+            }
+        })
+        root.frame = NSRect(x: 36, y: 28, width: 1000, height: 700)
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 800))
+        content.addSubview(root)
+        window.contentView = content
+        root.layoutSubtreeIfNeeded()
+        window.layoutIfNeeded()
+        let canvas = try #require(findCanvas(root))
+        canvas.layoutSubtreeIfNeeded()
+        return (window, canvas)
+    }
+
+    private func findCanvas(_ view: NSView) -> TandockCanvasHost<String>? {
+        if let canvas = view as? TandockCanvasHost<String> { return canvas }
+        for child in view.subviews {
+            if let found = findCanvas(child) { return found }
+        }
+        return nil
+    }
+
+    private func expectHostedDrag(_ canvas: TandockCanvasHost<String>, vertical: Bool, distance: CGFloat) throws {
+        let panes = slots(canvas).sorted { vertical ? $0.frame.minX < $1.frame.minX : $0.frame.minY < $1.frame.minY }
+        let splitter = try #require(canvas.subviews.first {
+            $0.accessibilityRole() == .splitter && (vertical ? $0.frame.width < $0.frame.height : $0.frame.height < $0.frame.width)
+        })
+        let window = try #require(canvas.window)
+        let before = panes[0].frame
+        let leading = vertical
+            ? CGPoint(x: panes[0].frame.maxX - 3, y: panes[0].frame.midY)
+            : CGPoint(x: panes[0].frame.midX, y: panes[0].frame.maxY - 3)
+        let trailing = vertical
+            ? CGPoint(x: panes[1].frame.minX + 3, y: panes[1].frame.midY)
+            : CGPoint(x: panes[1].frame.midX, y: panes[1].frame.minY + 3)
+        let interior = vertical
+            ? CGPoint(x: panes[0].frame.maxX - TandockCanvasHost<String>.dividerGrabOutset - 10, y: panes[0].frame.midY)
+            : CGPoint(x: panes[0].frame.midX, y: panes[0].frame.maxY - TandockCanvasHost<String>.dividerGrabOutset - 10)
+        #expect(window.contentView?.hitTest(canvas.convert(leading, to: nil)) === splitter)
+        #expect(window.contentView?.hitTest(canvas.convert(trailing, to: nil)) === splitter)
+        #expect(window.contentView?.hitTest(canvas.convert(interior, to: nil)) !== splitter)
+        let start = canvas.convert(leading, to: nil)
+        let end = vertical ? NSPoint(x: start.x + distance, y: start.y) : NSPoint(x: start.x, y: start.y - distance)
+        // The hosting view resets unclaimed cursor updates to an arrow, so the splitter must answer them itself.
+        let resizeCursor: NSCursor = vertical ? .resizeLeftRight : .resizeUpDown
+        #expect(splitter.trackingAreas.contains { $0.options.contains(.cursorUpdate) })
+        NSCursor.arrow.set()
+        splitter.cursorUpdate(with: try mouse(.mouseMoved, end: start, window: window))
+        #expect(NSCursor.current == resizeCursor)
+        NSApp.sendEvent(try mouse(.leftMouseDown, end: start, window: window))
+        NSApp.sendEvent(try mouse(.leftMouseDragged, end: end, window: window))
+        NSApp.sendEvent(try mouse(.leftMouseUp, end: end, window: window))
+        canvas.layoutSubtreeIfNeeded()
+        let after = panes[0].frame
+        if vertical {
+            #expect(abs(after.width - before.width - distance) < 0.5, "before=\(before) after=\(after)")
+            #expect(abs(after.minX - before.minX) < 0.5)
+        } else {
+            #expect(abs(after.height - before.height - distance) < 0.5, "before=\(before) after=\(after)")
+            #expect(abs(after.minY - before.minY) < 0.5)
+        }
+        #expect(window.contentView?.hitTest(end) === splitter)
+    }
+
+    @Test("a row gap wins over a column divider's grab band where they meet")
+    func gridGapWinsAtTheCross() throws {
+        let (window, canvas) = fixture()
+        defer { canvas.cancelTransition(); window.close() }
+        update(canvas, .grid2x2, ids: ["one", "two", "three", "four"], reduced: true)
+        let horizontal = try #require(canvas.subviews.first {
+            $0.accessibilityRole() == .splitter && $0.frame.height < $0.frame.width
+        })
+        let vertical = try #require(canvas.subviews.filter {
+            $0.accessibilityRole() == .splitter && $0.frame.width < $0.frame.height
+        }.min { $0.frame.midY < $1.frame.midY })
+        let cross = canvas.convert(CGPoint(x: vertical.frame.midX, y: horizontal.frame.midY), to: nil)
+        #expect(window.contentView?.hitTest(cross) === horizontal)
+        let column = canvas.convert(CGPoint(x: vertical.frame.midX, y: vertical.frame.midY), to: nil)
+        #expect(window.contentView?.hitTest(column) === vertical)
+    }
+
+    @Test("divider drag tracks the pointer in both axes and stays in the gap")
+    func dividerTracksPointer() throws {
+        let (window, canvas) = fixture()
+        defer { canvas.cancelTransition(); window.close() }
+        update(canvas, .columns, reduced: true)
+        try expectDrag(canvas, vertical: true, distance: 36)
+        update(canvas, .stack, reduced: true)
+        try expectDrag(canvas, vertical: false, distance: 28)
+    }
+
+    private func expectDrag(_ canvas: TandockCanvasHost<String>, vertical: Bool, distance: CGFloat) throws {
+        let panes = slots(canvas).sorted { vertical ? $0.frame.minX < $1.frame.minX : $0.frame.minY < $1.frame.minY }
+        let splitter = try #require(canvas.subviews.first {
+            $0.accessibilityRole() == .splitter && (vertical ? $0.frame.width < $0.frame.height : $0.frame.height < $0.frame.width)
+        })
+        let gap = TandockCanvasHost<String>.paneGap
+        let outset = TandockCanvasHost<String>.dividerGrabOutset
+        if vertical {
+            #expect(abs(panes[1].frame.minX - panes[0].frame.maxX - gap) < 0.5)
+            #expect(abs(splitter.frame.midX - panes[0].frame.maxX - gap / 2) < 0.5)
+            #expect(abs(splitter.frame.width - gap - outset * 2) < 0.5)
+        } else {
+            #expect(abs(panes[1].frame.minY - panes[0].frame.maxY - gap) < 0.5)
+            #expect(abs(splitter.frame.midY - panes[0].frame.maxY - gap / 2) < 0.5)
+            #expect(abs(splitter.frame.height - gap - outset * 2) < 0.5)
+        }
+        let window = try #require(canvas.window)
+        let before = panes[0].frame
+        let start = splitter.convert(CGPoint(x: splitter.bounds.midX, y: splitter.bounds.midY), to: nil)
+        let startHit = window.contentView?.hitTest(start)
+        #expect(startHit === splitter, "vertical=\(vertical) startHit=\(String(describing: type(of: startHit)))")
+        let end = vertical ? NSPoint(x: start.x + distance, y: start.y) : NSPoint(x: start.x, y: start.y - distance)
+        splitter.mouseDown(with: try mouse(.leftMouseDown, end: start, window: window))
+        splitter.mouseDragged(with: try mouse(.leftMouseDragged, end: end, window: window))
+        let after = panes[0].frame
+        if vertical {
+            #expect(abs(after.width - before.width - distance) < 0.5)
+            #expect(abs(after.minX - before.minX) < 0.5)
+        } else {
+            #expect(abs(after.height - before.height - distance) < 0.5)
+            #expect(abs(after.minY - before.minY) < 0.5)
+        }
+        let hitView = window.contentView?.hitTest(end)
+        #expect(hitView === splitter, "vertical=\(vertical) hit=\(String(describing: type(of: hitView))) point=\(end) splitter=\(splitter.frame)")
+    }
+
+    private func mouse(_ type: NSEvent.EventType, end: NSPoint, window: NSWindow) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(with: type, location: end, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+    }
+}
+
+private struct ProbePane: Identifiable {
+    let id: String
 }
 
 private struct CanvasTestTerminal: NSViewRepresentable {

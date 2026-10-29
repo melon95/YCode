@@ -78,6 +78,8 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
     private var focusedID: ID?
 
     static var paneGap: CGFloat { 8 }
+    /// How far past the gap a drag still grabs the divider. Cards are rounded, so the visible seam is wider than the gap and sits on the card edge.
+    static var dividerGrabOutset: CGFloat { 8 }
     static var insets: NSEdgeInsets { NSEdgeInsets(top: 4, left: 8, bottom: 8, right: 8) }
 
     private func geometry() -> TandockTerminalCanvasGeometry {
@@ -158,6 +160,28 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         lastSize = bounds.size
         cancelTransition()
         applyGeometry(geometry())
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        let active = dividers.values.filter { !$0.isHidden && $0.alphaValue > 0.01 }
+        if let exact = closest(active.filter { $0.layoutFrame.contains(local) }, to: local) { return exact }
+        if let grabbed = closest(active.filter { $0.frame.contains(local) }, to: local) { return grabbed }
+        return super.hitTest(point)
+    }
+
+    private func grabFrame(for gap: CGRect, vertical: Bool) -> CGRect {
+        let expanded = gap.insetBy(dx: vertical ? -Self.dividerGrabOutset : 0,
+                                    dy: vertical ? 0 : -Self.dividerGrabOutset)
+        return expanded.intersection(bounds)
+    }
+
+    private func closest(_ dividers: [TandockCanvasDivider], to point: CGPoint) -> TandockCanvasDivider? {
+        dividers.min { centerlineDistance($0, point) < centerlineDistance($1, point) }
+    }
+
+    private func centerlineDistance(_ divider: TandockCanvasDivider, _ point: CGPoint) -> CGFloat {
+        divider.isVertical ? abs(point.x - divider.layoutFrame.midX) : abs(point.y - divider.layoutFrame.midY)
     }
 
     override func viewDidMoveToWindow() {
@@ -366,9 +390,10 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         }
         for divider in geometry.dividers {
             let view = dividers[divider.id] ?? TandockCanvasDivider(frame: .zero)
-            if view.superview == nil { addSubview(view) }
-            view.frame = placed(divider.frame)
+            addSubview(view)
             view.isVertical = divider.isVertical
+            view.layoutFrame = placed(divider.frame)
+            view.frame = grabFrame(for: view.layoutFrame, vertical: view.isVertical)
             view.isHidden = hidden
             view.setAccessibilityLabel(divider.isVertical ? columnLabel : rowLabel)
             view.onResize = { [weak self] delta in
@@ -654,7 +679,10 @@ private final class TandockCanvasGhost: NSView {
 
 @MainActor
 private final class TandockCanvasDivider: NSView {
-    var isVertical = true
+    var isVertical = true {
+        didSet { if isVertical != oldValue { window?.invalidateCursorRects(for: self) } }
+    }
+    var layoutFrame = CGRect.zero
     var onResize: ((CGFloat) -> Void)?
     private var dragOrigin = CGPoint.zero
     private var dragResize: ((CGFloat) -> Void)?
@@ -664,25 +692,37 @@ private final class TandockCanvasDivider: NSView {
         super.init(frame: frameRect)
         setAccessibilityElement(true)
         setAccessibilityRole(.splitter)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    var resizeCursor: NSCursor { isVertical ? .resizeLeftRight : .resizeUpDown }
+
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: isVertical ? .resizeLeftRight : .resizeUpDown)
+        addCursorRect(bounds, cursor: resizeCursor)
     }
+
+    // Unhandled cursor updates travel up to the SwiftUI hosting view, which resets the pointer to an arrow.
+    override func cursorUpdate(with event: NSEvent) { resizeCursor.set() }
+    override func mouseEntered(with event: NSEvent) { resizeCursor.set() }
 
     override func mouseDown(with event: NSEvent) {
         dragOrigin = event.locationInWindow
         dragResize = onResize
+        resizeCursor.set()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        resizeCursor.set()
         let delta = isVertical ? event.locationInWindow.x - dragOrigin.x : dragOrigin.y - event.locationInWindow.y
         dragResize?(delta)
     }
 
-    override func mouseUp(with event: NSEvent) { dragResize = nil }
+    override func mouseUp(with event: NSEvent) {
+        dragResize = nil
+        window?.invalidateCursorRects(for: self)
+    }
     override func accessibilityPerformIncrement() -> Bool { onResize?(20); return true }
     override func accessibilityPerformDecrement() -> Bool { onResize?(-20); return true }
 }
