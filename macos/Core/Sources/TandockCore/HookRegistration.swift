@@ -93,7 +93,11 @@ public actor TandockHookRegistrationService {
     private func claudeStatus() throws -> TandockHookRegistrationStatus {
         guard fileManager.fileExists(atPath: claudeSettingsURL.path) else { return .notInstalled }
         let root = try claudeRoot()
-        guard hasClaudeEntry(root, event: "Stop") && hasClaudeEntry(root, event: "Notification") else {
+        // Evaluated separately: the right side of `&&` is an autoclosure, and capturing the
+        // non-Sendable `root` in it is a data-race error under the Swift 6.1 (Xcode 16) checker.
+        let hasStop = hasClaudeEntry(root, event: "Stop")
+        let hasNotification = hasClaudeEntry(root, event: "Notification")
+        guard hasStop && hasNotification else {
             return .notInstalled
         }
         let registered = claudeManagedCommands(root).compactMap { HelperPathText.leadingPath(ofCommand: $0)?.path }
