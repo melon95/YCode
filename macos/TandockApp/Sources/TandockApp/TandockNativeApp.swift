@@ -90,6 +90,10 @@ struct TandockNativeApp: App {
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
                 }
+                Button(commandLocalization.l10n.text("inspectorTabFormat", TandockWorkspacePanel.terminal.localizedTitle(commandLocalization.l10n))) {
+                    postTandockWindowCommand(.toggleTandockWorkspacePanel, payload: TandockWorkspacePanel.terminal.rawValue)
+                }
+                .keyboardShortcut("j")
                 Button(commandLocalization.l10n.text("attentionPanel")) {
                     postTandockWindowCommand(.toggleTandockWorkspacePanel, payload: TandockWorkspacePanel.attention.rawValue)
                 }

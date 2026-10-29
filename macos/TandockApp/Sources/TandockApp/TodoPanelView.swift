@@ -47,7 +47,40 @@ struct TodoPanelView: View {
 
 
     private var cardHeader: some View {
-        TandockPanelHeader(spec: header)
+        TandockPanelHeader(spec: header, leading: {
+            TandockPanelHeaderTitle(spec: header)
+            projectMenu
+        }, actions: { EmptyView() })
+    }
+
+    private var projectMenu: some View {
+        Menu {
+            ForEach(model.projects) { project in
+                Button {
+                    model.selectTodoProject(project.id)
+                } label: {
+                    if project.id == model.todoProject?.id {
+                        Label(project.displayTitle, systemImage: "checkmark")
+                    } else {
+                        Text(project.displayTitle)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                if let project = model.todoProject {
+                    Image(nsImage: TandockProjectPalette.dotImage(for: project.id))
+                    Text(project.displayTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize(horizontal: false, vertical: true)
+        .help(l10n.text("todoProjectHelp"))
+        .accessibilityLabel("\(l10n.text("newSessionProject")): \(model.todoProject?.displayTitle ?? "")")
     }
 
     private var captureField: some View {
@@ -106,12 +139,6 @@ struct TodoPanelView: View {
             }
             Spacer(minLength: 4)
             if hoveredID == item.id, editingTodo?.id != item.id {
-                Button { model.deleteTodo(id: item.id) } label: {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help(l10n.text("deleteTodoDone"))
                 Menu {
                     rowMenu(item, index: index, count: group.count)
                 } label: {
@@ -120,6 +147,7 @@ struct TodoPanelView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .frame(height: 16)
             }
         }
         .padding(.horizontal, 12)

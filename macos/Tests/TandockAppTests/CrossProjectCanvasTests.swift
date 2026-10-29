@@ -41,8 +41,8 @@ struct CrossProjectCanvasTests {
         return Fixture(model: model, alpha: alpha, beta: beta, alphaSessions: alphaSessions, betaSessions: betaSessions)
     }
 
-    @Test("shell views follow the selected project and tab without retaining another process")
-    func shellViewFollowsProjectAndTab() async throws {
+    @Test("shell tabs stay put across project switches and can mix projects")
+    func shellTabsIgnoreProjectSwitch() async throws {
         let f = try fixture()
         let model = f.model
         var paneIDs: [String] = []
@@ -92,33 +92,60 @@ struct CrossProjectCanvasTests {
         #expect(await eventually { alpha.attachedViewCount == 1 && visibleText().contains(directoryReport(f.alpha)) })
 
         model.selectProject(f.beta.id)
+        #expect(model.selectedShellPaneID == alphaPane)
+        #expect(model.shellTabs.map(\.projectID) == [f.alpha.id])
+        #expect(alpha.attachedViewCount == 1)
+
+        model.addShellPane()
         let betaPane = try #require(model.selectedShellPaneID)
         paneIDs.append(betaPane)
         let beta = try #require(model.shellRuntime(paneID: betaPane))
+        #expect(model.shellTabs.map(\.projectID) == [f.alpha.id, f.beta.id])
         reportDirectory(beta)
-        #expect(await eventually { String(decoding: beta.backlog.bytes, as: UTF8.self).replacingOccurrences(of: "/private/var/", with: "/var/").contains(directoryReport(f.beta)) })
-        #expect(await eventually { alpha.attachedViewCount == 0 && beta.attachedViewCount == 1 })
-        #expect(visibleText().contains(directoryReport(f.beta)))
-        #expect(!visibleText().contains(directoryReport(f.alpha)))
+        #expect(await eventually { alpha.attachedViewCount == 0 && beta.attachedViewCount == 1 && visibleText().contains(directoryReport(f.beta)) })
         let betaView = try #require(terminals(in: host).first)
         betaView.terminalDelegate?.send(source: betaView, data: ArraySlice("printf '\\n%s%s\\n' '__INPUT_' 'BETA__'\n".utf8))
         #expect(await eventually { String(decoding: beta.backlog.bytes, as: UTF8.self).contains("__INPUT_BETA__") })
         #expect(!String(decoding: alpha.backlog.bytes, as: UTF8.self).contains("__INPUT_BETA__"))
 
-        model.addShellPane()
-        let newPane = try #require(model.selectedShellPaneID)
-        paneIDs.append(newPane)
-        let newShell = try #require(model.shellRuntime(paneID: newPane))
-        #expect(newPane != betaPane)
-        reportDirectory(newShell)
-        #expect(await eventually { beta.attachedViewCount == 0 && newShell.attachedViewCount == 1 && visibleText().contains(directoryReport(f.beta)) })
+        model.addShellPane(projectID: f.alpha.id)
+        let secondAlpha = try #require(model.selectedShellPaneID)
+        paneIDs.append(secondAlpha)
+        let secondAlphaShell = try #require(model.shellRuntime(paneID: secondAlpha))
+        #expect(model.shellTabs.map(\.projectID) == [f.alpha.id, f.beta.id, f.alpha.id])
+        #expect(model.shellTabTitle(model.shellTabs[1]) == f.beta.displayTitle)
+        #expect(model.shellTabTitle(model.shellTabs[2]).hasSuffix(" 2"))
+        reportDirectory(secondAlphaShell)
+        #expect(await eventually { beta.attachedViewCount == 0 && secondAlphaShell.attachedViewCount == 1 && visibleText().contains(directoryReport(f.alpha)) })
+
         model.selectShellPane(betaPane)
-        #expect(await eventually { newShell.attachedViewCount == 0 && beta.attachedViewCount == 1 })
         model.selectProject(f.alpha.id)
-        #expect(await eventually { beta.attachedViewCount == 0 && alpha.attachedViewCount == 1 })
-        #expect(visibleText().contains(directoryReport(f.alpha)))
-        #expect(!visibleText().contains(directoryReport(f.beta)))
-        #expect(alpha.status.isLive && beta.status.isLive && newShell.status.isLive)
+        #expect(model.selectedShellPaneID == betaPane)
+        #expect(await eventually { secondAlphaShell.attachedViewCount == 0 && beta.attachedViewCount == 1 })
+
+        model.closeShellPane(betaPane)
+        #expect(model.shellTabs.map(\.id) == [alphaPane, secondAlpha])
+        #expect(model.selectedShellPaneID == secondAlpha)
+        #expect(alpha.status.isLive && secondAlphaShell.status.isLive)
+    }
+
+    @Test("the todo panel keeps its project until switched from its own menu")
+    func todoPanelKeepsProject() throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.model.dataRoot.deletingLastPathComponent()) }
+        let model = f.model
+        model.showPanel(.todos)
+        #expect(model.todoProject?.id == f.alpha.id)
+        #expect(model.createTodo(title: "alpha task"))
+        model.selectProject(f.beta.id)
+        #expect(model.todoProject?.id == f.alpha.id)
+        #expect(model.createTodo(title: "still alpha"))
+        model.selectTodoProject(f.beta.id)
+        #expect(model.todoProject?.id == f.beta.id)
+        #expect(model.todos.isEmpty)
+        #expect(model.createTodo(title: "beta task"))
+        model.selectProject(f.alpha.id)
+        #expect(model.todoProject?.id == f.beta.id)
     }
 
     @Test("retired native Pi sessions stay on disk while Pi CLI remains available")

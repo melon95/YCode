@@ -67,9 +67,18 @@ enum TandockWorkspacePanel: String, CaseIterable, Identifiable {
     }
 
     var shortcutHint: String {
+        if self == .terminal { return "⌘J" }
         guard let index = Self.shortcutPanels.firstIndex(of: self) else { return "" }
         return "⌘\(index + 1)"
     }
+}
+
+/// A shell tab in the terminal panel. Tabs belong to the window, not the selected project,
+/// so one panel can hold shells from several projects.
+struct TandockShellTab: Identifiable, Equatable {
+    let id: String
+    let projectID: String
+    let number: Int
 }
 
 struct TandockTerminalSearchRequest: Equatable {
@@ -170,8 +179,9 @@ final class WorkspaceModel: ObservableObject {
     @Published var terminalSearchQuery = ""
     @Published private(set) var terminalSearchResult = ""
     @Published private(set) var terminalSearchRequest: TandockTerminalSearchRequest?
-    @Published private(set) var shellWorkspaces: [String: TandockProjectShellWorkspace] = [:]
-    @Published private(set) var shellSelection: [String: String] = [:]
+    @Published private(set) var shellTabs: [TandockShellTab] = []
+    @Published private(set) var selectedShellTabID: String?
+    private var nextShellNumbers: [String: Int] = [:]
     @Published private(set) var historySessions: [TandockHistorySession] = []
     @Published private(set) var historyEvents: [TandockHistoryEvent] = []
     @Published private(set) var historySearchHits: [TandockHistorySearchHit] = []
@@ -182,6 +192,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var historySearchFocusGeneration = 0
     @Published private(set) var historyTargetSequence: UInt64?
     @Published private(set) var todos: [TandockTodo] = []
+    @Published private(set) var todoProjectID: String?
     @Published private(set) var todoIsLoading = false
     @Published private(set) var gitStatus: TandockGitStatus?
     @Published private(set) var gitDiff = ""
@@ -613,9 +624,7 @@ final class WorkspaceModel: ObservableObject {
     func showOverview() {
         rememberSelectedFile()
         stopHistoryPolling()
-        stopTodoPolling()
         clearHistoryState()
-        clearTodoState()
         clearGitState()
         selectedProjectID = nil
         selectedSessionID = nil
@@ -629,9 +638,7 @@ final class WorkspaceModel: ObservableObject {
         }
         rememberSelectedFile()
         stopHistoryPolling()
-        stopTodoPolling()
         clearHistoryState()
-        clearTodoState()
         clearGitState()
         selectedProjectID = id
         selectedSessionID = nil
@@ -647,7 +654,6 @@ final class WorkspaceModel: ObservableObject {
             selectedSessionID = focusedCanvasProjectID == id ? focusedCanvasSessionID : nil
             if let project = selectedProject { ensureEditorWorkspace(for: project) }
             if !expandedHistoryProjectIDs.isEmpty { startHistoryPolling() }
-            if openPanels.contains(.todos) { startTodoPolling() }
             if openPanels.contains(.changes) { refreshGitStatus() }
         } catch {
             errorMessage = String(describing: error)
@@ -1038,7 +1044,7 @@ final class WorkspaceModel: ObservableObject {
             openPanels.append(panel)
             focusedPanel = panel
             inspectorIsVisible = true
-            if panel == .terminal { ensureSelectedProjectShells() }
+            if panel == .terminal { ensureShellTabs() }
             if panel == .todos { startTodoPolling() }
             if panel == .changes { refreshGitStatus() }
         }
@@ -1065,7 +1071,7 @@ final class WorkspaceModel: ObservableObject {
         if !openPanels.contains(panel) { openPanels.append(panel) }
         focusedPanel = panel
         inspectorIsVisible = true
-        if panel == .terminal { ensureSelectedProjectShells() }
+        if panel == .terminal { ensureShellTabs() }
         if panel == .todos { startTodoPolling() }
         if panel == .changes { refreshGitStatus() }
     }
@@ -1390,8 +1396,20 @@ final class WorkspaceModel: ObservableObject {
         performGitMutation { _ = try service.push(root: root) }
     }
 
+    /// The todo panel keeps its own project so switching sessions does not swap the list underneath you.
+    var todoProject: ProjectRecord? {
+        todoProjectID.flatMap { project(id: $0) } ?? selectedProject
+    }
+
+    func selectTodoProject(_ id: String) {
+        guard id != todoProject?.id, project(id: id) != nil else { return }
+        todoProjectID = id
+        clearTodoState()
+        if openPanels.contains(.todos) { startTodoPolling() }
+    }
+
     func createTodo(title: String) -> Bool {
-        guard let projectID = selectedProjectID else { return false }
+        guard let projectID = todoProject?.id else { return false }
         do {
             _ = try todoRepository?.create(projectID: projectID, title: title)
             loadTodos(showSpinner: false)
@@ -1423,7 +1441,7 @@ final class WorkspaceModel: ObservableObject {
     var openTodos: [TandockTodo] { todos.filter { $0.status != .done } }
 
     func moveTodo(id: String, by offset: Int) {
-        guard let projectID = selectedProjectID else { return }
+        guard let projectID = todoProject?.id else { return }
         var open = openTodos
         guard let source = open.firstIndex(where: { $0.id == id }),
               open.indices.contains(source + offset) else { return }
@@ -1544,10 +1562,6 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    var selectedShellWorkspace: TandockProjectShellWorkspace? {
-        selectedProjectID.flatMap { shellWorkspaces[$0] }
-    }
-
     var selectedHistorySession: TandockHistorySession? {
         guard let selectedHistorySessionID else { return nil }
         return historySessions.first { $0.id == selectedHistorySessionID }
@@ -1557,48 +1571,42 @@ final class WorkspaceModel: ObservableObject {
         shellPool.runtime(paneID: paneID)
     }
 
-    var selectedShellPaneID: String? {
-        guard let projectID = selectedProjectID, let workspace = shellWorkspaces[projectID] else { return nil }
-        if let chosen = shellSelection[projectID], workspace.paneIDs.contains(chosen) { return chosen }
-        return workspace.paneIDs.first
+    var selectedShellTab: TandockShellTab? {
+        shellTabs.first { $0.id == selectedShellTabID } ?? shellTabs.first
+    }
+
+    var selectedShellPaneID: String? { selectedShellTab?.id }
+
+    func shellTabTitle(_ tab: TandockShellTab) -> String {
+        let name = project(id: tab.projectID)?.displayTitle ?? ""
+        return shellTabs.filter { $0.projectID == tab.projectID }.count > 1 ? "\(name) \(tab.number)" : name
     }
 
     func selectShellPane(_ paneID: String) {
-        guard let projectID = selectedProjectID else { return }
-        shellSelection[projectID] = paneID
+        guard shellTabs.contains(where: { $0.id == paneID }) else { return }
+        selectedShellTabID = paneID
     }
 
-    func addShellPane() {
-        guard let target = selectedShellPaneID else { return }
-        splitShellPane(target, direction: .right, select: true)
-    }
-
-    func splitShellPane(_ paneID: String, direction: TandockShellSplitDirection, select: Bool = false) {
-        guard let project = selectedProject else { return }
-        var workspace = shellWorkspaces[project.id] ?? TandockProjectShellWorkspace(projectID: project.id)
-        guard let newPaneID = workspace.split(paneID: paneID, direction: direction) else { return }
-        shellWorkspaces[project.id] = workspace
-        if select { shellSelection[project.id] = newPaneID }
-        startShell(paneID: newPaneID, project: project)
+    /// Opens a shell in `projectID`, defaulting to the selected project.
+    func addShellPane(projectID: String? = nil) {
+        guard let project = (projectID ?? selectedProjectID ?? selectedShellTab?.projectID).flatMap({ self.project(id: $0) }) else { return }
+        let number = nextShellNumbers[project.id, default: 1]
+        nextShellNumbers[project.id] = number + 1
+        let tab = TandockShellTab(id: "shell:\(project.id):\(number)", projectID: project.id, number: number)
+        shellTabs.append(tab)
+        selectedShellTabID = tab.id
+        startShell(paneID: tab.id, project: project)
     }
 
     func closeShellPane(_ paneID: String) {
-        guard let projectID = selectedProjectID, var workspace = shellWorkspaces[projectID] else { return }
-        let neighbour = workspace.paneIDs.first { $0 != paneID }
-        guard workspace.close(paneID: paneID) else { return }
-        shellWorkspaces[projectID] = workspace
-        if shellSelection[projectID] == paneID { shellSelection[projectID] = neighbour }
+        guard shellTabs.count > 1, let index = shellTabs.firstIndex(where: { $0.id == paneID }) else { return }
+        shellTabs.remove(at: index)
+        if selectedShellTabID == paneID { selectedShellTabID = shellTabs[min(index, shellTabs.count - 1)].id }
         Task { await shellPool.stop(paneID: paneID) }
     }
 
-    func updateShellSplitRatio(path: [Bool], ratio: Double) {
-        guard let projectID = selectedProjectID, var workspace = shellWorkspaces[projectID] else { return }
-        workspace.updateRatio(path: path, ratio: ratio)
-        shellWorkspaces[projectID] = workspace
-    }
-
     func restartShellPane(_ paneID: String) {
-        guard let project = selectedProject else { return }
+        guard let tab = shellTabs.first(where: { $0.id == paneID }), let project = project(id: tab.projectID) else { return }
         startShell(paneID: paneID, project: project)
     }
 
@@ -1801,12 +1809,20 @@ final class WorkspaceModel: ObservableObject {
             return
         }
         do {
-            if let workspace = shellWorkspaces.removeValue(forKey: selectedProjectID) {
-                shellPool.terminateProjectImmediately(paneIDs: workspace.paneIDs)
+            let removedShells = shellTabs.filter { $0.projectID == selectedProjectID }.map(\.id)
+            if !removedShells.isEmpty {
+                shellPool.terminateProjectImmediately(paneIDs: removedShells)
+                shellTabs.removeAll { $0.projectID == selectedProjectID }
             }
+            let todosShowedProject = todoProject?.id == selectedProjectID
             try repository?.deleteProject(id: selectedProjectID)
             editorWorkspaces.removeValue(forKey: selectedProjectID)
             try reload(keepSelection: false)
+            if todosShowedProject {
+                todoProjectID = nil
+                clearTodoState()
+                if openPanels.contains(.todos) { startTodoPolling() }
+            }
         } catch {
             errorMessage = String(describing: error)
         }
@@ -1901,7 +1917,6 @@ final class WorkspaceModel: ObservableObject {
 
     private func restoreProjectContext(for projectID: String?) {
         selectedTerminalPath = projectID.flatMap { selectedFileByProject[$0] }
-        if openPanels.contains(.terminal) { ensureSelectedProjectShells() }
     }
 
     private func orderPinnedTabsFirst() {
@@ -2044,7 +2059,8 @@ final class WorkspaceModel: ObservableObject {
 
     private func startTodoPolling() {
         stopTodoPolling()
-        guard selectedProject != nil else { return }
+        guard let project = todoProject else { return }
+        todoProjectID = project.id
         loadTodos(showSpinner: todos.isEmpty)
         todoPollingTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -2067,7 +2083,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func loadTodos(showSpinner: Bool) {
-        guard let projectID = selectedProjectID, let todoRepository else { return }
+        guard let projectID = todoProject?.id, let todoRepository else { return }
         todoLoadGeneration += 1
         let generation = todoLoadGeneration
         if showSpinner { todoIsLoading = true }
@@ -2308,12 +2324,13 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    private func ensureSelectedProjectShells() {
-        guard let project = selectedProject else { return }
-        let workspace = shellWorkspaces[project.id] ?? TandockProjectShellWorkspace(projectID: project.id)
-        shellWorkspaces[project.id] = workspace
-        for paneID in workspace.paneIDs where shellPool.runtime(paneID: paneID) == nil {
-            startShell(paneID: paneID, project: project)
+    private func ensureShellTabs() {
+        guard !shellTabs.isEmpty else {
+            addShellPane()
+            return
+        }
+        for tab in shellTabs where shellPool.runtime(paneID: tab.id) == nil {
+            if let project = project(id: tab.projectID) { startShell(paneID: tab.id, project: project) }
         }
     }
 
