@@ -211,6 +211,55 @@ struct CrossProjectCanvasTests {
         #expect(f.model.focusedCanvasSessionID == ids[0])
     }
 
+    @Test("split-layout tabs swap an off-canvas session into the focused pane and close without disturbing panes")
+    func splitLayoutTabs() throws {
+        let f = try fixture(sessionCount: 3)
+        defer { try? FileManager.default.removeItem(at: f.model.dataRoot.deletingLastPathComponent()) }
+        let ids = f.alphaSessions.map(\.id)
+        f.model.openSessionInCanvas(ids[0], mode: .newPane)
+        f.model.openSessionInCanvas(ids[1], mode: .newPane)
+        f.model.setTerminalLayout(.columns)
+        f.model.openSessionInCanvas(ids[2], mode: .replaceFocused)
+        #expect(f.model.visibleSessionIDs == [ids[0], ids[2]])
+        #expect(f.model.canvasTabSessions.map(\.id) == ids)
+
+        f.model.selectCanvasTab(ids[0])
+        #expect(f.model.focusedCanvasSessionID == ids[0])
+        #expect(f.model.visibleSessionIDs == [ids[0], ids[2]])
+
+        f.model.selectCanvasTab(ids[1])
+        #expect(f.model.visibleSessionIDs == [ids[1], ids[2]])
+        #expect(f.model.focusedCanvasSessionID == ids[1])
+        #expect(f.model.canvasTabSessions.map(\.id) == ids)
+
+        f.model.closeCanvasTab(ids[0])
+        #expect(f.model.visibleSessionIDs == [ids[1], ids[2]])
+        #expect(f.model.focusedCanvasSessionID == ids[1])
+        #expect(f.model.canvasTabSessions.map(\.id) == [ids[1], ids[2]])
+
+        f.model.closeCanvasTab(ids[1])
+        #expect(f.model.visibleSessionIDs == [ids[2]])
+        #expect(f.model.canvasTabSessions.map(\.id) == [ids[2]])
+    }
+
+    @Test("closing the focused session pane follows the close-confirmation setting")
+    func closeSessionPane() throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.model.dataRoot.deletingLastPathComponent()) }
+        let ids = f.alphaSessions.map(\.id)
+        f.model.openSessionInCanvas(ids[0], mode: .newPane)
+        f.model.openSessionInCanvas(ids[1], mode: .newPane)
+        #expect(f.model.confirmsSessionClose)
+        let store = TandockConfigurationStore(configurationURL: f.model.dataRoot.appendingPathComponent("config.json"))
+        var settings = try store.loadBasicSettings()
+        settings.sessions.confirmBeforeClose = false
+        try store.saveBasicSettings(settings)
+        #expect(!f.model.confirmsSessionClose)
+        f.model.closeSessionPane(ids[1])
+        #expect(f.model.visibleSessionIDs == [ids[0]])
+        #expect(f.model.canvasTabSessions.map(\.id) == [ids[0]])
+    }
+
     @Test("pinning and background rename or archive preserve the active tab")
     func sessionActionsTargetTheirOwnTab() async throws {
         let f = try fixture()

@@ -3,13 +3,24 @@ import Foundation
 public struct TandockBasicSettings: Equatable, Sendable {
     public var notifications: TandockNotificationSettings
     public var appearance: TandockAppearanceSettings
+    public var sessions: TandockSessionSettings
 
     public init(
         notifications: TandockNotificationSettings = TandockNotificationSettings(),
-        appearance: TandockAppearanceSettings = TandockAppearanceSettings()
+        appearance: TandockAppearanceSettings = TandockAppearanceSettings(),
+        sessions: TandockSessionSettings = TandockSessionSettings()
     ) {
         self.notifications = notifications
         self.appearance = appearance
+        self.sessions = sessions
+    }
+}
+
+public struct TandockSessionSettings: Equatable, Sendable {
+    public var confirmBeforeClose: Bool
+
+    public init(confirmBeforeClose: Bool = true) {
+        self.confirmBeforeClose = confirmBeforeClose
     }
 }
 
@@ -201,9 +212,15 @@ public final class TandockConfigurationStore {
                 terminal: Self.int(fields["terminal"]) ?? fontSizes.terminal
             )
         }
+        var sessions = TandockSessionSettings()
+        if case let .object(fields)? = document["sessions"],
+           case let .bool(value)? = fields["confirm_before_close"] {
+            sessions.confirmBeforeClose = value
+        }
         return TandockBasicSettings(
             notifications: notifications,
-            appearance: TandockAppearanceSettings(theme: theme, locale: locale, fontSizes: fontSizes)
+            appearance: TandockAppearanceSettings(theme: theme, locale: locale, fontSizes: fontSizes),
+            sessions: sessions
         )
     }
 
@@ -218,6 +235,7 @@ public final class TandockConfigurationStore {
         }
         Self.writeNotificationSettings(settings.notifications, to: &document)
         Self.writeAppearanceSettings(settings.appearance, to: &document)
+        Self.writeSessionSettings(settings.sessions, to: &document)
         try document.encodedData().write(to: configurationURL, options: .atomic)
     }
 
@@ -275,6 +293,7 @@ public final class TandockConfigurationStore {
         if let basic {
             Self.writeNotificationSettings(basic.notifications, to: &document)
             Self.writeAppearanceSettings(basic.appearance, to: &document)
+            Self.writeSessionSettings(basic.sessions, to: &document)
         }
         document["agents"] = .array(settings.agents.map(Self.jsonValue(from:)))
         var proxyFields: [String: JSONValue]
@@ -363,6 +382,16 @@ public final class TandockConfigurationStore {
         fields["enabled"] = .bool(settings.enabled)
         fields["only_when_unfocused"] = .bool(settings.onlyWhenUnfocused)
         document["notifications"] = .object(fields)
+    }
+
+    private static func writeSessionSettings(
+        _ settings: TandockSessionSettings,
+        to document: inout PreservingJSONDocument
+    ) {
+        var fields: [String: JSONValue]
+        if case let .object(existing)? = document["sessions"] { fields = existing } else { fields = [:] }
+        fields["confirm_before_close"] = .bool(settings.confirmBeforeClose)
+        document["sessions"] = .object(fields)
     }
 
     private static func writeAppearanceSettings(

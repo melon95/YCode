@@ -8,6 +8,7 @@ final class BasicSettingsModel: ObservableObject {
     @Published var proxy = TandockProxySettings()
     @Published var notifications = TandockNotificationSettings()
     @Published var appearance = TandockAppearanceSettings()
+    @Published var sessions = TandockSessionSettings()
     @Published private(set) var systemProxy = TandockSystemProxy()
     @Published private(set) var commandAvailability: [String: Bool] = [:]
     @Published var errorMessage: String?
@@ -30,6 +31,7 @@ final class BasicSettingsModel: ObservableObject {
             persistedNotifications = settings.notifications
             appearance = settings.appearance
             persistedAppearance = settings.appearance
+            sessions = settings.sessions
             let agentSettings = try configurationStore.loadAgentSettings()
             agents = agentSettings.agents
             proxy = agentSettings.proxy
@@ -46,7 +48,7 @@ final class BasicSettingsModel: ObservableObject {
         do {
             let agentSettings = TandockAgentSettings(agents: agents, proxy: proxy)
             try configurationStore.saveSettings(
-                basic: TandockBasicSettings(notifications: notifications, appearance: appearance),
+                basic: TandockBasicSettings(notifications: notifications, appearance: appearance, sessions: sessions),
                 agents: agentSettings
             )
             persistedNotifications = notifications
@@ -214,6 +216,7 @@ struct BasicSettingsView: View {
         .tint(Color(themeHex: theme.accent))
         .onChange(of: model.notifications) { _, _ in model.save() }
         .onChange(of: model.appearance) { _, _ in model.save() }
+        .onChange(of: model.sessions) { _, _ in model.save() }
         .onChange(of: model.proxy) { _, _ in model.save() }
         .onChange(of: model.agents) { _, _ in model.save() }
         .alert(l10n.text("settingsSaveFailed"), isPresented: Binding(
@@ -429,12 +432,21 @@ struct BasicSettingsView: View {
                     keyboardRow(l10n.text("showHideProjectSidebar"), "⌘B")
                     keyboardRow(l10n.text("hideInspector"), "⌥⌘→")
                     keyboardRow(l10n.text("inspectorTabFormat", "1–4"), "⌘1–⌘4")
+                    keyboardRow(l10n.text("inspectorTabFormat", l10n.text("terminal")), "⌘J")
+                    keyboardRow(l10n.text("closeSession"), "⌘W")
                     keyboardRow(l10n.text("focusCanvasFormat", 1) + "–4", "⇧⌘1–⇧⌘4")
                     keyboardRow(l10n.text("refreshHistory"), "⇧⌘R")
                 } header: {
                     Text(l10n.text("currentShortcuts"))
                 } footer: {
                     Text(l10n.text("shortcutsReadOnly"))
+                }
+
+                Section {
+                    Toggle(l10n.text("confirmCloseSession"), isOn: $model.sessions.confirmBeforeClose)
+                        .toggleStyle(.switch).controlSize(.small)
+                } footer: {
+                    Text(l10n.text("confirmCloseSessionHelp"))
                 }
             }
             .formStyle(.grouped)

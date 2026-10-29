@@ -96,7 +96,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var newSessionProjectRequest: String?
     private(set) var lastNewSessionProjectID: String?
     @Published private(set) var visibleSessionIDs: [String] = []
-    private var tabSessionIDs: [String] = []
+    @Published private(set) var tabSessionIDs: [String] = []
     @Published private(set) var focusedCanvasSlot = 0
     @Published private(set) var terminalLayout: TandockTerminalLayout = .single
     @Published private(set) var pendingTitleSessionIDs: Set<String> = []
@@ -385,6 +385,10 @@ final class WorkspaceModel: ObservableObject {
 
     var visibleSessions: [SessionMetadata] {
         visibleSessionIDs.compactMap { session(id: $0) }
+    }
+
+    var canvasTabSessions: [SessionMetadata] {
+        tabSessionIDs.compactMap { session(id: $0) }
     }
 
     var canvasPaneCount: Int {
@@ -957,6 +961,37 @@ final class WorkspaceModel: ObservableObject {
         terminalLayout = TandockTerminalLayout.reflow(terminalLayout, for: visibleSessionIDs.count)
         followFocusedProject()
         selectedSessionID = focusedCanvasSessionID
+    }
+
+    /// A tab that is off the canvas takes over the focused pane; the session it replaces keeps its tab.
+    func selectCanvasTab(_ id: String) {
+        isPresentingNewSession = false
+        if let slot = visibleSessionIDs.firstIndex(of: id) {
+            focusCanvasSlot(slot)
+        } else {
+            openSessionInCanvas(id, mode: .replaceFocused)
+            markSessionViewed(id)
+        }
+    }
+
+    var confirmsSessionClose: Bool {
+        let store = TandockConfigurationStore(configurationURL: dataRoot.appendingPathComponent("config.json"))
+        return (try? store.loadBasicSettings().sessions.confirmBeforeClose) ?? true
+    }
+
+    /// Same as the tab's close button: stops the agent and removes the session from the canvas.
+    func closeSessionPane(_ id: String) {
+        if let session = session(id: id), runtimeStatus(for: session)?.isLive == true { stopSession(id) }
+        closeCanvasTab(id)
+    }
+
+    func closeCanvasTab(_ id: String) {
+        if let slot = visibleSessionIDs.firstIndex(of: id) {
+            closeCanvasSlot(slot)
+            return
+        }
+        tabSessionIDs.removeAll { $0 == id }
+        attentionStore.remove(sessionID: id)
     }
 
     func focusCanvasSlot(_ index: Int) {

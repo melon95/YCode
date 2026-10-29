@@ -157,6 +157,23 @@ final class WorkspaceStateTests: XCTestCase {
         ]))
     }
 
+    func testSessionCloseConfirmationDefaultsOnAndRoundTrips() throws {
+        let root = makeTemporaryRoot()
+        defer { try? fileManager.removeItem(at: root) }
+        let configurationURL = root.appendingPathComponent("config.json")
+        try Data(#"{"sessions":{"future_flag":1}}"#.utf8).write(to: configurationURL)
+        let store = TandockConfigurationStore(configurationURL: configurationURL)
+
+        var settings = try store.loadBasicSettings()
+        XCTAssertTrue(settings.sessions.confirmBeforeClose)
+        settings.sessions.confirmBeforeClose = false
+        try store.saveBasicSettings(settings)
+
+        XCTAssertFalse(try store.loadBasicSettings().sessions.confirmBeforeClose)
+        let saved = try PreservingJSONDocument(data: Data(contentsOf: configurationURL))
+        XCTAssertEqual(saved["sessions"], .object(["future_flag": .number(1), "confirm_before_close": .bool(false)]))
+    }
+
     func testLaunchProjectFallsBackToTheFirstProjectWhenTheRecentOneIsGone() {
         let projects = [
             ProjectRecord(id: "quiet", name: "quiet", repositoryURL: URL(fileURLWithPath: "/tmp/quiet"), createdAtMilliseconds: 1, isolateSessions: false, liveSessionCount: 0, totalSessionCount: 3),

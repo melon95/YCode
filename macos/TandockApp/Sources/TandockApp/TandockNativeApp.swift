@@ -36,6 +36,16 @@ struct TandockNativeApp: App {
                     postTandockWindowCommand(.saveTandockEditorFile)
                 }
                 .keyboardShortcut("s")
+                Button(commandLocalization.l10n.text("closeSession")) {
+                    // Settings and update windows are not workspaces; ⌘W keeps closing them.
+                    let id = NSApp.keyWindow?.identifier?.rawValue ?? ""
+                    if let window = NSApp.keyWindow, !id.hasPrefix("main-"), !id.hasPrefix("project-") {
+                        window.performClose(nil)
+                    } else {
+                        postTandockWindowCommand(.closeTandockSession)
+                    }
+                }
+                .keyboardShortcut("w")
             }
             CommandMenu(commandLocalization.l10n.text("project")) {
                 Button(commandLocalization.l10n.text("projectOverview")) {
@@ -171,6 +181,7 @@ extension Notification.Name {
     static let requestFindTandockTerminal = Notification.Name("dev.ycode.native.request-find-terminal")
     static let toggleTandockWorkspacePanel = Notification.Name("dev.ycode.native.toggle-workspace-panel")
     static let focusTandockCanvasSlot = Notification.Name("dev.ycode.native.focus-canvas-slot")
+    static let closeTandockSession = Notification.Name("dev.ycode.native.close-session")
     static let openTandockProjectWindow = Notification.Name("dev.ycode.native.open-project-window")
     static let refreshTandockHistory = Notification.Name("dev.ycode.native.refresh-history")
     static let toggleTandockInspector = Notification.Name("dev.ycode.native.toggle-inspector")
@@ -187,6 +198,7 @@ private struct NativeRootView: View {
     @State private var pendingDelete: ProjectRecord?
     @State private var pendingArchive: SessionMetadata?
     @State private var pendingSessionDelete: SessionMetadata?
+    @State private var pendingClose: SessionMetadata?
     @State private var isFullScreen = false
 
     @StateObject private var sidebarPresentation = TandockSidebarPresentation()
@@ -337,6 +349,10 @@ private struct NativeRootView: View {
             guard !model.projects.isEmpty, let raw = note.object as? String, let panel = TandockWorkspacePanel(rawValue: raw) else { return }
             model.togglePanel(panel)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .closeTandockSession)) { note in
+            guard commandTargetsThisWindow(note) else { return }
+            closeFocusedSession()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .focusTandockCanvasSlot)) { note in
             guard commandTargetsThisWindow(note) else { return }
             guard let index = note.object as? Int else { return }
@@ -440,6 +456,20 @@ private struct NativeRootView: View {
             Button(TandockLocalization(locale: model.locale).text("cancel"), role: .cancel) { pendingArchive = nil }
         } message: {
             Text(TandockLocalization(locale: model.locale).text("archiveMessage"))
+        }
+        .confirmationDialog(
+            TandockLocalization(locale: model.locale).text("closeSessionTitleFormat", pendingClose.map { model.displayName(for: $0) } ?? ""),
+            isPresented: Binding(get: { pendingClose != nil }, set: { if !$0 { pendingClose = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(TandockLocalization(locale: model.locale).text("close"), role: .destructive) {
+                if let id = pendingClose?.id { model.closeSessionPane(id) }
+                pendingClose = nil
+            }
+            .keyboardShortcut(.defaultAction)
+            Button(TandockLocalization(locale: model.locale).text("cancel"), role: .cancel) { pendingClose = nil }
+        } message: {
+            Text(TandockLocalization(locale: model.locale).text("closeSessionMessage"))
         }
         .confirmationDialog(
             TandockLocalization(locale: model.locale).text("deleteSessionTitleFormat", pendingSessionDelete.map { model.displayName(for: $0) } ?? ""),
@@ -583,11 +613,9 @@ private struct NativeRootView: View {
             .buttonStyle(TandockIconButtonStyle())
             .help(l10n.text("showHideProjectSidebar") + " ⌘B")
 
-            if let project = model.selectedProject {
-                Text(project.displayTitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                    .padding(.leading, 2)
+            if !model.canvasTabSessions.isEmpty {
+                TerminalSessionTabBar(model: model, onRename: { renameTarget = $0 }, onArchive: { pendingArchive = $0 })
+                    .padding(.leading, 6)
             }
             Spacer(minLength: 8)
 
@@ -723,6 +751,19 @@ private struct NativeRootView: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.addProject(directory: url)
+    }
+
+    private func closeFocusedSession() {
+        if model.isPresentingNewSession, !model.visibleSessionIDs.isEmpty {
+            model.isPresentingNewSession = false
+            return
+        }
+        guard let session = model.focusedCanvasSessionID.flatMap({ model.session(id: $0) }) else { return }
+        if model.confirmsSessionClose {
+            pendingClose = session
+        } else {
+            model.closeSessionPane(session.id)
+        }
     }
 
     private func presentNewSession() {

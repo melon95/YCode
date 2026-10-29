@@ -10,12 +10,7 @@ struct TerminalWorkspaceView: View {
     @State private var archiveTarget: SessionMetadata?
 
     var body: some View {
-        VStack(spacing: 0) {
-            if model.presentedTerminalLayout == .tabs {
-                TerminalSessionTabBar(model: model, onRename: { renameTarget = $0 }, onArchive: { archiveTarget = $0 })
-            }
-            terminalCanvas
-        }
+        terminalCanvas
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tandockSessionRenameDialog(model: model, target: $renameTarget)
         .tandockSessionArchiveDialog(model: model, target: $archiveTarget)
