@@ -170,6 +170,46 @@ struct CLIIntegrationTests {
         #expect(try String(contentsOf: link, encoding: .utf8) == "user-owned")
     }
 
+    @Test("a pre-rename ycode link is repaired with the install and removed with the uninstall")
+    func legacyCommandLink() async throws {
+        let fixture = try CLIFixture()
+        defer { fixture.remove() }
+        let bundle = fixture.root.appendingPathComponent("Tandock.app/Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        let helper = bundle.appendingPathComponent("tandock")
+        try Data("#!/bin/sh\n".utf8).write(to: helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+        let bin = fixture.root.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let legacy = bin.appendingPathComponent("ycode")
+        let gone = fixture.root.appendingPathComponent("YCode.app/Contents/Resources/ycode")
+        try FileManager.default.createSymbolicLink(at: legacy, withDestinationURL: gone)
+        let installer = TandockCLIInstallationService(helperURL: helper, installURL: bin.appendingPathComponent("tandock"))
+
+        _ = try await installer.install(allowElevation: false)
+        guard case .installed = await installer.status() else { Issue.record("expected installed"); return }
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: legacy.path) == helper.path)
+
+        try FileManager.default.removeItem(at: legacy)
+        try FileManager.default.createSymbolicLink(at: legacy, withDestinationURL: gone)
+        guard case let .stale(path, _) = await installer.status() else { Issue.record("expected stale legacy link"); return }
+        #expect(path == legacy.path)
+
+        _ = try await installer.install(allowElevation: false)
+        #expect(try await installer.uninstall(allowElevation: false) == .notInstalled)
+        #expect((try? FileManager.default.attributesOfItem(atPath: legacy.path)) == nil)
+
+        try FileManager.default.createSymbolicLink(at: legacy, withDestinationURL: gone)
+        #expect(await installer.status() == .notInstalled)
+        #expect(try await installer.uninstall(allowElevation: false) == .notInstalled)
+        #expect((try? FileManager.default.attributesOfItem(atPath: legacy.path)) == nil)
+
+        try Data("user script".utf8).write(to: legacy)
+        _ = try await installer.install(allowElevation: false)
+        _ = try await installer.uninstall(allowElevation: false)
+        #expect(try String(contentsOf: legacy, encoding: .utf8) == "user script")
+    }
+
     private func cliExecutable() throws -> URL {
         let candidates = [
             Bundle.main.bundleURL.deletingLastPathComponent().appendingPathComponent("tandock"),

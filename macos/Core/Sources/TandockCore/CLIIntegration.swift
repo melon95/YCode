@@ -498,6 +498,9 @@ public enum TandockCLIInstallationError: LocalizedError {
 public actor TandockCLIInstallationService {
     public let helperURL: URL
     public let installURL: URL
+    /// The pre-rename `ycode` command next to `installURL`. A link we created there is kept pointing
+    /// at the current helper, so it does not dangle once YCode.app is gone.
+    public let legacyInstallURL: URL
 
     public init(
         helperURL: URL,
@@ -505,10 +508,14 @@ public actor TandockCLIInstallationService {
     ) {
         self.helperURL = helperURL.standardizedFileURL
         self.installURL = installURL.standardizedFileURL
+        legacyInstallURL = self.installURL.deletingLastPathComponent().appendingPathComponent("ycode")
     }
 
     public func status() -> TandockCLIInstallStatus {
-        Self.status(helperURL: helperURL, installURL: installURL)
+        let primary = Self.status(helperURL: helperURL, installURL: installURL)
+        guard case .installed = primary, Self.legacyLinkNeedsRepair(helperURL: helperURL, legacyURL: legacyInstallURL),
+              let target = try? FileManager.default.destinationOfSymbolicLink(atPath: legacyInstallURL.path) else { return primary }
+        return .stale(path: legacyInstallURL.path, target: target)
     }
 
     public func install(allowElevation: Bool = true) throws -> TandockCLIInstallStatus {
@@ -518,29 +525,38 @@ public actor TandockCLIInstallationService {
         if case let .conflict(path, detail) = status() {
             throw TandockCLIInstallationError.conflict("\(path)：\(detail)，未覆盖现有文件。")
         }
+        let links = [installURL] + (Self.legacyLinkNeedsRepair(helperURL: helperURL, legacyURL: legacyInstallURL) ? [legacyInstallURL] : [])
+        let script = "mkdir -p \(shellQuote(installURL.deletingLastPathComponent().path))"
+            + links.map { " && ln -sfn \(shellQuote(helperURL.path)) \(shellQuote($0.path))" }.joined()
         do {
-            try Self.installSymlink(helperURL: helperURL, installURL: installURL)
+            for link in links { try Self.installSymlink(helperURL: helperURL, installURL: link) }
         } catch let error as CocoaError where allowElevation && error.code == .fileWriteNoPermission {
-            try Self.runElevated(script: "mkdir -p \(shellQuote(installURL.deletingLastPathComponent().path)) && ln -sfn \(shellQuote(helperURL.path)) \(shellQuote(installURL.path))")
+            try Self.runElevated(script: script)
         } catch let error as POSIXError where allowElevation && (error.code == .EACCES || error.code == .EPERM) {
-            try Self.runElevated(script: "mkdir -p \(shellQuote(installURL.deletingLastPathComponent().path)) && ln -sfn \(shellQuote(helperURL.path)) \(shellQuote(installURL.path))")
+            try Self.runElevated(script: script)
         }
         return status()
     }
 
     public func uninstall(allowElevation: Bool = true) throws -> TandockCLIInstallStatus {
         switch status() {
-        case .notInstalled: return .notInstalled
+        case .notInstalled where !Self.ownsLink(at: legacyInstallURL): return .notInstalled
+        case .notInstalled: break
         case let .conflict(path, detail):
             throw TandockCLIInstallationError.conflict("\(path)：\(detail)，不是 Tandock 创建的，未删除。")
         case .installed, .stale: break
         }
+        var links = [installURL]
+        if Self.ownsLink(at: legacyInstallURL) { links.append(legacyInstallURL) }
+        let script = "rm -f" + links.map { " \(shellQuote($0.path))" }.joined()
         do {
-            try FileManager.default.removeItem(at: installURL)
+            for link in links where (try? FileManager.default.attributesOfItem(atPath: link.path)) != nil {
+                try FileManager.default.removeItem(at: link)
+            }
         } catch let error as CocoaError where allowElevation && error.code == .fileWriteNoPermission {
-            try Self.runElevated(script: "rm -f \(shellQuote(installURL.path))")
+            try Self.runElevated(script: script)
         } catch let error as POSIXError where allowElevation && (error.code == .EACCES || error.code == .EPERM) {
-            try Self.runElevated(script: "rm -f \(shellQuote(installURL.path))")
+            try Self.runElevated(script: script)
         }
         return status()
     }
@@ -580,6 +596,18 @@ public actor TandockCLIInstallationService {
 
     private static func sameFile(_ lhs: URL, _ rhs: URL) -> Bool {
         lhs.resolvingSymlinksInPath().standardizedFileURL == rhs.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    private static func ownsLink(at url: URL) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeSymbolicLink,
+              let target = try? FileManager.default.destinationOfSymbolicLink(atPath: url.path) else { return false }
+        return owns(URL(fileURLWithPath: target, relativeTo: url.deletingLastPathComponent()).standardizedFileURL)
+    }
+
+    private static func legacyLinkNeedsRepair(helperURL: URL, legacyURL: URL) -> Bool {
+        guard ownsLink(at: legacyURL), let target = try? FileManager.default.destinationOfSymbolicLink(atPath: legacyURL.path) else { return false }
+        return !sameFile(URL(fileURLWithPath: target, relativeTo: legacyURL.deletingLastPathComponent()).standardizedFileURL, helperURL)
     }
 
     private static func owns(_ target: URL) -> Bool {
