@@ -216,6 +216,21 @@ public struct TandockAgentProcessResult: Equatable, Sendable {
     public let standardError: String
 }
 
+/// The light/dark state of Tandock's terminals, as handed to launched TUIs.
+public enum TandockTerminalAppearance: Equatable, Sendable {
+    case light
+    case dark
+    case followingSystem(dark: Bool)
+
+    public var isDark: Bool {
+        switch self {
+        case .light: false
+        case .dark: true
+        case .followingSystem(let dark): dark
+        }
+    }
+}
+
 public enum TandockAgentLauncher {
     private static let reservedKeys = ["YCODE_RUN_ID", "YCODE_TERMINAL_ID", "YCODE_NOTIFY_SOCK", "YCODE_MCP_SOCK", "YCODE_NATIVE_DATA_ROOT"]
 
@@ -337,6 +352,30 @@ public enum TandockAgentLauncher {
         return message.isEmpty ? "\(line) 退出码 \(process.terminationStatus)" : message
     }
 
+    /// Tells TUIs whether the Tandock terminal is light or dark. Grok ignores the terminal background and
+    /// defaults to its dark theme, so pick its matching built-in theme unless the user already chose one.
+    static func applyTerminalAppearance(_ appearance: TandockTerminalAppearance, to environment: inout [String: String]) {
+        environment["COLORFGBG"] = appearance.isDark ? "15;0" : "0;15"
+        guard environment["GROK_THEME"] == nil, environment["LC_GROK_THEME"] == nil,
+              !grokConfigDeclaresTheme(home: environment["HOME"]) else { return }
+        switch appearance {
+        // Grok's auto theme polls the macOS appearance, so a running session follows later switches too.
+        case .followingSystem: environment["GROK_THEME"] = "auto"
+        case .light: environment["GROK_THEME"] = "grokday"
+        case .dark: environment["GROK_THEME"] = "groknight"
+        }
+    }
+
+    static func grokConfigDeclaresTheme(home: String?) -> Bool {
+        guard let home,
+              let config = try? String(contentsOf: URL(fileURLWithPath: home).appendingPathComponent(".grok/config.toml"), encoding: .utf8)
+        else { return false }
+        return config.split(separator: "\n").contains { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("theme") && trimmed.dropFirst("theme".count).trimmingCharacters(in: .whitespaces).hasPrefix("=")
+        }
+    }
+
     public static func makePlan(
         profile: TandockAgentProfile,
         workingDirectory: URL,
@@ -351,6 +390,7 @@ public enum TandockAgentLauncher {
         shell: String? = nil,
         additionalArguments: [String] = [],
         shellEnvironment: TandockShellEnvironment? = nil,
+        terminalAppearance: TandockTerminalAppearance? = nil,
         startupTrace: TandockSessionStartupTrace? = nil
     ) throws -> TandockAgentLaunchPlan {
         guard !profile.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -391,10 +431,12 @@ public enum TandockAgentLauncher {
         }
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
-        if environment["FORCE_COLOR"] == nil { environment["FORCE_COLOR"] = "1" }
+        // 3 = truecolor. Rust's supports-color reads FORCE_COLOR as the exact level, so "1" pinned grok to 16 colors.
+        if environment["FORCE_COLOR"] == nil { environment["FORCE_COLOR"] = "3" }
         environment["CLICOLOR"] = "1"
         environment["CLICOLOR_FORCE"] = "1"
         environment.removeValue(forKey: "NO_COLOR")
+        if let terminalAppearance { applyTerminalAppearance(terminalAppearance, to: &environment) }
         startupTrace?.mark("proxy.begin mode=\(proxy.mode.rawValue)")
         applyProxy(proxy, detectedSystemProxy: detectedSystemProxy, to: &environment)
         startupTrace?.mark("proxy.end")

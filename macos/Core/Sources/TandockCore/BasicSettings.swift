@@ -89,11 +89,14 @@ public struct TandockTerminalTheme: Equatable, Sendable {
     public let background: String
     public let foreground: String
     public let cursor: String
+    /// The 16 ANSI colors in order (black…white, then bright black…bright white), tuned for `background`.
+    public let ansi: [String]
 
-    public init(background: String, foreground: String, cursor: String) {
+    public init(background: String, foreground: String, cursor: String, ansi: [String] = []) {
         self.background = background
         self.foreground = foreground
         self.cursor = cursor
+        self.ansi = ansi
     }
 }
 
@@ -105,14 +108,28 @@ public enum TandockThemeCatalog {
         id: "light", label: "Light", systemColorScheme: "light",
         background: "#efeef4", surface: "#fcfcfe", panel: "#fcfcfe",
         text: "#16133a", textSoft: "#6a6787", accent: "#ff5a4e",
-        terminal: .init(background: "#fcfcfe", foreground: "#16133a", cursor: "#ff5a4e")
+        terminal: .init(
+            background: "#fcfcfe", foreground: "#16133a", cursor: "#ff5a4e",
+            // White and bright white stay light: TUIs on light terminals paint them as backgrounds.
+            ansi: [
+                "#16133a", "#c4302b", "#1f7a3e", "#8a5a00", "#2f55c7", "#8d3fb0", "#12707d", "#d9d7e3",
+                "#5d5a7a", "#b8322c", "#21733c", "#7d5200", "#2a4fbf", "#8a3aad", "#0f6875", "#f3f2f8"
+            ]
+        )
     )
 
     public static let dark = TandockThemeOption(
         id: "dark", label: "Dark", systemColorScheme: "dark",
-        background: "#110f28", surface: "#1b1840", panel: "#1b1840",
-        text: "#f1f0f8", textSoft: "#8d89ad", accent: "#ff7d72",
-        terminal: .init(background: "#1b1840", foreground: "#e6e3f2", cursor: "#ffc83d")
+        background: "#21252b", surface: "#282c34", panel: "#282c34",
+        text: "#d7dae0", textSoft: "#9da5b4", accent: "#ff7d72",
+        terminal: .init(
+            background: "#282c34", foreground: "#abb2bf", cursor: "#ffc83d",
+            // One Dark, including its background; bright black uses its newer comment gray so dim text stays readable.
+            ansi: [
+                "#282c34", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#abb2bf",
+                "#7f848e", "#e06c75", "#98c379", "#d19a66", "#61afef", "#c678dd", "#56b6c2", "#ffffff"
+            ]
+        )
     )
 
     public static let options: [TandockThemeOption] = [light, dark]

@@ -446,6 +446,7 @@ public final class TandockAgentSessionService {
         let notifySocket = self.notifySocket
         let additionalArguments = arguments
         let shellEnvironment = await shellEnvironment(for: project.repositoryURL, startupTrace: startupTrace)
+        let terminalAppearance = TandockAgentRuntime.terminalAppearance
         let build = { @Sendable (shellEnvironment: TandockShellEnvironment?) async throws -> TandockAgentLaunchPlan in
             startupTrace?.mark("launch_plan.background_queued")
             return try await Task.detached(priority: .userInitiated) {
@@ -461,6 +462,7 @@ public final class TandockAgentSessionService {
                     proxy: proxy,
                     additionalArguments: additionalArguments,
                     shellEnvironment: shellEnvironment,
+                    terminalAppearance: terminalAppearance,
                     startupTrace: startupTrace
                 )
             }.value

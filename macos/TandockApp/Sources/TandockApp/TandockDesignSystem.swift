@@ -236,12 +236,13 @@ extension Color {
     static let tandockWarn = Color.tandockDynamic(light: "B67707", dark: "E0A33A")
     static let tandockErr = Color.tandockDynamic(light: "D2382F", dark: "F0655A")
     static let tandockLabel3 = Color(nsColor: .tertiaryLabelColor)
-    static let tandockChrome = Color.tandockDynamic(light: "EFEEF4", dark: "110F28")
+    // Dark values follow the Atom One Dark UI palette; the coral accent stays as the brand color.
+    static let tandockChrome = Color.tandockDynamic(light: "EFEEF4", dark: "21252B")
     static let tandockAccent = Color.tandockDynamic(light: "FF5A4E", dark: "FF7D72")
     static let tandockAccentText = Color.tandockDynamic(light: "C3301F", dark: "FF8F85")
-    static let tandockCard = Color.tandockDynamic(light: "FCFCFE", dark: "1B1840")
-    static let tandockRowLitBase = Color.tandockDynamic(light: "E1E0E6", dark: "1F1D35")
-    static let tandockSelection = Color.tandockDynamic(light: "FFFFFF", dark: "2A2658")
+    static let tandockCard = Color.tandockDynamic(light: "FCFCFE", dark: "282C34")
+    static let tandockRowLitBase = Color.tandockDynamic(light: "E1E0E6", dark: "2C313A")
+    static let tandockSelection = Color.tandockDynamic(light: "FFFFFF", dark: "3A3F4B")
     static let tandockHairline = Color(nsColor: NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor.white.withAlphaComponent(0.07)
@@ -471,6 +472,18 @@ extension WorkspaceModel {
 enum TandockAppearanceProbe {
     static var prefersDark: Bool {
         NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    /// Sets the app-wide appearance synchronously so `activeTheme` resolves against the new value in the same pass.
+    /// `.preferredColorScheme` flips it only after the render, leaving terminal colors on the previous scheme when returning to system.
+    static func apply(themeID: String) {
+        let name: NSAppearance.Name? = switch themeID {
+        case TandockThemeCatalog.light.id: .aqua
+        case TandockThemeCatalog.dark.id: .darkAqua
+        default: nil
+        }
+        let appearance = name.flatMap(NSAppearance.init(named:))
+        if NSApp?.appearance?.name != appearance?.name { NSApp?.appearance = appearance }
     }
 }
 

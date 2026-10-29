@@ -179,15 +179,9 @@ struct BasicSettingsView: View {
     @State private var selectedSection: SettingsSection = .appearance
     @State private var editingAgent: AgentEditorState?
     private var l10n: TandockLocalization { TandockLocalization(locale: model.appearance.locale) }
+    @Environment(\.colorScheme) private var colorScheme
     private var theme: TandockThemeOption {
-        TandockThemeCatalog.resolve(id: model.appearance.theme, prefersDark: TandockAppearanceProbe.prefersDark)
-    }
-    private var preferredScheme: ColorScheme? {
-        switch model.appearance.theme {
-        case TandockThemeCatalog.light.id: .light
-        case TandockThemeCatalog.dark.id: .dark
-        default: nil
-        }
+        TandockThemeCatalog.resolve(id: model.appearance.theme, prefersDark: colorScheme == .dark)
     }
 
     var body: some View {
@@ -213,9 +207,10 @@ struct BasicSettingsView: View {
                 .keyboardShortcut(.cancelAction)
                 .opacity(0)
                 .accessibilityHidden(true)
+            SettingsWindowChrome()
         }
         .environment(\.tandockL10n, l10n)
-        .preferredColorScheme(preferredScheme)
+        .onChange(of: model.appearance.theme) { _, id in TandockAppearanceProbe.apply(themeID: id) }
         .tint(Color(themeHex: theme.accent))
         .onChange(of: model.notifications) { _, _ in model.save() }
         .onChange(of: model.appearance) { _, _ in model.save() }
@@ -901,4 +896,15 @@ private extension String {
     var lines: [String] {
         split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
+}
+
+/// The content runs under the titlebar, so the system title would sit on the sidebar edge; the section header names the page instead.
+private struct SettingsWindowChrome: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async { view.window?.titleVisibility = .hidden }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {}
 }

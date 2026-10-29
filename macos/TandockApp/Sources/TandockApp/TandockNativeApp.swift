@@ -206,7 +206,6 @@ private struct NativeRootView: View {
         presentedWorkspace
             .environment(\.tandockL10n, TandockLocalization(locale: model.locale))
             .dynamicTypeSize(model.uiDynamicTypeSize)
-            .preferredColorScheme(model.preferredColorScheme)
             .tint(Color(hex: model.activeTheme.accent))
             .background(Color.tandockChrome)
     }

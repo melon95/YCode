@@ -68,6 +68,20 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     @MainActor private var loggedFirstFeed = false
 
     @MainActor private var attachedViews: [WeakTerminalView] = []
+    /// While output is fed to views, only this view's query replies reach the PTY; nil during backlog replay.
+    @MainActor private var replyOwner: ObjectIdentifier?
+    @MainActor private var isFeedingViews = false
+
+    /// Colors the headless mirror reports to OSC 4/10/11 queries when no view is attached.
+    @MainActor public static var terminalTheme: TandockTerminalTheme? {
+        didSet {
+            guard terminalTheme != oldValue else { return }
+            for runtime in liveRuntimes.allObjects { runtime.applyTerminalTheme() }
+        }
+    }
+    @MainActor private static let liveRuntimes = NSHashTable<TandockAgentRuntime>.weakObjects()
+    /// Light/dark state handed to newly launched TUIs through their environment.
+    @MainActor public static var terminalAppearance: TandockTerminalAppearance?
     @MainActor public var attachedViewCount: Int {
         attachedViews.removeAll { $0.value == nil }
         return attachedViews.count
@@ -97,6 +111,8 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
     @MainActor
     public func start(_ plan: TandockAgentLaunchPlan) {
         guard processIdentifier < 0 else { return }
+        Self.liveRuntimes.add(self)
+        applyTerminalTheme()
         status = .starting
         startupTrace = plan.startupTrace
         var arguments = plan.arguments
@@ -149,9 +165,27 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
             startupTrace?.mark("first_view.attached")
         }
         if !backlog.bytes.isEmpty {
+            // Replaying old output must not answer queries the process asked long ago.
+            isFeedingViews = true
+            replyOwner = nil
             view.feed(byteArray: ArraySlice(backlog.bytes))
+            isFeedingViews = false
             logFirstViewFeed()
         }
+    }
+
+    /// Whether a reply a view produced (query answer or mouse report) should be written to the PTY.
+    @MainActor
+    public func acceptsReply(from view: TerminalView) -> Bool {
+        !isFeedingViews || replyOwner == ObjectIdentifier(view)
+    }
+
+    @MainActor
+    private func applyTerminalTheme() {
+        guard let theme = Self.terminalTheme else { return }
+        if let background = theme.swiftTermBackground { terminal.backgroundColor = background }
+        if let foreground = theme.swiftTermForeground { terminal.foregroundColor = foreground }
+        terminal.installPalette(colors: theme.swiftTermPalette)
     }
 
     @MainActor
@@ -247,10 +281,14 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
             }
         }
         attachedViews.removeAll { $0.value == nil }
-        for view in attachedViews.compactMap(\.value) {
+        isFeedingViews = true
+        for (index, view) in attachedViews.compactMap(\.value).enumerated() {
+            replyOwner = index == 0 ? ObjectIdentifier(view) : nil
             view.feed(byteArray: ArraySlice(bytes))
             logFirstViewFeed()
         }
+        isFeedingViews = false
+        replyOwner = nil
         NotificationCenter.default.post(name: .tandockSessionOutput, object: id)
         onOutput?(bytes)
         if !status.isLive { retireAfterDrainingOutput() }
@@ -281,7 +319,12 @@ public final class TandockAgentRuntime: NSObject, @unchecked Sendable, LocalProc
         )
     }
 
-    public func send(source: Terminal, data: ArraySlice<UInt8>) { send(data) }
+    public func send(source: Terminal, data: ArraySlice<UInt8>) {
+        // An attached view answers the same query with its themed colors; the mirror only speaks when nobody is watching.
+        let hasView = MainActor.assumeIsolated { attachedViews.contains { $0.value != nil } }
+        guard !hasView else { return }
+        send(data)
+    }
 
     public func setTerminalTitle(source: Terminal, title: String) {
         self.title = title
@@ -398,5 +441,22 @@ public final class TandockSessionProcessPool {
             try? await Task.sleep(for: .milliseconds(20))
         }
         return !runtime.status.isLive
+    }
+}
+
+extension TandockTerminalTheme {
+    public var swiftTermBackground: SwiftTerm.Color? { Self.swiftTermColor(hex: background) }
+    public var swiftTermForeground: SwiftTerm.Color? { Self.swiftTermColor(hex: foreground) }
+    /// Empty unless all 16 entries parse, which SwiftTerm treats as "keep the current palette".
+    public var swiftTermPalette: [SwiftTerm.Color] {
+        let colors = ansi.compactMap(Self.swiftTermColor(hex:))
+        return colors.count == 16 ? colors : []
+    }
+
+    static func swiftTermColor(hex: String) -> SwiftTerm.Color? {
+        var raw = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.hasPrefix("#") { raw.removeFirst() }
+        guard raw.count == 6, let value = Int(raw, radix: 16) else { return nil }
+        return SwiftTerm.Color(red8: UInt16((value >> 16) & 0xff), green8: UInt16((value >> 8) & 0xff), blue8: UInt16(value & 0xff))
     }
 }

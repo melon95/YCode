@@ -108,9 +108,9 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
   --m-ph:transparent; --m-ph-line:#efeef4; --m-ph-text:#6a6787; --m-ph-focus:transparent; --m-ph-focus-text:#16133a;
   --m-term-text:#16133a; --m-term-dim:#908dac; --m-term-accent:#c3301f; --m-term-good:#1f8a57; --m-term-warn:#b27800; --m-term-line:#efeef4; --m-cursor:#ff5a4e; }
 .dir-b .m-row.m-on { box-shadow: 0 1px 2px rgba(22,19,58,.08); }
-.dir-b.dark { --m-bg:#110f28; --m-edge:rgba(255,255,255,.07); --m-text:#f1f0f8; --m-text-soft:#c9c6de; --m-muted:#8d89ad;
-  --m-field:#1f1c47; --m-sel:#1f1c47; --m-sel-text:#fff; --m-canvas:#110f28; --m-seg-on:#2e2a5e; --m-accent:#ff7d72;
-  --m-term:#1b1840; --m-pane-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 10px 24px -10px rgba(0,0,0,.6); --m-pane-border: 0;
+.dir-b.dark { --m-bg:#21252b; --m-edge:rgba(255,255,255,.07); --m-text:#d7dae0; --m-text-soft:#abb2bf; --m-muted:#9da5b4;
+  --m-field:#2c313a; --m-sel:#3a3f4b; --m-sel-text:#fff; --m-canvas:#21252b; --m-seg-on:#2e2a5e; --m-accent:#ff7d72;
+  --m-term:#282c34; --m-pane-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 10px 24px -10px rgba(0,0,0,.6); --m-pane-border: 0;
   --m-focus-shadow: 0 0 0 1px #ff7d72, 0 0 0 4px rgba(255,125,114,.16), 0 12px 28px -12px rgba(255,90,78,.35); --m-focus-border: 0;
   --m-ph-line:#25224f; --m-ph-text:#8d89ad; --m-ph-focus-text:#fff;
   --m-term-text:#e6e3f2; --m-term-dim:#7f7c9c; --m-term-accent:#ff8f85; --m-term-good:#6fdca0; --m-term-warn:#ffc83d; --m-term-line:#25224f; --m-cursor:#ffc83d; }
@@ -311,15 +311,15 @@ table.doc-table { width: 100%; border-collapse: collapse; background: var(--doc-
 <h2 class="doc-h2">选定后要统一的规约<small>以 B 为例，会写进 spec</small></h2>
 <table class="doc-table">
   <tr><th style="width:170px">项</th><th>浅色</th><th>深色</th><th>说明</th></tr>
-  <tr><td>窗口底</td><td><span class="doc-chip" style="background:#efeef4"></span><code>#efeef4</code></td><td><span class="doc-chip" style="background:#110f28"></span><code>#110f28</code></td><td>侧栏、顶栏融入底色，不画分隔线</td></tr>
-  <tr><td>卡片 / 终端底</td><td><span class="doc-chip" style="background:#fcfcfe"></span><code>#fcfcfe</code></td><td><span class="doc-chip" style="background:#1b1840"></span><code>#1b1840</code></td><td>窗格、面板区卡片、新会话卡片共用</td></tr>
-  <tr><td>正文 / 次要文字</td><td><code>#16133a</code> / <code>#6a6787</code></td><td><code>#f1f0f8</code> / <code>#8d89ad</code></td><td>取代系统灰，带同一紫调</td></tr>
+  <tr><td>窗口底</td><td><span class="doc-chip" style="background:#efeef4"></span><code>#efeef4</code></td><td><span class="doc-chip" style="background:#21252b"></span><code>#21252b</code></td><td>侧栏、顶栏融入底色，不画分隔线。深色取 One Dark 界面色（2026-10-28 起）</td></tr>
+  <tr><td>卡片 / 终端底</td><td><span class="doc-chip" style="background:#fcfcfe"></span><code>#fcfcfe</code></td><td><span class="doc-chip" style="background:#282c34"></span><code>#282c34</code></td><td>窗格、面板区卡片、新会话卡片共用</td></tr>
+  <tr><td>正文 / 次要文字</td><td><code>#16133a</code> / <code>#6a6787</code></td><td><code>#d7dae0</code> / <code>#9da5b4</code></td><td>取代系统灰；浅色带紫调，深色用 One Dark 中性灰</td></tr>
   <tr><td>强调色</td><td><span class="doc-chip" style="background:#ff5a4e"></span><code>#ff5a4e</code></td><td><span class="doc-chip" style="background:#ff7d72"></span><code>#ff7d72</code></td><td>焦点、选中、主按钮；小字号上的文字用 <code>#c3301f</code> 保证对比度</td></tr>
   <tr><td>终端光标</td><td><code>#ff5a4e</code></td><td><code>#ffc83d</code></td><td>深色下黄色光标更醒目</td></tr>
   <tr><td>卡片形态</td><td colspan="2">圆角 11px；间距 8px；阴影 <code>0 1px 2px / 6%</code> + <code>0 6px 18px -8px / 18%</code></td><td>四档圆角里的 card 档从 10 调到 11，其余不变</td></tr>
   <tr><td>焦点</td><td colspan="2">1px 珊瑚描边 + 3px 珊瑚光晕（16% 不透明度）；窗格头不再整条上色</td><td>焦点只有一种表达，全 App 统一</td></tr>
   <tr><td>选中行（侧栏）</td><td>白底 + 1px 阴影</td><td><code>#1f1c47</code></td><td>取代蓝色实心选中条</td></tr>
-  <tr><td>可访问性</td><td colspan="2">正文对比度 15:1 以上，次要文字 ≥ 4.6:1（浅色 <code>#6a6787</code>、深色 <code>#8d89ad</code>）；珊瑚色 <code>#ff5a4e</code> 只用于描边和图形（3:1），不用于文字；焦点不只靠颜色（描边 + 光晕 + 窗格头文字加粗）；键盘焦点环沿用同一描边样式</td><td>尊重「减少透明度」时阴影、光晕退化为实线</td></tr>
+  <tr><td>可访问性</td><td colspan="2">正文对比度 15:1 以上，次要文字 ≥ 4.6:1（浅色 <code>#6a6787</code>；深色 <code>#9da5b4</code>，在卡片上 5.6:1）；珊瑚色 <code>#ff5a4e</code> 只用于描边和图形（3:1），不用于文字；焦点不只靠颜色（描边 + 光晕 + 窗格头文字加粗）；键盘焦点环沿用同一描边样式</td><td>尊重「减少透明度」时阴影、光晕退化为实线</td></tr>
 </table>
 
 </div>

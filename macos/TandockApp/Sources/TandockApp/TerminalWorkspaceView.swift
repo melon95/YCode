@@ -543,6 +543,9 @@ private struct TandockTerminalView: NSViewRepresentable {
         view.selectedTextBackgroundColor = theme.nsAccent.withAlphaComponent(0.35)
         view.selectedTextForegroundColor = theme.nsText
         view.layer?.backgroundColor = theme.nsTerminalBackground.cgColor
+        let palette = theme.terminal.swiftTermPalette
+        if !palette.isEmpty { view.installColors(palette) }
+        view.needsLayout = true
     }
 
     @MainActor
@@ -645,7 +648,9 @@ private struct TandockTerminalView: NSViewRepresentable {
             workingDirectory = URL(fileURLWithPath: directory)
         }
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
-            if !data.isEmpty, (source as? TandockHostedTerminalView)?.isSendingTerminalReply == false {
+            let isReply = (source as? TandockHostedTerminalView)?.isSendingTerminalReply
+            if isReply == true, !runtime.acceptsReply(from: source) { return }
+            if !data.isEmpty, isReply == false {
                 onUserInput()
             }
             runtime.send(data)

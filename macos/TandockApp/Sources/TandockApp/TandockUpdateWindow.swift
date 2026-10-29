@@ -47,7 +47,7 @@ final class TandockUpdateWindowController: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? (NSColor(hex: "110F28") ?? .windowBackgroundColor)
+                ? (NSColor(hex: "21252B") ?? .windowBackgroundColor)
                 : (NSColor(hex: "EFEEF4") ?? .windowBackgroundColor)
         }
         window.delegate = self

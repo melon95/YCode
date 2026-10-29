@@ -163,6 +163,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var uiFontSize: CGFloat = 14
     @Published private(set) var editorFontSize: CGFloat = 14
     @Published private(set) var themeID: String = TandockThemeCatalog.defaultID
+    private var appearanceObservation: NSKeyValueObservation?
     @Published private(set) var locale: TandockLocale = .zh
     @Published private(set) var selectedTerminalPath: URL?
     @Published private(set) var terminalSearchSessionID: String?
@@ -319,6 +320,14 @@ final class WorkspaceModel: ObservableObject {
         startTitleMonitoring()
         importDiscoveredSessions()
         startIdleArchiveSweep()
+        // `activeTheme` follows the system appearance in system mode; republish so terminals pick up the new colors.
+        appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.publishTerminalAppearance()
+                self.objectWillChange.send()
+            }
+        }
     }
 
     private func startIdleArchiveSweep() {
@@ -398,13 +407,6 @@ final class WorkspaceModel: ObservableObject {
         TandockThemeCatalog.resolve(id: themeID, prefersDark: TandockAppearanceProbe.prefersDark)
     }
 
-    var preferredColorScheme: ColorScheme? {
-        switch themeID {
-        case TandockThemeCatalog.light.id: .light
-        case TandockThemeCatalog.dark.id: .dark
-        default: nil
-        }
-    }
     var l10n: TandockLocalization { TandockLocalization(locale: locale) }
 
     func recordLiveTitle(sessionID: String, title: String) {
@@ -1942,8 +1944,21 @@ final class WorkspaceModel: ObservableObject {
         )
     }
 
+    private func publishTerminalAppearance() {
+        let theme = activeTheme
+        TandockAgentRuntime.terminalTheme = theme.terminal
+        let dark = theme == TandockThemeCatalog.dark
+        TandockAgentRuntime.terminalAppearance = switch themeID {
+        case TandockThemeCatalog.light.id: .light
+        case TandockThemeCatalog.dark.id: .dark
+        default: .followingSystem(dark: dark)
+        }
+    }
+
     private func applyAppearance(_ appearance: TandockAppearanceSettings) {
+        TandockAppearanceProbe.apply(themeID: appearance.theme)
         themeID = appearance.theme
+        publishTerminalAppearance()
         locale = appearance.locale
         for workspace in editorWorkspaces.values { workspace.locale = appearance.locale }
         uiFontSize = CGFloat(appearance.fontSizes.ui)

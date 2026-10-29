@@ -165,7 +165,8 @@ public final class TandockProjectShellPool {
         let plan = Self.makeLaunchPlan(
             workingDirectory: workingDirectory,
             shell: shell,
-            environment: hostEnvironment
+            environment: hostEnvironment,
+            terminalAppearance: TandockAgentRuntime.terminalAppearance
         )
         let runtime = TandockAgentRuntime(id: paneID)
         runtimes[paneID] = runtime
@@ -200,7 +201,8 @@ public final class TandockProjectShellPool {
     public static func makeLaunchPlan(
         workingDirectory: URL,
         shell: String? = nil,
-        environment hostEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        environment hostEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        terminalAppearance: TandockTerminalAppearance? = nil
     ) -> TandockAgentLaunchPlan {
         let requested = shell ?? hostEnvironment["SHELL"]
         let executable = requested.flatMap { $0.isEmpty ? nil : $0 }
@@ -210,7 +212,9 @@ public final class TandockProjectShellPool {
         environment["COLORTERM"] = "truecolor"
         environment["CLICOLOR"] = "1"
         environment["CLICOLOR_FORCE"] = "1"
+        if environment["FORCE_COLOR"] == nil { environment["FORCE_COLOR"] = "3" }
         environment.removeValue(forKey: "NO_COLOR")
+        if let terminalAppearance { TandockAgentLauncher.applyTerminalAppearance(terminalAppearance, to: &environment) }
         return TandockAgentLaunchPlan(
             executableURL: URL(fileURLWithPath: executable),
             arguments: ["-l", "-i"],
