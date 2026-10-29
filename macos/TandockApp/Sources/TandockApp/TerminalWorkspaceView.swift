@@ -655,7 +655,9 @@ private struct TandockTerminalView: NSViewRepresentable {
             }
             runtime.send(data)
         }
-        func scrolled(source: TerminalView, position: Double) {}
+        func scrolled(source: TerminalView, position: Double) {
+            (source as? TandockHostedTerminalView)?.scrollPositionChanged()
+        }
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
@@ -712,5 +714,128 @@ private final class TandockHostedTerminalView: TerminalView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if bounds.width > 1, bounds.height > 1 { onUsableSize?() }
+    }
+
+    private let scrollIndicator = TandockTerminalScrollIndicator()
+
+    override func layout() {
+        super.layout()
+        if subviews.last !== scrollIndicator { addSubview(scrollIndicator) }
+        let scroller = subviews.first { $0 is NSScroller }
+        let width = scroller?.frame.width ?? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
+        scrollIndicator.frame = NSRect(x: bounds.maxX - width, y: 0, width: width, height: bounds.height)
+        refreshScrollIndicator()
+    }
+
+    func scrollPositionChanged() {
+        refreshScrollIndicator()
+        if isUserScrolling { scrollIndicator.flash() }
+    }
+
+    private func refreshScrollIndicator() {
+        scrollIndicator.knobColor = nativeForegroundColor
+        scrollIndicator.update(position: scrollPosition, proportion: scrollThumbsize, canScroll: canScroll)
+    }
+
+    /// `scrolled` also fires while output streams in; only a fresh wheel or scroller drag should reveal the knob.
+    private var isUserScrolling: Bool {
+        guard let event = NSApp.currentEvent, event.window === window,
+              ProcessInfo.processInfo.systemUptime - event.timestamp < 0.3 else { return false }
+        return [.scrollWheel, .leftMouseDown, .leftMouseDragged].contains(event.type)
+    }
+}
+
+/// SwiftTerm's overlay NSScroller sits outside an NSScrollView, so AppKit never fades its knob in.
+/// This draws the knob instead; the real scroller underneath still handles clicks and drags.
+@MainActor
+final class TandockTerminalScrollIndicator: NSView {
+    static let knobWidth: CGFloat = 7
+    static let minimumKnobHeight: CGFloat = 24
+    private static let inset: CGFloat = 3
+    private static let visibleDuration: TimeInterval = 1.0
+
+    private let knob = CALayer()
+    private var hovering = false
+    private var canScroll = false
+    private var fadeWork: DispatchWorkItem?
+
+    var knobColor: NSColor = .labelColor {
+        didSet { knob.backgroundColor = knobColor.withAlphaComponent(0.4).cgColor }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        knob.cornerRadius = Self.knobWidth / 2
+        knob.backgroundColor = knobColor.withAlphaComponent(0.4).cgColor
+        layer?.addSublayer(knob)
+        alphaValue = 0
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Knob frame in unflipped coordinates; `position` 0 is the top of the scrollback, 1 the live bottom.
+    static func knobFrame(in bounds: CGRect, position: Double, proportion: CGFloat) -> CGRect {
+        let track = bounds.insetBy(dx: 0, dy: inset)
+        let height = min(track.height, max(minimumKnobHeight, track.height * proportion))
+        let progress = CGFloat(min(1, max(0, position)))
+        let y = track.minY + (track.height - height) * (1 - progress)
+        return CGRect(x: bounds.maxX - inset - knobWidth, y: y, width: knobWidth, height: height)
+    }
+
+    func update(position: Double, proportion: CGFloat, canScroll: Bool) {
+        self.canScroll = canScroll
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        knob.frame = Self.knobFrame(in: bounds, position: position, proportion: proportion)
+        CATransaction.commit()
+        if !canScroll {
+            fadeWork?.cancel()
+            alphaValue = 0
+        } else if NSScroller.preferredScrollerStyle == .legacy {
+            fadeWork?.cancel()
+            alphaValue = 1
+        }
+    }
+
+    func flash() {
+        guard canScroll else { return }
+        setVisible(true)
+        scheduleFade()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        guard canScroll else { return }
+        fadeWork?.cancel()
+        setVisible(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        scheduleFade()
+    }
+
+    private func scheduleFade() {
+        fadeWork?.cancel()
+        guard !hovering, NSScroller.preferredScrollerStyle == .overlay else { return }
+        let work = DispatchWorkItem { [weak self] in self?.setVisible(false) }
+        fadeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.visibleDuration, execute: work)
+    }
+
+    private func setVisible(_ visible: Bool) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = visible ? 0.1 : 0.3
+            animator().alphaValue = visible ? 1 : 0
+        }
     }
 }
