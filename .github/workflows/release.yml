@@ -19,12 +19,12 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     permissions:
       contents: write
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -56,6 +56,8 @@ jobs:
           for name in CERTIFICATE CERTIFICATE_PASSWORD APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD SPARKLE_KEY; do
             [[ -n "${!name}" ]] || { echo "Missing release credential: $name (see docs/macos-native/github-release.md)"; exit 1; }
           done
+      - name: Ensure Metal toolchain
+        run: xcrun metal --version >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
       - name: Run tests
         run: |
           swift test --package-path macos --force-resolved-versions --no-parallel
