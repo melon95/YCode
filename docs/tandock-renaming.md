@@ -21,7 +21,7 @@
 | `dev.ycode.ycode`、`ycode.db` | 继续读取已有项目、会话、待办和设置 |
 | `YCODE_*` 环境变量、CLI socket 和内部通知命名空间 | 保持已有脚本、Agent hook 和进程通信兼容 |
 | `ycode-todos`、`_ycode_managed`、`ycode-managed*` | 识别原有 MCP/hook 注册，避免重复安装或误删其他配置 |
-| `.ycode.bak`、`.ycode-backups`、旧窗口布局和导入键 | 继续识别已有备份和布局 |
+| `.ycode.bak`、`.ycode-backups`、旧窗口布局和导入键 | 继续识别已有备份和布局；新的 Agent 配置备份统一写到 `~/Library/Application Support/Tandock/config-backups/`，每个文件保留最近 5 份 |
 | `ycode://` | 兼容已有深链；新链接使用 `tandock://` |
 
 应用包内保留旧辅助程序名称作为符号链接。若升级时手动移动或重命名了应用所在路径，需要在设置中重新注册 MCP/hook；新的终端命令可在「设置 → 集成」安装为 `tandock`。

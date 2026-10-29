@@ -240,15 +240,37 @@ public actor TandockAgentCustomizationService {
         guard try read(url) == expected else { throw TandockCustomizationError.changedOnDisk }
         let destination = url.resolvingSymlinksInPath()
         try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let expected {
-            let backups = url.deletingLastPathComponent().appendingPathComponent(".ycode-backups", isDirectory: true)
-            try fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let backup = backups.appendingPathComponent(url.lastPathComponent + "." + UUID().uuidString)
-            try expected.write(to: backup, options: .atomic)
-            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
-        }
+        if let expected { try backUp(expected, of: url) }
         let permissions = (try? fm.attributesOfItem(atPath: destination.path)[.posixPermissions]) ?? 0o600
+        // Re-check right before the atomic replace: agents rewrite these files on their own, and the
+        // backup above widened the window in which their edit would be overwritten.
+        guard try read(url) == expected else { throw TandockCustomizationError.changedOnDisk }
         try data.write(to: destination, options: .atomic)
         try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: destination.path)
+    }
+
+    static let backupsKept = 5
+
+    var backupDirectory: URL {
+        home.appendingPathComponent("Library/Application Support/Tandock/config-backups", isDirectory: true)
+    }
+
+    /// Backups live outside the edited folder so project-scope copies never land inside a repository,
+    /// and only the newest few per file are kept because a copy of `~/.claude.json` can be megabytes.
+    private func backUp(_ contents: Data, of url: URL) throws {
+        try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        // `#` never survives the escaping, so `config#` cannot be a prefix of `config.json#…`.
+        let prefix = url.standardizedFileURL.path.replacingOccurrences(of: "%", with: "%25")
+            .replacingOccurrences(of: "/", with: "%2F").replacingOccurrences(of: "#", with: "%23") + "#"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss.SSS"
+        let backup = backupDirectory.appendingPathComponent(prefix + formatter.string(from: Date()) + "-" + UUID().uuidString.prefix(8))
+        try contents.write(to: backup, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        let siblings = try fm.contentsOfDirectory(atPath: backupDirectory.path).filter { $0.hasPrefix(prefix) }.sorted()
+        for stale in siblings.dropLast(Self.backupsKept) {
+            try? fm.removeItem(at: backupDirectory.appendingPathComponent(stale))
+        }
     }
 }

@@ -61,9 +61,26 @@ struct AgentCustomizationTests {
         #expect(scoped.skills.first?.enabled == true)
         #expect((await f.service.snapshot(agent: .claude)).skills.first?.enabled == false)
         #expect(try f.text(".claude/settings.local.json", project: true).contains("on"))
-        let backups = try FileManager.default.contentsOfDirectory(at: f.home.appendingPathComponent(".claude/.ycode-backups"), includingPropertiesForKeys: nil)
+        let backupRoot = f.home.appendingPathComponent("Library/Application Support/Tandock/config-backups")
+        let backups = try FileManager.default.contentsOfDirectory(at: backupRoot, includingPropertiesForKeys: nil)
         #expect(!backups.isEmpty)
         #expect(try backups.allSatisfy { ((try FileManager.default.attributesOfItem(atPath: $0.path)[.posixPermissions]) as? NSNumber)?.intValue == 0o600 })
+        #expect(!FileManager.default.fileExists(atPath: f.project.appendingPathComponent(".claude/.ycode-backups").path))
+        #expect(!FileManager.default.fileExists(atPath: f.home.appendingPathComponent(".claude/.ycode-backups").path))
+
+        for index in 0..<8 {
+            try await f.service.setSkillEnabled(index.isMultiple(of: 2), record: skill, agent: .claude, project: nil)
+        }
+        let userSettings = f.home.appendingPathComponent(".claude/settings.json").path.replacingOccurrences(of: "/", with: "%2F")
+        let kept = try FileManager.default.contentsOfDirectory(atPath: backupRoot.path).filter { $0.hasPrefix(userSettings + "#") }
+        #expect(kept.count == TandockAgentCustomizationService.backupsKept)
+
+        let backupsBefore = try FileManager.default.contentsOfDirectory(atPath: backupRoot.path).filter { $0.hasPrefix(userSettings + "#") }
+        let collider = backupRoot.appendingPathComponent(userSettings.replacingOccurrences(of: ".json", with: "") + "#20000101-000000.000-aaaaaaaa")
+        try Data("other file".utf8).write(to: collider)
+        try await f.service.setSkillEnabled(true, record: skill, agent: .claude, project: nil)
+        #expect(FileManager.default.fileExists(atPath: collider.path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: backupRoot.path).filter { $0.hasPrefix(userSettings + "#") }.count == backupsBefore.count)
     }
 
     @Test("shared symlink skills stay in place and CODEX_HOME is respected")
