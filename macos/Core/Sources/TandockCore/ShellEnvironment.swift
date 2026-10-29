@@ -232,7 +232,8 @@ public final class TandockShellEnvironmentStore: @unchecked Sendable {
         let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
         if process.isRunning {
-            kill(-process.processIdentifier, SIGKILL)
+            // Fall back to the shell itself if it ever is not a group leader; otherwise `waitUntilExit` never returns.
+            if kill(-process.processIdentifier, SIGKILL) != 0 { _ = kill(process.processIdentifier, SIGKILL) }
             process.waitUntilExit()
             return .failure(.timedOut)
         }
@@ -289,7 +290,7 @@ public final class TandockShellEnvironmentStore: @unchecked Sendable {
     }
 }
 
-private final class ResumeOnce: @unchecked Sendable {
+final class ResumeOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var claimed = false
 

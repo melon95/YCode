@@ -80,6 +80,21 @@ struct ShellEnvironmentTests {
         #expect(TandockShellEnvironmentStore.resolveWithShell("/opt/homebrew/bin/nu", home, host, 1) == .failure(.unsupportedShell))
     }
 
+    @Test("a hanging bash login also times out and its shell is killed")
+    func bashTimeoutWithoutProcessGroup() throws {
+        let home = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try Data("trap '' TERM\necho $$ > \"$HOME/shell.pid\"\nwhile :; do :; done\n".utf8)
+            .write(to: home.appendingPathComponent(".bash_profile"))
+        let host = ["HOME": home.path, "PATH": "/usr/bin:/bin"]
+        let start = Date()
+        #expect(TandockShellEnvironmentStore.resolveWithShell("/bin/bash", home, host, 0.5) == .failure(.timedOut))
+        #expect(Date().timeIntervalSince(start) < 5)
+        let text = try String(contentsOf: home.appendingPathComponent("shell.pid"), encoding: .utf8)
+        let pid = try #require(pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)))
+        #expect(kill(pid, 0) != 0, "bash still running")
+    }
+
     @Test("store coalesces resolves, falls back to home and keeps the last good snapshot")
     func storeBehaviour() async throws {
         let calls = Counter()
