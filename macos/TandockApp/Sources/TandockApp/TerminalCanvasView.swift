@@ -166,8 +166,19 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         let local = convert(point, from: superview)
         let active = dividers.values.filter { !$0.isHidden && $0.alphaValue > 0.01 }
         if let exact = closest(active.filter { $0.layoutFrame.contains(local) }, to: local) { return exact }
-        if let grabbed = closest(active.filter { $0.frame.contains(local) }, to: local) { return grabbed }
+        if let grabbed = closest(active.filter { $0.frame.contains(local) }, to: local) {
+            // The grab band overlaps the cards' edges; a scroller or control sitting there keeps its clicks.
+            if let underneath = contentHit(at: local), underneath.isInteractiveControl { return underneath }
+            return grabbed
+        }
         return super.hitTest(point)
+    }
+
+    private func contentHit(at local: CGPoint) -> NSView? {
+        for subview in subviews.reversed() where !(subview is TandockCanvasDivider) && !subview.isHidden {
+            if let hit = subview.hitTest(local) { return hit }
+        }
+        return nil
     }
 
     private func grabFrame(for gap: CGRect, vertical: Bool) -> CGRect {
@@ -390,7 +401,9 @@ final class TandockCanvasHost<ID: Hashable>: NSView {
         }
         for divider in geometry.dividers {
             let view = dividers[divider.id] ?? TandockCanvasDivider(frame: .zero)
-            addSubview(view)
+            // Dividers must stay above the cards, but re-adding one mid-drag resets its cursor rects.
+            let topCard = subviews.lastIndex { !($0 is TandockCanvasDivider) } ?? -1
+            if view.superview !== self || (subviews.firstIndex(of: view) ?? -1) < topCard { addSubview(view) }
             view.isVertical = divider.isVertical
             view.layoutFrame = placed(divider.frame)
             view.frame = grabFrame(for: view.layoutFrame, vertical: view.isVertical)
@@ -725,4 +738,15 @@ private final class TandockCanvasDivider: NSView {
     }
     override func accessibilityPerformIncrement() -> Bool { onResize?(20); return true }
     override func accessibilityPerformDecrement() -> Bool { onResize?(-20); return true }
+}
+
+private extension NSView {
+    var isInteractiveControl: Bool {
+        var view: NSView? = self
+        while let current = view {
+            if current is NSScroller || current is NSControl { return true }
+            view = current.superview
+        }
+        return false
+    }
 }

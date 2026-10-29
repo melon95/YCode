@@ -348,6 +348,24 @@ struct TerminalCanvasTransitionTests {
         try expectDrag(canvas, vertical: false, distance: 28)
     }
 
+    @Test("a scroller at the card edge keeps its clicks inside the divider grab band")
+    func scrollerBeatsGrabBand() throws {
+        let (window, canvas) = fixture()
+        defer { canvas.cancelTransition(); window.close() }
+        update(canvas, .columns, reduced: true)
+        let panes = slots(canvas).sorted { $0.frame.minX < $1.frame.minX }
+        let splitter = try #require(canvas.subviews.first { $0.accessibilityRole() == .splitter && $0.frame.width < $0.frame.height })
+        let scroller = NSScroller(frame: NSRect(x: panes[0].bounds.maxX - 10, y: 0, width: 10, height: panes[0].bounds.height))
+        panes[0].addSubview(scroller)
+        let edge = panes[0].convert(CGPoint(x: panes[0].bounds.maxX - 3, y: panes[0].bounds.midY), to: nil)
+        let hit = window.contentView?.hitTest(edge)
+        #expect(hit === scroller, "hit=\(String(describing: hit.map { type(of: $0) }))")
+        let gapCenter = splitter.convert(CGPoint(x: splitter.bounds.midX, y: splitter.bounds.midY), to: nil)
+        #expect(window.contentView?.hitTest(gapCenter) === splitter)
+        let plainEdge = panes[1].convert(CGPoint(x: 3, y: panes[1].bounds.midY), to: nil)
+        #expect(window.contentView?.hitTest(plainEdge) === splitter)
+    }
+
     private func expectDrag(_ canvas: TandockCanvasHost<String>, vertical: Bool, distance: CGFloat) throws {
         let panes = slots(canvas).sorted { vertical ? $0.frame.minX < $1.frame.minX : $0.frame.minY < $1.frame.minY }
         let splitter = try #require(canvas.subviews.first {
