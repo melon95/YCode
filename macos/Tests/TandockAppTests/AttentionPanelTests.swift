@@ -302,11 +302,54 @@ struct AttentionPanelTests {
         }
         #expect(model.waitingAttentionItems.isEmpty)
         #expect(otherWindow.waitingAttentionItems.isEmpty)
+        #expect(model.requiredAttentionItems.isEmpty)
+        #expect(otherWindow.requiredAttentionItems.isEmpty)
+        #expect(model.attentionStore.accept(.init(terminalID: row.id, source: "codex", eventKind: "permission_request",
+            bodyPreview: "Still waiting", runID: runID, eventID: UUID().uuidString)))
         #expect(model.requiredAttentionItems.count == 1)
         #expect(model.attentionStore.accept(.init(terminalID: row.id, source: "codex", eventKind: "turn_complete",
             bodyPreview: "Next result", runID: runID, eventID: UUID().uuidString)))
         model.acknowledgeAttention(result)
         #expect(model.waitingAttentionItems.first?.summary == "Next result")
         #expect(otherWindow.waitingAttentionItems == model.waitingAttentionItems)
+        #expect(model.requiredAttentionItems.isEmpty)
+    }
+
+    @Test("clicking into a session reads its result but leaves its approval waiting")
+    func clickingSessionReadsResult() throws {
+        let f = try Fixture(); defer { f.remove() }
+        let model = f.model(), otherWindow = f.model()
+        f.emit(f.rows[0], store: model.attentionStore)
+        f.emit(f.rows[1], store: model.attentionStore, kind: "turn_complete")
+        model.openSessionInCanvas(f.rows[0].id, mode: .newPane)
+        model.openSessionInCanvas(f.rows[1].id, mode: .newPane)
+        #expect(model.hasUnreadAttentionResults)
+        let slot = try #require(model.visibleSessionIDs.firstIndex(of: f.rows[1].id))
+        model.focusCanvasSlot(slot)
+        #expect(!model.hasUnreadAttentionResults)
+        #expect(!otherWindow.hasUnreadAttentionResults)
+        model.markSessionViewed(f.rows[0].id)
+        #expect(model.requiredAttentionItems.map(\.sessionID) == [f.rows[0].id])
+    }
+
+    @Test("opening an attention card dismisses it, and typing leaves a failure in place")
+    func cardOpenAndFailureInput() throws {
+        let f = try Fixture(); defer { f.remove() }
+        let model = f.model(), otherWindow = f.model()
+        f.emit(f.rows[0], store: model.attentionStore)
+        let approval = try #require(model.requiredAttentionItems.first)
+        model.openAttention(approval)
+        #expect(model.attentionItems.isEmpty)
+        #expect(otherWindow.attentionItems.isEmpty)
+        #expect(model.visibleSessions.isEmpty)
+
+        model.attentionStore.failedToStart(session: f.rows[1], message: "probe failed")
+        let failure = try #require(model.requiredAttentionItems.first)
+        #expect(failure.kind == .failure)
+        model.recordTerminalInteraction(sessionID: f.rows[1].id, runID: failure.runID)
+        #expect(model.requiredAttentionItems == [failure])
+        model.openAttention(failure)
+        #expect(model.attentionItems.isEmpty)
+        #expect(model.runtime(for: f.rows[1]) == nil)
     }
 }

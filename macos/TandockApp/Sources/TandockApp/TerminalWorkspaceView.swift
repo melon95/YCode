@@ -200,7 +200,9 @@ struct TerminalWorkspaceView: View {
                 focused: slot == model.focusedCanvasSlot && !(model.presentedTerminalLayout == .tabs && model.isPresentingNewSession),
                 focusRequest: model.terminalFocusRequest?.sessionID == session.id ? model.terminalFocusRequest?.token : nil,
                 searchRequest: model.terminalSearchRequest,
-                onFocus: { if model.focusedCanvasSlot != slot { model.focusCanvasSlot(slot) } },
+                onFocus: {
+                    if model.focusedCanvasSlot != slot { model.focusCanvasSlot(slot) } else { model.markSessionViewed(session.id) }
+                },
                 onFilePath: model.recordTerminalPath,
                 onTitle: { model.recordLiveTitle(sessionID: session.id, title: $0) },
                 onUserInput: { model.recordTerminalInteraction(sessionID: session.id, runID: runtime.runID) }

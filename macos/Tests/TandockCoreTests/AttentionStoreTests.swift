@@ -66,6 +66,19 @@ struct AttentionStoreTests {
         #expect(f.store.items.isEmpty)
     }
 
+    @Test("a Claude approval arriving just after typing is already answered; a later one is shown")
+    func claudeApprovalAfterTyping() throws {
+        let f = try Fixture(); defer { f.remove() }
+        let run = f.store.begin(session: f.session, source: "claude")
+        f.store.noteUserInput(sessionID: f.session.id, runID: run, at: Date(timeIntervalSince1970: 1_004))
+        #expect(!f.store.accept(f.event(runID: run, kind: "notification", source: "claude", time: 8,
+            notificationType: "permission_prompt")))
+        #expect(f.store.items.isEmpty)
+        #expect(f.store.accept(f.event(runID: run, kind: "notification", source: "claude", time: 12,
+            eventID: "still-waiting", notificationType: "permission_prompt")))
+        #expect(f.store.items.map(\.kind) == [.approval])
+    }
+
     @Test("Claude and Codex turn end retire only earlier approvals", arguments: ["claude", "codex"])
     func completedApproval(source: String) throws {
         let f = try Fixture(); defer { f.remove() }

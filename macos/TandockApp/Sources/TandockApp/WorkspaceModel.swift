@@ -561,6 +561,7 @@ final class WorkspaceModel: ObservableObject {
     func activateSession(_ session: SessionMetadata) {
         attentionNavigationSessionIDs.remove(session.id)
         openSessionInCanvas(session.id, mode: .newPane)
+        markSessionViewed(session.id)
         resumeIfNeeded(session.id)
     }
 
@@ -906,6 +907,15 @@ final class WorkspaceModel: ObservableObject {
         attentionStore.acknowledge(id: item.id, version: item.version)
     }
 
+    func openAttention(_ item: TandockAttentionItem) {
+        if let row = try? repository?.session(id: item.sessionID),
+           row.archivedAtMilliseconds == nil,
+           runtimeStatus(for: row)?.isLive == true {
+            locateAttention(item)
+        }
+        acknowledgeAttention(item)
+    }
+
     func locateAttention(_ item: TandockAttentionItem) {
         guard let row = try? repository?.session(id: item.sessionID), row.archivedAtMilliseconds == nil else {
             attentionStore.remove(sessionID: item.sessionID)
@@ -920,10 +930,18 @@ final class WorkspaceModel: ObservableObject {
     }
 
     func recordTerminalInteraction(sessionID: String, runID: String) {
-        guard let item = attentionStore.items.first(where: {
-            $0.sessionID == sessionID && $0.runID == runID && $0.kind == .completion
-        }) else { return }
-        acknowledgeAttention(item)
+        attentionStore.noteUserInput(sessionID: sessionID, runID: runID)
+        let handled = attentionStore.items.filter {
+            $0.sessionID == sessionID && $0.runID == runID && ($0.kind == .completion || $0.kind == .approval)
+        }
+        for item in handled { acknowledgeAttention(item) }
+    }
+
+    /// Clicking into a session reads its finished result; an approval still waits for an actual answer.
+    func markSessionViewed(_ sessionID: String) {
+        for item in attentionStore.items where item.sessionID == sessionID && item.kind == .completion {
+            acknowledgeAttention(item)
+        }
     }
 
     func allowsAutomaticResume(_ id: String) -> Bool { !attentionNavigationSessionIDs.contains(id) }
@@ -947,6 +965,7 @@ final class WorkspaceModel: ObservableObject {
         focusedCanvasSlot = index
         followFocusedProject()
         selectedSessionID = visibleSessionIDs[index]
+        markSessionViewed(visibleSessionIDs[index])
         if openPanels.contains(.changes) { refreshCheckpoints() }
     }
 

@@ -53,6 +53,7 @@ public final class TandockAttentionStore: ObservableObject {
     private var runs: [String: Run] = [:]
     private var revision: UInt64 = 0
     private var recent: [String: Date] = [:]
+    private var lastUserInput: [String: Date] = [:]
     private var observer: AnyCancellable?
     private let repository: ProjectWorkspaceRepository?
     private let checkpoints: TandockCheckpointService?
@@ -103,6 +104,7 @@ public final class TandockAttentionStore: ObservableObject {
             try? repository?.setAgentSessionID(id: session.id, agentSessionID: nativeID)
         }
         runs[session.id] = run
+        if answeredApproval(event, runID: runID) { return false }
         let item = upsert(session: session, runID: runID, kind: kind, summary: event.bodyPreview ?? "", event: event, date: event.occurredAt)
         if kind == .completion, let project = try? repository?.listProjects().first(where: { $0.id == session.projectID }) {
             checkpoints?.enqueueTurn(session: session, project: project, event: event)
@@ -153,6 +155,19 @@ public final class TandockAttentionStore: ObservableObject {
             return nil
         })
         for id in invalid { remove(sessionID: id) }
+    }
+
+    public func noteUserInput(sessionID: String, runID: String, at date: Date = Date()) {
+        lastUserInput["\(sessionID)\u{1f}\(runID)"] = date
+    }
+
+    /// Claude's permission notification is defined to arrive only after the prompt has waited
+    /// with no typing. Input in that window means the prompt was already answered.
+    private func answeredApproval(_ event: TandockAgentHookEvent, runID: String) -> Bool {
+        guard event.source == "claude", event.classification == .approval,
+              let inputAt = lastUserInput["\(event.terminalID)\u{1f}\(runID)"] else { return false }
+        let elapsed = event.occurredAt.timeIntervalSince(inputAt)
+        return elapsed >= 0 && elapsed < 6
     }
 
     public func acknowledge(id: String, version: UInt64) {
