@@ -68,7 +68,7 @@ struct AgentSessionRuntimeTests {
         let directory = try temporaryDirectory(named: "stage boundaries ' quoted")
         defer { try? FileManager.default.removeItem(at: directory) }
         let shell = try executable(in: directory, name: "sh", body: "#!/bin/sh\nsleep 0.2\nexec /bin/sh -c \"$4\"\n")
-        let agent = try executable(in: directory, name: "delayed-agent", body: "#!/bin/sh\nprintf '\\033[?25l'\nsleep 0.3\nprintf '%s\n' \"$1\"\nsleep 0.2\n")
+        let agent = try executable(in: directory, name: "delayed-agent", body: "#!/bin/sh\nprintf '\\033[?25l'\nsleep 1.5\nprintf '%s\n' \"$1\"\nsleep 0.2\n")
         let trace = TandockSessionStartupTrace(dataRoot: directory)
         let secret = "PRIVATE quoted ' text"
         let plan = try TandockAgentLauncher.makePlan(
@@ -93,6 +93,8 @@ struct AgentSessionRuntimeTests {
         let shellDelay = try time("shell.ready_before_exec_observed") - time("pty_start.begin")
         let textDelay = try time("first_screen_text.detected") - time("first_output.delegate_received")
         #expect(shellDelay >= 150)
+        // The agent waits 1.5 s between its first byte and its text, so even a slow CI main thread
+        // cannot deliver both in one batch; the bound only checks that the two events are kept apart.
         #expect(textDelay >= 200)
         #expect(runtime.backlogText.contains(secret))
         #expect(!runtime.backlogText.contains("ready"))
