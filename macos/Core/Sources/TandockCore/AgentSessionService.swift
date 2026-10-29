@@ -105,6 +105,7 @@ public final class TandockAgentSessionService {
         trace.mark("metadata.persisted session=\(sessionID)")
         return try await processPool.performLaunch(id: sessionID) { [self] in
             do {
+                let initialCheckpoint = TandockCompletionGate()
                 if let checkpointService {
                     trace.mark("checkpoint.queued")
                     let queued = ContinuousClock.now
@@ -115,12 +116,19 @@ public final class TandockAgentSessionService {
                         case .failure(let error):
                             trace.mark("checkpoint.failed duration_ms=\(duration) reason=\(TandockSessionStartupTrace.reason(error))")
                         }
+                        initialCheckpoint.finish()
                     }
                 } else {
                     trace.mark("checkpoint.skipped")
+                    initialCheckpoint.finish()
                 }
                 let runID = trace.runID
                 let plan = try await launchPlan(profile: profile, session: row, project: project, mode: mode, proxy: settings.proxy, runID: runID, newAgentSessionID: newNativeID, startupTrace: trace)
+                // The baseline must predate the agent's first edit. It normally finishes while the plan
+                // is built; a backed-up checkpoint queue delays the launch by at most the budget.
+                if !(await initialCheckpoint.wait(atMost: Self.initialCheckpointBudget)) {
+                    trace.mark("checkpoint.launch_before_baseline")
+                }
                 try Task.checkCancellation()
                 row = try repository.session(id: row.id)
                 guard row.archivedAtMilliseconds == nil else { throw ProjectWorkspaceError.sessionArchived(row.id) }
@@ -519,6 +527,7 @@ public final class TandockAgentSessionService {
     }
 
     private static let projectSnapshotBudget: TimeInterval = 0.5
+    private static let initialCheckpointBudget: TimeInterval = 2
 
     private func launchArguments(
         profile: TandockAgentProfile,

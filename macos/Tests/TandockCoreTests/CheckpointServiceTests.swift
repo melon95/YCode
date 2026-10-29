@@ -73,6 +73,31 @@ struct CheckpointServiceTests {
         #expect(kinds == ["initial", "turn"])
     }
 
+    @Test("completion gate releases waiters on finish and gives up after its budget")
+    func completionGate() async {
+        let early = TandockCompletionGate()
+        early.finish()
+        #expect(await early.wait(atMost: 0.1))
+
+        let late = TandockCompletionGate()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { late.finish() }
+        #expect(await late.wait(atMost: 2))
+
+        let never = TandockCompletionGate()
+        let start = Date()
+        #expect(!(await never.wait(atMost: 0.1)))
+        #expect(Date().timeIntervalSince(start) < 1)
+        never.finish()
+
+        let blocked = TandockCompletionGate()
+        let waiter = Task { await blocked.wait(atMost: 5) }
+        try? await Task.sleep(for: .milliseconds(50))
+        let cancelledAt = Date()
+        waiter.cancel()
+        #expect(!(await waiter.value))
+        #expect(Date().timeIntervalSince(cancelledAt) < 1)
+    }
+
     @Test("git usability check and log reasons carry no paths")
     func unusableGitAndReasons() throws {
         #expect(TandockGitService().isUsable)

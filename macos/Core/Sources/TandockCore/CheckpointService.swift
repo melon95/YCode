@@ -307,3 +307,65 @@ public struct TandockCheckpointService: Sendable {
         return inserted.record
     }
 }
+
+/// Lets a launch wait for a queued checkpoint, but only for a bounded time.
+final class TandockCompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var waiters: [() -> Void] = []
+
+    func finish() {
+        lock.lock()
+        finished = true
+        let pending = waiters
+        waiters = []
+        lock.unlock()
+        pending.forEach { $0() }
+    }
+
+    /// Returns whether the gate finished within `seconds`.
+    func wait(atMost seconds: TimeInterval) async -> Bool {
+        let once = ResumeOnce()
+        let cancel = LockedAction()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let giveUp = { if once.claim() { continuation.resume(returning: false) } }
+                cancel.set(giveUp)
+                lock.lock()
+                if finished {
+                    lock.unlock()
+                    if once.claim() { continuation.resume(returning: true) }
+                    return
+                }
+                waiters.append { if once.claim() { continuation.resume(returning: true) } }
+                lock.unlock()
+                DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: giveUp)
+            }
+        } onCancel: {
+            cancel.run()
+        }
+    }
+}
+
+/// Holds a closure that cancellation may run before or after it is installed.
+private final class LockedAction: @unchecked Sendable {
+    private let lock = NSLock()
+    private var action: (() -> Void)?
+    private var cancelled = false
+
+    func set(_ action: @escaping () -> Void) {
+        lock.lock()
+        let runNow = cancelled
+        self.action = action
+        lock.unlock()
+        if runNow { action() }
+    }
+
+    func run() {
+        lock.lock()
+        cancelled = true
+        let action = self.action
+        lock.unlock()
+        action?()
+    }
+}
