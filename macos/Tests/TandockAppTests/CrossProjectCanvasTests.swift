@@ -129,6 +129,68 @@ struct CrossProjectCanvasTests {
         #expect(alpha.status.isLive && secondAlphaShell.status.isLive)
     }
 
+    @Test("two windows opening a shell in the same project get separate processes")
+    func shellTabsAreUniqueAcrossWindows() throws {
+        let f = try fixture()
+        let other = WorkspaceModel(initialProjectID: f.alpha.id, dataRootOverride: f.model.dataRoot)
+        var paneIDs: [String] = []
+        defer {
+            TandockProjectShellPool.shared.terminateProjectImmediately(paneIDs: paneIDs)
+            try? FileManager.default.removeItem(at: f.model.dataRoot.deletingLastPathComponent())
+        }
+        f.model.showPanel(.terminal)
+        other.showPanel(.terminal)
+        let first = try #require(f.model.selectedShellPaneID)
+        let second = try #require(other.selectedShellPaneID)
+        paneIDs = [first, second]
+        #expect(first != second)
+        let firstShell = try #require(f.model.shellRuntime(paneID: first))
+        let secondShell = try #require(other.shellRuntime(paneID: second))
+        #expect(firstShell !== secondShell)
+        #expect(f.model.shellTabTitle(f.model.shellTabs[0]) == f.alpha.displayTitle)
+        other.addShellPane()
+        paneIDs.append(try #require(other.selectedShellPaneID))
+        other.closeShellPane(second)
+        #expect(other.shellTabs.map(\.id) == [paneIDs[2]])
+        #expect(firstShell.status.isLive)
+    }
+
+    @Test("deleting a project stops its shells and resets its todo panel in every window")
+    func projectDeletionCleansOtherWindows() async throws {
+        let f = try fixture()
+        let other = WorkspaceModel(initialProjectID: f.alpha.id, dataRootOverride: f.model.dataRoot)
+        defer { try? FileManager.default.removeItem(at: f.model.dataRoot.deletingLastPathComponent()) }
+        other.showPanel(.terminal)
+        other.addShellPane(projectID: f.beta.id)
+        let alphaShell = try #require(other.shellTabs.first { $0.projectID == f.alpha.id }?.id)
+        let betaShell = try #require(other.shellTabs.first { $0.projectID == f.beta.id }?.id)
+        defer { TandockProjectShellPool.shared.terminateProjectImmediately(paneIDs: [alphaShell, betaShell]) }
+        let betaRuntime = try #require(other.shellRuntime(paneID: betaShell))
+        other.showPanel(.todos)
+        other.selectTodoProject(f.beta.id)
+
+        f.model.selectProject(f.beta.id)
+        f.model.deleteSelectedProject()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while other.shellTabs.count != 1, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(other.shellTabs.map(\.id) == [alphaShell])
+        #expect(other.todoProject?.id == other.selectedProjectID)
+        #expect(await eventually { !betaRuntime.status.isLive })
+
+        other.closeShellPane(alphaShell)
+        #expect(other.shellTabs.isEmpty)
+        #expect(other.selectedShellPaneID == nil)
+    }
+
+    private func eventually(_ condition: () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
     @Test("the todo panel keeps its project until switched from its own menu")
     func todoPanelKeepsProject() throws {
         let f = try fixture()

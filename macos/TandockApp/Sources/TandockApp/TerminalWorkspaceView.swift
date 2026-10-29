@@ -391,7 +391,7 @@ private struct ProjectShellWorkspaceView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 3) {
                     ForEach(model.shellTabs) { tab in
-                        shellTab(tab, canClose: model.shellTabs.count > 1).id(tab.id)
+                        shellTab(tab).id(tab.id)
                     }
                 }
                 .padding(.vertical, 2)
@@ -403,7 +403,7 @@ private struct ProjectShellWorkspaceView: View {
         }
     }
 
-    private func shellTab(_ tab: TandockShellTab, canClose: Bool) -> some View {
+    private func shellTab(_ tab: TandockShellTab) -> some View {
         let selected = model.selectedShellPaneID == tab.id
         return HStack(spacing: 5) {
             Image(nsImage: TandockProjectPalette.dotImage(for: tab.projectID))
@@ -412,17 +412,15 @@ private struct ProjectShellWorkspaceView: View {
                 .foregroundStyle(selected ? Color.primary : Color.secondary)
                 .lineLimit(1)
                 .fixedSize()
-            if canClose {
-                Button { model.closeShellPane(tab.id) } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 13, height: 13)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(l10n.text("closeShellPane"))
+            Button { model.closeShellPane(tab.id) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 13, height: 13)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help(l10n.text("closeShellPane"))
         }
         .padding(.horizontal, 7)
         .frame(height: 22)
@@ -439,10 +437,15 @@ private struct ProjectShellWorkspaceView: View {
     private var content: some View {
         if let tab = model.selectedShellTab, let project = model.project(id: tab.projectID) {
             shellPane(tab.id, project: project)
-        } else {
+        } else if model.projects.isEmpty {
             TandockInspectorEmptyState(
                 title: l10n.text("shellUnavailable"),
                 message: l10n.text("selectProjectFirst")
+            )
+        } else {
+            TandockInspectorEmptyState(
+                title: l10n.text("noShellTabs"),
+                message: l10n.text("noShellTabsBody")
             )
         }
     }

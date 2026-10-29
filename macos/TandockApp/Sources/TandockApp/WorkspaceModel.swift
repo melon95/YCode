@@ -1592,16 +1592,17 @@ final class WorkspaceModel: ObservableObject {
         guard let project = (projectID ?? selectedProjectID ?? selectedShellTab?.projectID).flatMap({ self.project(id: $0) }) else { return }
         let number = nextShellNumbers[project.id, default: 1]
         nextShellNumbers[project.id] = number + 1
-        let tab = TandockShellTab(id: "shell:\(project.id):\(number)", projectID: project.id, number: number)
+        // The shell pool is shared by every window, so the ID must be unique app-wide; `number` is only the tab label.
+        let tab = TandockShellTab(id: "shell:\(project.id):\(UUID().uuidString)", projectID: project.id, number: number)
         shellTabs.append(tab)
         selectedShellTabID = tab.id
         startShell(paneID: tab.id, project: project)
     }
 
     func closeShellPane(_ paneID: String) {
-        guard shellTabs.count > 1, let index = shellTabs.firstIndex(where: { $0.id == paneID }) else { return }
+        guard let index = shellTabs.firstIndex(where: { $0.id == paneID }) else { return }
         shellTabs.remove(at: index)
-        if selectedShellTabID == paneID { selectedShellTabID = shellTabs[min(index, shellTabs.count - 1)].id }
+        if selectedShellTabID == paneID { selectedShellTabID = shellTabs.isEmpty ? nil : shellTabs[min(index, shellTabs.count - 1)].id }
         Task { await shellPool.stop(paneID: paneID) }
     }
 
@@ -1809,20 +1810,11 @@ final class WorkspaceModel: ObservableObject {
             return
         }
         do {
-            let removedShells = shellTabs.filter { $0.projectID == selectedProjectID }.map(\.id)
-            if !removedShells.isEmpty {
-                shellPool.terminateProjectImmediately(paneIDs: removedShells)
-                shellTabs.removeAll { $0.projectID == selectedProjectID }
-            }
-            let todosShowedProject = todoProject?.id == selectedProjectID
+            stopShells(projectID: selectedProjectID)
             try repository?.deleteProject(id: selectedProjectID)
             editorWorkspaces.removeValue(forKey: selectedProjectID)
             try reload(keepSelection: false)
-            if todosShowedProject {
-                todoProjectID = nil
-                clearTodoState()
-                if openPanels.contains(.todos) { startTodoPolling() }
-            }
+            publishSessionMetadataChange()
         } catch {
             errorMessage = String(describing: error)
         }
@@ -1944,6 +1936,25 @@ final class WorkspaceModel: ObservableObject {
         if terminalLayout != layout { terminalLayout = layout }
         orderPinnedTabsFirst()
         if let selectedSessionID, !known.contains(selectedSessionID) { self.selectedSessionID = focusedCanvasSessionID }
+        dropRemovedProjectPanels()
+    }
+
+    /// Another window may have removed a project; its shells here are this window's own and must be stopped here.
+    private func dropRemovedProjectPanels() {
+        let known = Set(projects.map(\.id))
+        for projectID in Set(shellTabs.map(\.projectID)) where !known.contains(projectID) { stopShells(projectID: projectID) }
+        if let todoProjectID, !known.contains(todoProjectID) {
+            self.todoProjectID = nil
+            clearTodoState()
+            if openPanels.contains(.todos) { startTodoPolling() }
+        }
+    }
+
+    private func stopShells(projectID: String) {
+        let removed = shellTabs.filter { $0.projectID == projectID }.map(\.id)
+        guard !removed.isEmpty else { return }
+        shellPool.terminateProjectImmediately(paneIDs: removed)
+        shellTabs.removeAll { $0.projectID == projectID }
     }
 
     private func resetCanvas() {

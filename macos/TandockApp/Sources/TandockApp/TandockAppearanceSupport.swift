@@ -149,6 +149,8 @@ struct TandockLocalization {
         "changeFileTree": [.zh: "按目录收成树", .en: "Group by folder"],
         "flatChangeList": [.zh: "平铺成一列", .en: "Flat list"],
         "newShellTab": [.zh: "新建终端", .en: "New terminal"],
+        "noShellTabs": [.zh: "没有打开的终端", .en: "No terminals open"],
+        "noShellTabsBody": [.zh: "点右上角的 + 新建一个", .en: "Use + above to open one"],
         "closeShellPane": [.zh: "关闭面板并停止这个 Shell", .en: "Close pane and stop this shell"],
         "shellExited": [.zh: "Shell 已退出", .en: "Shell Exited"],
         "restart": [.zh: "重新启动", .en: "Restart"],
